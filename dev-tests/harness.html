@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Grist BI Dashboard (POC) — Harness local</title>
+<!-- Remplace grist-plugin-api.js par le mock : mêmes fichiers applicatifs que index.html. -->
+<script src="grist-stub.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.5.1/echarts.min.js"></script>
+<link rel="stylesheet" href="../css/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>Dashboard BI <span class="badge-poc">POC — harness locale</span></h1>
+    <div class="topbar-info">
+      <span id="row-count" class="row-count">0 ligne(s)</span>
+      <span id="filter-badge" class="filter-badge" hidden></span>
+      <button id="clear-filter" type="button" class="btn-secondary">Effacer le filtre</button>
+    </div>
+  </header>
+
+  <form id="add-tile-form" class="add-tile-form">
+    <div class="field">
+      <label for="tile-type">Type</label>
+      <select id="tile-type">
+        <option value="bar">Barres</option>
+        <option value="pie">Camembert</option>
+        <option value="kpi">Carte KPI</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="tile-dimension">Dimension</label>
+      <select id="tile-dimension"></select>
+    </div>
+    <div class="field">
+      <label for="tile-measure">Mesure</label>
+      <select id="tile-measure"></select>
+    </div>
+    <div class="field">
+      <label for="tile-agg">Agrégat</label>
+      <select id="tile-agg">
+        <option value="sum">Somme</option>
+        <option value="avg">Moyenne</option>
+        <option value="count">Comptage</option>
+        <option value="min">Min</option>
+        <option value="max">Max</option>
+      </select>
+    </div>
+    <button type="submit" class="btn-primary">+ Ajouter la tuile</button>
+  </form>
+
+  <main id="tiles" class="tiles"></main>
+  <p id="empty-state" class="empty-state">
+    Aucune tuile pour l'instant. Ajoutez-en une ci-dessus, puis cliquez sur une barre ou une part
+    pour filtrer les autres tuiles (cliquer à nouveau retire le filtre).
+  </p>
+
+  <script src="../js/data.js"></script>
+  <script src="../js/state.js"></script>
+  <script src="../js/charts.js"></script>
+  <script src="../js/grist-api.js"></script>
+  <script src="../js/main.js"></script>
+</body>
+</html>
