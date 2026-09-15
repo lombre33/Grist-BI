@@ -12,8 +12,11 @@ Ce projet fait suite à une discussion sur ce que Power BI a que Grist n'a pas n
 délibérément hors scope, et ce qui reste à valider en conditions réelles.
 
 Architecture reprise du widget [publipostageGrist](https://github.com/lombre33/publipostagegrist)
-du même auteur : page statique unique, **aucune étape de build**, dépendances chargées en CDN,
-config du dashboard stockée dans une table Grist interne cachée (`BI_Dashboard_Config`).
+du même auteur : page statique unique, **aucune étape de build**, config du dashboard stockée dans
+une table Grist interne cachée (`BI_Dashboard_Config`). ECharts (la bibliothèque de graphiques) est
+embarqué directement dans le repo (`js/vendor/echarts/`, Apache-2.0) plutôt que chargé depuis un
+CDN externe — un réseau qui filtre `cdnjs.cloudflare.com` (proxy d'entreprise/institution, etc.)
+laisserait sinon les tuiles graphiques vides sans erreur explicite.
 
 ## Fonctionnalités du POC
 
@@ -60,9 +63,11 @@ premier commit.
 
 ## État du projet
 
-Brouillon initial. Non testé dans un vrai document Grist. Voir HYPOTHESES.md pour la liste des
-points à valider avant tout usage au-delà de l'exploration.
+Premier retour d'usage réel : la génération de données de démo fonctionne (table créée, 120 lignes,
+KPI correct), un souci de chargement d'ECharts sur réseau filtré a été corrigé (voir HYPOTHESES.md,
+point 3). Voir HYPOTHESES.md pour la liste des points encore à valider.
 
 ## Licence
 
-MIT.
+MIT pour le code de ce dépôt. `js/vendor/echarts/` contient [Apache ECharts](https://echarts.apache.org/)
+embarqué tel quel (Apache-2.0, licence incluse dans ce dossier).

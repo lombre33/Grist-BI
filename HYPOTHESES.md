@@ -80,21 +80,25 @@ dans une seule instance de widget, avec ses propres tuiles internes.
    perceptible ? Pas de réponse depuis ce POC (données d'exemple : 36 lignes) — à mesurer avec un
    vrai document avant de savoir si DuckDB-WASM (ou un pré-agrégat côté formules Grist) devient
    nécessaire.
-3. **[CONFIRMÉ EN RÉEL — ne se charge pas] Chargement d'ECharts depuis `cdnjs.cloudflare.com`** :
-   risque flagué ici avant tout test réel (réseau de ce sandbox de dev bloquant les CDN, testé
-   uniquement en local) — et c'est bien ce qui se passe chez l'utilisateur du widget : le script
-   CDN ne se charge pas dans l'iframe du widget custom Grist (cause exacte pas encore identifiée -
-   candidats : CSP imposée par Grist sur l'iframe du widget, bloqueur de publicité, pare-feu réseau
-   de l'organisation). Symptôme observé : les tuiles barres/camembert restent visuellement vides
-   **alors que les données sont bien chargées** (nombre de lignes correct, carte KPI correcte — la
-   carte KPI ne dépend pas d'ECharts, contrairement aux tuiles graphiques). Un garde silencieux
-   (`if (typeof echarts === 'undefined') return;`) masquait complètement le problème : corrigé pour
-   afficher un bandeau d'avertissement en haut de page + un message dans chaque tuile graphique
-   concernée (voir `js/main.js`, `js/charts.js`) dès qu'ECharts est indisponible, testé avec
-   Playwright en cassant volontairement le chargement d'ECharts (`dev-tests/`, non commité). Reste à
-   faire : demander à l'utilisateur la console/l'onglet Réseau du navigateur pour confirmer la cause
-   exacte et choisir le vrai correctif (autre CDN, chargement en `<script>` local vendorisé dans le
-   repo au lieu d'un CDN, etc.).
+3. **[RÉSOLU] Chargement d'ECharts depuis un CDN externe** : risque flagué ici avant tout test réel
+   (réseau de ce sandbox de dev bloquant les CDN, testé uniquement en local) — confirmé chez
+   l'utilisateur du widget, avec la cause exacte cette fois : la console navigateur montrait
+   `bloquée en raison d'un type MIME ("text/html") incorrect (X-Content-Type-Options: nosniff)` sur
+   `cdnjs.cloudflare.com/.../echarts.min.js` — la requête recevait une page HTML (probablement un
+   filtrage réseau institutionnel/proxy d'entreprise servant une page de blocage) au lieu du script,
+   que le navigateur refuse d'exécuter à cause de `nosniff`. Symptôme observé : tuiles
+   barres/camembert visuellement vides **alors que les données étaient bien chargées** (carte KPI
+   correcte — elle ne dépend pas d'ECharts, contrairement aux tuiles graphiques). Un garde silencieux
+   (`if (typeof echarts === 'undefined') return;`) masquait complètement le problème avant d'être
+   corrigé pour afficher un diagnostic explicite (bandeau + message par tuile).
+   **Corrigé définitivement en embarquant ECharts dans le repo** (`js/vendor/echarts/echarts.min.js`,
+   Apache-2.0, licence incluse) plutôt qu'en cherchant un CDN alternatif qui aurait le même problème
+   sur ce type de réseau — même stratégie que publipostageGrist pour ses gros fichiers (polices PDF).
+   `dev-tests/harness.html` charge désormais ce même fichier local : la harness est enfin
+   **entièrement représentative de la prod** sur ce point (avant, testée uniquement avec une copie
+   npm locale non commitée, jamais avec le vrai chemin utilisé par `index.html`). Le bandeau/message
+   de diagnostic reste en place en défense en profondeur (utile si le fichier venait à manquer pour
+   une autre raison), mais ne devrait plus jamais se déclencher pour ECharts en usage normal.
 4. **Table interne `BI_Dashboard_Config` dans un vrai document** : le mock simule
    `AddTable`/`AddRecord`/`UpdateRecord` en mémoire ; jamais exécuté contre un vrai
    `grist.docApi`. À vérifier : la table apparaît-elle de façon gênante dans les sélecteurs de
@@ -107,27 +111,23 @@ dans une seule instance de widget, avec ses propres tuiles internes.
 6. **Redimensionnement du widget dans la mise en page Grist** : `resizeAll()` est appelé après
    chaque changement de tuiles, mais pas sur un `ResizeObserver` du widget lui-même — un
    redimensionnement du panneau Grist (pas juste un ajout/suppression de tuile) n'est pas testé.
-7. **Types de colonnes `Numeric`/`Int` dans `AddTable`** : `js/demo-data.js` déclare `Quantite` en
-   `Int` et `Montant` en `Numeric`. publipostageGrist n'a jamais utilisé que `Text` dans ses propres
-   `AddTable` ; ces deux identifiants de type sont corrects dans le modèle de colonnes Grist à ma
-   connaissance, mais **jamais exécutés contre un vrai document** — le mock accepte n'importe quelle
-   chaîne sans validation. Si `AddTable` échoue en réel à cause du type, le bouton « Générer des
-   données de démo » le signalera (une alerte, `applyUserActions` rejetterait la promesse) plutôt
-   que de corrompre des données — mais ça vaut la peine de vérifier au premier essai.
-8. **~240 actions (`AddRecord`/`RemoveRecord`) en un seul `applyUserActions()`** lors d'une
-   régénération de données de démo (120 suppressions + 120 ajouts au pire cas) : chaque verbe est
-   individuellement éprouvé, mais pas ce volume-là en un seul appel. Devrait bien se comporter
-   (c'est l'usage normal de `applyUserActions` avec un tableau d'actions), à confirmer en réel —
-   notamment le temps de réponse perçu en cliquant sur le bouton.
+7. **[CONFIRMÉ EN RÉEL] Types de colonnes `Numeric`/`Int` dans `AddTable`** : `js/demo-data.js`
+   déclare `Quantite` en `Int` et `Montant` en `Numeric`. Confirmé fonctionnel — la table
+   `BI_Demo_Ventes` créée chez l'utilisateur montre ces deux colonnes correctement typées avec des
+   valeurs numériques.
+8. **[CONFIRMÉ EN RÉEL] ~240 actions (`AddRecord`/`RemoveRecord`) en un seul `applyUserActions()`**
+   lors d'une régénération de données de démo : confirmé fonctionnel — 120 lignes créées sans erreur
+   signalée par l'utilisateur (seul le rendu ECharts, point 3, posait problème).
 
 ## Prochaines étapes suggérées
 
-1. Installer ce widget dans un vrai document Grist de test, sur une table avec un volume réaliste.
-2. Cliquer sur « Générer des données de démo » en tout premier, pour valider en une fois les points
-   4, 7 et 8 (table interne, types de colonnes, volume d'actions) sans dépendre d'avoir préparé une
-   table réelle au préalable.
-3. Vérifier ensuite les points 1, 3, 6 ci-dessus (nécessitent une vraie table liée).
-4. Si le concept tient la route : édition de tuile, un deuxième niveau de filtre simultané,
+1. ~~Installer ce widget dans un vrai document Grist de test~~ — fait ; ECharts vendorisé
+   localement a résolu le seul problème remonté (point 3). Reste à confirmer que ça fonctionne bien
+   après le correctif.
+2. Vérifier les points 1, 4 et 6 ci-dessus (nécessitent respectivement une mise à jour live de la
+   table liée, un rechargement du widget pour confirmer la persistance de `BI_Dashboard_Config`, et
+   un redimensionnement du panneau Grist).
+3. Si le concept tient la route : édition de tuile, un deuxième niveau de filtre simultané,
    `ResizeObserver` sur le conteneur racine.
-5. Si la perf devient un problème réel (point 2) : spike DuckDB-WASM avant d'aller plus loin sur
+4. Si la perf devient un problème réel (point 2) : spike DuckDB-WASM avant d'aller plus loin sur
    les mesures.

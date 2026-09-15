@@ -5,7 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Grist BI Dashboard (POC)</title>
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.5.1/echarts.min.js"></script>
+<!-- ECharts embarqué localement (js/vendor/echarts/, Apache-2.0) plutôt que chargé depuis un CDN
+     externe : un réseau qui filtre/bloque cdnjs.cloudflare.com sert une page HTML à la place du
+     script, que le navigateur refuse d'exécuter (X-Content-Type-Options: nosniff) - la bibliothèque
+     ne se charge jamais et les tuiles graphiques restent vides sans erreur explicite. -->
+<script src="js/vendor/echarts/echarts.min.js"></script>
 <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
