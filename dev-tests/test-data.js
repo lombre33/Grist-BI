@@ -36,6 +36,20 @@ const rows = [
   console.log('OK groupByAggregate(count)');
 }
 
+// groupByAggregate respecte l'ordre de première apparition, PAS un tri alphabétique — sinon
+// "Mois" (Janvier/Février/Mars...) s'afficherait dans le désordre. Rows volontairement dans un
+// ordre non-alphabétique pour ne pas masquer une régression par coïncidence.
+{
+  const monthRows = [
+    { Mois: 'Mars', Montant: 10 },
+    { Mois: 'Janvier', Montant: 20 },
+    { Mois: 'Février', Montant: 5 }
+  ];
+  const agg = data.groupByAggregate(monthRows, 'Mois', 'Montant', 'sum');
+  assert.deepStrictEqual(agg.map((d) => d.dimension), ['Mars', 'Janvier', 'Février']);
+  console.log('OK groupByAggregate préserve l\'ordre de première apparition (pas alphabétique)');
+}
+
 // applyFilter
 {
   const filtered = data.applyFilter(rows, { column: 'Region', value: 'Sud' });
@@ -88,18 +102,42 @@ const rows = [
   console.log('OK state.addTile/removeTile');
 }
 
+// state: updateTile (édition en place, position conservée dans le tableau)
+{
+  const store = state.createStore();
+  store.addTile({ id: 't1', type: 'bar', dimension: 'Region', measure: 'Montant', aggFn: 'sum' });
+  store.addTile({ id: 't2', type: 'kpi', measure: 'Montant', aggFn: 'sum' });
+  store.updateTile('t1', { aggFn: 'avg', title: 'Montant par Région (moyenne)' });
+  const tiles = store.getState().tiles;
+  assert.strictEqual(tiles.length, 2); // pas de doublon
+  assert.strictEqual(tiles[0].id, 't1'); // position conservée
+  assert.strictEqual(tiles[0].aggFn, 'avg');
+  assert.strictEqual(tiles[0].dimension, 'Region'); // champs non modifiés préservés
+  assert.strictEqual(tiles[1].id, 't2'); // tuile voisine inchangée
+  console.log('OK state.updateTile (édition en place)');
+}
+
 // demo-data: buildSampleRows -> des valeurs cohérentes (Montant/Quantite positifs, colonnes complètes)
 {
   const sample = demoData.buildSampleRows();
-  const expectedCount = demoData.REGIONS.length * demoData.PRODUITS.length * demoData.MOIS.length;
+  const expectedCount = demoData.REGIONS.length * demoData.PRODUITS.length
+    * demoData.ANNEES.length * demoData.MOIS.length;
   assert.strictEqual(sample.length, expectedCount);
   const colIds = demoData.COLUMNS.map((c) => c.id);
   for (const row of sample) {
     for (const col of colIds) assert.ok(col in row, `colonne manquante: ${col}`);
     assert.ok(row.Quantite > 0 && Number.isFinite(row.Quantite));
     assert.ok(row.Montant > 0 && Number.isFinite(row.Montant));
+    assert.ok(demoData.ANNEES.includes(row.Annee));
   }
-  console.log(`OK demoData.buildSampleRows (${sample.length} lignes)`);
+  // La croissance 2026 > 2025 (voir CROISSANCE_ANNUELLE) doit rester visible malgré l'aléatoire :
+  // vérifié sur la moyenne des Quantite par année plutôt que ligne à ligne.
+  const dataMod = require('../js/data.js');
+  const parAnnee = dataMod.groupByAggregate(sample, 'Annee', 'Quantite', 'avg');
+  const q2025 = parAnnee.find((d) => d.dimension === 2025).value;
+  const q2026 = parAnnee.find((d) => d.dimension === 2026).value;
+  assert.ok(q2026 > q2025, `croissance attendue 2026 (${q2026}) > 2025 (${q2025})`);
+  console.log(`OK demoData.buildSampleRows (${sample.length} lignes, croissance 2025->2026 cohérente)`);
 }
 
 // demo-data: defaultTiles -> compatibles avec le store, et référencent des colonnes qui existent

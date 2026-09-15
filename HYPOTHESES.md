@@ -55,6 +55,27 @@ dans une seule instance de widget, avec ses propres tuiles internes.
      (démo → table liée ou l'inverse), alors qu'il référence une colonne/valeur qui n'a plus de
      sens dans le nouveau contexte — corrigé en réinitialisant le filtre sur changement de table
      (mais pas sur simple régénération des données de la même table, où le garder est voulu).
+- **Édition d'une tuile existante** : bouton crayon sur chaque tuile, pré-remplit le formulaire du
+  haut (`startEditTile`/`stopEditTile` dans `js/main.js`, `store.updateTile` dans `js/state.js`),
+  modifie la tuile **en place** (position dans la grille conservée) plutôt que supprimer+recréer.
+  Annulée automatiquement si la tuile éditée est supprimée ou si on change de table pendant
+  l'édition. Testé sous Node (`updateTile` — pas de doublon, position et champs non modifiés
+  préservés) et avec Playwright (cycle complet : clic crayon → formulaire pré-rempli → soumission →
+  tuile mise à jour sans doublon ni changement de position).
+- **`ResizeObserver` sur `document.body`** en complément du `window.resize` existant : capte aussi
+  un redimensionnement du conteneur de l'iframe du widget qui ne déclencherait pas forcément un
+  `resize` de `window` (ouverture d'un panneau latéral Grist, colonne redimensionnée...). Coalescé
+  via `requestAnimationFrame` pour éviter des rappels multiples pendant un redimensionnement continu.
+- **Tri des tuiles par ordre d'apparition, pas alphabétique** (`js/data.js`, `groupByAggregate`) :
+  un vrai bug repéré en relisant les captures d'écran précédentes — "Mois" triait Avril avant
+  Janvier. Corrigé en préservant l'ordre de première apparition dans les données plutôt qu'un tri
+  sur la valeur affichée. Testé sous Node avec des données volontairement non-alphabétiques.
+- **Jeu de données de démo enrichi** : 12 mois (au lieu de 6) × 2 années (2025/2026, avec une
+  croissance simulée +12 % en 2026) = 480 lignes (au lieu de 120), plus une colonne `Annee` et une
+  5e tuile par défaut (« Montant par Année ») pour l'exploiter. Objectif double : donner du répondant
+  à un futur drill-down temporel (Année > Mois), et avancer sur le point 2 ci-dessous (volume réel)
+  — testé de bout en bout (480 lignes générées, ordre chronologique des mois correct, croissance
+  2026 > 2025 visible sur la tuile Année, ~2s de génération dans le mock).
 
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
@@ -63,12 +84,13 @@ dans une seule instance de widget, avec ses propres tuiles internes.
 - **Drill-down hiérarchique**, **bookmarks/navigation multi-pages**, **mise en forme conditionnelle
   avancée**, **Q&A langage naturel / IA** : non tentés.
 - **Moteur d'agrégation performant type DuckDB-WASM** : l'agrégation est un simple `Array.reduce`
-  côté client (voir `js/data.js`). Suffisant pour de petits jeux de données, pas benchmarké sur un
-  gros volume — piste sérieuse si la perf devient un problème réel (point 4 ci-dessous).
-- **Édition d'une tuile existante** (seulement ajout/suppression) — trivial à ajouter si le concept
-  tient la route, pas fait ici pour rester sur le cœur (cross-filter + persistance).
+  côté client (voir `js/data.js`). Suffisant pour 480 lignes (voir point 2 ci-dessous), pas
+  benchmarké au-delà — piste sérieuse si la perf devient un problème réel sur un vrai document.
 - **Glisser-déposer / redimensionnement des tuiles** : grille CSS statique (`auto-fill`), pas de
   réagencement manuel.
+- **Filtres croisés simultanés** : un seul filtre actif à la fois (cliquer sur un 2e segment
+  remplace le premier plutôt que de le cumuler) — un vrai dashboard Power BI permet plusieurs
+  slicers actifs en même temps.
 
 ## Points à valider en conditions réelles (pas testables depuis ce sandbox)
 
@@ -77,9 +99,9 @@ dans une seule instance de widget, avec ses propres tuiles internes.
    (édition, filtre Grist appliqué en amont, changement de sélection) pour confirmer que
    `onRecords` se redéclenche comme attendu et que le dashboard se met à jour sans état incohérent.
 2. **Volume de données réel** : à partir de combien de lignes l'agrégation client devient-elle
-   perceptible ? Pas de réponse depuis ce POC (données d'exemple : 36 lignes) — à mesurer avec un
-   vrai document avant de savoir si DuckDB-WASM (ou un pré-agrégat côté formules Grist) devient
-   nécessaire.
+   perceptible ? Le jeu de démo est passé de 120 à 480 lignes sans souci apparent (agrégation
+   toujours instantanée en local), mais reste un volume modeste — pas de vraie réponse tant que ce
+   n'est pas testé sur un document avec un volume représentatif de l'usage réel visé.
 3. **[RÉSOLU] Chargement d'ECharts depuis un CDN externe** : risque flagué ici avant tout test réel
    (réseau de ce sandbox de dev bloquant les CDN, testé uniquement en local) — confirmé chez
    l'utilisateur du widget, avec la cause exacte cette fois : la console navigateur montrait
@@ -108,9 +130,11 @@ dans une seule instance de widget, avec ses propres tuiles internes.
    (le widget sœur publipostageGrist ne l'utilise pas non plus — seulement `onOptions`/`getOptions`
    en lecture). Pourrait simplifier la persistance si cette API existe et fonctionne comme prévu ;
    à vérifier contre la doc Grist à jour avant de migrer dessus.
-6. **Redimensionnement du widget dans la mise en page Grist** : `resizeAll()` est appelé après
-   chaque changement de tuiles, mais pas sur un `ResizeObserver` du widget lui-même — un
-   redimensionnement du panneau Grist (pas juste un ajout/suppression de tuile) n'est pas testé.
+6. **Redimensionnement du widget dans la mise en page Grist** : un `ResizeObserver` sur
+   `document.body` a été ajouté (voir plus haut) pour couvrir ce cas, mais un vrai redimensionnement
+   du panneau Grist (ouverture d'un panneau latéral, colonne tirée à la souris...) n'a pas encore
+   été testé en conditions réelles — seule la logique de coalescing a été vérifiée par lecture de
+   code.
 7. **[CONFIRMÉ EN RÉEL] Types de colonnes `Numeric`/`Int` dans `AddTable`** : `js/demo-data.js`
    déclare `Quantite` en `Int` et `Montant` en `Numeric`. Confirmé fonctionnel — la table
    `BI_Demo_Ventes` créée chez l'utilisateur montre ces deux colonnes correctement typées avec des
@@ -122,12 +146,14 @@ dans une seule instance de widget, avec ses propres tuiles internes.
 ## Prochaines étapes suggérées
 
 1. ~~Installer ce widget dans un vrai document Grist de test~~ — fait ; ECharts vendorisé
-   localement a résolu le seul problème remonté (point 3). Reste à confirmer que ça fonctionne bien
-   après le correctif.
+   localement a résolu le seul problème remonté (point 3), confirmé fonctionnel par l'utilisateur.
 2. Vérifier les points 1, 4 et 6 ci-dessus (nécessitent respectivement une mise à jour live de la
    table liée, un rechargement du widget pour confirmer la persistance de `BI_Dashboard_Config`, et
    un redimensionnement du panneau Grist).
-3. Si le concept tient la route : édition de tuile, un deuxième niveau de filtre simultané,
-   `ResizeObserver` sur le conteneur racine.
+3. Choisir la prochaine feature structurante — proposées côté discussion produit : filtres croisés
+   simultanés (plusieurs slicers actifs à la fois), drill-down temporel (Année > Mois, la donnée de
+   démo a maintenant les deux niveaux), ou mise en forme conditionnelle sur les cartes KPI
+   (seuil vert/rouge, flèche de tendance). Chacune est un choix de conception à part entière, pas
+   juste une ligne de code — à valider avant de s'y lancer plutôt que de trancher seul.
 4. Si la perf devient un problème réel (point 2) : spike DuckDB-WASM avant d'aller plus loin sur
    les mesures.

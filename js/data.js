@@ -48,10 +48,12 @@
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(row[measureCol]);
     }
+    // Ordre de première apparition dans `rows` (celui du Map), PAS un tri alphabétique : pour une
+    // dimension comme "Mois", trier "Avril" < "Janvier" < "Mai" casserait l'ordre chronologique.
+    // L'appelant qui veut un ordre précis (chronologique, custom...) doit trier `rows` en amont.
     const aggregator = AGGREGATORS[aggFn] || AGGREGATORS.sum;
     return Array.from(groups.entries())
-      .map(([key, values]) => ({ dimension: key, value: aggregator(values) }))
-      .sort((a, b) => (a.dimension > b.dimension ? 1 : -1));
+      .map(([key, values]) => ({ dimension: key, value: aggregator(values) }));
   }
 
   function aggregateSingle(rows, measureCol, aggFn) {

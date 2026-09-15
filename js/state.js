@@ -27,6 +27,13 @@
     function addTile(tile) { tiles = tiles.concat([tile]); notify(); }
     function removeTile(id) { tiles = tiles.filter((t) => t.id !== id); notify(); }
 
+    // Remplace une tuile existante en place (même id, mêmes voisines) plutôt que
+    // supprimer+ajouter : garde sa position dans la grille.
+    function updateTile(id, patch) {
+      tiles = tiles.map((t) => (t.id === id ? Object.assign({}, t, patch) : t));
+      notify();
+    }
+
     // Clic sur une tuile : (dé)active un filtre croisé appliqué à toutes les AUTRES tuiles.
     // Cliquer deux fois sur le même segment retire le filtre (toggle), comme les slicers Power BI.
     function toggleFilter(column, value, sourceTileId) {
@@ -40,7 +47,7 @@
 
     function clearFilter() { activeFilter = null; notify(); }
 
-    return { getState, subscribe, setRows, setTiles, addTile, removeTile, toggleFilter, clearFilter };
+    return { getState, subscribe, setRows, setTiles, addTile, removeTile, updateTile, toggleFilter, clearFilter };
   }
 
   return { createStore };

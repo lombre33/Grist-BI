@@ -20,18 +20,20 @@ laisserait sinon les tuiles graphiques vides sans erreur explicite.
 
 ## Fonctionnalités du POC
 
-- 3 types de tuiles : barres, camembert, carte KPI.
+- 3 types de tuiles : barres, camembert, carte KPI. Ajout **et édition** (bouton crayon, modifie en
+  place sans perdre la position de la tuile dans la grille).
 - Constructeur de tuile simple : dimension + mesure + agrégat (somme/moyenne/comptage/min/max) —
   volontairement **pas** un langage de mesures façon DAX (voir HYPOTHESES.md, point 1).
 - Cross-filtering au clic entre tuiles, un seul filtre actif à la fois.
 - Persistance de la configuration du dashboard dans le document Grist (par table liée), donc
   conservée entre deux ouvertures du widget.
 - **Génération de données de démo** : bouton « 🎲 Générer des données de démo » — crée (ou
-  régénère) une table `BI_Demo_Ventes` avec 120 lignes de données de vente cohérentes (Région ×
-  Produit × Mois, montants = quantité × prix unitaire du produit) et 4 tuiles pré-configurées, pour
-  tester le dashboard sans avoir à préparer une table soi-même. N'affecte jamais la table liée au
-  widget dans la page. Un bandeau « Revenir à la table liée » permet de repasser sur les vraies
-  données à tout moment ; régénérer ne perd pas les tuiles déjà construites, seulement les valeurs.
+  régénère) une table `BI_Demo_Ventes` avec 480 lignes de données de vente cohérentes (Région ×
+  Produit × Année × Mois, montants = quantité × prix unitaire du produit, +12 % de croissance
+  simulée en 2026) et 5 tuiles pré-configurées, pour tester le dashboard sans avoir à préparer une
+  table soi-même. N'affecte jamais la table liée au widget dans la page. Un bandeau « Revenir à la
+  table liée » permet de repasser sur les vraies données à tout moment ; régénérer ne perd pas les
+  tuiles déjà construites, seulement les valeurs.
 
 ## Installation dans Grist
 
@@ -63,9 +65,12 @@ premier commit.
 
 ## État du projet
 
-Premier retour d'usage réel : la génération de données de démo fonctionne (table créée, 120 lignes,
-KPI correct), un souci de chargement d'ECharts sur réseau filtré a été corrigé (voir HYPOTHESES.md,
-point 3). Voir HYPOTHESES.md pour la liste des points encore à valider.
+Premier retour d'usage réel positif : génération de données de démo, graphiques, cross-filtering
+fonctionnent (un souci de chargement d'ECharts sur réseau filtré a été corrigé, voir HYPOTHESES.md
+point 3). Depuis : édition de tuile, jeu de données de démo enrichi (480 lignes, 2 ans),
+`ResizeObserver`, correction d'un tri non-chronologique. Voir HYPOTHESES.md pour la liste des
+points encore à valider et les pistes pour la suite (filtres simultanés, drill-down, mise en forme
+conditionnelle).
 
 ## Licence
 

@@ -13,6 +13,7 @@
   let demoActive = false;
   let linkedTableId = null; // dernière table réellement liée au widget dans la page Grist (via onRecords)
   let linkedRows = null;
+  let editingTileId = null; // id de la tuile en cours d'édition via le formulaire, ou null (mode ajout)
 
   const tilesContainer = document.getElementById('tiles');
   const emptyState = document.getElementById('empty-state');
@@ -21,6 +22,8 @@
   const dimensionSelect = document.getElementById('tile-dimension');
   const measureSelect = document.getElementById('tile-measure');
   const aggSelect = document.getElementById('tile-agg');
+  const submitTileBtn = document.getElementById('submit-tile');
+  const cancelEditBtn = document.getElementById('cancel-edit');
   const clearFilterBtn = document.getElementById('clear-filter');
   const filterBadge = document.getElementById('filter-badge');
   const rowCountEl = document.getElementById('row-count');
@@ -29,12 +32,13 @@
   const backToLinkedBtn = document.getElementById('back-to-linked');
   const echartsWarning = document.getElementById('echarts-warning');
 
-  // Si le <script> CDN d'ECharts (voir index.html) n'a pas pu se charger (réseau, bloqueur, pare-
-  // feu...), les tuiles barres/camembert resteraient vides SANS AUCUNE erreur visible — seules les
-  // cartes KPI fonctionneraient (elles ne dépendent pas d'ECharts). Signal explicite plutôt que de
-  // laisser deviner via la console.
+  // Si le <script> ECharts (js/vendor/echarts/, voir index.html) n'a pas pu se charger, les tuiles
+  // barres/camembert resteraient vides SANS AUCUNE erreur visible — seules les cartes KPI
+  // fonctionneraient (elles ne dépendent pas d'ECharts). Signal explicite plutôt que de laisser
+  // deviner via la console. Défense en profondeur : ECharts étant maintenant embarqué localement
+  // (plus de dépendance CDN), ce cas ne devrait plus se produire en usage normal.
   if (typeof echarts === 'undefined') {
-    console.error('[GristBI] `echarts` est indéfini : le script CDN (voir index.html) ne s\'est probablement pas chargé.');
+    console.error('[GristBI] `echarts` est indéfini : js/vendor/echarts/echarts.min.js ne s\'est probablement pas chargé.');
     echartsWarning.hidden = false;
   }
 
@@ -108,16 +112,46 @@
     const el = document.createElement('div');
     el.className = `tile tile-${tile.type}`;
     el.dataset.tileId = tile.id;
+    const header = `<div class="tile-header"><span>${escapeHtml(tile.title)}</span>
+        <span class="tile-actions">
+          <button class="tile-edit" type="button" aria-label="Modifier">✎</button>
+          <button class="tile-remove" type="button" aria-label="Supprimer">&times;</button>
+        </span></div>`;
     el.innerHTML = tile.type === 'kpi'
-      ? `<div class="tile-header"><span>${escapeHtml(tile.title)}</span>
-           <button class="tile-remove" type="button" aria-label="Supprimer">&times;</button></div>
+      ? `${header}
          <div class="tile-kpi"><span class="tile-kpi-value">-</span>
            <span class="tile-kpi-label">${escapeHtml(tile.aggFn)}(${escapeHtml(tile.measure)})</span></div>`
-      : `<div class="tile-header"><span>${escapeHtml(tile.title)}</span>
-           <button class="tile-remove" type="button" aria-label="Supprimer">&times;</button></div>
+      : `${header}
          <div class="tile-chart" data-tile-id="${tile.id}"></div>`;
-    el.querySelector('.tile-remove').addEventListener('click', () => store.removeTile(tile.id));
+    el.querySelector('.tile-remove').addEventListener('click', () => {
+      if (tile.id === editingTileId) stopEditTile(); // formulaire en cours d'édition sur une tuile qui disparaît
+      store.removeTile(tile.id);
+    });
+    el.querySelector('.tile-edit').addEventListener('click', () => startEditTile(tile));
     return el;
+  }
+
+  function updateDimensionFieldVisibility() {
+    // Une carte KPI n'a pas de dimension de regroupement, juste un agrégat sur toute la sélection.
+    dimensionSelect.closest('.field').hidden = tileTypeSelect.value === 'kpi';
+  }
+
+  function startEditTile(tile) {
+    editingTileId = tile.id;
+    tileTypeSelect.value = tile.type;
+    updateDimensionFieldVisibility();
+    if (tile.dimension) dimensionSelect.value = tile.dimension;
+    measureSelect.value = tile.measure;
+    aggSelect.value = tile.aggFn;
+    submitTileBtn.textContent = '✓ Modifier la tuile';
+    cancelEditBtn.hidden = false;
+    addTileForm.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function stopEditTile() {
+    editingTileId = null;
+    submitTileBtn.textContent = '+ Ajouter la tuile';
+    cancelEditBtn.hidden = true;
   }
 
   function escapeHtml(s) {
@@ -126,10 +160,7 @@
     }[c]));
   }
 
-  tileTypeSelect.addEventListener('change', () => {
-    // Une carte KPI n'a pas de dimension de regroupement, juste un agrégat sur toute la sélection.
-    dimensionSelect.closest('.field').hidden = tileTypeSelect.value === 'kpi';
-  });
+  tileTypeSelect.addEventListener('change', updateDimensionFieldVisibility);
 
   addTileForm.addEventListener('submit', (evt) => {
     evt.preventDefault();
@@ -138,18 +169,44 @@
     const measure = measureSelect.value;
     const aggFn = aggSelect.value;
     if (!measure || (type !== 'kpi' && !dimension)) return;
-    store.addTile({
-      id: 'tile_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-      type,
-      dimension,
-      measure,
-      aggFn,
-      title: type === 'kpi' ? `${aggFn}(${measure})` : `${measure} par ${dimension}`
-    });
+    const title = type === 'kpi' ? `${aggFn}(${measure})` : `${measure} par ${dimension}`;
+    if (editingTileId) {
+      store.updateTile(editingTileId, { type, dimension, measure, aggFn, title });
+      stopEditTile();
+    } else {
+      store.addTile({
+        id: 'tile_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        type,
+        dimension,
+        measure,
+        aggFn,
+        title
+      });
+    }
   });
+
+  cancelEditBtn.addEventListener('click', stopEditTile);
 
   clearFilterBtn.addEventListener('click', () => store.clearFilter());
   window.addEventListener('resize', () => GristBI.charts.resizeAll());
+
+  // `window`.resize ne se déclenche pas forcément de façon fiable quand c'est le panneau Grist
+  // hébergeant l'iframe du widget qui change de taille (ouverture d'un panneau latéral, colonne
+  // redimensionnée...) plutôt que la fenêtre du navigateur elle-même. ResizeObserver observe
+  // directement la boîte du conteneur, donc capte aussi ce cas.
+  if (typeof ResizeObserver !== 'undefined') {
+    let resizeRaf = null;
+    const observer = new ResizeObserver(() => {
+      // Coalesce : ResizeObserver peut déclencher plusieurs callbacks par frame pendant un
+      // redimensionnement continu ; un seul resizeAll() par frame suffit.
+      if (resizeRaf) return;
+      resizeRaf = requestAnimationFrame(() => {
+        resizeRaf = null;
+        GristBI.charts.resizeAll();
+      });
+    });
+    observer.observe(document.body);
+  }
 
   function scheduleSave(tiles) {
     if (!currentTableId) return;
@@ -175,6 +232,7 @@
       // À l'inverse, une simple régénération des données de LA MÊME table de démo (isNewTable
       // false) doit le laisser actif.
       store.clearFilter();
+      if (editingTileId) stopEditTile(); // le formulaire en cours d'édition référence une tuile de l'ancienne table
       const saved = await GristBI.api.loadConfig(tableId);
       store.setTiles(saved.length ? saved : (seedTiles ? seedTiles() : []));
     }
