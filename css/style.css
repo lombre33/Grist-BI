@@ -107,6 +107,13 @@ body {
   padding: 1px 5px;
 }
 
+.warning-banner {
+  background: #fdecea;
+  color: #942f26;
+  border-color: #f3b8b1;
+}
+.warning-banner code { background: rgba(0, 0, 0, 0.06); }
+
 .add-tile-form {
   display: flex;
   align-items: flex-end;
@@ -198,4 +205,5 @@ body {
   .filter-badge { background: #16233f; border-color: #2a3f6b; }
   .demo-banner { background: #3a2e00; color: #f1d27a; border-color: #5c4900; }
   .demo-banner code { background: rgba(255, 255, 255, 0.12); }
+  .warning-banner { background: #3a1512; color: #f5b8b0; border-color: #6b241c; }
 }

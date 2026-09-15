@@ -80,14 +80,21 @@ dans une seule instance de widget, avec ses propres tuiles internes.
    perceptible ? Pas de réponse depuis ce POC (données d'exemple : 36 lignes) — à mesurer avec un
    vrai document avant de savoir si DuckDB-WASM (ou un pré-agrégat côté formules Grist) devient
    nécessaire.
-3. **Chargement d'ECharts depuis `cdnjs.cloudflare.com`** : le réseau de ce sandbox de dev bloque
-   les CDN (`cdnjs`, `jsdelivr`, `unpkg`) — seuls `npmjs.org`/`github.com` étaient joignables. Le
-   rendu et le cross-filtering ont donc été testés avec une copie locale d'ECharts (installée via
-   `npm install echarts` dans un dossier temporaire, jamais commitée), pas avec l'URL CDN réelle
-   utilisée par `index.html`. publipostageGrist charge déjà des libs depuis `esm.sh`/`cdnjs` avec
-   succès en usage réel, donc le risque semble faible, mais **le tout premier chargement du widget
-   depuis GitHub Pages dans un vrai navigateur reste à vérifier** (pas de faux négatif possible
-   depuis ici).
+3. **[CONFIRMÉ EN RÉEL — ne se charge pas] Chargement d'ECharts depuis `cdnjs.cloudflare.com`** :
+   risque flagué ici avant tout test réel (réseau de ce sandbox de dev bloquant les CDN, testé
+   uniquement en local) — et c'est bien ce qui se passe chez l'utilisateur du widget : le script
+   CDN ne se charge pas dans l'iframe du widget custom Grist (cause exacte pas encore identifiée -
+   candidats : CSP imposée par Grist sur l'iframe du widget, bloqueur de publicité, pare-feu réseau
+   de l'organisation). Symptôme observé : les tuiles barres/camembert restent visuellement vides
+   **alors que les données sont bien chargées** (nombre de lignes correct, carte KPI correcte — la
+   carte KPI ne dépend pas d'ECharts, contrairement aux tuiles graphiques). Un garde silencieux
+   (`if (typeof echarts === 'undefined') return;`) masquait complètement le problème : corrigé pour
+   afficher un bandeau d'avertissement en haut de page + un message dans chaque tuile graphique
+   concernée (voir `js/main.js`, `js/charts.js`) dès qu'ECharts est indisponible, testé avec
+   Playwright en cassant volontairement le chargement d'ECharts (`dev-tests/`, non commité). Reste à
+   faire : demander à l'utilisateur la console/l'onglet Réseau du navigateur pour confirmer la cause
+   exacte et choisir le vrai correctif (autre CDN, chargement en `<script>` local vendorisé dans le
+   repo au lieu d'un CDN, etc.).
 4. **Table interne `BI_Dashboard_Config` dans un vrai document** : le mock simule
    `AddTable`/`AddRecord`/`UpdateRecord` en mémoire ; jamais exécuté contre un vrai
    `grist.docApi`. À vérifier : la table apparaît-elle de façon gênante dans les sélecteurs de

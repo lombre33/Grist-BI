@@ -31,7 +31,13 @@
 
   function renderChart(tile, rows, state, container) {
     const el = container.querySelector(`[data-tile-id="${tile.id}"] .tile-chart`);
-    if (!el || typeof echarts === 'undefined') return;
+    if (!el) return;
+    if (typeof echarts === 'undefined') {
+      // Pas d'erreur JS ici : sans ce message, la tuile resterait juste vide sans indice (voir le
+      // bandeau #echarts-warning dans main.js pour le diagnostic complet).
+      el.textContent = 'ECharts indisponible — voir le bandeau en haut de page.';
+      return;
+    }
 
     let instance = chartInstances.get(tile.id);
     if (!instance || instance.isDisposed()) {

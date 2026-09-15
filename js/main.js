@@ -27,6 +27,16 @@
   const generateDemoBtn = document.getElementById('generate-demo');
   const demoBanner = document.getElementById('demo-banner');
   const backToLinkedBtn = document.getElementById('back-to-linked');
+  const echartsWarning = document.getElementById('echarts-warning');
+
+  // Si le <script> CDN d'ECharts (voir index.html) n'a pas pu se charger (réseau, bloqueur, pare-
+  // feu...), les tuiles barres/camembert resteraient vides SANS AUCUNE erreur visible — seules les
+  // cartes KPI fonctionneraient (elles ne dépendent pas d'ECharts). Signal explicite plutôt que de
+  // laisser deviner via la console.
+  if (typeof echarts === 'undefined') {
+    console.error('[GristBI] `echarts` est indéfini : le script CDN (voir index.html) ne s\'est probablement pas chargé.');
+    echartsWarning.hidden = false;
+  }
 
   function availableColumns(rows) {
     if (!rows.length) return [];
