@@ -24,16 +24,21 @@ laisserait sinon les tuiles graphiques vides sans erreur explicite.
   place sans perdre la position de la tuile dans la grille).
 - Constructeur de tuile simple : dimension + mesure + agrégat (somme/moyenne/comptage/min/max) —
   volontairement **pas** un langage de mesures façon DAX (voir HYPOTHESES.md, point 1).
-- Cross-filtering au clic entre tuiles, un seul filtre actif à la fois.
+- **Filtres croisés cumulables** : cliquer sur un segment filtre les autres tuiles ; cliquer sur une
+  colonne différente cumule (ET) ; recliquer ou fermer un badge retire juste ce filtre-là.
+- **Tendance sur les cartes KPI** : une tuile KPI peut comparer sa valeur à la période précédente
+  (ex. Année) — delta en %, flèche verte/rouge.
+- **Drill-down** : une tuile barres/camembert peut déclarer une sous-dimension (ex. Année → Mois) ;
+  cliquer un segment au niveau racine détaille cette tuile-là, avec un fil d'Ariane pour remonter.
 - Persistance de la configuration du dashboard dans le document Grist (par table liée), donc
   conservée entre deux ouvertures du widget.
 - **Génération de données de démo** : bouton « 🎲 Générer des données de démo » — crée (ou
-  régénère) une table `BI_Demo_Ventes` avec 480 lignes de données de vente cohérentes (Région ×
-  Produit × Année × Mois, montants = quantité × prix unitaire du produit, +12 % de croissance
-  simulée en 2026) et 5 tuiles pré-configurées, pour tester le dashboard sans avoir à préparer une
-  table soi-même. N'affecte jamais la table liée au widget dans la page. Un bandeau « Revenir à la
-  table liée » permet de repasser sur les vraies données à tout moment ; régénérer ne perd pas les
-  tuiles déjà construites, seulement les valeurs.
+  régénère) une table avec 480 lignes de données de vente cohérentes (Région × Produit × Année ×
+  Mois, montants = quantité × prix unitaire du produit, +12 % de croissance simulée en 2026) et 5
+  tuiles pré-configurées (dont une avec drill-down et une avec tendance), pour tester le dashboard
+  sans avoir à préparer une table soi-même. N'affecte jamais la table liée au widget dans la page.
+  Un bandeau « Revenir à la table liée » permet de repasser sur les vraies données à tout moment ;
+  régénérer ne perd pas les tuiles déjà construites, seulement les valeurs.
 
 ## Installation dans Grist
 
@@ -65,12 +70,11 @@ premier commit.
 
 ## État du projet
 
-Premier retour d'usage réel positif : génération de données de démo, graphiques, cross-filtering
-fonctionnent (un souci de chargement d'ECharts sur réseau filtré a été corrigé, voir HYPOTHESES.md
-point 3). Depuis : édition de tuile, jeu de données de démo enrichi (480 lignes, 2 ans),
-`ResizeObserver`, correction d'un tri non-chronologique. Voir HYPOTHESES.md pour la liste des
-points encore à valider et les pistes pour la suite (filtres simultanés, drill-down, mise en forme
-conditionnelle).
+Deux allers-retours avec un usage réel, deux vrais bugs remontés et corrigés : un souci de
+chargement d'ECharts sur réseau filtré (HYPOTHESES.md point 3), puis un `KeyError` de génération de
+données de démo dû à un schéma de table obsolète (point 9). Depuis : édition de tuile,
+`ResizeObserver`, tri chronologique, jeu de données enrichi (480 lignes, 2 ans), filtres croisés
+cumulables, tendance KPI, drill-down. Voir HYPOTHESES.md pour la liste des points encore à valider.
 
 ## Licence
 

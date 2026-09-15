@@ -17,15 +17,15 @@
     <h1>Dashboard BI <span class="badge-poc">POC</span></h1>
     <div class="topbar-info">
       <span id="row-count" class="row-count">0 ligne(s)</span>
-      <span id="filter-badge" class="filter-badge" hidden></span>
-      <button id="clear-filter" type="button" class="btn-secondary">Effacer le filtre</button>
+      <span id="filter-badges" class="filter-badges"></span>
+      <button id="clear-filter" type="button" class="btn-secondary" hidden>Effacer les filtres</button>
       <button id="generate-demo" type="button" class="btn-secondary">🎲 Générer des données de démo</button>
     </div>
   </header>
 
   <p id="demo-banner" class="demo-banner" hidden>
-    Mode démo : le dashboard affiche la table <code>BI_Demo_Ventes</code> générée ci-dessus, pas la
-    table liée au widget dans la page.
+    Mode démo : le dashboard affiche la table <code id="demo-banner-table"></code> générée
+    ci-dessus, pas la table liée au widget dans la page.
     <button id="back-to-linked" type="button" class="btn-link">Revenir à la table liée</button>
   </p>
 
@@ -44,9 +44,13 @@
         <option value="kpi">Carte KPI</option>
       </select>
     </div>
-    <div class="field">
+    <div class="field" id="tile-dimension-field">
       <label for="tile-dimension">Dimension</label>
       <select id="tile-dimension"></select>
+    </div>
+    <div class="field" id="tile-drill-field">
+      <label for="tile-drill-dimension">Drill-down</label>
+      <select id="tile-drill-dimension"><option value="">(aucun)</option></select>
     </div>
     <div class="field">
       <label for="tile-measure">Mesure</label>
@@ -62,6 +66,10 @@
         <option value="max">Max</option>
       </select>
     </div>
+    <div class="field" id="tile-trend-field" hidden>
+      <label for="tile-trend-dimension">Tendance vs</label>
+      <select id="tile-trend-dimension"><option value="">(aucune)</option></select>
+    </div>
     <button id="submit-tile" type="submit" class="btn-primary">+ Ajouter la tuile</button>
     <button id="cancel-edit" type="button" class="btn-secondary" hidden>Annuler</button>
   </form>
@@ -70,7 +78,9 @@
   <p id="empty-state" class="empty-state">
     Aucune tuile pour l'instant. Ajoutez-en une ci-dessus — ou cliquez sur « Générer des données de
     démo » pour tester tout de suite avec un jeu de données prêt à l'emploi. Cliquer sur une
-    barre/part filtre les autres tuiles (cliquer à nouveau retire le filtre).
+    barre/part filtre les autres tuiles (cumulable entre colonnes différentes ; recliquer retire le
+    filtre). Une tuile avec un « Drill-down » se détaille au clic ; une carte KPI avec une
+    « Tendance vs » affiche l'évolution par rapport à la période précédente.
   </p>
 
   <script src="js/data.js"></script>

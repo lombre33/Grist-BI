@@ -76,6 +76,38 @@ dans une seule instance de widget, avec ses propres tuiles internes.
   à un futur drill-down temporel (Année > Mois), et avancer sur le point 2 ci-dessous (volume réel)
   — testé de bout en bout (480 lignes générées, ordre chronologique des mois correct, croissance
   2026 > 2025 visible sur la tuile Année, ~2s de génération dans le mock).
+- **Filtres croisés simultanés** (`js/state.js` : `activeFilters[]` au lieu d'un `activeFilter`
+  unique) : cliquer sur des segments de colonnes différentes cumule les filtres (ET), cliquer sur
+  un autre segment de la MÊME colonne remplace son filtre, recliquer le retire. Un badge par filtre
+  actif, chacun avec son propre bouton de suppression, + « Effacer les filtres » pour tout retirer
+  d'un coup. `js/data.js:applyFilters` prend maintenant un tableau plutôt qu'un filtre unique.
+- **Mise en forme conditionnelle sur les cartes KPI** (`js/data.js:computeTrend`) : une tuile KPI
+  peut déclarer un `trendDimension` (ex. `Annee`) ; la tuile compare alors l'agrégat du groupe le
+  plus récent au précédent et affiche un delta en % avec une flèche verte/rouge. Ignore les
+  dimensions non numériques et les cas à moins de 2 groupes plutôt que d'afficher un delta absurde.
+- **Drill-down (un niveau)** : une tuile bar/pie peut déclarer un `drillDimension` — cliquer sur un
+  segment au niveau racine "descend" dans cette dimension pour CETTE tuile (fil d'Ariane cliquable
+  pour remonter), sans poser de filtre croisé global sur les autres tuiles. Volontairement limité à
+  un seul niveau (pas de hiérarchie arbitraire) : au-delà, c'est un projet à part entière.
+- **Deux vrais bugs trouvés et corrigés grâce aux tests de ces trois features** :
+  1. `groupByAggregate`/`applyFilters` comparaient les valeurs avec `===`. Un clic ECharts
+     (`params.name`) est **toujours une chaîne**, même pour une dimension numérique comme `Annee` —
+     `"2025" === 2025` est `false`, donc le drill-down par Année filtrait silencieusement *toutes*
+     les lignes (tuile vide, aucune erreur). Corrigé par `data.js:sameValue` (comparaison via
+     `String(a) === String(b)`), utilisée à la fois par `applyFilters` et par la mise en surbrillance
+     des segments dans `charts.js`.
+  2. **[remonté par l'utilisateur, en réel]** `Échec de la génération des données de démo :
+     [Sandbox] KeyError 'Annee'`. Cause : `ensureDemoTableExists()` ne crée la table QUE si son nom
+     n'existe pas encore — quiconque avait déjà généré la démo avec une version antérieure du widget
+     (avant l'ajout de la colonne `Annee`) avait une table `BI_Demo_Ventes` avec l'ancien schéma ;
+     `AddRecord` échouait alors côté Grist en tentant d'écrire dans une colonne qui n'existait pas
+     réellement. Corrigé en suffixant le nom de la table par un numéro de schéma
+     (`DEMO_TABLE_SCHEMA_VERSION` dans `js/grist-api.js`, actuellement `BI_Demo_Ventes_v2`) plutôt
+     qu'en ajoutant une logique de migration de colonnes (`AddColumn` n'est pas un verbe éprouvé
+     ici) : une ancienne table incompatible est simplement abandonnée (l'utilisateur peut la
+     supprimer à la main), une nouvelle est créée avec le schéma courant. Le nom affiché dans le
+     bandeau « Mode démo » est maintenant lu dynamiquement plutôt que codé en dur dans le HTML, pour
+     ne plus jamais désynchroniser affichage et réalité.
 
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
@@ -88,9 +120,9 @@ dans une seule instance de widget, avec ses propres tuiles internes.
   benchmarké au-delà — piste sérieuse si la perf devient un problème réel sur un vrai document.
 - **Glisser-déposer / redimensionnement des tuiles** : grille CSS statique (`auto-fill`), pas de
   réagencement manuel.
-- **Filtres croisés simultanés** : un seul filtre actif à la fois (cliquer sur un 2e segment
-  remplace le premier plutôt que de le cumuler) — un vrai dashboard Power BI permet plusieurs
-  slicers actifs en même temps.
+- **Drill-down à plus d'un niveau** (hiérarchie arbitraire façon Année > Trimestre > Mois > Jour) :
+  volontairement limité à un seul niveau (`tile.drillDimension`), voir plus haut.
+- **Bookmarks/navigation multi-pages**, **Q&A langage naturel / IA** : non tentés.
 
 ## Points à valider en conditions réelles (pas testables depuis ce sandbox)
 
@@ -136,24 +168,28 @@ dans une seule instance de widget, avec ses propres tuiles internes.
    été testé en conditions réelles — seule la logique de coalescing a été vérifiée par lecture de
    code.
 7. **[CONFIRMÉ EN RÉEL] Types de colonnes `Numeric`/`Int` dans `AddTable`** : `js/demo-data.js`
-   déclare `Quantite` en `Int` et `Montant` en `Numeric`. Confirmé fonctionnel — la table
-   `BI_Demo_Ventes` créée chez l'utilisateur montre ces deux colonnes correctement typées avec des
-   valeurs numériques.
+   déclare `Quantite` en `Int` et `Montant` en `Numeric`. Confirmé fonctionnel — la table de démo
+   créée chez l'utilisateur montre ces deux colonnes correctement typées avec des valeurs numériques.
 8. **[CONFIRMÉ EN RÉEL] ~240 actions (`AddRecord`/`RemoveRecord`) en un seul `applyUserActions()`**
-   lors d'une régénération de données de démo : confirmé fonctionnel — 120 lignes créées sans erreur
-   signalée par l'utilisateur (seul le rendu ECharts, point 3, posait problème).
+   lors d'une régénération de données de démo (480 lignes désormais, donc ~960 actions au pire cas
+   sur une régénération) : confirmé fonctionnel sur 240, à reconfirmer sur ce nouveau volume — pas
+   de retour utilisateur négatif dessus à ce stade.
+9. **Table de démo suffixée par un numéro de schéma** (`BI_Demo_Ventes_v2`) : corrige le bug KeyError
+   remonté (voir plus haut), mais laisse une table `BI_Demo_Ventes` orpheline dans le document de
+   l'utilisateur (ancien schéma, plus jamais utilisée). Pas grave en soi (juste une table à
+   supprimer à la main s'il le souhaite), mais à surveiller si le schéma doit encore évoluer :
+   chaque bump laisse une table de plus derrière lui.
 
 ## Prochaines étapes suggérées
 
 1. ~~Installer ce widget dans un vrai document Grist de test~~ — fait ; ECharts vendorisé
-   localement a résolu le seul problème remonté (point 3), confirmé fonctionnel par l'utilisateur.
-2. Vérifier les points 1, 4 et 6 ci-dessus (nécessitent respectivement une mise à jour live de la
+   localement a résolu le premier problème remonté (point 3), confirmé fonctionnel par l'utilisateur.
+2. ~~Générer les données de démo~~ — fait, a remonté un vrai bug (point 9, KeyError sur schéma
+   obsolète) corrigé et confirmé recorrigé côté utilisateur.
+3. Vérifier les points 1, 4 et 6 ci-dessus (nécessitent respectivement une mise à jour live de la
    table liée, un rechargement du widget pour confirmer la persistance de `BI_Dashboard_Config`, et
    un redimensionnement du panneau Grist).
-3. Choisir la prochaine feature structurante — proposées côté discussion produit : filtres croisés
-   simultanés (plusieurs slicers actifs à la fois), drill-down temporel (Année > Mois, la donnée de
-   démo a maintenant les deux niveaux), ou mise en forme conditionnelle sur les cartes KPI
-   (seuil vert/rouge, flèche de tendance). Chacune est un choix de conception à part entière, pas
-   juste une ligne de code — à valider avant de s'y lancer plutôt que de trancher seul.
-4. Si la perf devient un problème réel (point 2) : spike DuckDB-WASM avant d'aller plus loin sur
+4. Tester en conditions réelles les 3 features ajoutées (filtres simultanés, tendance KPI,
+   drill-down) — testées ici via Playwright contre le mock uniquement.
+5. Si la perf devient un problème réel (point 2) : spike DuckDB-WASM avant d'aller plus loin sur
    les mesures.

@@ -50,12 +50,52 @@ const rows = [
   console.log('OK groupByAggregate préserve l\'ordre de première apparition (pas alphabétique)');
 }
 
-// applyFilter
+// applyFilters (ET entre tous les filtres passés)
 {
-  const filtered = data.applyFilter(rows, { column: 'Region', value: 'Sud' });
+  const filtered = data.applyFilters(rows, [{ column: 'Region', value: 'Sud' }]);
   assert.strictEqual(filtered.length, 2);
-  assert.strictEqual(data.applyFilter(rows, null).length, 4);
-  console.log('OK applyFilter');
+  assert.strictEqual(data.applyFilters(rows, []).length, 4);
+  assert.strictEqual(data.applyFilters(rows, null).length, 4);
+  const none = data.applyFilters(rows, [{ column: 'Region', value: 'Sud' }, { column: 'Montant', value: 999 }]);
+  assert.strictEqual(none.length, 0); // ET: aucune ligne Sud n'a Montant=999
+  console.log('OK applyFilters');
+}
+
+// applyFilters/sameValue : une valeur de filtre en chaîne doit matcher une colonne numérique.
+// Cas réel : le clic ECharts (params.name) est TOUJOURS une chaîne, même pour une dimension
+// numérique comme "Annee" — une comparaison stricte ('2025' === 2025 -> false) filtrerait tout.
+{
+  const yearRows = [{ Annee: 2025, Montant: 10 }, { Annee: 2026, Montant: 20 }];
+  const filtered = data.applyFilters(yearRows, [{ column: 'Annee', value: '2025' }]); // value en string
+  assert.strictEqual(filtered.length, 1);
+  assert.strictEqual(filtered[0].Annee, 2025);
+  assert.strictEqual(data.sameValue(2025, '2025'), true);
+  assert.strictEqual(data.sameValue('Nord', 'Sud'), false);
+  console.log('OK applyFilters/sameValue (comparaison robuste au type, ex. clic ECharts sur une dimension numérique)');
+}
+
+// computeTrend (tendance KPI vs période précédente, sur une dimension numérique)
+{
+  const yearly = [
+    { Annee: 2025, Montant: 100 }, { Annee: 2025, Montant: 100 },
+    { Annee: 2026, Montant: 150 }, { Annee: 2026, Montant: 150 }
+  ];
+  const trend = data.computeTrend(yearly, 'Annee', 'Montant', 'sum');
+  assert.strictEqual(trend.latestKey, 2026);
+  assert.strictEqual(trend.previousKey, 2025);
+  assert.strictEqual(trend.deltaPct, 50); // 300 vs 200 = +50%
+  assert.strictEqual(data.computeTrend(yearly, null, 'Montant', 'sum'), null); // pas de dimension -> pas de tendance
+  assert.strictEqual(data.computeTrend(yearly.filter((r) => r.Annee === 2026), 'Annee', 'Montant', 'sum'), null); // 1 seul groupe -> pas de tendance
+  // Dimension texte (non numérique) -> pas de tendance plutôt qu'un delta absurde
+  const textRows = [{ Mois: 'Janvier', Montant: 10 }, { Mois: 'Février', Montant: 20 }];
+  assert.strictEqual(data.computeTrend(textRows, 'Mois', 'Montant', 'sum'), null);
+  console.log('OK computeTrend');
+}
+
+// escapeHtml
+{
+  assert.strictEqual(data.escapeHtml('<script>&"\''), '&lt;script&gt;&amp;&quot;&#39;');
+  console.log('OK escapeHtml');
 }
 
 // aggregateSingle
@@ -74,21 +114,53 @@ const rows = [
   console.log('OK tableToRows');
 }
 
-// state: toggle de filtre croisé
+// state: toggle de filtre croisé - un seul filtre par colonne (activation/toggle-off/remplacement)
 {
   const store = state.createStore();
   const seen = [];
-  store.subscribe((s) => seen.push(s.activeFilter));
+  store.subscribe((s) => seen.push(s.activeFilters));
   store.setRows(rows);
   store.toggleFilter('Region', 'Nord', 'tileA');
-  assert.deepStrictEqual(store.getState().activeFilter, { column: 'Region', value: 'Nord', sourceTileId: 'tileA' });
+  assert.deepStrictEqual(store.getState().activeFilters, [{ column: 'Region', value: 'Nord', sourceTileId: 'tileA' }]);
   store.toggleFilter('Region', 'Nord', 'tileA'); // même clic -> retire le filtre
-  assert.strictEqual(store.getState().activeFilter, null);
+  assert.deepStrictEqual(store.getState().activeFilters, []);
   store.toggleFilter('Region', 'Nord', 'tileA');
-  store.toggleFilter('Region', 'Sud', 'tileA'); // clic sur un autre segment -> remplace le filtre
-  assert.deepStrictEqual(store.getState().activeFilter, { column: 'Region', value: 'Sud', sourceTileId: 'tileA' });
+  store.toggleFilter('Region', 'Sud', 'tileA'); // clic sur un autre segment DE LA MÊME colonne -> remplace
+  assert.deepStrictEqual(store.getState().activeFilters, [{ column: 'Region', value: 'Sud', sourceTileId: 'tileA' }]);
   assert.strictEqual(seen.length, 5); // setRows + 4 toggles
-  console.log('OK state.toggleFilter (activation / toggle-off / remplacement)');
+  console.log('OK state.toggleFilter (activation / toggle-off / remplacement, une colonne)');
+}
+
+// state: filtres croisés simultanés sur des colonnes DIFFÉRENTES -> cumul (ET), pas remplacement
+{
+  const store = state.createStore();
+  store.toggleFilter('Region', 'Nord', 'tileA');
+  store.toggleFilter('Produit', 'Casque audio', 'tileB');
+  assert.deepStrictEqual(store.getState().activeFilters, [
+    { column: 'Region', value: 'Nord', sourceTileId: 'tileA' },
+    { column: 'Produit', value: 'Casque audio', sourceTileId: 'tileB' }
+  ]);
+  store.clearFilter('Region'); // efface seulement celui-là
+  assert.deepStrictEqual(store.getState().activeFilters, [{ column: 'Produit', value: 'Casque audio', sourceTileId: 'tileB' }]);
+  store.clearFilter(); // sans argument -> efface tout
+  assert.deepStrictEqual(store.getState().activeFilters, []);
+  console.log('OK state.toggleFilter (cumul multi-colonnes) + clearFilter(column)');
+}
+
+// state: drill-down (un seul niveau, par tuile)
+{
+  const store = state.createStore();
+  store.addTile({ id: 't1', type: 'bar', dimension: 'Annee', drillDimension: 'Mois', measure: 'Montant', aggFn: 'sum' });
+  assert.strictEqual(store.getState().drillIns.t1, undefined); // niveau racine par défaut
+  store.drillInto('t1', 'Annee', 2026);
+  assert.deepStrictEqual(store.getState().drillIns.t1, { column: 'Annee', value: 2026 });
+  store.drillUp('t1');
+  assert.strictEqual(store.getState().drillIns.t1, undefined);
+  // Supprimer une tuile drillée nettoie aussi son état de drill (pas de fuite mémoire/état fantôme)
+  store.drillInto('t1', 'Annee', 2026);
+  store.removeTile('t1');
+  assert.strictEqual('t1' in store.getState().drillIns, false);
+  console.log('OK state.drillInto/drillUp (+ nettoyage à la suppression de tuile)');
 }
 
 // state: addTile / removeTile
@@ -152,7 +224,11 @@ const rows = [
     assert.ok(tile.id && tile.type && tile.measure && tile.aggFn);
     assert.ok(availableCols.has(tile.measure), `mesure inconnue: ${tile.measure}`);
     if (tile.type !== 'kpi') assert.ok(availableCols.has(tile.dimension), `dimension inconnue: ${tile.dimension}`);
+    if (tile.drillDimension) assert.ok(availableCols.has(tile.drillDimension), `drillDimension inconnue: ${tile.drillDimension}`);
+    if (tile.trendDimension) assert.ok(availableCols.has(tile.trendDimension), `trendDimension inconnue: ${tile.trendDimension}`);
   }
+  assert.ok(tiles.some((t) => t.drillDimension), 'au moins une tuile de démo devrait démontrer le drill-down');
+  assert.ok(tiles.some((t) => t.trendDimension), 'au moins une tuile de démo devrait démontrer la tendance KPI');
   const store = state.createStore();
   store.setTiles(tiles);
   assert.strictEqual(store.getState().tiles.length, tiles.length);

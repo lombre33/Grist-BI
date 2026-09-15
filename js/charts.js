@@ -1,37 +1,57 @@
 /*
- * Rendu des tuiles (bar/pie/kpi) avec ECharts, et câblage du clic -> filtre croisé.
- * Dépend du global `echarts` (chargé en CDN, voir index.html) et de GristBI.data/GristBI.store.
+ * Rendu des tuiles (bar/pie/kpi) avec ECharts : filtres croisés multiples, tendance KPI, et
+ * drill-down (un niveau, tile.drillDimension) avec fil d'Ariane. Dépend du global `echarts`
+ * (js/vendor/echarts/, voir index.html) et de GristBI.data/GristBI.store.
  */
 (function (global) {
   const GristBI = global.GristBI || (global.GristBI = {});
-  const { groupByAggregate, applyFilter, aggregateSingle } = GristBI.data;
+  const { groupByAggregate, applyFilters, sameValue, aggregateSingle, computeTrend, escapeHtml } = GristBI.data;
 
   const chartInstances = new Map();
 
+  // Dimension actuellement affichée par une tuile bar/pie : celle de base, ou son
+  // `drillDimension` si la tuile a été "drillée" (voir renderTile/state.js:drillInto).
+  function currentDimension(tile, drillIn) {
+    return drillIn ? tile.drillDimension : tile.dimension;
+  }
+
   function renderTile(tile, state, container) {
-    // Une tuile qui EST la source du filtre actif s'affiche non filtrée (pour rester cliquable sur
-    // tous ses segments) ; toutes les autres tuiles reçoivent les lignes filtrées. Comportement
-    // inspiré du cross-filtering Power BI, simplifié : un seul filtre actif à la fois pour ce POC.
-    const isSource = state.activeFilter && state.activeFilter.sourceTileId === tile.id;
-    const rowsForTile = isSource ? state.rows : applyFilter(state.rows, state.activeFilter);
+    // Une tuile qui EST la source d'un filtre s'affiche non filtrée SUR CE FILTRE LÀ (pour rester
+    // cliquable sur tous ses segments) ; elle reçoit quand même les filtres posés par d'AUTRES
+    // tuiles. Plusieurs filtres simultanés (sur des colonnes différentes) s'appliquent tous en ET.
+    const filtersFromOtherTiles = state.activeFilters.filter((f) => f.sourceTileId !== tile.id);
+    const drillIn = state.drillIns && state.drillIns[tile.id];
+    const rowsForTile = applyFilters(state.rows, drillIn ? filtersFromOtherTiles.concat([drillIn]) : filtersFromOtherTiles);
 
     if (tile.type === 'kpi') {
       renderKpi(tile, rowsForTile, container);
     } else {
-      renderChart(tile, rowsForTile, state, container);
+      renderChart(tile, rowsForTile, state, container, drillIn);
     }
   }
 
   function renderKpi(tile, rows, container) {
-    const el = container.querySelector(`[data-tile-id="${tile.id}"] .tile-kpi-value`);
-    if (!el) return;
-    const value = aggregateSingle(rows, tile.measure, tile.aggFn);
-    el.textContent = formatNumber(value);
+    const valueEl = container.querySelector(`[data-tile-id="${tile.id}"] .tile-kpi-value`);
+    if (!valueEl) return;
+    valueEl.textContent = formatNumber(aggregateSingle(rows, tile.measure, tile.aggFn));
+
+    const trendEl = container.querySelector(`[data-tile-id="${tile.id}"] .tile-kpi-trend`);
+    if (!trendEl) return;
+    const trend = tile.trendDimension ? computeTrend(rows, tile.trendDimension, tile.measure, tile.aggFn) : null;
+    if (!trend) {
+      trendEl.hidden = true;
+      return;
+    }
+    const isUp = trend.deltaPct >= 0;
+    trendEl.hidden = false;
+    trendEl.className = `tile-kpi-trend ${isUp ? 'trend-up' : 'trend-down'}`;
+    trendEl.textContent = `${isUp ? '▲' : '▼'} ${Math.abs(trend.deltaPct).toFixed(1)}% vs ${trend.previousKey}`;
   }
 
-  function renderChart(tile, rows, state, container) {
+  function renderChart(tile, rows, state, container, drillIn) {
     const el = container.querySelector(`[data-tile-id="${tile.id}"] .tile-chart`);
     if (!el) return;
+    renderBreadcrumb(tile, drillIn, container);
     if (typeof echarts === 'undefined') {
       // Pas d'erreur JS ici : sans ce message, la tuile resterait juste vide sans indice (voir le
       // bandeau #echarts-warning dans main.js pour le diagnostic complet).
@@ -39,18 +59,35 @@
       return;
     }
 
+    const dimension = currentDimension(tile, drillIn);
+
     let instance = chartInstances.get(tile.id);
     if (!instance || instance.isDisposed()) {
       instance = echarts.init(el);
       chartInstances.set(tile.id, instance);
+      // Ne PAS capturer `tile`/`dimension`/`drillIn` du rendu courant dans cette closure : elle
+      // n'est créée qu'une fois (instance mise en cache), donc resterait périmée après une édition
+      // de tuile (cf. HYPOTHESES.md) ou un drill-down. On relit l'état vivant à chaque clic à la
+      // place, en ne fixant que l'id de la tuile (stable, lui, tout au long de sa vie).
       instance.on('click', (params) => {
-        GristBI.store.toggleFilter(tile.dimension, params.name, tile.id);
+        const liveState = GristBI.store.getState();
+        const currentTile = liveState.tiles.find((t) => t.id === tile.id);
+        if (!currentTile) return; // tuile supprimée entre-temps
+        const liveDrillIn = liveState.drillIns && liveState.drillIns[currentTile.id];
+        const dim = currentDimension(currentTile, liveDrillIn);
+        if (!liveDrillIn && currentTile.drillDimension) {
+          GristBI.store.drillInto(currentTile.id, dim, params.name);
+        } else {
+          GristBI.store.toggleFilter(dim, params.name, currentTile.id);
+        }
       });
     }
 
-    const agg = groupByAggregate(rows, tile.dimension, tile.measure, tile.aggFn);
-    const isActiveHere = state.activeFilter && state.activeFilter.column === tile.dimension;
-    const dim = (d) => (isActiveHere && state.activeFilter.value !== d
+    const agg = groupByAggregate(rows, dimension, tile.measure, tile.aggFn);
+    const activeOnThisDimension = state.activeFilters.find((f) => f.column === dimension);
+    // sameValue (pas !==) : le filtre stocke souvent params.name (toujours une chaîne ECharts),
+    // à comparer à `d` qui garde le type d'origine de la donnée (ex. Annee=2025, un nombre).
+    const dim = (d) => (activeOnThisDimension && !sameValue(activeOnThisDimension.value, d)
       ? { opacity: 0.3 }
       : undefined);
 
@@ -73,6 +110,25 @@
           }]
         };
     instance.setOption(option, true);
+  }
+
+  function renderBreadcrumb(tile, drillIn, container) {
+    const el = container.querySelector(`[data-tile-id="${tile.id}"] .tile-breadcrumb`);
+    if (!el) return;
+    if (!tile.drillDimension) {
+      el.hidden = true;
+      return;
+    }
+    el.hidden = false;
+    if (!drillIn) {
+      el.innerHTML = `<span>${escapeHtml(tile.dimension)}</span>
+        <span class="breadcrumb-hint">(cliquer pour détailler par ${escapeHtml(tile.drillDimension)})</span>`;
+      return;
+    }
+    el.innerHTML = `<button type="button" class="breadcrumb-link">${escapeHtml(tile.dimension)}</button>
+      <span class="breadcrumb-sep">▸</span>
+      <span>${escapeHtml(String(drillIn.value))} · ${escapeHtml(tile.drillDimension)}</span>`;
+    el.querySelector('.breadcrumb-link').addEventListener('click', () => GristBI.store.drillUp(tile.id));
   }
 
   function formatNumber(n) {

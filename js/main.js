@@ -1,11 +1,12 @@
 /*
- * Bootstrap de l'UI : formulaire d'ajout de tuile, rendu de la grille, câblage
- * store <-> GristBI.api (lecture de la table liée + persistance de la config).
+ * Bootstrap de l'UI : formulaire d'ajout/édition de tuile, rendu de la grille et des filtres
+ * croisés actifs, câblage store <-> GristBI.api (lecture de la table liée + persistance config).
  */
 (function () {
   'use strict';
   const GristBI = window.GristBI;
   const store = (GristBI.store = GristBI.state.createStore());
+  const { escapeHtml } = GristBI.data;
 
   let currentTableId = null;
   let saveTimer = null;
@@ -19,16 +20,22 @@
   const emptyState = document.getElementById('empty-state');
   const addTileForm = document.getElementById('add-tile-form');
   const tileTypeSelect = document.getElementById('tile-type');
+  const dimensionField = document.getElementById('tile-dimension-field');
   const dimensionSelect = document.getElementById('tile-dimension');
+  const drillField = document.getElementById('tile-drill-field');
+  const drillDimensionSelect = document.getElementById('tile-drill-dimension');
   const measureSelect = document.getElementById('tile-measure');
   const aggSelect = document.getElementById('tile-agg');
+  const trendField = document.getElementById('tile-trend-field');
+  const trendDimensionSelect = document.getElementById('tile-trend-dimension');
   const submitTileBtn = document.getElementById('submit-tile');
   const cancelEditBtn = document.getElementById('cancel-edit');
   const clearFilterBtn = document.getElementById('clear-filter');
-  const filterBadge = document.getElementById('filter-badge');
+  const filterBadgesEl = document.getElementById('filter-badges');
   const rowCountEl = document.getElementById('row-count');
   const generateDemoBtn = document.getElementById('generate-demo');
   const demoBanner = document.getElementById('demo-banner');
+  const demoBannerTable = document.getElementById('demo-banner-table');
   const backToLinkedBtn = document.getElementById('back-to-linked');
   const echartsWarning = document.getElementById('echarts-warning');
 
@@ -47,16 +54,19 @@
     return Object.keys(rows[0]).filter((k) => k !== 'id');
   }
 
-  function fillSelect(select, options) {
+  function fillSelect(select, options, { blankLabel } = {}) {
     const current = select.value;
-    select.innerHTML = options.map((c) => `<option value="${c}">${c}</option>`).join('');
-    if (options.includes(current)) select.value = current;
+    const optionsHtml = options.map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+    select.innerHTML = blankLabel ? `<option value="">${escapeHtml(blankLabel)}</option>${optionsHtml}` : optionsHtml;
+    if (options.includes(current) || (blankLabel && current === '')) select.value = current;
   }
 
   function refreshColumnSelects(rows) {
     const cols = availableColumns(rows);
     fillSelect(dimensionSelect, cols);
     fillSelect(measureSelect, cols);
+    fillSelect(drillDimensionSelect, cols, { blankLabel: '(aucun)' });
+    fillSelect(trendDimensionSelect, cols, { blankLabel: '(aucune)' });
   }
 
   function render(state) {
@@ -93,10 +103,7 @@
     // réagit pas seul à un redimensionnement de son conteneur (pas d'observer par défaut).
     GristBI.charts.resizeAll();
 
-    filterBadge.hidden = !state.activeFilter;
-    if (state.activeFilter) {
-      filterBadge.textContent = `Filtre actif : ${state.activeFilter.column} = ${state.activeFilter.value}`;
-    }
+    renderFilterBadges(state.activeFilters);
     rowCountEl.textContent = `${state.rows.length} ligne(s)`;
 
     // `tiles` ne change de référence que via setTiles/addTile/removeTile (state.js) : un rendu
@@ -106,6 +113,22 @@
       lastRenderedTiles = state.tiles;
       scheduleSave(state.tiles);
     }
+  }
+
+  // Un badge par filtre actif (plusieurs colonnes peuvent être filtrées en même temps), chacun
+  // avec son propre bouton de suppression, + le bouton "Effacer les filtres" global reste utile
+  // dès qu'il y en a 2+.
+  function renderFilterBadges(activeFilters) {
+    filterBadgesEl.innerHTML = activeFilters.map((f) => `
+      <span class="filter-chip">
+        ${escapeHtml(f.column)} = ${escapeHtml(String(f.value))}
+        <button type="button" class="filter-chip-remove" data-column="${escapeHtml(f.column)}" aria-label="Retirer ce filtre">&times;</button>
+      </span>
+    `).join('');
+    for (const btn of filterBadgesEl.querySelectorAll('.filter-chip-remove')) {
+      btn.addEventListener('click', () => store.clearFilter(btn.dataset.column));
+    }
+    clearFilterBtn.hidden = activeFilters.length === 0;
   }
 
   function buildTileElement(tile) {
@@ -119,9 +142,13 @@
         </span></div>`;
     el.innerHTML = tile.type === 'kpi'
       ? `${header}
-         <div class="tile-kpi"><span class="tile-kpi-value">-</span>
-           <span class="tile-kpi-label">${escapeHtml(tile.aggFn)}(${escapeHtml(tile.measure)})</span></div>`
+         <div class="tile-kpi">
+           <span class="tile-kpi-value">-</span>
+           <span class="tile-kpi-label">${escapeHtml(tile.aggFn)}(${escapeHtml(tile.measure)})</span>
+           <span class="tile-kpi-trend" hidden></span>
+         </div>`
       : `${header}
+         <div class="tile-breadcrumb" data-tile-id="${tile.id}" hidden></div>
          <div class="tile-chart" data-tile-id="${tile.id}"></div>`;
     el.querySelector('.tile-remove').addEventListener('click', () => {
       if (tile.id === editingTileId) stopEditTile(); // formulaire en cours d'édition sur une tuile qui disparaît
@@ -131,18 +158,24 @@
     return el;
   }
 
-  function updateDimensionFieldVisibility() {
-    // Une carte KPI n'a pas de dimension de regroupement, juste un agrégat sur toute la sélection.
-    dimensionSelect.closest('.field').hidden = tileTypeSelect.value === 'kpi';
+  function updateFormFieldsForType() {
+    const isKpi = tileTypeSelect.value === 'kpi';
+    // Une carte KPI n'a pas de dimension de regroupement ni de drill-down, juste un agrégat sur
+    // toute la sélection (éventuellement comparé à une période via "Tendance vs").
+    dimensionField.hidden = isKpi;
+    drillField.hidden = isKpi;
+    trendField.hidden = !isKpi;
   }
 
   function startEditTile(tile) {
     editingTileId = tile.id;
     tileTypeSelect.value = tile.type;
-    updateDimensionFieldVisibility();
+    updateFormFieldsForType();
     if (tile.dimension) dimensionSelect.value = tile.dimension;
+    drillDimensionSelect.value = tile.drillDimension || '';
     measureSelect.value = tile.measure;
     aggSelect.value = tile.aggFn;
+    trendDimensionSelect.value = tile.trendDimension || '';
     submitTileBtn.textContent = '✓ Modifier la tuile';
     cancelEditBtn.hidden = false;
     addTileForm.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -154,13 +187,7 @@
     cancelEditBtn.hidden = true;
   }
 
-  function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, (c) => ({
-      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-    }[c]));
-  }
-
-  tileTypeSelect.addEventListener('change', updateDimensionFieldVisibility);
+  tileTypeSelect.addEventListener('change', updateFormFieldsForType);
 
   addTileForm.addEventListener('submit', (evt) => {
     evt.preventDefault();
@@ -170,18 +197,17 @@
     const aggFn = aggSelect.value;
     if (!measure || (type !== 'kpi' && !dimension)) return;
     const title = type === 'kpi' ? `${aggFn}(${measure})` : `${measure} par ${dimension}`;
+    const tileData = { type, dimension, measure, aggFn, title };
+    // drillDimension/trendDimension seulement quand pertinents pour le type, pour ne pas laisser
+    // une valeur fantôme d'un type précédent si l'utilisateur bascule le type en cours d'édition.
+    if (type !== 'kpi' && drillDimensionSelect.value) tileData.drillDimension = drillDimensionSelect.value;
+    if (type === 'kpi' && trendDimensionSelect.value) tileData.trendDimension = trendDimensionSelect.value;
     if (editingTileId) {
-      store.updateTile(editingTileId, { type, dimension, measure, aggFn, title });
+      store.updateTile(editingTileId, tileData);
       stopEditTile();
     } else {
-      store.addTile({
-        id: 'tile_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-        type,
-        dimension,
-        measure,
-        aggFn,
-        title
-      });
+      tileData.id = 'tile_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      store.addTile(tileData);
     }
   });
 
@@ -240,7 +266,12 @@
   }
 
   function updateDemoBanner() {
-    demoBanner.hidden = !(demoActive && linkedTableId && linkedTableId !== currentTableId);
+    const show = demoActive && linkedTableId && linkedTableId !== currentTableId;
+    demoBanner.hidden = !show;
+    // Nom de la table de démo lu dynamiquement (currentTableId) plutôt que codé en dur dans le
+    // HTML : son nom change à chaque évolution du schéma (voir DEMO_TABLE_SCHEMA_VERSION,
+    // js/grist-api.js), un texte figé serait rapidement faux.
+    if (show) demoBannerTable.textContent = currentTableId;
   }
 
   generateDemoBtn.addEventListener('click', async () => {

@@ -27,9 +27,19 @@
     return rows;
   }
 
-  function applyFilter(rows, filter) {
-    if (!filter) return rows;
-    return rows.filter((r) => r[filter.column] === filter.value);
+  // `filters`: [{column, value}, ...] appliqués en ET (une ligne doit matcher TOUS les filtres).
+  // Au plus un filtre par colonne dans l'usage réel (voir state.js:toggleFilter) mais cette
+  // fonction ne le suppose pas — elle applique simplement tout ce qu'on lui passe.
+  //
+  // Comparaison en chaîne (sameValue) plutôt que ===: `value` vient souvent d'un clic ECharts
+  // (`params.name`), TOUJOURS une chaîne même pour une dimension numérique (ex. Annee=2025) — une
+  // comparaison stricte contre le nombre 2025 de la ligne échouerait alors silencieusement et
+  // filtrerait toutes les lignes (vécu en pratique avec le drill-down par Année, pas théorique).
+  function sameValue(a, b) { return String(a) === String(b); }
+
+  function applyFilters(rows, filters) {
+    if (!filters || !filters.length) return rows;
+    return rows.filter((row) => filters.every((f) => sameValue(row[f.column], f.value)));
   }
 
   const AGGREGATORS = {
@@ -61,5 +71,32 @@
     return aggregator(rows.map((r) => r[measureCol]));
   }
 
-  return { tableToRows, applyFilter, groupByAggregate, aggregateSingle, AGGREGATORS };
+  // Tendance d'une carte KPI vs la période précédente : regroupe `rows` par `trendDimension`, ne
+  // garde que les groupes dont la clé est numérique (ex. Annee=2025/2026 ; une dimension texte
+  // comme "Mois" est ignorée plutôt que de produire un delta absurde), et compare les deux plus
+  // grandes clés numériques trouvées. Retourne null si la comparaison n'a pas de sens ici (moins de
+  // 2 groupes numériques présents - ex. déjà filtré sur une seule période - ou groupe précédent nul).
+  function computeTrend(rows, trendDimension, measureCol, aggFn) {
+    if (!trendDimension) return null;
+    const groups = groupByAggregate(rows, trendDimension, measureCol, aggFn)
+      .map((g) => ({ key: Number(g.dimension), value: g.value }))
+      .filter((g) => Number.isFinite(g.key))
+      .sort((a, b) => b.key - a.key);
+    if (groups.length < 2) return null;
+    const [latest, previous] = groups;
+    if (!previous.value) return null; // évite une division par zéro / un delta infini
+    return {
+      latestKey: latest.key,
+      previousKey: previous.key,
+      deltaPct: ((latest.value - previous.value) / previous.value) * 100
+    };
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+  }
+
+  return { tableToRows, applyFilters, sameValue, groupByAggregate, aggregateSingle, computeTrend, escapeHtml, AGGREGATORS };
 });

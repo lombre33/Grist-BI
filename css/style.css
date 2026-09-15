@@ -50,14 +50,32 @@ body {
 .topbar-info { display: flex; align-items: center; gap: 10px; }
 .row-count { color: var(--muted); }
 
-.filter-badge {
+.filter-badges { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   background: #e8f0fe;
   color: var(--accent);
   border: 1px solid #c9dcfb;
   border-radius: 999px;
-  padding: 3px 10px;
+  padding: 3px 6px 3px 10px;
   font-weight: 600;
+  white-space: nowrap;
 }
+
+.filter-chip-remove {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0 2px;
+  opacity: 0.7;
+}
+.filter-chip-remove:hover { opacity: 1; }
 
 .btn-primary, .btn-secondary {
   border-radius: 6px;
@@ -175,6 +193,26 @@ body {
 .tile-edit:hover { color: var(--accent); }
 .tile-remove:hover { color: #c0392b; }
 
+.tile-breadcrumb {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.breadcrumb-link {
+  background: none;
+  border: none;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+  font-size: inherit;
+}
+.breadcrumb-sep { opacity: 0.6; }
+.breadcrumb-hint { font-style: italic; opacity: 0.8; }
+
 .tile-chart { flex: 1; min-height: 180px; }
 
 .tile-kpi {
@@ -187,6 +225,9 @@ body {
 }
 .tile-kpi-value { font-size: 32px; font-weight: 700; color: var(--accent); }
 .tile-kpi-label { font-size: 11px; color: var(--muted); }
+.tile-kpi-trend { font-size: 11px; font-weight: 600; margin-top: 2px; }
+.tile-kpi-trend.trend-up { color: #1a8754; }
+.tile-kpi-trend.trend-down { color: #c0392b; }
 
 .empty-state {
   color: var(--muted);
@@ -206,8 +247,10 @@ body {
     --accent-contrast: #0b0d12;
   }
   .badge-poc { background: #3a2e00; color: #f1d27a; border-color: #5c4900; }
-  .filter-badge { background: #16233f; border-color: #2a3f6b; }
+  .filter-chip { background: #16233f; border-color: #2a3f6b; }
   .demo-banner { background: #3a2e00; color: #f1d27a; border-color: #5c4900; }
   .demo-banner code { background: rgba(255, 255, 255, 0.12); }
   .warning-banner { background: #3a1512; color: #f5b8b0; border-color: #6b241c; }
+  .tile-kpi-trend.trend-up { color: #3ecf8e; }
+  .tile-kpi-trend.trend-down { color: #ef6a5c; }
 }

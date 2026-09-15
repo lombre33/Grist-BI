@@ -10,7 +10,15 @@
   const GristBI = global.GristBI || (global.GristBI = {});
 
   const CONFIG_TABLE = 'BI_Dashboard_Config';
-  const DEMO_TABLE = 'BI_Demo_Ventes';
+  // Suffixée par un numéro de schéma : `ensureDemoTableExists` ne crée la table QUE si son nom
+  // n'existe pas encore, elle ne migre jamais les colonnes d'une table déjà présente. Sans ce
+  // suffixe, ajouter une colonne à GristBI.demoData.COLUMNS (ex. "Annee") casserait la génération
+  // chez quiconque avait déjà une ancienne BI_Demo_Ventes dans son document (AddRecord échoue avec
+  // "KeyError" sur la colonne manquante côté Grist) - vécu en pratique, pas juste théorique.
+  // Incrémenter ce numéro à chaque changement de GristBI.demoData.COLUMNS plutôt que d'introduire
+  // une logique de migration de schéma (AddColumn n'est pas un verbe éprouvé ici, voir HYPOTHESES.md).
+  const DEMO_TABLE_SCHEMA_VERSION = 2;
+  const DEMO_TABLE = 'BI_Demo_Ventes_v' + DEMO_TABLE_SCHEMA_VERSION;
 
   let _rawTables = null;
   let _configRowIdByTable = {};

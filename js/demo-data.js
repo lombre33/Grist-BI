@@ -69,14 +69,15 @@
   }
 
   // Tuiles pré-configurées pour que "Générer des données de démo" montre immédiatement le
-  // cross-filtering et les 3 types de tuile, sans que l'utilisateur ait à tout construire à la main.
+  // cross-filtering, le drill-down et la tendance KPI, sans que l'utilisateur ait à tout construire
+  // à la main.
   function defaultTiles() {
     return [
       { id: 'demo_bar_region', type: 'bar', dimension: 'Region', measure: 'Montant', aggFn: 'sum', title: 'Montant par Région' },
       { id: 'demo_pie_produit', type: 'pie', dimension: 'Produit', measure: 'Montant', aggFn: 'sum', title: 'Montant par Produit' },
-      { id: 'demo_kpi_montant', type: 'kpi', measure: 'Montant', aggFn: 'sum', title: 'sum(Montant)' },
+      { id: 'demo_kpi_montant', type: 'kpi', measure: 'Montant', aggFn: 'sum', trendDimension: 'Annee', title: 'sum(Montant)' },
       { id: 'demo_bar_mois', type: 'bar', dimension: 'Mois', measure: 'Quantite', aggFn: 'avg', title: 'Quantite par Mois (moyenne)' },
-      { id: 'demo_bar_annee', type: 'bar', dimension: 'Annee', measure: 'Montant', aggFn: 'sum', title: 'Montant par Année' }
+      { id: 'demo_bar_annee', type: 'bar', dimension: 'Annee', drillDimension: 'Mois', measure: 'Montant', aggFn: 'sum', title: 'Montant par Année' }
     ];
   }
 
