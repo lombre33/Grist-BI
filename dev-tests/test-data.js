@@ -173,6 +173,81 @@ const rows = [
   console.log('OK state.drillInto/drillUp multi-niveaux (empilage + remontée à une profondeur + nettoyage)');
 }
 
+// state: drill-down avec cross-filtering activé PAR TUILE (drillCrossFilter: true, réglage exposé
+// dans le formulaire de tuile) -> chaque niveau franchi filtre aussi les AUTRES tuiles, pas
+// seulement au niveau le plus profond (comportement par défaut, inchangé si non coché). Répond à
+// un retour utilisateur : sans ce réglage, drill-down et cross-filter sont deux interactions
+// séparées (comme dans Power BI), ce qui peut surprendre si on s'attend à ce que détailler UNE
+// carte filtre automatiquement les autres.
+{
+  const store = state.createStore();
+  store.addTile({
+    id: 't1', type: 'bar', dimension: 'Annee', drillDimensions: ['Mois', 'Semaine'],
+    drillCrossFilter: true, measure: 'Montant', aggFn: 'sum'
+  });
+
+  store.drillInto('t1', 'Annee', 2026); // niveau 1 -> filtre croisé posé sur Annee=2026
+  assert.deepStrictEqual(store.getState().activeFilters, [
+    { column: 'Annee', value: 2026, sourceTileId: 't1', fromDrill: true }
+  ]);
+  store.drillInto('t1', 'Mois', 'Mars'); // niveau 2 -> le filtre croisé suit tout le chemin parcouru
+  assert.deepStrictEqual(store.getState().activeFilters, [
+    { column: 'Annee', value: 2026, sourceTileId: 't1', fromDrill: true },
+    { column: 'Mois', value: 'Mars', sourceTileId: 't1', fromDrill: true }
+  ]);
+  store.drillUp('t1', 1); // remonter retire le filtre du niveau abandonné
+  assert.deepStrictEqual(store.getState().activeFilters, [
+    { column: 'Annee', value: 2026, sourceTileId: 't1', fromDrill: true }
+  ]);
+  store.drillUp('t1'); // retour à la racine -> plus aucun filtre croisé issu du drill
+  assert.deepStrictEqual(store.getState().activeFilters, []);
+
+  // Sans drillCrossFilter (réglage par défaut) : drill-down purement local, comme avant.
+  store.updateTile('t1', { drillCrossFilter: false });
+  store.drillInto('t1', 'Annee', 2025);
+  assert.deepStrictEqual(store.getState().activeFilters, []);
+  console.log('OK state.drillInto/drillUp avec drillCrossFilter (filtre croisé par tuile, réglage optionnel)');
+}
+
+// state: removeTile nettoie aussi les filtres croisés (toggleFilter OU drillCrossFilter) posés par
+// la tuile supprimée, sinon un filtre reste actif sans plus aucune tuile source pour le faire
+// évoluer ou le lever.
+{
+  const store = state.createStore();
+  store.addTile({
+    id: 't1', type: 'bar', dimension: 'Annee', drillDimensions: ['Mois'],
+    drillCrossFilter: true, measure: 'Montant', aggFn: 'sum'
+  });
+  store.addTile({ id: 't2', type: 'bar', dimension: 'Region', measure: 'Montant', aggFn: 'sum' });
+  store.toggleFilter('Region', 'Nord', 't2');
+  store.drillInto('t1', 'Annee', 2026);
+  assert.strictEqual(store.getState().activeFilters.length, 2);
+  store.removeTile('t1');
+  assert.deepStrictEqual(store.getState().activeFilters, [{ column: 'Region', value: 'Nord', sourceTileId: 't2' }]);
+  store.removeTile('t2');
+  assert.deepStrictEqual(store.getState().activeFilters, []);
+  console.log('OK state.removeTile nettoie les filtres croisés (toggle + drill) qu\'elle avait posés');
+}
+
+// state: updateTile réinitialise le drill-down EN COURS d'une tuile dès que son patch touche
+// drillDimensions (le formulaire d'édition envoie toujours ce champ, voir main.js) : sinon un
+// chemin de drill-down pourrait référencer un niveau qui n'existe plus pour cette tuile, avec un
+// filtre invisible (pas de fil d'Ariane pour le signaler puisque tileDrillLevels serait vide).
+{
+  const store = state.createStore();
+  store.addTile({
+    id: 't1', type: 'bar', dimension: 'Annee', drillDimensions: ['Mois'],
+    drillCrossFilter: true, measure: 'Montant', aggFn: 'sum'
+  });
+  store.drillInto('t1', 'Annee', 2026);
+  assert.notStrictEqual(store.getState().drillIns.t1, undefined);
+  assert.strictEqual(store.getState().activeFilters.length, 1);
+  store.updateTile('t1', { drillDimensions: undefined, drillCrossFilter: undefined }); // drill-down retiré via édition
+  assert.strictEqual(store.getState().drillIns.t1, undefined);
+  assert.deepStrictEqual(store.getState().activeFilters, []);
+  console.log('OK state.updateTile réinitialise le drill-down en cours quand drillDimensions change');
+}
+
 // data.tileDrillLevels : nouveau format (tableau) et ancien format (chaîne unique) tous deux acceptés
 {
   assert.deepStrictEqual(data.tileDrillLevels({ drillDimensions: ['Mois', 'Semaine'] }), ['Mois', 'Semaine']);
@@ -295,6 +370,7 @@ const rows = [
   }
   assert.ok(tiles.some((t) => data.tileDrillLevels(t).length >= 2), 'au moins une tuile de démo devrait démontrer le drill-down à 2 niveaux');
   assert.ok(tiles.some((t) => t.trendDimension), 'au moins une tuile de démo devrait démontrer la tendance KPI');
+  assert.ok(tiles.some((t) => t.drillCrossFilter), 'au moins une tuile de démo devrait démontrer le cross-filtering pendant le drill-down');
   const store = state.createStore();
   store.setTiles(tiles);
   assert.strictEqual(store.getState().tiles.length, tiles.length);

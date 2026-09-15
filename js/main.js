@@ -27,6 +27,8 @@
   const drillDimensionSelect1 = document.getElementById('tile-drill-dimension-1');
   const drillField2 = document.getElementById('tile-drill-field-2');
   const drillDimensionSelect2 = document.getElementById('tile-drill-dimension-2');
+  const drillCrossFilterField = document.getElementById('tile-drill-crossfilter-field');
+  const drillCrossFilterCheckbox = document.getElementById('tile-drill-crossfilter');
   const measureSelect = document.getElementById('tile-measure');
   const aggSelect = document.getElementById('tile-agg');
   const trendField = document.getElementById('tile-trend-field');
@@ -206,6 +208,9 @@
     dimensionField.hidden = isKpi;
     drillField.hidden = isKpi;
     drillField2.hidden = isKpi || !drillDimensionSelect1.value;
+    // Le cross-filtering pendant le drill n'a de sens que s'il y a un drill-down à suivre (même
+    // condition que le niveau 2 : dès qu'un niveau 1 est choisi, pas besoin d'attendre le niveau 2).
+    drillCrossFilterField.hidden = isKpi || !drillDimensionSelect1.value;
     trendField.hidden = !isKpi;
   }
 
@@ -216,6 +221,7 @@
     const levels = tileDrillLevels(tile);
     drillDimensionSelect1.value = levels[0] || '';
     drillDimensionSelect2.value = levels[1] || '';
+    drillCrossFilterCheckbox.checked = !!tile.drillCrossFilter;
     updateFormFieldsForType();
     measureSelect.value = tile.measure;
     aggSelect.value = tile.aggFn;
@@ -233,7 +239,11 @@
 
   tileTypeSelect.addEventListener('change', updateFormFieldsForType);
   drillDimensionSelect1.addEventListener('change', () => {
-    if (!drillDimensionSelect1.value) drillDimensionSelect2.value = ''; // niveau 1 vidé -> niveau 2 n'a plus de sens
+    if (!drillDimensionSelect1.value) {
+      // niveau 1 vidé -> plus de drill-down du tout, le niveau 2 et le cross-filtering associé n'ont plus de sens
+      drillDimensionSelect2.value = '';
+      drillCrossFilterCheckbox.checked = false;
+    }
     updateFormFieldsForType();
   });
 
@@ -246,12 +256,18 @@
     if (!measure || (type !== 'kpi' && !dimension)) return;
     const title = type === 'kpi' ? `${aggFn}(${measure})` : `${measure} par ${dimension}`;
     const tileData = { type, dimension, measure, aggFn, title };
-    // drillDimensions/trendDimension seulement quand pertinents pour le type, pour ne pas laisser
-    // une valeur fantôme d'un type précédent si l'utilisateur bascule le type en cours d'édition.
-    if (type !== 'kpi' && drillDimensionSelect1.value) {
-      tileData.drillDimensions = [drillDimensionSelect1.value, drillDimensionSelect2.value].filter(Boolean);
-    }
-    if (type === 'kpi' && trendDimensionSelect.value) tileData.trendDimension = trendDimensionSelect.value;
+    // drillDimensions/drillCrossFilter/trendDimension explicitement mis à `undefined` quand non
+    // pertinents pour le type (plutôt que simplement omis) : `store.updateTile` fusionne le patch
+    // via Object.assign, qui ne fait QUE écraser les clés présentes dans l'objet — omettre une clé
+    // laisserait une ancienne valeur fantôme sur la tuile éditée (ex. un drill-down retiré via le
+    // formulaire resterait actif en pratique) ; l'inclure avec `undefined` l'efface bien.
+    tileData.drillDimensions = (type !== 'kpi' && drillDimensionSelect1.value)
+      ? [drillDimensionSelect1.value, drillDimensionSelect2.value].filter(Boolean)
+      : undefined;
+    tileData.drillCrossFilter = (type !== 'kpi' && drillDimensionSelect1.value)
+      ? drillCrossFilterCheckbox.checked
+      : undefined;
+    tileData.trendDimension = (type === 'kpi' && trendDimensionSelect.value) ? trendDimensionSelect.value : undefined;
     if (editingTileId) {
       store.updateTile(editingTileId, tileData);
       stopEditTile();

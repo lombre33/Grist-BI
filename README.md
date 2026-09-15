@@ -32,6 +32,10 @@ laisserait sinon les tuiles graphiques vides sans erreur explicite.
   (ex. Année → Mois → Semaine) ; cliquer un segment détaille progressivement cette tuile-là, avec un
   fil d'Ariane cliquable à plusieurs segments pour remonter à un niveau donné. Au niveau le plus
   profond, cliquer redevient un filtre croisé normal plutôt que de tenter un niveau supplémentaire.
+  Par défaut, détailler UNE tuile ne touche pas aux autres (comme le drill-down dans Power BI, qui
+  ne cross-filtre pas non plus automatiquement les autres visuels) — activable **par tuile** via la
+  case « Filtrer aussi les autres cartes en détaillant » dans son formulaire : chaque niveau franchi
+  filtre alors aussi les autres cartes, pas seulement le niveau le plus profond.
 - **Vues sauvegardées (bookmarks)** : « ★ Sauvegarder la vue actuelle » capture les filtres croisés
   et l'état de drill-down courants sous un nom ; les retrouver dans le menu déroulant les réapplique
   en un clic. Ne capture pas les tuiles elles-mêmes (déjà persistées à part).
@@ -83,16 +87,18 @@ premier commit.
 
 ## État du projet
 
-Deux allers-retours avec un usage réel, deux vrais bugs remontés et corrigés : un souci de
-chargement d'ECharts sur réseau filtré (HYPOTHESES.md point 3), puis un `KeyError` de génération de
-données de démo dû à un schéma de table obsolète (point 9). Depuis : édition et réorganisation de
+Deux allers-retours avec un usage réel, trois vrais bugs remontés/trouvés et corrigés : un souci de
+chargement d'ECharts sur réseau filtré (HYPOTHESES.md point 3), un `KeyError` de génération de
+données de démo dû à un schéma de table obsolète (point 9), et un bug CSS où plusieurs champs du
+formulaire de tuile (`.hidden = true` en JS) ne se masquaient en réalité jamais à l'écran — repéré
+en testant leur visibilité réelle plutôt que juste l'état JS. Depuis : édition et réorganisation de
 tuile, `ResizeObserver`, tri chronologique, filtres croisés cumulables, tendance KPI, vues
-sauvegardées, drill-down étendu à 2 niveaux, jeu de données de démo enrichi (1920 lignes, Semaine),
-un jeu de données "test de charge" séparé (~47 040 lignes) avec envoi par lots, et une connexion
-**idempotente** aux tables de démo/test de charge (un clic ne renvoie les données à Grist que si la
-table n'existe pas encore — plus de renvoi systématique à chaque test). Voir HYPOTHESES.md pour la
-liste des points encore à valider, notamment la validation en conditions réelles du round-trip
-réseau sur le gros volume.
+sauvegardées, drill-down étendu à 2 niveaux (avec cross-filtering optionnel PAR TUILE à chaque
+niveau franchi), jeu de données de démo enrichi (1920 lignes, Semaine), un jeu de données "test de
+charge" séparé (~47 040 lignes) avec envoi par lots, et une connexion **idempotente** aux tables de
+démo/test de charge (un clic ne renvoie les données à Grist que si la table n'existe pas encore —
+plus de renvoi systématique à chaque test). Voir HYPOTHESES.md pour la liste des points encore à
+valider, notamment la validation en conditions réelles du round-trip réseau sur le gros volume.
 
 ## Licence
 

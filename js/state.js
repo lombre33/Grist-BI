@@ -15,8 +15,8 @@
 
   function createStore() {
     let rows = [];
-    let tiles = []; // { id, type: 'bar'|'pie'|'kpi', title, dimension, measure, aggFn, drillDimensions?, trendDimension? }
-    let activeFilters = []; // [{ column, value, sourceTileId }, ...] — au plus un filtre par colonne
+    let tiles = []; // { id, type: 'bar'|'pie'|'kpi', title, dimension, measure, aggFn, drillDimensions?, drillCrossFilter?, trendDimension? }
+    let activeFilters = []; // [{ column, value, sourceTileId, fromDrill? }, ...] — au plus un filtre par colonne
     let drillIns = {}; // tileId -> [{ column, value }, ...] — chemin de drill-down, [] ou absent = niveau racine
     let bookmarks = []; // [{ id, name, activeFilters, drillIns }, ...] — vues sauvegardées (voir saveBookmark)
     const listeners = new Set();
@@ -32,6 +32,12 @@
     function removeTile(id) {
       tiles = tiles.filter((t) => t.id !== id);
       if (id in drillIns) { drillIns = Object.assign({}, drillIns); delete drillIns[id]; }
+      // Retire aussi tout filtre croisé (toggleFilter OU drill-cross-filter, voir
+      // syncDrillCrossFilters) provenant de la tuile supprimée : sinon il reste actif, affiché,
+      // mais sans plus aucune tuile source pour le faire évoluer ou le lever.
+      if (activeFilters.some((f) => f.sourceTileId === id)) {
+        activeFilters = activeFilters.filter((f) => f.sourceTileId !== id);
+      }
       notify();
     }
 
@@ -39,6 +45,16 @@
     // supprimer+ajouter : garde sa position dans la grille.
     function updateTile(id, patch) {
       tiles = tiles.map((t) => (t.id === id ? Object.assign({}, t, patch) : t));
+      // Une édition touchant le drill-down invalide le chemin de drill-down EN COURS pour cette
+      // tuile : le garder référencerait potentiellement des niveaux qui n'ont plus cours (ex.
+      // drill-down retiré via le formulaire), avec un filtre invisible sur ses propres données —
+      // pas de fil d'Ariane pour le signaler puisque `tileDrillLevels` serait vide. Remise à la
+      // racine à chaque édition plutôt que de tenter un diff ancien/nouveau schéma.
+      if ('drillDimensions' in patch && id in drillIns) {
+        drillIns = Object.assign({}, drillIns);
+        delete drillIns[id];
+      }
+      syncDrillCrossFilters(id);
       notify();
     }
 
@@ -80,12 +96,31 @@
       notify();
     }
 
+    // Une tuile avec `drillCrossFilter: true` (case à cocher dans son formulaire, voir main.js)
+    // filtre aussi les AUTRES tuiles à chaque niveau franchi, pas seulement au niveau le plus
+    // profond (comportement par défaut, voir toggleFilter dans charts.js). Reconstruit entièrement
+    // les entrées `fromDrill` de cette tuile à partir de son chemin courant plutôt que de les faire
+    // évoluer une à une : plus simple et sans risque de désynchronisation entre drillUp/drillInto.
+    // `fromDrill` distingue ces entrées d'un éventuel filtre posé par toggleFilter depuis la MÊME
+    // tuile (clic au niveau le plus profond), pour ne pas les effacer l'une l'autre par erreur.
+    function syncDrillCrossFilters(tileId) {
+      activeFilters = activeFilters.filter((f) => !(f.sourceTileId === tileId && f.fromDrill));
+      const tile = tiles.find((t) => t.id === tileId);
+      if (!tile || !tile.drillCrossFilter) return;
+      const path = drillIns[tileId] || [];
+      if (!path.length) return;
+      activeFilters = activeFilters.concat(
+        path.map((step) => ({ column: step.column, value: step.value, sourceTileId: tileId, fromDrill: true }))
+      );
+    }
+
     // Drill-down : approfondit une tuile qui déclare des `drillDimensions` d'un cran (empile sur le
     // chemin déjà parcouru — voir GristBI.data.tileDrillLevels pour la liste des niveaux possibles
     // d'une tuile, jusqu'à 2 au-delà de sa dimension racine).
     function drillInto(tileId, column, value) {
       const path = drillIns[tileId] || [];
       drillIns = Object.assign({}, drillIns, { [tileId]: path.concat([{ column, value }]) });
+      syncDrillCrossFilters(tileId);
       notify();
     }
 
@@ -99,6 +134,7 @@
       drillIns = Object.assign({}, drillIns);
       if (targetDepth === 0) delete drillIns[tileId];
       else drillIns[tileId] = path.slice(0, targetDepth);
+      syncDrillCrossFilters(tileId);
       notify();
     }
 

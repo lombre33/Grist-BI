@@ -89,7 +89,7 @@
       { id: 'demo_bar_mois', type: 'bar', dimension: 'Mois', measure: 'Quantite', aggFn: 'avg', title: 'Quantite par Mois (moyenne)' },
       {
         id: 'demo_bar_annee', type: 'bar', dimension: 'Annee', drillDimensions: ['Mois', 'Semaine'],
-        measure: 'Montant', aggFn: 'sum', title: 'Montant par Année'
+        drillCrossFilter: true, measure: 'Montant', aggFn: 'sum', title: 'Montant par Année'
       }
     ];
   }
@@ -149,7 +149,7 @@
       { id: 'stress_kpi_montant', type: 'kpi', measure: 'Montant', aggFn: 'sum', trendDimension: 'Annee', title: 'sum(Montant)' },
       {
         id: 'stress_bar_annee', type: 'bar', dimension: 'Annee', drillDimensions: ['Mois', 'Jour'],
-        measure: 'Montant', aggFn: 'sum', title: 'Montant par Année'
+        drillCrossFilter: true, measure: 'Montant', aggFn: 'sum', title: 'Montant par Année'
       }
     ];
   }

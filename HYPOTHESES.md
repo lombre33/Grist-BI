@@ -164,6 +164,47 @@ dans une seule instance de widget, avec ses propres tuiles internes.
   aléatoires) ; en espionnant `applyUserActions`, une deuxième connexion à la table déjà créée
   n'envoie **aucune** action `AddRecord`/`RemoveRecord` et renvoie des valeurs **identiques** (pas
   régénérées), la rendant nettement plus rapide qu'une création initiale.
+- **Cross-filtering PENDANT le drill-down, réglable PAR TUILE** (`tile.drillCrossFilter`,
+  `state.js:syncDrillCrossFilters`) : suite à un retour utilisateur (« le drill-down sur 'Montant
+  par Année' ne met pas à jour le filtre des autres cartes en passant d'une année à l'autre »),
+  vérifié en isolant le calcul (voir plus bas) que le **filtrage était correct** — le comportement
+  d'origine (drill-down purement local à la tuile cliquée, cross-filter des AUTRES tuiles
+  seulement au niveau le plus profond) est un choix assumé qui reproduit la distinction drill-down
+  / cross-filter de Power BI (drill-down sur UN visuel n'y filtre pas non plus automatiquement les
+  autres). Pour laisser le choix plutôt que trancher unilatéralement dans un sens ou l'autre, ce
+  comportement est maintenant réglable **par tuile** (case à cocher dans le formulaire, visible dès
+  qu'un drill-down niveau 1 est choisi) : une tuile avec `drillCrossFilter: true` ajoute, à CHAQUE
+  niveau franchi (pas seulement le plus profond), un filtre croisé sur les autres tuiles pour la
+  valeur cliquée — `activeFilters` gagne des entrées taguées `fromDrill: true` reconstruites
+  entièrement à partir du chemin de drill courant à chaque `drillInto`/`drillUp` (plutôt que
+  modifiées une à une), pour rester synchronisées sans risque de désync entre les deux actions.
+  Tuile de démo « Montant par Année » activée par défaut pour démontrer la fonctionnalité
+  immédiatement. Testé sous Node (empilage/remontée des filtres croisés en fonction du chemin,
+  tuile sans `drillCrossFilter` inchangée) et avec Playwright (KPI et tuile Région réagissent bien
+  au drill sur Année, badges cumulés Annee+Mois au niveau 2, tout disparaît en remontant à la
+  racine, cases à cocher visible/cachée selon le niveau 1 choisi, préremplissage correct à
+  l'édition, désactivation effective après édition).
+  - **Deux corrections annexes découvertes en implémentant ce réglage** :
+    1. `removeTile`/`updateTile` ne nettoyaient pas les filtres croisés (`toggleFilter` ou
+       désormais `drillCrossFilter`) posés par une tuile supprimée ou dont le drill-down change de
+       forme via édition — un filtre pouvait rester actif sans plus aucune tuile source pour le
+       faire évoluer ou le lever, ou référencer un niveau qui n'existe plus (sans fil d'Ariane pour
+       le signaler, puisque `tileDrillLevels` serait vide). `removeTile` retire maintenant tout
+       filtre `sourceTileId === id` ; `updateTile` réinitialise le drill-down en cours dès que le
+       patch touche `drillDimensions` (le formulaire d'édition envoie toujours ce champ, donc
+       chaque édition remet la tuile éditée à sa racine).
+    2. **[Troisième vrai bug trouvé grâce aux tests, même famille que `.demo-banner[hidden]`
+       ci-dessus]** `.field { display: flex }` a la même spécificité CSS que la règle native
+       `[hidden] { display: none }` — mais l'emporte cette fois-ci non pas parce qu'elle est
+       chargée après (comme pour `.demo-banner`), mais parce qu'une règle AUTEUR l'emporte
+       *toujours* sur une règle NAVIGATEUR à spécificité égale, quel que soit l'ordre. Résultat :
+       `.hidden = true` en JS sur `dimensionField`/`drillField`/`drillField2`/`trendField` (et
+       désormais le nouveau champ cross-filter) n'avait **aucun effet visuel** — le champ restait
+       affiché, alors qu'aucun test précédent ne vérifiait la visibilité RÉELLE (seulement l'état
+       JS ou les valeurs soumises). Repéré uniquement parce que le test Playwright de cette feature
+       vérifie explicitement `isHidden()`/`isVisible()`. Corrigé par `.field[hidden] { display:
+       none; }`, qui gagne en spécificité (classe + attribut) plutôt qu'en misant sur l'ordre de
+       chargement.
 
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
