@@ -11,6 +11,7 @@
   let currentTableId = null;
   let saveTimer = null;
   let lastRenderedTiles = null; // référence, pour ne pas re-sauvegarder la config à chaque rafraîchissement de données
+  let lastRenderedBookmarks = null; // idem, côté bookmarks
   let demoActive = false;
   let linkedTableId = null; // dernière table réellement liée au widget dans la page Grist (via onRecords)
   let linkedRows = null;
@@ -33,6 +34,9 @@
   const clearFilterBtn = document.getElementById('clear-filter');
   const filterBadgesEl = document.getElementById('filter-badges');
   const rowCountEl = document.getElementById('row-count');
+  const bookmarkSelect = document.getElementById('bookmark-select');
+  const deleteBookmarkBtn = document.getElementById('delete-bookmark');
+  const saveBookmarkBtn = document.getElementById('save-bookmark');
   const generateDemoBtn = document.getElementById('generate-demo');
   const demoBanner = document.getElementById('demo-banner');
   const demoBannerTable = document.getElementById('demo-banner-table');
@@ -87,7 +91,7 @@
     }
 
     let previousEl = null;
-    for (const tile of state.tiles) {
+    state.tiles.forEach((tile, index) => {
       let el = existingEls.get(tile.id);
       if (!el) {
         el = buildTileElement(tile);
@@ -95,7 +99,13 @@
       }
       if (previousEl) previousEl.after(el); else tilesContainer.prepend(el);
       previousEl = el;
-    }
+      // Recalculé à chaque rendu (pas seulement à la création) : la position d'une tuile change
+      // quand une autre est ajoutée/supprimée/déplacée autour d'elle.
+      const moveLeftBtn = el.querySelector('.tile-move-left');
+      const moveRightBtn = el.querySelector('.tile-move-right');
+      if (moveLeftBtn) moveLeftBtn.disabled = index === 0;
+      if (moveRightBtn) moveRightBtn.disabled = index === state.tiles.length - 1;
+    });
 
     emptyState.hidden = state.tiles.length > 0;
     for (const tile of state.tiles) GristBI.charts.renderTile(tile, state, tilesContainer);
@@ -104,14 +114,16 @@
     GristBI.charts.resizeAll();
 
     renderFilterBadges(state.activeFilters);
+    renderBookmarks(state.bookmarks);
     rowCountEl.textContent = `${state.rows.length} ligne(s)`;
 
-    // `tiles` ne change de référence que via setTiles/addTile/removeTile (state.js) : un rendu
-    // déclenché par un simple rafraîchissement de données (setRows) ne doit pas re-déclencher une
-    // écriture dans le document Grist (évite de polluer l'historique à chaque édition externe).
-    if (state.tiles !== lastRenderedTiles) {
+    // `tiles`/`bookmarks` ne changent de référence que via leurs actions dédiées (state.js) : un
+    // rendu déclenché par un simple rafraîchissement de données (setRows) ne doit pas re-déclencher
+    // une écriture dans le document Grist (évite de polluer l'historique à chaque édition externe).
+    if (state.tiles !== lastRenderedTiles || state.bookmarks !== lastRenderedBookmarks) {
       lastRenderedTiles = state.tiles;
-      scheduleSave(state.tiles);
+      lastRenderedBookmarks = state.bookmarks;
+      scheduleSave(state.tiles, state.bookmarks);
     }
   }
 
@@ -131,12 +143,25 @@
     clearFilterBtn.hidden = activeFilters.length === 0;
   }
 
+  // Choisir une vue dans la liste l'applique immédiatement (voir le listener 'change' plus bas) :
+  // ce <select> est un menu d'action, pas un indicateur d'état - il ne reflète PAS si les filtres
+  // actuels correspondent encore à la vue choisie après coup (simplification délibérée).
+  function renderBookmarks(bookmarks) {
+    const current = bookmarkSelect.value;
+    bookmarkSelect.innerHTML = '<option value="">Vues sauvegardées…</option>'
+      + bookmarks.map((b) => `<option value="${escapeHtml(b.id)}">${escapeHtml(b.name)}</option>`).join('');
+    if (bookmarks.some((b) => b.id === current)) bookmarkSelect.value = current;
+    deleteBookmarkBtn.disabled = !bookmarkSelect.value;
+  }
+
   function buildTileElement(tile) {
     const el = document.createElement('div');
     el.className = `tile tile-${tile.type}`;
     el.dataset.tileId = tile.id;
     const header = `<div class="tile-header"><span>${escapeHtml(tile.title)}</span>
         <span class="tile-actions">
+          <button class="tile-move-left" type="button" aria-label="Déplacer vers la gauche">◂</button>
+          <button class="tile-move-right" type="button" aria-label="Déplacer vers la droite">▸</button>
           <button class="tile-edit" type="button" aria-label="Modifier">✎</button>
           <button class="tile-remove" type="button" aria-label="Supprimer">&times;</button>
         </span></div>`;
@@ -155,6 +180,8 @@
       store.removeTile(tile.id);
     });
     el.querySelector('.tile-edit').addEventListener('click', () => startEditTile(tile));
+    el.querySelector('.tile-move-left').addEventListener('click', () => store.moveTile(tile.id, -1));
+    el.querySelector('.tile-move-right').addEventListener('click', () => store.moveTile(tile.id, 1));
     return el;
   }
 
@@ -213,6 +240,21 @@
 
   cancelEditBtn.addEventListener('click', stopEditTile);
 
+  bookmarkSelect.addEventListener('change', () => {
+    deleteBookmarkBtn.disabled = !bookmarkSelect.value;
+    if (bookmarkSelect.value) store.applyBookmark(bookmarkSelect.value);
+  });
+
+  deleteBookmarkBtn.addEventListener('click', () => {
+    if (bookmarkSelect.value) store.removeBookmark(bookmarkSelect.value);
+  });
+
+  saveBookmarkBtn.addEventListener('click', () => {
+    const name = (prompt('Nom de la vue à sauvegarder :') || '').trim();
+    if (!name) return; // annulé ou vide
+    store.saveBookmark('bm_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name);
+  });
+
   clearFilterBtn.addEventListener('click', () => store.clearFilter());
   window.addEventListener('resize', () => GristBI.charts.resizeAll());
 
@@ -234,11 +276,11 @@
     observer.observe(document.body);
   }
 
-  function scheduleSave(tiles) {
+  function scheduleSave(tiles, bookmarks) {
     if (!currentTableId) return;
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
-      GristBI.api.saveConfig(currentTableId, tiles).catch((e) => {
+      GristBI.api.saveConfig(currentTableId, tiles, bookmarks).catch((e) => {
         console.error('[GristBI] échec de sauvegarde de la config', e);
       });
     }, 600);
@@ -260,7 +302,8 @@
       store.clearFilter();
       if (editingTileId) stopEditTile(); // le formulaire en cours d'édition référence une tuile de l'ancienne table
       const saved = await GristBI.api.loadConfig(tableId);
-      store.setTiles(saved.length ? saved : (seedTiles ? seedTiles() : []));
+      store.setTiles(saved.tiles.length ? saved.tiles : (seedTiles ? seedTiles() : []));
+      store.setBookmarks(saved.bookmarks);
     }
     updateDemoBanner();
   }

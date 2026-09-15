@@ -189,6 +189,52 @@ const rows = [
   console.log('OK state.updateTile (édition en place)');
 }
 
+// state: moveTile (réorganisation, no-op sûr en bout de liste)
+{
+  const store = state.createStore();
+  store.addTile({ id: 't1' });
+  store.addTile({ id: 't2' });
+  store.addTile({ id: 't3' });
+  store.moveTile('t2', -1); // t2 monte d'un cran
+  assert.deepStrictEqual(store.getState().tiles.map((t) => t.id), ['t2', 't1', 't3']);
+  store.moveTile('t2', 1); // redescend -> retour à l'ordre initial
+  assert.deepStrictEqual(store.getState().tiles.map((t) => t.id), ['t1', 't2', 't3']);
+  store.moveTile('t1', -1); // déjà en tête -> no-op
+  assert.deepStrictEqual(store.getState().tiles.map((t) => t.id), ['t1', 't2', 't3']);
+  store.moveTile('t3', 1); // déjà en queue -> no-op
+  assert.deepStrictEqual(store.getState().tiles.map((t) => t.id), ['t1', 't2', 't3']);
+  store.moveTile('inconnu', 1); // id inexistant -> no-op, pas d'erreur
+  assert.deepStrictEqual(store.getState().tiles.map((t) => t.id), ['t1', 't2', 't3']);
+  console.log('OK state.moveTile (réorganisation + no-op en bout de liste / id inconnu)');
+}
+
+// state: bookmarks (vues sauvegardées = filtres + drill-down, PAS les tuiles)
+{
+  const store = state.createStore();
+  store.addTile({ id: 't1', type: 'bar', dimension: 'Annee', drillDimension: 'Mois', measure: 'Montant', aggFn: 'sum' });
+  store.toggleFilter('Region', 'Nord', 'tileA');
+  store.drillInto('t1', 'Annee', 2026);
+  store.saveBookmark('bm1', 'Nord, détail 2026');
+  assert.strictEqual(store.getState().bookmarks.length, 1);
+  assert.strictEqual(store.getState().bookmarks[0].name, 'Nord, détail 2026');
+
+  // Revenir à un état différent...
+  store.clearFilter();
+  store.drillUp('t1');
+  assert.deepStrictEqual(store.getState().activeFilters, []);
+  assert.strictEqual(store.getState().drillIns.t1, undefined);
+
+  // ... puis restaurer le bookmark doit tout remettre en place
+  store.applyBookmark('bm1');
+  assert.deepStrictEqual(store.getState().activeFilters, [{ column: 'Region', value: 'Nord', sourceTileId: 'tileA' }]);
+  assert.deepStrictEqual(store.getState().drillIns.t1, { column: 'Annee', value: 2026 });
+
+  store.removeBookmark('bm1');
+  assert.strictEqual(store.getState().bookmarks.length, 0);
+  store.applyBookmark('bm1'); // bookmark supprimé -> no-op, pas d'erreur
+  console.log('OK state.saveBookmark/applyBookmark/removeBookmark');
+}
+
 // demo-data: buildSampleRows -> des valeurs cohérentes (Montant/Quantite positifs, colonnes complètes)
 {
   const sample = demoData.buildSampleRows();

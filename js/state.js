@@ -18,9 +18,10 @@
     let tiles = []; // { id, type: 'bar'|'pie'|'kpi', title, dimension, measure, aggFn, drillDimension?, trendDimension? }
     let activeFilters = []; // [{ column, value, sourceTileId }, ...] — au plus un filtre par colonne
     let drillIns = {}; // tileId -> { column, value } | absent (absent = niveau racine, pas drillé)
+    let bookmarks = []; // [{ id, name, activeFilters, drillIns }, ...] — vues sauvegardées (voir saveBookmark)
     const listeners = new Set();
 
-    function getState() { return { rows, tiles, activeFilters, drillIns }; }
+    function getState() { return { rows, tiles, activeFilters, drillIns, bookmarks }; }
     function notify() { listeners.forEach((fn) => fn(getState())); }
     function subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 
@@ -38,6 +39,21 @@
     // supprimer+ajouter : garde sa position dans la grille.
     function updateTile(id, patch) {
       tiles = tiles.map((t) => (t.id === id ? Object.assign({}, t, patch) : t));
+      notify();
+    }
+
+    // Déplace une tuile d'un cran (direction: -1 = plus tôt, +1 = plus tard) dans l'ordre
+    // d'affichage. No-op silencieux si déjà en bout de liste (les boutons ◂/▸ sont désactivés côté
+    // UI dans ce cas, mais la fonction reste sûre si appelée directement).
+    function moveTile(id, direction) {
+      const idx = tiles.findIndex((t) => t.id === id);
+      const target = idx + direction;
+      if (idx < 0 || target < 0 || target >= tiles.length) return;
+      const next = tiles.slice();
+      const tmp = next[idx];
+      next[idx] = next[target];
+      next[target] = tmp;
+      tiles = next;
       notify();
     }
 
@@ -79,9 +95,33 @@
       notify();
     }
 
+    function setBookmarks(newBookmarks) { bookmarks = newBookmarks || []; notify(); }
+
+    // Capture l'état interactif COURANT (filtres croisés + drill-down par tuile), PAS les tuiles
+    // elles-mêmes (déjà persistées séparément, voir js/grist-api.js) : une vue Power BI-like sur
+    // laquelle revenir en un clic, sans reconstruire les filtres à la main.
+    function saveBookmark(id, name) {
+      bookmarks = bookmarks.concat([{ id, name, activeFilters, drillIns }]);
+      notify();
+    }
+
+    function applyBookmark(id) {
+      const bm = bookmarks.find((b) => b.id === id);
+      if (!bm) return;
+      activeFilters = bm.activeFilters;
+      drillIns = bm.drillIns;
+      notify();
+    }
+
+    function removeBookmark(id) {
+      bookmarks = bookmarks.filter((b) => b.id !== id);
+      notify();
+    }
+
     return {
-      getState, subscribe, setRows, setTiles, addTile, removeTile, updateTile,
-      toggleFilter, clearFilter, drillInto, drillUp
+      getState, subscribe, setRows, setTiles, addTile, removeTile, updateTile, moveTile,
+      toggleFilter, clearFilter, drillInto, drillUp,
+      setBookmarks, saveBookmark, applyBookmark, removeBookmark
     };
   }
 

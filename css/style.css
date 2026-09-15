@@ -132,6 +132,23 @@ body {
 }
 .warning-banner code { background: rgba(0, 0, 0, 0.06); }
 
+.bookmarks-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.bookmarks-bar select {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 12px;
+  background: var(--card-bg);
+  color: var(--text);
+  min-width: 160px;
+}
+
 .add-tile-form {
   display: flex;
   align-items: flex-end;
@@ -180,7 +197,7 @@ body {
 
 .tile-actions { display: flex; align-items: center; gap: 2px; }
 
-.tile-edit, .tile-remove {
+.tile-move-left, .tile-move-right, .tile-edit, .tile-remove {
   background: none;
   border: none;
   color: var(--muted);
@@ -189,6 +206,8 @@ body {
   cursor: pointer;
   padding: 2px 4px;
 }
+.tile-move-left:disabled, .tile-move-right:disabled { opacity: 0.3; cursor: default; }
+.tile-move-left:hover:not(:disabled), .tile-move-right:hover:not(:disabled) { color: var(--accent); }
 .tile-remove { font-size: 16px; }
 .tile-edit:hover { color: var(--accent); }
 .tile-remove:hover { color: #c0392b; }

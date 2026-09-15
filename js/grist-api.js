@@ -57,6 +57,17 @@
     _rawTables.push(CONFIG_TABLE);
   }
 
+  // Le format sauvegardé a changé (voir ci-dessous) : normalise l'ancien format (un simple tableau
+  // de tuiles, avant l'ajout des bookmarks) aussi bien que le nouveau `{tiles, bookmarks}`, pour ne
+  // pas casser la lecture d'une config déjà sauvegardée par une version antérieure du widget - même
+  // classe de problème que le schéma de BI_Demo_Ventes (voir DEMO_TABLE_SCHEMA_VERSION), mais réglée
+  // ici en JS pur puisque ConfigJSON est un blob texte, pas des colonnes Grist typées.
+  function normalizeConfig(raw) {
+    if (Array.isArray(raw)) return { tiles: raw, bookmarks: [] };
+    if (raw && typeof raw === 'object') return { tiles: raw.tiles || [], bookmarks: raw.bookmarks || [] };
+    return { tiles: [], bookmarks: [] };
+  }
+
   async function loadConfig(tableId) {
     try {
       await ensureConfigTableExists();
@@ -65,19 +76,20 @@
       for (let i = 0; i < ids.length; i++) {
         if (data.TableId[i] === tableId) {
           _configRowIdByTable[tableId] = ids[i];
-          try { return JSON.parse(data.ConfigJSON[i] || '[]'); } catch (e) { return []; }
+          try { return normalizeConfig(JSON.parse(data.ConfigJSON[i] || '[]')); }
+          catch (e) { return { tiles: [], bookmarks: [] }; }
         }
       }
     } catch (e) {
       console.warn('[GristBI] loadConfig: lecture impossible', e);
     }
-    return [];
+    return { tiles: [], bookmarks: [] };
   }
 
-  async function saveConfig(tableId, tiles) {
+  async function saveConfig(tableId, tiles, bookmarks) {
     if (!tableId) return;
     await ensureConfigTableExists();
-    const json = JSON.stringify(tiles);
+    const json = JSON.stringify({ tiles, bookmarks: bookmarks || [] });
     let rowId = _configRowIdByTable[tableId];
     if (!rowId) {
       // Config jamais sauvegardée depuis le chargement du widget : revérifie qu'une ligne

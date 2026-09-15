@@ -108,21 +108,41 @@ dans une seule instance de widget, avec ses propres tuiles internes.
      supprimer à la main), une nouvelle est créée avec le schéma courant. Le nom affiché dans le
      bandeau « Mode démo » est maintenant lu dynamiquement plutôt que codé en dur dans le HTML, pour
      ne plus jamais désynchroniser affichage et réalité.
+- **Réorganisation des tuiles** (`store.moveTile(id, ±1)`) : boutons ◂/▸ sur chaque tuile,
+  désactivés en bout de liste. Testé sous Node (no-op sûr en bout de liste / id inconnu) et avec
+  Playwright (déplacement réel, ordre vérifié).
+- **Vues sauvegardées (bookmarks)** (`store.saveBookmark`/`applyBookmark`/`removeBookmark`) :
+  capturent `activeFilters`+`drillIns` sous un nom, PAS les tuiles (déjà persistées séparément).
+  A fait évoluer le format de `ConfigJSON` dans `BI_Dashboard_Config` : `[tuiles]` (tableau brut) →
+  `{tiles, bookmarks}` (objet). `grist-api.js:normalizeConfig` gère les deux formats en lecture,
+  pour ne pas casser une config déjà sauvegardée par une version antérieure du widget — même classe
+  de problème que le schéma de `BI_Demo_Ventes`, réglée différemment ici puisque `ConfigJSON` est un
+  blob JSON que je contrôle entièrement (pas de colonnes Grist typées à migrer). Testé sous Node
+  (round-trip save/restore, y compris suppression d'un bookmark) et avec Playwright : sauvegarde
+  d'une vue avec filtre + drill-down actifs, effacement de l'état courant, restauration via le menu,
+  et vérification du round-trip `loadConfig()` (tuiles réordonnées + bookmark) sans passer par un
+  vrai rechargement de page (le mock `grist-stub.js` n'a pas de stockage hors mémoire JS — un
+  `page.reload()` y perdrait tout, y compris la table de démo elle-même ; appeler `loadConfig()`
+  directement teste le même chemin de code sans ce faux négatif).
 
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence** (YTD, comparaison N-1...) : juste `sum/avg/count/min/max`
-  ici. Un vrai langage de mesures est un projet à part entière — voir la discussion d'origine.
-- **Drill-down hiérarchique**, **bookmarks/navigation multi-pages**, **mise en forme conditionnelle
-  avancée**, **Q&A langage naturel / IA** : non tentés.
+  + une tendance simple à 2 groupes (voir `computeTrend`) ici. Un vrai langage de mesures est un
+  projet à part entière — voir la discussion d'origine.
+- **Mise en forme conditionnelle avancée** (data bars, échelle de couleurs sur les tuiles
+  barres/camembert, pas seulement sur les cartes KPI) : non tentée.
+- **Q&A langage naturel / IA** : non tenté, hors de portée d'un POC.
 - **Moteur d'agrégation performant type DuckDB-WASM** : l'agrégation est un simple `Array.reduce`
   côté client (voir `js/data.js`). Suffisant pour 480 lignes (voir point 2 ci-dessous), pas
   benchmarké au-delà — piste sérieuse si la perf devient un problème réel sur un vrai document.
-- **Glisser-déposer / redimensionnement des tuiles** : grille CSS statique (`auto-fill`), pas de
-  réagencement manuel.
+- **Redimensionnement des tuiles** (largeur/hauteur individuelle) : grille CSS statique
+  (`auto-fill`), seul l'ORDRE des tuiles est modifiable (`store.moveTile`, voir plus haut).
 - **Drill-down à plus d'un niveau** (hiérarchie arbitraire façon Année > Trimestre > Mois > Jour) :
   volontairement limité à un seul niveau (`tile.drillDimension`), voir plus haut.
-- **Bookmarks/navigation multi-pages**, **Q&A langage naturel / IA** : non tentés.
+- **Bookmarks partagés entre tuiles/pages, navigation multi-pages** : les vues sauvegardées
+  (voir plus haut) sont un mécanisme volontairement simple (filtres + drill-down d'UN dashboard),
+  pas un système de navigation entre plusieurs pages/dashboards.
 
 ## Points à valider en conditions réelles (pas testables depuis ce sandbox)
 
@@ -157,7 +177,8 @@ dans une seule instance de widget, avec ses propres tuiles internes.
    `AddTable`/`AddRecord`/`UpdateRecord` en mémoire ; jamais exécuté contre un vrai
    `grist.docApi`. À vérifier : la table apparaît-elle de façon gênante dans les sélecteurs de
    table du document (comme déjà noté pour `Publipostage_*`) ? Le round-trip
-   sauvegarde→rechargement fonctionne-t-il tel quel ?
+   sauvegarde→rechargement fonctionne-t-il tel quel avec le nouveau format `{tiles, bookmarks}`
+   (testé contre le mock via un appel direct à `loadConfig()`, jamais contre un vrai document) ?
 5. **`grist.setOptions`/`grist.setOption`** comme alternative à la table interne : non testé ici
    (le widget sœur publipostageGrist ne l'utilise pas non plus — seulement `onOptions`/`getOptions`
    en lecture). Pourrait simplifier la persistance si cette API existe et fonctionne comme prévu ;
@@ -186,10 +207,10 @@ dans une seule instance de widget, avec ses propres tuiles internes.
    localement a résolu le premier problème remonté (point 3), confirmé fonctionnel par l'utilisateur.
 2. ~~Générer les données de démo~~ — fait, a remonté un vrai bug (point 9, KeyError sur schéma
    obsolète) corrigé et confirmé recorrigé côté utilisateur.
-3. Vérifier les points 1, 4 et 6 ci-dessus (nécessitent respectivement une mise à jour live de la
-   table liée, un rechargement du widget pour confirmer la persistance de `BI_Dashboard_Config`, et
-   un redimensionnement du panneau Grist).
-4. Tester en conditions réelles les 3 features ajoutées (filtres simultanés, tendance KPI,
-   drill-down) — testées ici via Playwright contre le mock uniquement.
+3. Tester en conditions réelles : filtres simultanés, tendance KPI, drill-down, réorganisation des
+   tuiles, et **surtout** les vues sauvegardées (nouveau format de `ConfigJSON` jamais exécuté
+   contre un vrai document — point 4) — tout testé ici via Playwright contre le mock uniquement.
+4. Vérifier les points 1 et 6 ci-dessus (mise à jour live de la table liée, redimensionnement du
+   panneau Grist).
 5. Si la perf devient un problème réel (point 2) : spike DuckDB-WASM avant d'aller plus loin sur
    les mesures.
