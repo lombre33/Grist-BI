@@ -46,12 +46,9 @@
       <select id="tile-dimension"></select>
     </div>
     <div class="field" id="tile-drill-field">
-      <label for="tile-drill-dimension-1">Drill-down (niveau 1)</label>
-      <select id="tile-drill-dimension-1"><option value="">(aucun)</option></select>
-    </div>
-    <div class="field" id="tile-drill-field-2" hidden>
-      <label for="tile-drill-dimension-2">Drill-down (niveau 2)</label>
-      <select id="tile-drill-dimension-2"><option value="">(aucun)</option></select>
+      <label for="tile-drill-dimension-1">Drill-down</label>
+      <div id="tile-drill-levels" class="drill-levels"></div>
+      <button type="button" id="tile-drill-add-level" class="btn-secondary btn-tiny" hidden>+ Niveau</button>
     </div>
     <div class="field field-checkbox" id="tile-drill-crossfilter-field" hidden>
       <label for="tile-drill-crossfilter">

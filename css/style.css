@@ -90,6 +90,7 @@ body {
 .btn-primary:hover { filter: brightness(1.08); }
 .btn-secondary { background: var(--card-bg); border-color: var(--border); color: var(--text); }
 .btn-secondary:hover { background: #eef1f5; }
+.btn-tiny { padding: 3px 8px; font-size: 11px; align-self: flex-start; }
 .btn-secondary:disabled { opacity: 0.6; cursor: default; }
 
 .demo-banner {
@@ -179,6 +180,9 @@ body {
   white-space: nowrap;
 }
 .field-checkbox input[type="checkbox"] { margin: 0; }
+
+.drill-levels { display: flex; flex-direction: column; gap: 4px; }
+.drill-levels select { margin: 0; }
 
 .tiles {
   display: grid;

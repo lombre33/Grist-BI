@@ -30,12 +30,15 @@ laisserait sinon les tuiles graphiques vides sans erreur explicite.
   colonne différente cumule (ET) ; recliquer ou fermer un badge retire juste ce filtre-là.
 - **Tendance sur les cartes KPI** : une tuile KPI peut comparer sa valeur à la période précédente
   (ex. Année) — delta en %, flèche verte/rouge.
-- **Drill-down à 2 niveaux** : une tuile barres/camembert peut déclarer jusqu'à 2 sous-dimensions
-  (ex. Année → Mois → Semaine) ; cliquer un segment détaille progressivement cette tuile-là, avec un
-  fil d'Ariane cliquable à plusieurs segments pour remonter à un niveau donné. Au niveau le plus
+- **Drill-down à N niveaux** : une tuile barres/camembert peut déclarer autant de sous-dimensions
+  que voulu (jusqu'à 5, garde-fou d'ergonomie) via un bouton « + Niveau » dans son formulaire (ex.
+  Année → Mois → Jour → Région) ; cliquer un segment détaille progressivement cette tuile-là, avec
+  un fil d'Ariane cliquable à plusieurs segments pour remonter à un niveau donné. Au niveau le plus
   profond, cliquer redevient un filtre croisé normal plutôt que de tenter un niveau supplémentaire.
-  Par défaut, détailler UNE tuile ne touche pas aux autres (comme le drill-down dans Power BI, qui
-  ne cross-filtre pas non plus automatiquement les autres visuels) — activable **par tuile** via la
+  Une même colonne ne peut pas apparaître deux fois dans le chemin (ni reprendre la dimension
+  racine) — une alerte le signale plutôt que de créer une hiérarchie incohérente. Par défaut,
+  détailler UNE tuile ne touche pas aux autres (comme le drill-down dans Power BI, qui ne
+  cross-filtre pas non plus automatiquement les autres visuels) — activable **par tuile** via la
   case « Filtrer aussi les autres cartes en détaillant » dans son formulaire : chaque niveau franchi
   filtre alors aussi les autres cartes, pas seulement le niveau le plus profond.
 - **Vues sauvegardées (bookmarks)** : « ★ Sauvegarder la vue actuelle » capture les filtres croisés
@@ -92,12 +95,14 @@ données de démo dû à un schéma de table obsolète (point 9), et un bug CSS 
 formulaire de tuile (`.hidden = true` en JS) ne se masquaient en réalité jamais à l'écran — repéré
 en testant leur visibilité réelle plutôt que juste l'état JS. Depuis : édition et réorganisation de
 tuile, `ResizeObserver`, tri chronologique, filtres croisés cumulables, tendance KPI, vues
-sauvegardées, drill-down étendu à 2 niveaux (avec cross-filtering optionnel PAR TUILE à chaque
+sauvegardées, drill-down étendu à N niveaux (avec cross-filtering optionnel PAR TUILE à chaque
 niveau franchi), un jeu de données "test de charge" (~47 040 lignes) avec envoi par lots, une
 connexion **idempotente** aux tables générées (un clic/chargement ne renvoie les données à Grist
 que si la table n'existe pas encore), et le passage à une **connexion automatique** à cette table
 comme UNIQUE table de travail au démarrage (plus de boutons « Générer », plus de bascule
-démo/table liée — voir HYPOTHESES.md). Voir HYPOTHESES.md pour la liste des points encore à
+démo/table liée — voir HYPOTHESES.md). Une [ROADMAP.md](./ROADMAP.md) priorisée (valeur x risque de
+faisabilité) trace la suite vers un outil BI plus complet, avec un [TEST_PROTOCOL.md](./TEST_PROTOCOL.md)
+associé qui grandit à chaque nouvelle feature. Voir HYPOTHESES.md pour la liste des points encore à
 valider, notamment la validation en conditions réelles du round-trip réseau sur le gros volume dès
 le premier chargement.
 

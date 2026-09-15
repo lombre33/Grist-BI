@@ -158,6 +158,19 @@ une feature "testée", vérifier qu'on s'est posé chacune de ces questions :
 - [ ] Redimensionnement réel du panneau Grist (ResizeObserver) ⬜ **[NON TESTABLE ICI]** — logique de coalescing vérifiée par lecture de code seulement
 - [ ] `window.resize` classique (hors ResizeObserver) ⬜
 
+### `js/main.js` — formulaire de drill-down à N niveaux (Roadmap Tier 1, Playwright)
+
+- [x] 1 seul niveau affiché au départ, bouton "+ Niveau" caché tant que le niveau 1 est vide 🌐
+- [x] Remplir le niveau 1 → le bouton "+ Niveau" apparaît 🌐
+- [x] Cliquer "+ Niveau" ajoute un select supplémentaire à chaque clic (testé jusqu'à 4 niveaux) 🌐
+- [x] Plafond `MAX_DRILL_LEVELS` (5) atteint → le bouton "+ Niveau" disparaît 🌐
+- [x] Une tuile créée avec 4 niveaux persiste bien `drillDimensions` dans cet ordre exact 🌐
+- [x] Éditer cette tuile pré-remplit exactement le bon nombre de `<select>` avec les bonnes valeurs, dans l'ordre 🌐
+- [x] Garde-fou : la dimension racine réutilisée comme niveau de drill déclenche une alerte, la tuile n'est PAS créée [BUG POTENTIEL évité, repéré en généralisant à N niveaux] 🌐
+- [x] Vider le niveau 1 → décoche `drillCrossFilter` ET retire tous les niveaux suivants (cascade) 🌐
+- [ ] Deux niveaux de drill (hors racine) avec la même colonne (ex. niveau 2 = niveau 4) → même garde-fou anti-doublon ⬜ (couvert par construction via `new Set(allDims).size !== allDims.length`, pas de cas Playwright dédié à ce sous-cas précis)
+- [ ] Basculer le type de tuile vers "kpi" avec des niveaux de drill déjà configurés → `drillField` se cache, `drillDimensions` repart à `undefined` à la soumission ⬜
+
 ### CSS — classe de bug à systématiquement re-vérifier
 
 - [x] `.field[hidden]` masque réellement l'élément (pas seulement `display:flex` de `.field` qui gagne à spécificité égale) [BUG RÉEL, trouvé 2 fois sur des champs différents] ✅ (règle en place)

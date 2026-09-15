@@ -228,6 +228,20 @@ dans une seule instance de widget, avec ses propres tuiles internes.
   et les 4 tuiles par défaut sans aucun clic, les boutons de génération et le bandeau démo ont bien
   disparu du DOM, et un second appel direct à `loadOrCreateStressData()` (simulant un rechargement
   de page une fois la table déjà créée) ne renvoie aucune donnée à Grist (0 action `AddRecord`).
+- **Drill-down manuel à N niveaux** (`js/main.js`, premier item de `ROADMAP.md` Tier 1) : les 2
+  `<select>` fixes du formulaire sont remplacés par une UI répétable (bouton « + Niveau »), créant
+  dynamiquement un `<select>` par niveau au-delà de la dimension racine, plafonnée à
+  `MAX_DRILL_LEVELS = 5` (garde-fou d'ergonomie, pas une limite technique). Effort effectivement
+  faible comme prévu par la recherche de faisabilité : `data.js`/`state.js`/`charts.js` géraient
+  déjà un tableau `drillDimensions` de longueur arbitraire, seul le formulaire figeait ça à 2
+  champs. Ajout au passage d'un garde-fou qui n'existait pas avant (repéré en généralisant à N
+  niveaux) : une même colonne ne peut plus apparaître deux fois dans le chemin de drill, ni
+  reprendre la dimension racine de la tuile — alerte explicite plutôt qu'une hiérarchie silencieuse
+  et incohérente. Testé avec Playwright : progression du bouton « + Niveau » (caché tant que le
+  niveau courant est vide, disparaît au plafond), tuile à 4 niveaux persistée et rechargée
+  correctement dans le bon ordre à l'édition, garde-fou anti-doublon déclenche bien une alerte et
+  n'enregistre pas la tuile, vider le niveau 1 retire en cascade tous les niveaux suivants et
+  décoche `drillCrossFilter`.
 
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
@@ -244,10 +258,6 @@ dans une seule instance de widget, avec ses propres tuiles internes.
   être le vrai goulot, pas l'agrégation elle-même.
 - **Redimensionnement des tuiles** (largeur/hauteur individuelle) : grille CSS statique
   (`auto-fill`), seul l'ORDRE des tuiles est modifiable (`store.moveTile`, voir plus haut).
-- **Drill-down à plus de 2 niveaux** (hiérarchie arbitraire façon Année > Trimestre > Mois > Jour >
-  Heure) : le mécanisme est maintenant générique (`tile.drillDimensions[]`, voir plus haut), mais
-  l'UI de configuration de tuile n'expose que 2 champs (niveau 1/niveau 2) et le jeu de démo n'en
-  démontre pas plus — extension possible sans nouvelle architecture si le besoin se présente.
 - **Bookmarks partagés entre tuiles/pages, navigation multi-pages** : les vues sauvegardées
   (voir plus haut) sont un mécanisme volontairement simple (filtres + drill-down d'UN dashboard),
   pas un système de navigation entre plusieurs pages/dashboards.

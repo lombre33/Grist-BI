@@ -94,7 +94,7 @@ Grist". Les avoir vraiment nécessite un service externe séparé (backend + cro
 
 | Feature | Valeur | Risque | Statut |
 |---|---|---|---|
-| Drill-down manuel N niveaux | Moyenne | Faible | 🚧 en cours |
+| Drill-down manuel N niveaux | Moyenne | Faible | ✅ fait (2026-09-15) |
 | Dashboards multi-pages | Haute | Faible | ⬜ à faire |
 | Jauge (gauge) | Moyenne | Faible | ⬜ à faire |
 | Treemap (plat) | Moyenne | Faible | ⬜ à faire |

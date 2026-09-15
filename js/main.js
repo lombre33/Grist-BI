@@ -15,6 +15,13 @@
   let lastRenderedTiles = null; // référence, pour ne pas re-sauvegarder la config à chaque rafraîchissement de données
   let lastRenderedBookmarks = null; // idem, côté bookmarks
   let editingTileId = null; // id de la tuile en cours d'édition via le formulaire, ou null (mode ajout)
+  // <select> de niveaux de drill-down actuellement affichés dans le formulaire, un par niveau
+  // AU-DELÀ de la dimension racine (index 0 = niveau 1, etc.) — voir gestion plus bas.
+  let drillLevelSelects = [];
+  // Garde-fou d'ergonomie (pas une limite technique : data.js/state.js/charts.js gèrent un nombre
+  // de niveaux arbitraire) : au-delà, une tuile chaînant trop de niveaux sur un jeu de données trop
+  // petit produit des paliers de drill quasi vides, voir ROADMAP.md.
+  const MAX_DRILL_LEVELS = 5;
 
   const tilesContainer = document.getElementById('tiles');
   const emptyState = document.getElementById('empty-state');
@@ -23,9 +30,8 @@
   const dimensionField = document.getElementById('tile-dimension-field');
   const dimensionSelect = document.getElementById('tile-dimension');
   const drillField = document.getElementById('tile-drill-field');
-  const drillDimensionSelect1 = document.getElementById('tile-drill-dimension-1');
-  const drillField2 = document.getElementById('tile-drill-field-2');
-  const drillDimensionSelect2 = document.getElementById('tile-drill-dimension-2');
+  const drillLevelsContainer = document.getElementById('tile-drill-levels');
+  const addDrillLevelBtn = document.getElementById('tile-drill-add-level');
   const drillCrossFilterField = document.getElementById('tile-drill-crossfilter-field');
   const drillCrossFilterCheckbox = document.getElementById('tile-drill-crossfilter');
   const measureSelect = document.getElementById('tile-measure');
@@ -69,10 +75,67 @@
     const cols = availableColumns(rows);
     fillSelect(dimensionSelect, cols);
     fillSelect(measureSelect, cols);
-    fillSelect(drillDimensionSelect1, cols, { blankLabel: '(aucun)' });
-    fillSelect(drillDimensionSelect2, cols, { blankLabel: '(aucun)' });
+    drillLevelSelects.forEach((select) => fillSelect(select, cols, { blankLabel: '(aucun)' }));
     fillSelect(trendDimensionSelect, cols, { blankLabel: '(aucune)' });
   }
+
+  // Drill-down à N niveaux : un <select> par niveau, créé dynamiquement ("+ Niveau") plutôt que des
+  // champs figés dans le HTML — data.js/state.js/charts.js gèrent déjà un tableau drillDimensions
+  // de longueur quelconque, seul le formulaire limitait ça à 2 champs statiques auparavant.
+  function createDrillLevelSelect(index) {
+    const select = document.createElement('select');
+    select.id = `tile-drill-dimension-${index + 1}`;
+    select.innerHTML = '<option value="">(aucun)</option>';
+    select.addEventListener('change', () => {
+      if (!select.value) {
+        // Niveau vidé -> tout niveau plus profond n'a plus de sens (un trou dans la hiérarchie,
+        // ex. Année > (rien) > Semaine, ne veut rien dire) : on les retire.
+        truncateDrillLevelsAfter(index);
+        if (index === 0) drillCrossFilterCheckbox.checked = false; // plus de drill-down du tout
+      }
+      updateDrillLevelsUI();
+    });
+    return select;
+  }
+
+  function truncateDrillLevelsAfter(index) {
+    while (drillLevelSelects.length > index + 1) {
+      drillLevelSelects.pop().remove();
+    }
+  }
+
+  // Réaffiche le bouton "+ Niveau" seulement si le dernier niveau visible est rempli (progression
+  // séquentielle, comme l'ancien niveau 2 qui n'apparaissait qu'une fois le niveau 1 choisi) et que
+  // le plafond n'est pas atteint ; recalcule aussi la visibilité de la case cross-filter.
+  function updateDrillLevelsUI() {
+    const isKpi = tileTypeSelect.value === 'kpi';
+    const lastSelect = drillLevelSelects[drillLevelSelects.length - 1];
+    addDrillLevelBtn.hidden = isKpi || !lastSelect || !lastSelect.value || drillLevelSelects.length >= MAX_DRILL_LEVELS;
+    drillCrossFilterField.hidden = isKpi || !drillLevelSelects[0] || !drillLevelSelects[0].value;
+  }
+
+  addDrillLevelBtn.addEventListener('click', () => {
+    if (drillLevelSelects.length >= MAX_DRILL_LEVELS) return;
+    const select = createDrillLevelSelect(drillLevelSelects.length);
+    fillSelect(select, availableColumns(store.getState().rows), { blankLabel: '(aucun)' });
+    drillLevelsContainer.appendChild(select);
+    drillLevelSelects.push(select);
+    updateDrillLevelsUI();
+  });
+
+  // Vide le formulaire de tous ses niveaux de drill sauf le premier (toujours présent).
+  function resetDrillLevels() {
+    truncateDrillLevelsAfter(0);
+    if (drillLevelSelects[0]) drillLevelSelects[0].value = '';
+  }
+
+  // Niveau 1 toujours présent dans le formulaire (comme avant), les suivants sont ajoutés
+  // dynamiquement au clic sur "+ Niveau" ou lors du préremplissage en édition.
+  (function initFirstDrillLevel() {
+    const select = createDrillLevelSelect(0);
+    drillLevelsContainer.appendChild(select);
+    drillLevelSelects.push(select);
+  })();
 
   function render(state) {
     // Réconciliation incrémentale plutôt que innerHTML='' + reconstruction : une instance ECharts
@@ -197,24 +260,29 @@
   function updateFormFieldsForType() {
     const isKpi = tileTypeSelect.value === 'kpi';
     // Une carte KPI n'a pas de dimension de regroupement ni de drill-down, juste un agrégat sur
-    // toute la sélection (éventuellement comparé à une période via "Tendance vs"). Le niveau 2 de
-    // drill-down n'a de sens que si un niveau 1 est choisi (affichage progressif).
+    // toute la sélection (éventuellement comparé à une période via "Tendance vs").
     dimensionField.hidden = isKpi;
     drillField.hidden = isKpi;
-    drillField2.hidden = isKpi || !drillDimensionSelect1.value;
-    // Le cross-filtering pendant le drill n'a de sens que s'il y a un drill-down à suivre (même
-    // condition que le niveau 2 : dès qu'un niveau 1 est choisi, pas besoin d'attendre le niveau 2).
-    drillCrossFilterField.hidden = isKpi || !drillDimensionSelect1.value;
     trendField.hidden = !isKpi;
+    updateDrillLevelsUI();
   }
 
   function startEditTile(tile) {
     editingTileId = tile.id;
     tileTypeSelect.value = tile.type;
     if (tile.dimension) dimensionSelect.value = tile.dimension;
+    resetDrillLevels();
     const levels = tileDrillLevels(tile);
-    drillDimensionSelect1.value = levels[0] || '';
-    drillDimensionSelect2.value = levels[1] || '';
+    const cols = availableColumns(store.getState().rows);
+    levels.forEach((lvl, i) => {
+      if (i >= drillLevelSelects.length) {
+        const select = createDrillLevelSelect(i);
+        fillSelect(select, cols, { blankLabel: '(aucun)' });
+        drillLevelsContainer.appendChild(select);
+        drillLevelSelects.push(select);
+      }
+      drillLevelSelects[i].value = lvl;
+    });
     drillCrossFilterCheckbox.checked = !!tile.drillCrossFilter;
     updateFormFieldsForType();
     measureSelect.value = tile.measure;
@@ -232,14 +300,6 @@
   }
 
   tileTypeSelect.addEventListener('change', updateFormFieldsForType);
-  drillDimensionSelect1.addEventListener('change', () => {
-    if (!drillDimensionSelect1.value) {
-      // niveau 1 vidé -> plus de drill-down du tout, le niveau 2 et le cross-filtering associé n'ont plus de sens
-      drillDimensionSelect2.value = '';
-      drillCrossFilterCheckbox.checked = false;
-    }
-    updateFormFieldsForType();
-  });
 
   addTileForm.addEventListener('submit', (evt) => {
     evt.preventDefault();
@@ -248,6 +308,15 @@
     const measure = measureSelect.value;
     const aggFn = aggSelect.value;
     if (!measure || (type !== 'kpi' && !dimension)) return;
+    const drillDimensions = type !== 'kpi' ? drillLevelSelects.map((s) => s.value).filter(Boolean) : [];
+    // Garde-fou : une même colonne ne peut pas apparaître deux fois dans le chemin de drill (ni
+    // reprendre la dimension racine) — un cas non gardé auparavant, repéré en généralisant à N
+    // niveaux (voir ROADMAP.md, cluster "Hiérarchies & drill-down").
+    const allDims = type !== 'kpi' ? [dimension].concat(drillDimensions) : [];
+    if (new Set(allDims).size !== allDims.length) {
+      alert('Une même colonne ne peut pas apparaître deux fois dans le drill-down, ni reprendre la dimension racine.');
+      return;
+    }
     const title = type === 'kpi' ? `${aggFn}(${measure})` : `${measure} par ${dimension}`;
     const tileData = { type, dimension, measure, aggFn, title };
     // drillDimensions/drillCrossFilter/trendDimension explicitement mis à `undefined` quand non
@@ -255,12 +324,8 @@
     // via Object.assign, qui ne fait QUE écraser les clés présentes dans l'objet — omettre une clé
     // laisserait une ancienne valeur fantôme sur la tuile éditée (ex. un drill-down retiré via le
     // formulaire resterait actif en pratique) ; l'inclure avec `undefined` l'efface bien.
-    tileData.drillDimensions = (type !== 'kpi' && drillDimensionSelect1.value)
-      ? [drillDimensionSelect1.value, drillDimensionSelect2.value].filter(Boolean)
-      : undefined;
-    tileData.drillCrossFilter = (type !== 'kpi' && drillDimensionSelect1.value)
-      ? drillCrossFilterCheckbox.checked
-      : undefined;
+    tileData.drillDimensions = drillDimensions.length ? drillDimensions : undefined;
+    tileData.drillCrossFilter = drillDimensions.length ? drillCrossFilterCheckbox.checked : undefined;
     tileData.trendDimension = (type === 'kpi' && trendDimensionSelect.value) ? trendDimensionSelect.value : undefined;
     if (editingTileId) {
       store.updateTile(editingTileId, tileData);
