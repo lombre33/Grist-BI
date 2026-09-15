@@ -12,6 +12,15 @@
 
   const chartInstances = new Map();
 
+  // Palette catégorielle validée colorblind-safe (skill dataviz de ce projet,
+  // references/palette.md — worst adjacent CVD ΔE 9.1 clair, OKLab, cible ≥8 — ordre figé, jamais
+  // cyclé au hasard). Camembert : ECharts assigne une couleur par part dans cet ordre. Barres :
+  // une seule série -> une seule couleur (le 1er slot, l'accent bleu) plutôt qu'une couleur par
+  // catégorie, redondant avec les libellés déjà présents sur l'axe.
+  const CATEGORICAL_PALETTE = [
+    '#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948'
+  ];
+
   // Dimension actuellement affichée par une tuile bar/pie : sa dimension racine si `drillPath` est
   // vide, sinon le niveau correspondant à la profondeur atteinte (voir state.js:drillInto/drillUp).
   function currentDimension(tile, drillPath) {
@@ -99,6 +108,7 @@
 
     const option = tile.type === 'pie'
       ? {
+          color: CATEGORICAL_PALETTE,
           tooltip: { trigger: 'item' },
           series: [{
             type: 'pie',
@@ -107,9 +117,16 @@
           }]
         }
       : {
+          color: CATEGORICAL_PALETTE,
+          // `containLabel: true` : sans ça, ECharts réserve une marge gauche estimée AVANT de
+          // savoir combien de place le formatter compact va réellement prendre (variable selon la
+          // valeur : "0" vs "2,7 M") — l'estimation était trop courte, dessinant une partie du
+          // texte hors du canvas (silencieusement coupé, pas d'erreur). `containLabel` fait
+          // recalculer la marge à partir du texte réellement rendu.
+          grid: { containLabel: true, left: 8, right: 12, top: 24, bottom: 8 },
           tooltip: { trigger: 'axis' },
           xAxis: { type: 'category', data: agg.map((d) => d.dimension) },
-          yAxis: { type: 'value' },
+          yAxis: { type: 'value', axisLabel: { formatter: formatCompactNumber } },
           series: [{
             type: 'bar',
             data: agg.map((d) => ({ value: d.value, itemStyle: dim(d.dimension) }))
@@ -149,6 +166,16 @@
 
   function formatNumber(n) {
     return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(n);
+  }
+
+  // Format compact ("2,7 M", "150 k") pour les libellés d'AXE seulement (pas les cartes KPI ni les
+  // info-bulles, qui gardent la précision exacte). [BUG RÉEL trouvé en capturant la première version
+  // de cette passe de design] sur le jeu de test de charge, les valeurs à 7 chiffres (~2 700 000)
+  // dépassaient la largeur d'axe disponible dans une tuile ; ECharts repliait le libellé sur 2
+  // lignes et la partie haute sortait du cadre visible, n'affichant plus que "000" empilés.
+  const compactNumberFormatter = new Intl.NumberFormat('fr-FR', { notation: 'compact', maximumFractionDigits: 1 });
+  function formatCompactNumber(n) {
+    return compactNumberFormatter.format(n);
   }
 
   function resizeAll() { chartInstances.forEach((inst) => !inst.isDisposed() && inst.resize()); }

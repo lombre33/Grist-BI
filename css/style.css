@@ -1,11 +1,36 @@
+/*
+ * Système visuel : palette catégorielle et tokens de couleur validés colorblind-safe (skill dataviz
+ * de ce projet, references/palette.md — worst adjacent CVD ΔE 9.1 clair / 8.4 sombre, OKLab, cible
+ * ≥8), pas choisis à l'œil. Rayons/ombres/espacements sur une échelle cohérente plutôt que des
+ * valeurs éparses. AUCUN sélecteur fonctionnel renommé (tout id/classe lu par js/*.js ou par les
+ * scripts Playwright reste identique) — uniquement des valeurs de style affinées.
+ */
 :root {
-  --bg: #f5f6f8;
-  --card-bg: #ffffff;
-  --border: #dfe3e8;
-  --text: #1f2430;
-  --muted: #6b7280;
-  --accent: #2f6feb;
+  color-scheme: light;
+  --page-bg: #f9f9f7;
+  --surface: #fcfcfb;
+  --surface-sunken: #f3f2ef;
+  --border: rgba(11, 11, 11, 0.10);
+  --border-strong: #e1e0d9;
+  --text: #0b0b0b;
+  --text-secondary: #52514e;
+  --muted: #898781;
+  --accent: #2a78d6;
   --accent-contrast: #ffffff;
+  --accent-wash: rgba(42, 120, 214, 0.08);
+  --accent-wash-strong: rgba(42, 120, 214, 0.14);
+  --good: #0ca30c;
+  --critical: #d03b3b;
+  --warning-bg: #fdf3d8;
+  --warning-text: #7a5b00;
+  --warning-border: #f1d27a;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-pill: 999px;
+  --shadow-xs: 0 1px 2px rgba(11, 11, 11, 0.04);
+  --shadow-sm: 0 1px 3px rgba(11, 11, 11, 0.05), 0 1px 1px rgba(11, 11, 11, 0.04);
+  --shadow-md: 0 6px 16px rgba(11, 11, 11, 0.07), 0 1px 3px rgba(11, 11, 11, 0.05);
+  --ease: cubic-bezier(0.2, 0, 0, 1);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
@@ -13,10 +38,12 @@
 
 body {
   margin: 0;
-  padding: 12px;
-  background: var(--bg);
+  padding: 16px;
+  background: var(--page-bg);
   color: var(--text);
   font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
 
 .topbar {
@@ -25,11 +52,13 @@ body {
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
 .topbar h1 {
-  font-size: 16px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
   margin: 0;
   display: flex;
   align-items: center;
@@ -39,16 +68,17 @@ body {
 .badge-poc {
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.04em;
-  background: #fff3cd;
-  color: #7a5b00;
-  border: 1px solid #f1d27a;
-  border-radius: 4px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  background: var(--surface-sunken);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   padding: 2px 6px;
 }
 
-.topbar-info { display: flex; align-items: center; gap: 10px; }
-.row-count { color: var(--muted); }
+.topbar-info { display: flex; align-items: center; gap: 12px; }
+.row-count { color: var(--text-secondary); font-weight: 500; }
 .render-time { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 
 .filter-badges { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
@@ -57,12 +87,13 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background: #e8f0fe;
+  background: var(--accent-wash);
   color: var(--accent);
-  border: 1px solid #c9dcfb;
-  border-radius: 999px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
   padding: 3px 6px 3px 10px;
   font-weight: 600;
+  font-size: 12px;
   white-space: nowrap;
 }
 
@@ -73,177 +104,216 @@ body {
   cursor: pointer;
   font-size: 13px;
   line-height: 1;
-  padding: 0 2px;
-  opacity: 0.7;
+  padding: 2px;
+  border-radius: 50%;
+  opacity: 0.65;
+  transition: opacity 0.12s var(--ease), background 0.12s var(--ease);
 }
-.filter-chip-remove:hover { opacity: 1; }
+.filter-chip-remove:hover { opacity: 1; background: rgba(42, 120, 214, 0.16); }
 
 .btn-primary, .btn-secondary {
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   border: 1px solid transparent;
-  padding: 6px 12px;
-  font-size: 12px;
+  padding: 7px 14px;
+  font-size: 12.5px;
+  font-weight: 500;
+  font-family: inherit;
   cursor: pointer;
+  transition: background 0.12s var(--ease), border-color 0.12s var(--ease), box-shadow 0.12s var(--ease), transform 0.12s var(--ease);
+}
+.btn-primary:active, .btn-secondary:active { transform: translateY(1px); }
+
+.btn-primary { background: var(--accent); color: var(--accent-contrast); box-shadow: var(--shadow-xs); }
+.btn-primary:hover { background: #2569bf; }
+.btn-secondary { background: var(--surface); border-color: var(--border-strong); color: var(--text); }
+.btn-secondary:hover { background: var(--surface-sunken); border-color: var(--muted); }
+.btn-tiny { padding: 4px 10px; font-size: 11px; align-self: flex-start; }
+.btn-secondary:disabled { opacity: 0.5; cursor: default; box-shadow: none; }
+.btn-secondary:disabled:hover { background: var(--surface); border-color: var(--border-strong); }
+
+button:focus-visible, select:focus-visible, input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
-.btn-primary { background: var(--accent); color: var(--accent-contrast); }
-.btn-primary:hover { filter: brightness(1.08); }
-.btn-secondary { background: var(--card-bg); border-color: var(--border); color: var(--text); }
-.btn-secondary:hover { background: #eef1f5; }
-.btn-tiny { padding: 3px 8px; font-size: 11px; align-self: flex-start; }
-.btn-secondary:disabled { opacity: 0.6; cursor: default; }
-
-.demo-banner {
+.warning-banner {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-  background: #fff3cd;
-  color: #7a5b00;
-  border: 1px solid #f1d27a;
-  border-radius: 6px;
-  padding: 8px 12px;
-  margin: 0 0 12px;
+  background: #fdeceb;
+  color: #8a2e29;
+  border: 1px solid #f3c2bd;
+  border-radius: var(--radius-md);
+  padding: 9px 14px;
+  margin: 0 0 14px;
   font-size: 12px;
 }
-/* `display:flex` ci-dessus a la même spécificité que la règle native [hidden]{display:none} et la
-   emporte à spécificité égale (chargée après) : sans ce override, `.hidden = true` en JS n'aurait
-   plus aucun effet visuel sur cet élément. */
-.demo-banner[hidden] { display: none; }
-.demo-banner code {
-  background: rgba(0, 0, 0, 0.06);
-  border-radius: 3px;
+/* `display:flex` ci-dessus a la même spécificité que la règle native [hidden]{display:none} et
+   l'emporte à spécificité égale : une règle AUTEUR bat toujours une règle NAVIGATEUR, quel que
+   soit l'ordre de chargement. Sans cet override, `.hidden = true` en JS n'aurait plus aucun effet
+   visuel sur cet élément. */
+.warning-banner[hidden] { display: none; }
+.warning-banner code {
+  background: rgba(11, 11, 11, 0.06);
+  border-radius: 4px;
   padding: 1px 5px;
 }
-
-.warning-banner {
-  background: #fdecea;
-  color: #942f26;
-  border-color: #f3b8b1;
-}
-.warning-banner code { background: rgba(0, 0, 0, 0.06); }
 
 .bookmarks-bar {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 .bookmarks-bar select {
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 5px 8px;
-  font-size: 12px;
-  background: var(--card-bg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 6px 9px;
+  font-size: 12.5px;
+  font-family: inherit;
+  background: var(--surface);
   color: var(--text);
-  min-width: 160px;
+  min-width: 170px;
 }
 
 .add-tile-form {
   display: flex;
   align-items: flex-end;
-  gap: 10px;
+  gap: 12px;
   flex-wrap: wrap;
-  background: var(--card-bg);
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px 12px;
-  margin-bottom: 14px;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xs);
+  padding: 12px 14px;
+  margin-bottom: 16px;
 }
 
-.field { display: flex; flex-direction: column; gap: 4px; }
-/* Même bug que .demo-banner (voir plus haut) : `display:flex` d'une règle AUTEUR l'emporte sur le
-   `[hidden]{display:none}` de la feuille de style NAVIGATEUR à spécificité égale, quel que soit
-   l'ordre de chargement - une règle auteur bat toujours une règle navigateur. Sans cet override,
-   `.hidden = true` en JS (dimensionField/drillField/drillField2/trendField/le champ
-   cross-filter...) n'a aucun effet visuel : le champ reste affiché. Repéré en testant la
-   visibilité réelle (Playwright isHidden()) du nouveau champ cross-filter, pas seulement l'état
-   JS - les champs plus anciens avaient probablement le même bug, jamais testé aussi précisément. */
+.field { display: flex; flex-direction: column; gap: 5px; }
+/* Même bug que .warning-banner ci-dessus, retrouvé deux fois sur des champs différents au fil des
+   features : `display:flex` d'une règle AUTEUR l'emporte *toujours* sur `[hidden]{display:none}`
+   de la feuille NAVIGATEUR, peu importe l'ordre — voir HYPOTHESES.md. Sans cet override,
+   `.hidden = true` en JS n'a aucun effet visuel : le champ reste affiché, vérifié uniquement en
+   testant `isHidden()` en Playwright, jamais en lisant l'état JS seul. */
 .field[hidden] { display: none; }
-.field label { font-size: 11px; color: var(--muted); }
-.field select {
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 5px 8px;
-  font-size: 12px;
-  min-width: 120px;
+.field label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
+.field select {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 6px 9px;
+  font-size: 12.5px;
+  font-family: inherit;
+  background: var(--surface);
+  color: var(--text);
+  min-width: 130px;
+  transition: border-color 0.12s var(--ease);
+}
+.field select:hover { border-color: var(--muted); }
 
 .field-checkbox label {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: 12px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
   color: var(--text);
   cursor: pointer;
   white-space: nowrap;
 }
-.field-checkbox input[type="checkbox"] { margin: 0; }
+.field-checkbox input[type="checkbox"] { margin: 0; accent-color: var(--accent); }
 
-.drill-levels { display: flex; flex-direction: column; gap: 4px; }
+.drill-levels { display: flex; flex-direction: column; gap: 5px; }
 .drill-levels select { margin: 0; }
 
 .tiles {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  gap: 14px;
 }
 
 .tile {
-  background: var(--card-bg);
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px;
-  min-height: 220px;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  padding: 12px 14px;
+  min-height: 224px;
   display: flex;
   flex-direction: column;
+  transition: box-shadow 0.15s var(--ease);
 }
+.tile:hover { box-shadow: var(--shadow-md); }
 
 .tile-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   font-weight: 600;
-  margin-bottom: 6px;
+  font-size: 12.5px;
+  margin-bottom: 8px;
+}
+.tile-header span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.tile-actions { display: flex; align-items: center; gap: 2px; }
+.tile-actions { display: flex; align-items: center; gap: 1px; flex-shrink: 0; }
 
 .tile-move-left, .tile-move-right, .tile-edit, .tile-remove {
   background: none;
   border: none;
   color: var(--muted);
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1;
   cursor: pointer;
-  padding: 2px 4px;
+  padding: 4px 5px;
+  border-radius: var(--radius-sm);
+  transition: background 0.12s var(--ease), color 0.12s var(--ease);
 }
+.tile-move-left:hover:not(:disabled), .tile-move-right:hover:not(:disabled),
+.tile-edit:hover, .tile-remove:hover { background: var(--surface-sunken); }
 .tile-move-left:disabled, .tile-move-right:disabled { opacity: 0.3; cursor: default; }
 .tile-move-left:hover:not(:disabled), .tile-move-right:hover:not(:disabled) { color: var(--accent); }
-.tile-remove { font-size: 16px; }
+.tile-remove { font-size: 15px; }
 .tile-edit:hover { color: var(--accent); }
-.tile-remove:hover { color: #c0392b; }
+.tile-remove:hover { color: var(--critical); }
 
 .tile-breadcrumb {
   font-size: 11px;
   color: var(--muted);
-  margin-bottom: 4px;
+  margin-bottom: 6px;
   display: flex;
   align-items: center;
   gap: 4px;
+  flex-wrap: wrap;
 }
 .breadcrumb-link {
   background: none;
   border: none;
   color: var(--accent);
-  text-decoration: underline;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
   cursor: pointer;
   padding: 0;
   font-size: inherit;
+  font-family: inherit;
+  transition: border-color 0.12s var(--ease);
 }
-.breadcrumb-sep { opacity: 0.6; }
-.breadcrumb-hint { font-style: italic; opacity: 0.8; }
+.breadcrumb-link:hover { border-bottom-color: var(--accent); }
+.breadcrumb-sep { opacity: 0.5; }
+.breadcrumb-hint { font-style: italic; opacity: 0.75; }
 
 .tile-chart { flex: 1; min-height: 180px; }
 
@@ -253,36 +323,46 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 5px;
 }
-.tile-kpi-value { font-size: 32px; font-weight: 700; color: var(--accent); }
+.tile-kpi-value { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; color: var(--text); }
 .tile-kpi-label { font-size: 11px; color: var(--muted); }
-.tile-kpi-trend { font-size: 11px; font-weight: 600; margin-top: 2px; }
-.tile-kpi-trend.trend-up { color: #1a8754; }
-.tile-kpi-trend.trend-down { color: #c0392b; }
+.tile-kpi-trend { font-size: 11.5px; font-weight: 600; margin-top: 2px; }
+.tile-kpi-trend.trend-up { color: var(--good); }
+.tile-kpi-trend.trend-down { color: var(--critical); }
 
 .empty-state {
   color: var(--muted);
   text-align: center;
-  padding: 30px 10px;
-  border: 1px dashed var(--border);
-  border-radius: 8px;
+  padding: 36px 16px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  font-size: 12.5px;
+  line-height: 1.6;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #14161c;
-    --card-bg: #1d2029;
-    --border: #2b2f3a;
-    --text: #e7e9ee;
-    --muted: #9aa2b1;
+    color-scheme: dark;
+    --page-bg: #0d0d0d;
+    --surface: #1a1a19;
+    --surface-sunken: #222220;
+    --border: rgba(255, 255, 255, 0.10);
+    --border-strong: #2c2c2a;
+    --text: #ffffff;
+    --text-secondary: #c3c2b7;
+    --muted: #898781;
+    --accent: #3987e5;
     --accent-contrast: #0b0d12;
+    --accent-wash: rgba(57, 135, 229, 0.14);
+    --accent-wash-strong: rgba(57, 135, 229, 0.22);
+    --good: #0ca30c;
+    --critical: #e66767;
+    --warning-bg: #3a2e00;
+    --warning-text: #f1d27a;
+    --warning-border: #5c4900;
   }
-  .badge-poc { background: #3a2e00; color: #f1d27a; border-color: #5c4900; }
-  .filter-chip { background: #16233f; border-color: #2a3f6b; }
-  .demo-banner { background: #3a2e00; color: #f1d27a; border-color: #5c4900; }
-  .demo-banner code { background: rgba(255, 255, 255, 0.12); }
+  .btn-primary:hover { background: #4a94ea; }
   .warning-banner { background: #3a1512; color: #f5b8b0; border-color: #6b241c; }
-  .tile-kpi-trend.trend-up { color: #3ecf8e; }
-  .tile-kpi-trend.trend-down { color: #ef6a5c; }
+  .warning-banner code { background: rgba(255, 255, 255, 0.12); }
 }

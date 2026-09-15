@@ -242,6 +242,31 @@ dans une seule instance de widget, avec ses propres tuiles internes.
   correctement dans le bon ordre à l'édition, garde-fou anti-doublon déclenche bien une alerte et
   n'enregistre pas la tuile, vider le niveau 1 retire en cascade tous les niveaux suivants et
   décoche `drillCrossFilter`.
+- **Refonte visuelle sobre/épurée** (`css/style.css`, insérée en étape intermédiaire à la demande de
+  l'utilisateur entre deux features du Tier 1) : nouveau système de tokens (encre primaire/
+  secondaire, surfaces, ombres douces, rayons cohérents) basé sur la **palette catégorielle validée
+  colorblind-safe** du skill `dataviz` de ce projet (`references/palette.md` — worst adjacent CVD
+  ΔE 9.1 clair/8.4 sombre, OKLab, cible ≥8 — vérifié via `scripts/validate_palette.js`, pas choisi
+  à l'œil), réutilisée à la fois dans le CSS (tokens `--accent` etc.) et dans `js/charts.js`
+  (`CATEGORICAL_PALETTE` : camembert coloré par part, barres en une seule teinte cohérente avec
+  l'accent puisque l'axe porte déjà l'identité des catégories — mettre une couleur par barre aurait
+  été redondant). Aucun sélecteur fonctionnel (id/classe lu par `js/*.js` ou les scripts Playwright)
+  renommé — uniquement des valeurs de style affinées, vérifié en rejouant toute la suite Playwright
+  existante après la refonte (0 régression). Nettoyage au passage des emoji décoratifs de la barre
+  de bookmarks (📌/🗑/★), remplacés par du texte simple, plus sobre. `.demo-banner` fusionnée dans
+  `.warning-banner` (son seul consommateur restant depuis le retrait du bandeau "mode démo").
+  - **[BUG RÉEL trouvé en capturant un screenshot pendant cette passe]** Sur le jeu de test de
+    charge (~2,7M par région), les libellés de l'axe Y s'affichaient tronqués (`"000"` au lieu de
+    `"2,7 M"`) : ECharts réserve une marge gauche ESTIMÉE avant de connaître la largeur réelle du
+    texte produit par un `axisLabel.formatter` personnalisé — l'estimation était trop courte, une
+    partie du texte se dessinait hors du canvas et disparaissait silencieusement (**aucune erreur
+    JS levée** — seul un screenshot regardé a permis de le voir). Corrigé par
+    `grid: { containLabel: true }`, qui force ECharts à recalculer la marge à partir du texte
+    réellement rendu. Au passage, ajout d'un format compact (`formatCompactNumber`, "2,7 M"/"150 k")
+    sur les libellés d'axe SEULEMENT (pas les cartes KPI ni les info-bulles, qui gardent la
+    précision exacte) — plus lisible, et ce qui a permis de révéler le bug en premier lieu
+    puisqu'avant lui les nombres bruts à 7 chiffres débordaient encore plus largement, juste d'une
+    façon moins visible (retour à la ligne au lieu d'un simple décalage).
 
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 

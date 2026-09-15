@@ -89,18 +89,23 @@ premier commit.
 
 ## État du projet
 
-Deux allers-retours avec un usage réel, trois vrais bugs remontés/trouvés et corrigés : un souci de
+Deux allers-retours avec un usage réel, quatre vrais bugs remontés/trouvés et corrigés : un souci de
 chargement d'ECharts sur réseau filtré (HYPOTHESES.md point 3), un `KeyError` de génération de
-données de démo dû à un schéma de table obsolète (point 9), et un bug CSS où plusieurs champs du
-formulaire de tuile (`.hidden = true` en JS) ne se masquaient en réalité jamais à l'écran — repéré
-en testant leur visibilité réelle plutôt que juste l'état JS. Depuis : édition et réorganisation de
+données de démo dû à un schéma de table obsolète (point 9), un bug CSS où plusieurs champs du
+formulaire de tuile (`.hidden = true` en JS) ne se masquaient en réalité jamais à l'écran, et des
+libellés d'axe tronqués sur de grandes valeurs (marge ECharts mal estimée) — les deux derniers
+repérés uniquement en vérifiant le rendu réel (visibilité/capture d'écran), jamais via une simple
+absence d'erreur JS. Depuis : édition et réorganisation de
 tuile, `ResizeObserver`, tri chronologique, filtres croisés cumulables, tendance KPI, vues
 sauvegardées, drill-down étendu à N niveaux (avec cross-filtering optionnel PAR TUILE à chaque
 niveau franchi), un jeu de données "test de charge" (~47 040 lignes) avec envoi par lots, une
 connexion **idempotente** aux tables générées (un clic/chargement ne renvoie les données à Grist
-que si la table n'existe pas encore), et le passage à une **connexion automatique** à cette table
+que si la table n'existe pas encore), le passage à une **connexion automatique** à cette table
 comme UNIQUE table de travail au démarrage (plus de boutons « Générer », plus de bascule
-démo/table liée — voir HYPOTHESES.md). Une [ROADMAP.md](./ROADMAP.md) priorisée (valeur x risque de
+démo/table liée — voir HYPOTHESES.md), et une **refonte visuelle sobre et épurée** (palette
+catégorielle validée colorblind-safe, ombres douces, typographie affinée) qui a aussi révélé un
+quatrième vrai bug (libellés d'axe tronqués sur de grandes valeurs, aucune erreur JS — repéré
+uniquement en regardant un screenshot). Une [ROADMAP.md](./ROADMAP.md) priorisée (valeur x risque de
 faisabilité) trace la suite vers un outil BI plus complet, avec un [TEST_PROTOCOL.md](./TEST_PROTOCOL.md)
 associé qui grandit à chaque nouvelle feature. Voir HYPOTHESES.md pour la liste des points encore à
 valider, notamment la validation en conditions réelles du round-trip réseau sur le gros volume dès

@@ -51,6 +51,11 @@ une feature "testée", vérifier qu'on s'est posé chacune de ces questions :
 - [ ] **Réel vs mock** : si le cas dépend du vrai `grist.docApi` (timing réseau, comportement Grist
   réel), le noter explicitement comme non vérifiable depuis le mock (`dev-tests/grist-stub.js`) et
   le lister dans `HYPOTHESES.md` plutôt que de le considérer "testé".
+- [ ] **Rendu visuel réel, pas juste "ça ne plante pas"** : pour tout ce qui touche à l'affichage
+  d'un graphique (nouveau type de tuile, changement de palette/format d'axe, volume de données plus
+  grand), prendre une capture d'écran Playwright et la regarder — un test qui vérifie seulement
+  l'absence d'erreur JS peut laisser passer un rendu visuellement cassé (voir [BUG RÉEL] libellés
+  d'axe tronqués ci-dessous, détecté uniquement en regardant une capture, aucune erreur JS levée).
 
 ## Catalogue exhaustif par module
 
@@ -186,6 +191,27 @@ une feature "testée", vérifier qu'on s'est posé chacune de ces questions :
 5. **`KeyError 'Annee'`** [remonté par l'utilisateur en réel] — la table de démo n'était créée QUE si son nom n'existait pas encore ; un ancien schéma sans la colonne `Annee` faisait échouer `AddRecord`. Corrigé par un versionnage du nom de table (`*_SCHEMA_VERSION`).
 6. **`.field[hidden]`** — même famille de bug que #2, retrouvé sur un NOUVEAU champ (`tile-drill-crossfilter-field`) alors que le bug #2 avait déjà été "corrigé" ailleurs — preuve que ce type de bug CSS doit être vérifié à chaque nouveau champ conditionnel, pas juste corrigé une fois.
 7. **Filtres croisés/état de drill orphelins** — `removeTile`/`updateTile` ne nettoyaient pas les filtres croisés (`toggleFilter` ou `drillCrossFilter`) posés par la tuile supprimée/éditée. Corrigé en même temps que l'ajout de `drillCrossFilter`, avant qu'un utilisateur ne le rencontre en réel.
+8. **Libellés d'axe Y tronqués sur de grandes valeurs** [BUG RÉEL trouvé en capturant un screenshot pendant la passe de design] — sur le jeu de test de charge (valeurs ~2,7M), ECharts réservait une marge gauche estimée AVANT de connaître la largeur réelle du texte produit par un `axisLabel.formatter` personnalisé (format compact) ; l'estimation était trop courte, une partie du texte se dessinait hors du canvas et disparaissait silencieusement (aucune erreur JS, juste des libellés du type "000" au lieu de "2,7 M"). Corrigé par `grid: { containLabel: true }`, qui force ECharts à recalculer la marge à partir du texte réellement rendu plutôt que d'une estimation.
+
+## Design system (`css/style.css`, passe du 2026-09-15)
+
+Pas des "tests" au sens classique (rien à automatiser côté assertions), mais une checklist de
+vérification visuelle à refaire à chaque évolution notable du CSS ou d'un nouveau type de tuile :
+
+- [x] Palette catégorielle validée colorblind-safe (skill `dataviz`, `references/palette.md`) —
+  vérifiée via `scripts/validate_palette.js` avant intégration (worst adjacent CVD ΔE 9.1 clair,
+  cible ≥8), pas choisie à l'œil. Utilisée à la fois dans `css/style.css` (tokens `--accent`, etc.)
+  et `js/charts.js` (`CATEGORICAL_PALETTE`, camembert coloré par part, barres en une seule teinte
+  cohérente avec l'accent puisque l'axe porte déjà l'identité des catégories).
+- [x] Mode clair ET sombre passés en revue par capture d'écran (pas juste `prefers-color-scheme`
+  déclaré dans le CSS sans jamais être regardé) 🌐
+- [x] Formulaire en mode édition capturé (pas seulement l'état par défaut) — vérifie que les boutons
+  "Modifier la tuile"/"Annuler" et les états actifs restent lisibles 🌐
+- [x] Aucun sélecteur fonctionnel (id/classe lu par `js/*.js` ou les scripts Playwright) renommé —
+  uniquement des valeurs de style affinées ; vérifié en rejouant toute la suite Playwright existante
+  après la refonte (0 régression) 🌐
+- [ ] Redimensionnement réel du panneau Grist avec le nouveau CSS ⬜ **[NON TESTABLE ICI]**, même
+  limite que pour `ResizeObserver` plus haut.
 
 ## Cas explicitement NON testables depuis ce sandbox (voir `HYPOTHESES.md`)
 

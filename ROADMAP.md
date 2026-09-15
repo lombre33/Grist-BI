@@ -95,6 +95,7 @@ Grist". Les avoir vraiment nécessite un service externe séparé (backend + cro
 | Feature | Valeur | Risque | Statut |
 |---|---|---|---|
 | Drill-down manuel N niveaux | Moyenne | Faible | ✅ fait (2026-09-15) |
+| **Refonte visuelle (design system sobre/épuré)** | Haute (transversale — sert toutes les features suivantes) | Faible | ✅ fait (2026-09-15) — insérée en étape intermédiaire à la demande de l'utilisateur |
 | Dashboards multi-pages | Haute | Faible | ⬜ à faire |
 | Jauge (gauge) | Moyenne | Faible | ⬜ à faire |
 | Treemap (plat) | Moyenne | Faible | ⬜ à faire |
