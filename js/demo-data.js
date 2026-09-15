@@ -19,6 +19,7 @@
     { id: 'Produit', type: 'Text' },
     { id: 'Annee', type: 'Int' },
     { id: 'Mois', type: 'Text' },
+    { id: 'Semaine', type: 'Int' },
     { id: 'Quantite', type: 'Int' },
     { id: 'Montant', type: 'Numeric' }
   ];
@@ -29,6 +30,10 @@
     'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
     'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'
   ];
+  // Simplification délibérée (pas un vrai calendrier ISO) : 4 semaines par mois, suffisant pour
+  // démontrer un 3e niveau de drill-down (Année > Mois > Semaine) sans la complexité d'un vrai
+  // découpage calendaire (nombre de semaines variable par mois, à cheval sur deux mois...).
+  const SEMAINES = [1, 2, 3, 4];
 
   // Prix de base par produit, pour que Montant = Quantite x prix (+/-10%) ait un sens, plutôt que
   // des chiffres purement aléatoires sans rapport entre les colonnes.
@@ -51,16 +56,21 @@
       for (const produit of PRODUITS) {
         for (const annee of ANNEES) {
           for (const mois of MOIS) {
-            const quantite = Math.round((3 + Math.random() * 25) * CROISSANCE_ANNUELLE[annee]);
-            const prixUnitaire = PRIX_BASE[produit] * (0.9 + Math.random() * 0.3);
-            rows.push({
-              Region: region,
-              Produit: produit,
-              Annee: annee,
-              Mois: mois,
-              Quantite: quantite,
-              Montant: Math.round(quantite * prixUnitaire)
-            });
+            for (const semaine of SEMAINES) {
+              // ~1/4 de l'ancienne plage mensuelle (3-28) par semaine, pour garder des totaux
+              // mensuels d'un ordre de grandeur comparable à avant l'ajout de ce niveau.
+              const quantite = Math.round((1 + Math.random() * 7) * CROISSANCE_ANNUELLE[annee]);
+              const prixUnitaire = PRIX_BASE[produit] * (0.9 + Math.random() * 0.3);
+              rows.push({
+                Region: region,
+                Produit: produit,
+                Annee: annee,
+                Mois: mois,
+                Semaine: semaine,
+                Quantite: quantite,
+                Montant: Math.round(quantite * prixUnitaire)
+              });
+            }
           }
         }
       }
@@ -77,9 +87,75 @@
       { id: 'demo_pie_produit', type: 'pie', dimension: 'Produit', measure: 'Montant', aggFn: 'sum', title: 'Montant par Produit' },
       { id: 'demo_kpi_montant', type: 'kpi', measure: 'Montant', aggFn: 'sum', trendDimension: 'Annee', title: 'sum(Montant)' },
       { id: 'demo_bar_mois', type: 'bar', dimension: 'Mois', measure: 'Quantite', aggFn: 'avg', title: 'Quantite par Mois (moyenne)' },
-      { id: 'demo_bar_annee', type: 'bar', dimension: 'Annee', drillDimension: 'Mois', measure: 'Montant', aggFn: 'sum', title: 'Montant par Année' }
+      {
+        id: 'demo_bar_annee', type: 'bar', dimension: 'Annee', drillDimensions: ['Mois', 'Semaine'],
+        measure: 'Montant', aggFn: 'sum', title: 'Montant par Année'
+      }
     ];
   }
 
-  return { COLUMNS, REGIONS, ANNEES, MOIS, PRODUITS, buildSampleRows, defaultTiles };
+  // --- Jeu de données "test de charge" : même principe, volume bien plus grand (voir HYPOTHESES.md
+  // pour l'objectif : mesurer où l'agrégation client et l'envoi d'actions Grist commencent à peiner).
+  // Colonnes distinctes (COLUMNS_LARGE) car "Jour" remplace "Semaine" - reprendre le même Semaine
+  // pour un si grand nombre de lignes n'aurait rien changé pour évaluer le volume, autant montrer
+  // un 3e niveau de granularité différent (Année > Mois > Jour plutôt que > Semaine).
+  const COLUMNS_LARGE = [
+    { id: 'Region', type: 'Text' },
+    { id: 'Produit', type: 'Text' },
+    { id: 'Annee', type: 'Int' },
+    { id: 'Mois', type: 'Text' },
+    { id: 'Jour', type: 'Int' },
+    { id: 'Quantite', type: 'Int' },
+    { id: 'Montant', type: 'Numeric' }
+  ];
+
+  const ANNEES_LARGE = [2020, 2021, 2022, 2023, 2024, 2025, 2026]; // 7 ans, pour un vrai volume
+  // Simplification délibérée (comme SEMAINES) : 28 jours fixes par mois, pas un vrai calendrier -
+  // suffisant pour un test de charge, inutile de gérer les mois à 30/31 jours ou février.
+  const JOURS_PAR_MOIS = 28;
+
+  function buildLargeSampleRows() {
+    const rows = [];
+    for (const region of REGIONS) {
+      for (const produit of PRODUITS) {
+        for (let anneeIndex = 0; anneeIndex < ANNEES_LARGE.length; anneeIndex++) {
+          const annee = ANNEES_LARGE[anneeIndex];
+          const croissance = Math.pow(1.06, anneeIndex); // +6 %/an composé depuis la 1re année
+          for (const mois of MOIS) {
+            for (let jour = 1; jour <= JOURS_PAR_MOIS; jour++) {
+              const quantite = Math.max(1, Math.round((0.5 + Math.random() * 3) * croissance));
+              const prixUnitaire = PRIX_BASE[produit] * (0.9 + Math.random() * 0.3);
+              rows.push({
+                Region: region,
+                Produit: produit,
+                Annee: annee,
+                Mois: mois,
+                Jour: jour,
+                Quantite: quantite,
+                Montant: Math.round(quantite * prixUnitaire)
+              });
+            }
+          }
+        }
+      }
+    }
+    return rows;
+  }
+
+  function defaultLargeTiles() {
+    return [
+      { id: 'stress_bar_region', type: 'bar', dimension: 'Region', measure: 'Montant', aggFn: 'sum', title: 'Montant par Région' },
+      { id: 'stress_pie_produit', type: 'pie', dimension: 'Produit', measure: 'Montant', aggFn: 'sum', title: 'Montant par Produit' },
+      { id: 'stress_kpi_montant', type: 'kpi', measure: 'Montant', aggFn: 'sum', trendDimension: 'Annee', title: 'sum(Montant)' },
+      {
+        id: 'stress_bar_annee', type: 'bar', dimension: 'Annee', drillDimensions: ['Mois', 'Jour'],
+        measure: 'Montant', aggFn: 'sum', title: 'Montant par Année'
+      }
+    ];
+  }
+
+  return {
+    COLUMNS, REGIONS, ANNEES, MOIS, SEMAINES, PRODUITS, buildSampleRows, defaultTiles,
+    COLUMNS_LARGE, ANNEES_LARGE, JOURS_PAR_MOIS, buildLargeSampleRows, defaultLargeTiles
+  };
 });

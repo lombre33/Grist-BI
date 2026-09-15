@@ -124,6 +124,46 @@ dans une seule instance de widget, avec ses propres tuiles internes.
   vrai rechargement de page (le mock `grist-stub.js` n'a pas de stockage hors mémoire JS — un
   `page.reload()` y perdrait tout, y compris la table de démo elle-même ; appeler `loadConfig()`
   directement teste le même chemin de code sans ce faux négatif).
+- **Drill-down à 2 niveaux au-delà de la dimension racine** (`tile.drillDimensions: [niveau1,
+  niveau2]`, ex. Année > Mois > Semaine) : `state.js:drillIns` est passé d'un simple
+  `{column,value}` à un chemin (tableau), `drillInto` empile, `drillUp(tileId, depth)` remonte à
+  une profondeur donnée (fil d'Ariane à plusieurs segments cliquables). Compat conservée avec
+  l'ancien format à 1 niveau (`tile.drillDimension`, une chaîne) via `data.js:tileDrillLevels`, pour
+  ne pas faire disparaître silencieusement le drill-down d'une tuile déjà sauvegardée. Testé sous
+  Node (empilage, remontée partielle, nettoyage) et avec Playwright (3 niveaux réels : clic niveau
+  racine → Mois, clic → Semaine, clic au niveau le plus profond → redevient un cross-filter normal
+  plutôt que d'essayer un 4e niveau inexistant ; remontée partielle via un segment intermédiaire du
+  fil d'Ariane).
+- **Jeu de données "test de charge"** (`js/demo-data.js:buildLargeSampleRows`,
+  `js/grist-api.js:generateStressData` → renommé `loadOrCreateStressData`, voir plus bas) : ~47 040
+  lignes (4 régions × 5 produits × 7 années × 12 mois × 28 jours), table séparée
+  (`BI_StressTest_v1`) pour ne jamais perturber la démo rapide. Objectif : répondre concrètement au
+  point 2 ci-dessous plutôt que de le laisser en suspens indéfiniment.
+  - **Envoi par lots** (`grist-api.js:applyActionsInChunks`, 2000 actions/appel) plutôt qu'un seul
+    `applyUserActions()` géant avec ~47 000 actions : un appel unique aussi gros est un pari risqué
+    (timeout, limite de payload côté Grist — aucune des deux vérifiable depuis ce sandbox), et le
+    découpage donne une progression réelle affichée sur le bouton plutôt qu'une attente opaque.
+    Réutilisé aussi pour la démo rapide (chunk assez grand pour que son faible volume tienne en un
+    seul lot — aucun changement de comportement observable pour elle, juste un chemin de code commun).
+  - **Résultats de perf mesurés** (Node + Chromium headless, PAS un vrai document Grist) : génération
+    des 47 040 lignes en ~30ms, 3 agrégations/filtrages combinés en ~30ms (`dev-tests/test-data.js`),
+    rendu complet des 4 tuiles en 35-60ms dans le navigateur (`#render-time`, ajouté au bandeau pour
+    que ce genre de mesure reste visible sans DevTools). **L'agrégation côté client n'est donc
+    manifestement pas le goulot à ce volume** — reste à savoir si l'envoi réseau réel vers Grist (le
+    round-trip `applyUserActions`, jamais mesuré ici) pose problème, lui.
+- **Connexion idempotente aux tables de démo/test de charge** (`grist-api.js:loadOrCreateTable`,
+  utilisé par `loadOrCreateDemoData`/`loadOrCreateStressData` — renommées depuis
+  `generateDemoData`/`generateStressData`) : un clic ne (re)crée les lignes QUE si la table n'existe
+  pas encore ; si elle existe déjà, se contente de la relire. Change délibérément le comportement
+  précédent ("régénérer garde les tuiles, redonne des valeurs neuves") suite à un retour direct :
+  renvoyer ~47 000 lignes à Grist à chaque clic de test est un gâchis, surtout si le round-trip
+  réseau réel s'avère lent (point juste au-dessus). Si le jeu de données doit changer, le mécanisme
+  reste un bump de `DEMO_TABLE_SCHEMA_VERSION`/`STRESS_TABLE_SCHEMA_VERSION` (nouvelle table
+  fraîche), pas une régénération en place — plus d'option de régénération manuelle dans l'UI.
+  Testé avec Playwright : première connexion crée la table (progression affichée, valeurs
+  aléatoires) ; en espionnant `applyUserActions`, une deuxième connexion à la table déjà créée
+  n'envoie **aucune** action `AddRecord`/`RemoveRecord` et renvoie des valeurs **identiques** (pas
+  régénérées), la rendant nettement plus rapide qu'une création initiale.
 
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
@@ -134,12 +174,16 @@ dans une seule instance de widget, avec ses propres tuiles internes.
   barres/camembert, pas seulement sur les cartes KPI) : non tentée.
 - **Q&A langage naturel / IA** : non tenté, hors de portée d'un POC.
 - **Moteur d'agrégation performant type DuckDB-WASM** : l'agrégation est un simple `Array.reduce`
-  côté client (voir `js/data.js`). Suffisant pour 480 lignes (voir point 2 ci-dessous), pas
-  benchmarké au-delà — piste sérieuse si la perf devient un problème réel sur un vrai document.
+  côté client (voir `js/data.js`). Testé jusqu'à 47 040 lignes en local (génération + 3
+  agrégations/filtrages combinés en ~30ms, voir plus haut) — **pas de signe que ce soit nécessaire
+  à ce volume**. Reste une piste si le round-trip réseau réel vers Grist (jamais mesuré) s'avère
+  être le vrai goulot, pas l'agrégation elle-même.
 - **Redimensionnement des tuiles** (largeur/hauteur individuelle) : grille CSS statique
   (`auto-fill`), seul l'ORDRE des tuiles est modifiable (`store.moveTile`, voir plus haut).
-- **Drill-down à plus d'un niveau** (hiérarchie arbitraire façon Année > Trimestre > Mois > Jour) :
-  volontairement limité à un seul niveau (`tile.drillDimension`), voir plus haut.
+- **Drill-down à plus de 2 niveaux** (hiérarchie arbitraire façon Année > Trimestre > Mois > Jour >
+  Heure) : le mécanisme est maintenant générique (`tile.drillDimensions[]`, voir plus haut), mais
+  l'UI de configuration de tuile n'expose que 2 champs (niveau 1/niveau 2) et le jeu de démo n'en
+  démontre pas plus — extension possible sans nouvelle architecture si le besoin se présente.
 - **Bookmarks partagés entre tuiles/pages, navigation multi-pages** : les vues sauvegardées
   (voir plus haut) sont un mécanisme volontairement simple (filtres + drill-down d'UN dashboard),
   pas un système de navigation entre plusieurs pages/dashboards.
@@ -150,10 +194,17 @@ dans une seule instance de widget, avec ses propres tuiles internes.
    fois au chargement. Le vrai widget doit être testé avec des mises à jour live de la table liée
    (édition, filtre Grist appliqué en amont, changement de sélection) pour confirmer que
    `onRecords` se redéclenche comme attendu et que le dashboard se met à jour sans état incohérent.
-2. **Volume de données réel** : à partir de combien de lignes l'agrégation client devient-elle
-   perceptible ? Le jeu de démo est passé de 120 à 480 lignes sans souci apparent (agrégation
-   toujours instantanée en local), mais reste un volume modeste — pas de vraie réponse tant que ce
-   n'est pas testé sur un document avec un volume représentatif de l'usage réel visé.
+2. **[PARTIELLEMENT RÉPONDU en local, pas encore en réel] Volume de données réel** : à partir de
+   combien de lignes l'agrégation client devient-elle perceptible ? Réponse empirique obtenue via le
+   jeu de données "test de charge" (~47 040 lignes, voir plus haut) : génération + agrégation en
+   ~30ms côté Node, rendu des 4 tuiles en 35-60ms dans Chromium headless — **l'agrégation
+   `Array.reduce` côté client n'est manifestement pas le goulot à ce volume**, en tout cas pas dans
+   ce sandbox. Ce que ça ne répond PAS : (a) le round-trip réseau réel de `applyUserActions` pour
+   envoyer ~47 000 lignes vers un vrai `grist.docApi` (le mock n'a aucune latence réseau) — c'est
+   précisément ce que l'envoi par lots (`ACTION_CHUNK_SIZE`, voir plus haut) doit rendre supportable
+   si c'est lent, mais ce n'est vérifiable qu'en conditions réelles ; (b) la performance sur un volume
+   encore plus grand (centaines de milliers de lignes) ou sur du matériel utilisateur plus modeste
+   que ce sandbox de dev.
 3. **[RÉSOLU] Chargement d'ECharts depuis un CDN externe** : risque flagué ici avant tout test réel
    (réseau de ce sandbox de dev bloquant les CDN, testé uniquement en local) — confirmé chez
    l'utilisateur du widget, avec la cause exacte cette fois : la console navigateur montrait
@@ -191,15 +242,24 @@ dans une seule instance de widget, avec ses propres tuiles internes.
 7. **[CONFIRMÉ EN RÉEL] Types de colonnes `Numeric`/`Int` dans `AddTable`** : `js/demo-data.js`
    déclare `Quantite` en `Int` et `Montant` en `Numeric`. Confirmé fonctionnel — la table de démo
    créée chez l'utilisateur montre ces deux colonnes correctement typées avec des valeurs numériques.
-8. **[CONFIRMÉ EN RÉEL] ~240 actions (`AddRecord`/`RemoveRecord`) en un seul `applyUserActions()`**
-   lors d'une régénération de données de démo (480 lignes désormais, donc ~960 actions au pire cas
-   sur une régénération) : confirmé fonctionnel sur 240, à reconfirmer sur ce nouveau volume — pas
-   de retour utilisateur négatif dessus à ce stade.
-9. **Table de démo suffixée par un numéro de schéma** (`BI_Demo_Ventes_v2`) : corrige le bug KeyError
-   remonté (voir plus haut), mais laisse une table `BI_Demo_Ventes` orpheline dans le document de
-   l'utilisateur (ancien schéma, plus jamais utilisée). Pas grave en soi (juste une table à
-   supprimer à la main s'il le souhaite), mais à surveiller si le schéma doit encore évoluer :
-   chaque bump laisse une table de plus derrière lui.
+8. **[CONFIRMÉ EN RÉEL, sur un volume désormais dépassé] ~240 actions (`AddRecord`/`RemoveRecord`)
+   en un seul `applyUserActions()`** : confirmé fonctionnel à l'époque du jeu de démo à 120 lignes.
+   Le jeu de démo actuel (1920 lignes) et le jeu de charge (~47 040 lignes) passent maintenant par
+   l'envoi en lots (`applyActionsInChunks`, voir point 10 ci-dessous) plutôt qu'un unique appel géant
+   — cette confirmation initiale ne couvre donc plus le chemin de code réellement utilisé aujourd'hui.
+9. **Table de démo suffixée par un numéro de schéma** (`BI_Demo_Ventes_v3`) : corrige le bug KeyError
+   remonté (voir plus haut), mais laisse une table `BI_Demo_Ventes`/`BI_Demo_Ventes_v2` orpheline
+   dans le document de l'utilisateur (ancien schéma, plus jamais utilisée). Pas grave en soi (juste
+   une table à supprimer à la main s'il le souhaite), mais à surveiller si le schéma doit encore
+   évoluer : chaque bump laisse une table de plus derrière lui. S'applique désormais aussi à
+   `BI_StressTest_v1`.
+10. **Envoi par lots et connexion idempotente, jamais exécutés contre un vrai `grist.docApi`** :
+    `applyActionsInChunks` (2000 actions/appel) et `loadOrCreateTable` (ne renvoie les ~47 000 lignes
+    du jeu de charge qu'une seule fois, se contente de relire la table ensuite — voir plus haut) ne
+    sont validés que contre le mock en mémoire, qui n'a ni latence réseau ni limite de payload. À
+    vérifier en réel : le découpage en lots de 2000 suffit-il à éviter un timeout/une erreur de
+    payload sur la création initiale des ~47 000 lignes ? La reconnexion (relecture seule, sans
+    envoi) est-elle bien quasi instantanée sur un vrai document, comme observé dans le mock ?
 
 ## Prochaines étapes suggérées
 
@@ -207,10 +267,17 @@ dans une seule instance de widget, avec ses propres tuiles internes.
    localement a résolu le premier problème remonté (point 3), confirmé fonctionnel par l'utilisateur.
 2. ~~Générer les données de démo~~ — fait, a remonté un vrai bug (point 9, KeyError sur schéma
    obsolète) corrigé et confirmé recorrigé côté utilisateur.
-3. Tester en conditions réelles : filtres simultanés, tendance KPI, drill-down, réorganisation des
-   tuiles, et **surtout** les vues sauvegardées (nouveau format de `ConfigJSON` jamais exécuté
-   contre un vrai document — point 4) — tout testé ici via Playwright contre le mock uniquement.
+3. Tester en conditions réelles : filtres simultanés, tendance KPI, drill-down (y compris le
+   2e niveau, Année > Mois > Semaine), réorganisation des tuiles, et **surtout** les vues
+   sauvegardées (nouveau format de `ConfigJSON` jamais exécuté contre un vrai document — point 4) —
+   tout testé ici via Playwright contre le mock uniquement.
 4. Vérifier les points 1 et 6 ci-dessus (mise à jour live de la table liée, redimensionnement du
    panneau Grist).
-5. Si la perf devient un problème réel (point 2) : spike DuckDB-WASM avant d'aller plus loin sur
-   les mesures.
+5. **Nouveau, priorité haute** : générer le jeu de données "test de charge" (~47 040 lignes) dans un
+   vrai document Grist, pour valider en conditions réelles ce que le mock ne peut pas prouver (point
+   10) — le découpage en lots tient-il la route sur le réseau réel, et la reconnexion sans renvoi de
+   données reste-t-elle instantanée. C'est la seule façon de vraiment trancher le point 2
+   (l'agrégation elle-même est déjà innocentée en local).
+6. Si le round-trip réseau réel s'avère être le vrai goulot (et pas l'agrégation, voir point 2) :
+   reconsidérer DuckDB-WASM n'aiderait pas dans ce cas précis (c'est un problème d'I/O, pas de calcul)
+   — plutôt regarder du côté d'une pagination/chargement progressif des lignes.

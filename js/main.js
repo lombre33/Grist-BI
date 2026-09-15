@@ -6,7 +6,7 @@
   'use strict';
   const GristBI = window.GristBI;
   const store = (GristBI.store = GristBI.state.createStore());
-  const { escapeHtml } = GristBI.data;
+  const { escapeHtml, tileDrillLevels } = GristBI.data;
 
   let currentTableId = null;
   let saveTimer = null;
@@ -24,7 +24,9 @@
   const dimensionField = document.getElementById('tile-dimension-field');
   const dimensionSelect = document.getElementById('tile-dimension');
   const drillField = document.getElementById('tile-drill-field');
-  const drillDimensionSelect = document.getElementById('tile-drill-dimension');
+  const drillDimensionSelect1 = document.getElementById('tile-drill-dimension-1');
+  const drillField2 = document.getElementById('tile-drill-field-2');
+  const drillDimensionSelect2 = document.getElementById('tile-drill-dimension-2');
   const measureSelect = document.getElementById('tile-measure');
   const aggSelect = document.getElementById('tile-agg');
   const trendField = document.getElementById('tile-trend-field');
@@ -38,9 +40,11 @@
   const deleteBookmarkBtn = document.getElementById('delete-bookmark');
   const saveBookmarkBtn = document.getElementById('save-bookmark');
   const generateDemoBtn = document.getElementById('generate-demo');
+  const generateStressBtn = document.getElementById('generate-stress');
   const demoBanner = document.getElementById('demo-banner');
   const demoBannerTable = document.getElementById('demo-banner-table');
   const backToLinkedBtn = document.getElementById('back-to-linked');
+  const renderTimeEl = document.getElementById('render-time');
   const echartsWarning = document.getElementById('echarts-warning');
 
   // Si le <script> ECharts (js/vendor/echarts/, voir index.html) n'a pas pu se charger, les tuiles
@@ -69,7 +73,8 @@
     const cols = availableColumns(rows);
     fillSelect(dimensionSelect, cols);
     fillSelect(measureSelect, cols);
-    fillSelect(drillDimensionSelect, cols, { blankLabel: '(aucun)' });
+    fillSelect(drillDimensionSelect1, cols, { blankLabel: '(aucun)' });
+    fillSelect(drillDimensionSelect2, cols, { blankLabel: '(aucun)' });
     fillSelect(trendDimensionSelect, cols, { blankLabel: '(aucune)' });
   }
 
@@ -108,10 +113,18 @@
     });
 
     emptyState.hidden = state.tiles.length > 0;
+    // Temps de rendu affiché dans le bandeau : utile pour repérer à l'œil un ralentissement en
+    // testant un gros volume de données (voir le bouton "test de charge"), sans devoir ouvrir les
+    // DevTools à chaque fois.
+    const renderStart = performance.now();
     for (const tile of state.tiles) GristBI.charts.renderTile(tile, state, tilesContainer);
     // Le nombre de tuiles change la largeur de chaque colonne de la grille CSS ; ECharts ne
     // réagit pas seul à un redimensionnement de son conteneur (pas d'observer par défaut).
     GristBI.charts.resizeAll();
+    if (renderTimeEl) {
+      const ms = Math.round(performance.now() - renderStart);
+      renderTimeEl.textContent = state.tiles.length ? `rendu : ${ms} ms` : '';
+    }
 
     renderFilterBadges(state.activeFilters);
     renderBookmarks(state.bookmarks);
@@ -188,18 +201,22 @@
   function updateFormFieldsForType() {
     const isKpi = tileTypeSelect.value === 'kpi';
     // Une carte KPI n'a pas de dimension de regroupement ni de drill-down, juste un agrégat sur
-    // toute la sélection (éventuellement comparé à une période via "Tendance vs").
+    // toute la sélection (éventuellement comparé à une période via "Tendance vs"). Le niveau 2 de
+    // drill-down n'a de sens que si un niveau 1 est choisi (affichage progressif).
     dimensionField.hidden = isKpi;
     drillField.hidden = isKpi;
+    drillField2.hidden = isKpi || !drillDimensionSelect1.value;
     trendField.hidden = !isKpi;
   }
 
   function startEditTile(tile) {
     editingTileId = tile.id;
     tileTypeSelect.value = tile.type;
-    updateFormFieldsForType();
     if (tile.dimension) dimensionSelect.value = tile.dimension;
-    drillDimensionSelect.value = tile.drillDimension || '';
+    const levels = tileDrillLevels(tile);
+    drillDimensionSelect1.value = levels[0] || '';
+    drillDimensionSelect2.value = levels[1] || '';
+    updateFormFieldsForType();
     measureSelect.value = tile.measure;
     aggSelect.value = tile.aggFn;
     trendDimensionSelect.value = tile.trendDimension || '';
@@ -215,6 +232,10 @@
   }
 
   tileTypeSelect.addEventListener('change', updateFormFieldsForType);
+  drillDimensionSelect1.addEventListener('change', () => {
+    if (!drillDimensionSelect1.value) drillDimensionSelect2.value = ''; // niveau 1 vidé -> niveau 2 n'a plus de sens
+    updateFormFieldsForType();
+  });
 
   addTileForm.addEventListener('submit', (evt) => {
     evt.preventDefault();
@@ -225,9 +246,11 @@
     if (!measure || (type !== 'kpi' && !dimension)) return;
     const title = type === 'kpi' ? `${aggFn}(${measure})` : `${measure} par ${dimension}`;
     const tileData = { type, dimension, measure, aggFn, title };
-    // drillDimension/trendDimension seulement quand pertinents pour le type, pour ne pas laisser
+    // drillDimensions/trendDimension seulement quand pertinents pour le type, pour ne pas laisser
     // une valeur fantôme d'un type précédent si l'utilisateur bascule le type en cours d'édition.
-    if (type !== 'kpi' && drillDimensionSelect.value) tileData.drillDimension = drillDimensionSelect.value;
+    if (type !== 'kpi' && drillDimensionSelect1.value) {
+      tileData.drillDimensions = [drillDimensionSelect1.value, drillDimensionSelect2.value].filter(Boolean);
+    }
     if (type === 'kpi' && trendDimensionSelect.value) tileData.trendDimension = trendDimensionSelect.value;
     if (editingTileId) {
       store.updateTile(editingTileId, tileData);
@@ -317,21 +340,38 @@
     if (show) demoBannerTable.textContent = currentTableId;
   }
 
-  generateDemoBtn.addEventListener('click', async () => {
-    generateDemoBtn.disabled = true;
-    const originalLabel = generateDemoBtn.textContent;
-    generateDemoBtn.textContent = 'Génération…';
-    try {
-      const { tableId, rows } = await GristBI.api.generateDemoData();
-      await switchTable(tableId, rows, { isDemo: true, seedTiles: GristBI.demoData.defaultTiles });
-    } catch (e) {
-      console.error('[GristBI] échec de génération des données de démo', e);
-      alert('Échec de la génération des données de démo : ' + e.message);
-    } finally {
-      generateDemoBtn.disabled = false;
-      generateDemoBtn.textContent = originalLabel;
-    }
-  });
+  // Factorisé entre le bouton de démo "rapide" et celui de test de charge : même cycle
+  // désactivation/progression/réactivation, seule la fonction d'API et le jeu de tuiles par défaut
+  // changent. Idempotent côté grist-api.js (loadOrCreateDemoData/loadOrCreateStressData) : si la
+  // table existe déjà, on se contente de la relire (rapide, `onProgress` jamais appelé) plutôt que
+  // de renvoyer tout le volume à Grist à chaque clic - `onProgress(phase, sent, total)` n'alimente
+  // le texte du bouton que lors d'une VRAIE première création.
+  function wireGenerateButton(button, loadOrCreateFn, seedTilesFn, errorContext) {
+    button.addEventListener('click', async () => {
+      button.disabled = true;
+      const originalLabel = button.textContent;
+      const onProgress = (phase, sent, total) => {
+        const pct = Math.round((sent / total) * 100);
+        button.textContent = `Création… ${pct}% (${sent.toLocaleString('fr-FR')}/${total.toLocaleString('fr-FR')})`;
+      };
+      button.textContent = 'Connexion…';
+      try {
+        const { tableId, rows, created } = await loadOrCreateFn(onProgress);
+        if (created) console.log(`[GristBI] ${tableId} créée (${rows.length} lignes).`);
+        else console.log(`[GristBI] ${tableId} déjà présente, réutilisée telle quelle (${rows.length} lignes).`);
+        await switchTable(tableId, rows, { isDemo: true, seedTiles: seedTilesFn });
+      } catch (e) {
+        console.error(`[GristBI] échec de ${errorContext}`, e);
+        alert(`Échec de ${errorContext} : ${e.message}`);
+      } finally {
+        button.disabled = false;
+        button.textContent = originalLabel;
+      }
+    });
+  }
+
+  wireGenerateButton(generateDemoBtn, GristBI.api.loadOrCreateDemoData, GristBI.demoData.defaultTiles, 'la connexion aux données de démo');
+  wireGenerateButton(generateStressBtn, GristBI.api.loadOrCreateStressData, GristBI.demoData.defaultLargeTiles, 'la connexion au jeu de données de test de charge');
 
   backToLinkedBtn.addEventListener('click', () => {
     if (linkedTableId && linkedRows) switchTable(linkedTableId, linkedRows, { isDemo: false });

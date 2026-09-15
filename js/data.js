@@ -98,5 +98,18 @@
     }[c]));
   }
 
-  return { tableToRows, applyFilters, sameValue, groupByAggregate, aggregateSingle, computeTrend, escapeHtml, AGGREGATORS };
+  // Niveaux de drill-down d'une tuile, au-delà de sa dimension racine (`tile.dimension`) : jusqu'à
+  // 2 niveaux supplémentaires (`tile.drillDimensions`). Compatible avec l'ancien format à un seul
+  // niveau (`tile.drillDimension`, une chaîne) pour ne pas faire disparaître silencieusement le
+  // drill-down d'une tuile déjà sauvegardée par une version antérieure du widget.
+  function tileDrillLevels(tile) {
+    if (Array.isArray(tile.drillDimensions) && tile.drillDimensions.length) return tile.drillDimensions;
+    if (tile.drillDimension) return [tile.drillDimension];
+    return [];
+  }
+
+  return {
+    tableToRows, applyFilters, sameValue, groupByAggregate, aggregateSingle, computeTrend,
+    escapeHtml, tileDrillLevels, AGGREGATORS
+  };
 });

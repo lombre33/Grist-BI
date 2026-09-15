@@ -1,18 +1,23 @@
 /*
  * Rendu des tuiles (bar/pie/kpi) avec ECharts : filtres croisés multiples, tendance KPI, et
- * drill-down (un niveau, tile.drillDimension) avec fil d'Ariane. Dépend du global `echarts`
- * (js/vendor/echarts/, voir index.html) et de GristBI.data/GristBI.store.
+ * drill-down multi-niveaux (jusqu'à 2 niveaux au-delà de la dimension racine, voir
+ * GristBI.data.tileDrillLevels) avec fil d'Ariane. Dépend du global `echarts` (js/vendor/echarts/,
+ * voir index.html) et de GristBI.data/GristBI.store.
  */
 (function (global) {
   const GristBI = global.GristBI || (global.GristBI = {});
-  const { groupByAggregate, applyFilters, sameValue, aggregateSingle, computeTrend, escapeHtml } = GristBI.data;
+  const {
+    groupByAggregate, applyFilters, sameValue, aggregateSingle, computeTrend, escapeHtml, tileDrillLevels
+  } = GristBI.data;
 
   const chartInstances = new Map();
 
-  // Dimension actuellement affichée par une tuile bar/pie : celle de base, ou son
-  // `drillDimension` si la tuile a été "drillée" (voir renderTile/state.js:drillInto).
-  function currentDimension(tile, drillIn) {
-    return drillIn ? tile.drillDimension : tile.dimension;
+  // Dimension actuellement affichée par une tuile bar/pie : sa dimension racine si `drillPath` est
+  // vide, sinon le niveau correspondant à la profondeur atteinte (voir state.js:drillInto/drillUp).
+  function currentDimension(tile, drillPath) {
+    if (!drillPath || !drillPath.length) return tile.dimension;
+    const levels = tileDrillLevels(tile);
+    return levels[drillPath.length - 1] || tile.dimension;
   }
 
   function renderTile(tile, state, container) {
@@ -20,13 +25,13 @@
     // cliquable sur tous ses segments) ; elle reçoit quand même les filtres posés par d'AUTRES
     // tuiles. Plusieurs filtres simultanés (sur des colonnes différentes) s'appliquent tous en ET.
     const filtersFromOtherTiles = state.activeFilters.filter((f) => f.sourceTileId !== tile.id);
-    const drillIn = state.drillIns && state.drillIns[tile.id];
-    const rowsForTile = applyFilters(state.rows, drillIn ? filtersFromOtherTiles.concat([drillIn]) : filtersFromOtherTiles);
+    const drillPath = (state.drillIns && state.drillIns[tile.id]) || [];
+    const rowsForTile = applyFilters(state.rows, filtersFromOtherTiles.concat(drillPath));
 
     if (tile.type === 'kpi') {
       renderKpi(tile, rowsForTile, container);
     } else {
-      renderChart(tile, rowsForTile, state, container, drillIn);
+      renderChart(tile, rowsForTile, state, container, drillPath);
     }
   }
 
@@ -48,10 +53,10 @@
     trendEl.textContent = `${isUp ? '▲' : '▼'} ${Math.abs(trend.deltaPct).toFixed(1)}% vs ${trend.previousKey}`;
   }
 
-  function renderChart(tile, rows, state, container, drillIn) {
+  function renderChart(tile, rows, state, container, drillPath) {
     const el = container.querySelector(`[data-tile-id="${tile.id}"] .tile-chart`);
     if (!el) return;
-    renderBreadcrumb(tile, drillIn, container);
+    renderBreadcrumb(tile, drillPath, container);
     if (typeof echarts === 'undefined') {
       // Pas d'erreur JS ici : sans ce message, la tuile resterait juste vide sans indice (voir le
       // bandeau #echarts-warning dans main.js pour le diagnostic complet).
@@ -59,13 +64,13 @@
       return;
     }
 
-    const dimension = currentDimension(tile, drillIn);
+    const dimension = currentDimension(tile, drillPath);
 
     let instance = chartInstances.get(tile.id);
     if (!instance || instance.isDisposed()) {
       instance = echarts.init(el);
       chartInstances.set(tile.id, instance);
-      // Ne PAS capturer `tile`/`dimension`/`drillIn` du rendu courant dans cette closure : elle
+      // Ne PAS capturer `tile`/`dimension`/`drillPath` du rendu courant dans cette closure : elle
       // n'est créée qu'une fois (instance mise en cache), donc resterait périmée après une édition
       // de tuile (cf. HYPOTHESES.md) ou un drill-down. On relit l'état vivant à chaque clic à la
       // place, en ne fixant que l'id de la tuile (stable, lui, tout au long de sa vie).
@@ -73,9 +78,10 @@
         const liveState = GristBI.store.getState();
         const currentTile = liveState.tiles.find((t) => t.id === tile.id);
         if (!currentTile) return; // tuile supprimée entre-temps
-        const liveDrillIn = liveState.drillIns && liveState.drillIns[currentTile.id];
-        const dim = currentDimension(currentTile, liveDrillIn);
-        if (!liveDrillIn && currentTile.drillDimension) {
+        const livePath = (liveState.drillIns && liveState.drillIns[currentTile.id]) || [];
+        const dim = currentDimension(currentTile, livePath);
+        const levels = tileDrillLevels(currentTile);
+        if (livePath.length < levels.length) {
           GristBI.store.drillInto(currentTile.id, dim, params.name);
         } else {
           GristBI.store.toggleFilter(dim, params.name, currentTile.id);
@@ -112,23 +118,33 @@
     instance.setOption(option, true);
   }
 
-  function renderBreadcrumb(tile, drillIn, container) {
+  // Fil d'Ariane : la dimension racine (cliquable dès qu'on a drillé, pour tout remonter) puis un
+  // segment par niveau franchi (chacun cliquable pour remonter jusqu'à CE niveau, sauf le dernier).
+  function renderBreadcrumb(tile, drillPath, container) {
     const el = container.querySelector(`[data-tile-id="${tile.id}"] .tile-breadcrumb`);
     if (!el) return;
-    if (!tile.drillDimension) {
+    const levels = tileDrillLevels(tile);
+    if (!levels.length) {
       el.hidden = true;
       return;
     }
     el.hidden = false;
-    if (!drillIn) {
+    if (!drillPath.length) {
       el.innerHTML = `<span>${escapeHtml(tile.dimension)}</span>
-        <span class="breadcrumb-hint">(cliquer pour détailler par ${escapeHtml(tile.drillDimension)})</span>`;
+        <span class="breadcrumb-hint">(cliquer pour détailler par ${escapeHtml(levels[0])})</span>`;
       return;
     }
-    el.innerHTML = `<button type="button" class="breadcrumb-link">${escapeHtml(tile.dimension)}</button>
-      <span class="breadcrumb-sep">▸</span>
-      <span>${escapeHtml(String(drillIn.value))} · ${escapeHtml(tile.drillDimension)}</span>`;
-    el.querySelector('.breadcrumb-link').addEventListener('click', () => GristBI.store.drillUp(tile.id));
+    const rootCrumb = `<button type="button" class="breadcrumb-link" data-depth="0">${escapeHtml(tile.dimension)}</button>`;
+    const pathCrumbs = drillPath.map((step, i) => {
+      const depth = i + 1;
+      const label = `${escapeHtml(String(step.value))} · ${escapeHtml(levels[i])}`;
+      return depth === drillPath.length ? `<span>${label}</span>`
+        : `<button type="button" class="breadcrumb-link" data-depth="${depth}">${label}</button>`;
+    });
+    el.innerHTML = [rootCrumb].concat(pathCrumbs).join(' <span class="breadcrumb-sep">▸</span> ');
+    el.querySelectorAll('.breadcrumb-link').forEach((btn) => {
+      btn.addEventListener('click', () => GristBI.store.drillUp(tile.id, Number(btn.dataset.depth)));
+    });
   }
 
   function formatNumber(n) {

@@ -28,20 +28,30 @@ laisserait sinon les tuiles graphiques vides sans erreur explicite.
   colonne différente cumule (ET) ; recliquer ou fermer un badge retire juste ce filtre-là.
 - **Tendance sur les cartes KPI** : une tuile KPI peut comparer sa valeur à la période précédente
   (ex. Année) — delta en %, flèche verte/rouge.
-- **Drill-down** : une tuile barres/camembert peut déclarer une sous-dimension (ex. Année → Mois) ;
-  cliquer un segment au niveau racine détaille cette tuile-là, avec un fil d'Ariane pour remonter.
+- **Drill-down à 2 niveaux** : une tuile barres/camembert peut déclarer jusqu'à 2 sous-dimensions
+  (ex. Année → Mois → Semaine) ; cliquer un segment détaille progressivement cette tuile-là, avec un
+  fil d'Ariane cliquable à plusieurs segments pour remonter à un niveau donné. Au niveau le plus
+  profond, cliquer redevient un filtre croisé normal plutôt que de tenter un niveau supplémentaire.
 - **Vues sauvegardées (bookmarks)** : « ★ Sauvegarder la vue actuelle » capture les filtres croisés
   et l'état de drill-down courants sous un nom ; les retrouver dans le menu déroulant les réapplique
   en un clic. Ne capture pas les tuiles elles-mêmes (déjà persistées à part).
 - Persistance de la configuration du dashboard (tuiles + vues sauvegardées) dans le document Grist
   (par table liée), donc conservée entre deux ouvertures du widget.
-- **Génération de données de démo** : bouton « 🎲 Générer des données de démo » — crée (ou
-  régénère) une table avec 480 lignes de données de vente cohérentes (Région × Produit × Année ×
-  Mois, montants = quantité × prix unitaire du produit, +12 % de croissance simulée en 2026) et 5
-  tuiles pré-configurées (dont une avec drill-down et une avec tendance), pour tester le dashboard
-  sans avoir à préparer une table soi-même. N'affecte jamais la table liée au widget dans la page.
-  Un bandeau « Revenir à la table liée » permet de repasser sur les vraies données à tout moment ;
-  régénérer ne perd pas les tuiles déjà construites, seulement les valeurs.
+- **Données de démo** : bouton « 🎲 Données de démo » — se **connecte** à une table de 1920 lignes
+  de données de vente cohérentes (Région × Produit × Année × Mois × Semaine, montants = quantité ×
+  prix unitaire du produit, croissance simulée en 2026) avec 5 tuiles pré-configurées (dont une avec
+  drill-down à 2 niveaux et une avec tendance). Si la table n'existe pas encore dans le document, le
+  bouton la crée et l'envoie à Grist (avec une barre de progression) ; si elle existe déjà, il se
+  contente de la relire — **aucune donnée n'est renvoyée à Grist sur un clic ultérieur**. N'affecte
+  jamais la table liée au widget dans la page. Un bandeau « Revenir à la table liée » permet de
+  repasser sur les vraies données à tout moment.
+- **Jeu de données "test de charge"** : bouton « 🔥 Gros jeu de données (test de charge)» — même
+  principe de connexion idempotente que ci-dessus, mais avec ~47 040 lignes (4 régions × 5 produits ×
+  7 années × 12 mois × 28 jours) dans une table séparée, pour tester les limites d'agrégation et
+  d'envoi vers Grist sans jamais impacter le jeu de démo rapide. L'envoi initial se fait par lots de
+  2000 actions plutôt qu'en un seul appel géant. Mesures locales : génération + agrégation en ~30ms,
+  rendu des tuiles en 35-60ms (affiché dans le bandeau, `#render-time`) — voir HYPOTHESES.md pour le
+  détail et ce qui reste à confirmer en conditions réelles (round-trip réseau vers un vrai document).
 
 ## Installation dans Grist
 
@@ -51,8 +61,8 @@ laisserait sinon les tuiles graphiques vides sans erreur explicite.
    une table (n'importe laquelle, même vide) est nécessaire pour l'ajout du widget, mais **pas**
    pour tester les fonctionnalités : cliquer sur « Générer des données de démo » suffit.
 3. Accepter la demande d'accès du widget au chargement (voir *Sécurité et permissions* ci-dessous).
-4. Cliquer sur « 🎲 Générer des données de démo » pour un dashboard fonctionnel immédiatement, ou
-   ajouter des tuiles à la main via le formulaire en haut du widget.
+4. Cliquer sur « 🎲 Données de démo » pour un dashboard fonctionnel immédiatement, ou ajouter des
+   tuiles à la main via le formulaire en haut du widget.
 
 ## Sécurité et permissions
 
@@ -76,9 +86,13 @@ premier commit.
 Deux allers-retours avec un usage réel, deux vrais bugs remontés et corrigés : un souci de
 chargement d'ECharts sur réseau filtré (HYPOTHESES.md point 3), puis un `KeyError` de génération de
 données de démo dû à un schéma de table obsolète (point 9). Depuis : édition et réorganisation de
-tuile, `ResizeObserver`, tri chronologique, jeu de données enrichi (480 lignes, 2 ans), filtres
-croisés cumulables, tendance KPI, drill-down, vues sauvegardées. Voir HYPOTHESES.md pour la liste
-des points encore à valider.
+tuile, `ResizeObserver`, tri chronologique, filtres croisés cumulables, tendance KPI, vues
+sauvegardées, drill-down étendu à 2 niveaux, jeu de données de démo enrichi (1920 lignes, Semaine),
+un jeu de données "test de charge" séparé (~47 040 lignes) avec envoi par lots, et une connexion
+**idempotente** aux tables de démo/test de charge (un clic ne renvoie les données à Grist que si la
+table n'existe pas encore — plus de renvoi systématique à chaque test). Voir HYPOTHESES.md pour la
+liste des points encore à valider, notamment la validation en conditions réelles du round-trip
+réseau sur le gros volume.
 
 ## Licence
 

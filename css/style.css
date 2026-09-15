@@ -49,6 +49,7 @@ body {
 
 .topbar-info { display: flex; align-items: center; gap: 10px; }
 .row-count { color: var(--muted); }
+.render-time { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 
 .filter-badges { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 

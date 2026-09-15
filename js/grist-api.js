@@ -10,15 +10,26 @@
   const GristBI = global.GristBI || (global.GristBI = {});
 
   const CONFIG_TABLE = 'BI_Dashboard_Config';
-  // Suffixée par un numéro de schéma : `ensureDemoTableExists` ne crée la table QUE si son nom
+  // Suffixée par un numéro de schéma : `loadOrCreateTable` ne crée la table QUE si son nom
   // n'existe pas encore, elle ne migre jamais les colonnes d'une table déjà présente. Sans ce
   // suffixe, ajouter une colonne à GristBI.demoData.COLUMNS (ex. "Annee") casserait la génération
   // chez quiconque avait déjà une ancienne BI_Demo_Ventes dans son document (AddRecord échoue avec
   // "KeyError" sur la colonne manquante côté Grist) - vécu en pratique, pas juste théorique.
   // Incrémenter ce numéro à chaque changement de GristBI.demoData.COLUMNS plutôt que d'introduire
   // une logique de migration de schéma (AddColumn n'est pas un verbe éprouvé ici, voir HYPOTHESES.md).
-  const DEMO_TABLE_SCHEMA_VERSION = 2;
+  const DEMO_TABLE_SCHEMA_VERSION = 3; // v3 : ajout de la colonne Semaine (drill-down à 2 niveaux)
   const DEMO_TABLE = 'BI_Demo_Ventes_v' + DEMO_TABLE_SCHEMA_VERSION;
+  // Table séparée pour le test de charge (gros volume) : même schéma de colonnes que DEMO_TABLE
+  // (voir GristBI.demoData.COLUMNS, partagé), mais un nom et un cycle de vie indépendants pour ne
+  // jamais interférer avec la démo "rapide" ci-dessus.
+  const STRESS_TABLE_SCHEMA_VERSION = 1;
+  const STRESS_TABLE = 'BI_StressTest_v' + STRESS_TABLE_SCHEMA_VERSION;
+  // Nombre d'actions envoyées par appel à applyUserActions() lors d'une génération/suppression en
+  // masse : un seul appel avec des dizaines de milliers d'actions est un pari risqué (timeout,
+  // limite de payload côté Grist - aucune des deux non testée ici, voir HYPOTHESES.md) ; les
+  // envoyer par lots donne aussi une progression visible à l'utilisateur plutôt qu'une attente
+  // opaque.
+  const ACTION_CHUNK_SIZE = 2000;
 
   let _rawTables = null;
   let _configRowIdByTable = {};
@@ -116,36 +127,54 @@
     return tables.some((t) => (typeof t === 'string' ? t : t.id) === tableId);
   }
 
-  async function ensureDemoTableExists() {
-    if (await tableExists(DEMO_TABLE)) return;
-    await grist.docApi.applyUserActions([['AddTable', DEMO_TABLE, GristBI.demoData.COLUMNS]]);
-    _rawTables.push(DEMO_TABLE);
+  async function ensureTableExists(tableId, columns) {
+    if (await tableExists(tableId)) return;
+    await grist.docApi.applyUserActions([['AddTable', tableId, columns]]);
+    _rawTables.push(tableId);
   }
 
-  // Vide la table de démo ligne par ligne (RemoveRecord, déjà validé côté publipostageGrist)
-  // plutôt que RemoveTable+AddTable : évite d'introduire un verbe d'action non éprouvé ici.
-  async function clearDemoTableRows() {
-    const data = await grist.docApi.fetchTable(DEMO_TABLE);
-    const ids = (data && data.id) || [];
-    if (!ids.length) return;
-    await grist.docApi.applyUserActions(ids.map((id) => ['RemoveRecord', DEMO_TABLE, id]));
+  // Envoie `actions` par lots de `ACTION_CHUNK_SIZE` plutôt qu'en un seul appel géant - voir la
+  // justification au niveau d'ACTION_CHUNK_SIZE. `onProgress(phase, sent, total)` est appelé après
+  // chaque lot (facultatif), pour afficher une progression réelle plutôt qu'un bouton figé.
+  async function applyActionsInChunks(phase, actions, onProgress) {
+    for (let i = 0; i < actions.length; i += ACTION_CHUNK_SIZE) {
+      const chunk = actions.slice(i, i + ACTION_CHUNK_SIZE);
+      await grist.docApi.applyUserActions(chunk);
+      if (onProgress) onProgress(phase, Math.min(i + ACTION_CHUNK_SIZE, actions.length), actions.length);
+    }
   }
 
-  // (Re)génère la table de démo avec un jeu de données neuf. N'affecte que BI_Demo_Ventes,
-  // jamais la table liée réelle de l'utilisateur.
-  async function generateDemoData() {
-    await ensureDemoTableExists();
-    await clearDemoTableRows();
-    const rows = GristBI.demoData.buildSampleRows();
+  async function fillTable(tableId, rows, columns, onProgress) {
     const actions = rows.map((row) => {
       const fields = {};
-      for (const col of GristBI.demoData.COLUMNS) fields[col.id] = row[col.id];
-      return ['AddRecord', DEMO_TABLE, null, fields];
+      for (const col of columns) fields[col.id] = row[col.id];
+      return ['AddRecord', tableId, null, fields];
     });
-    await grist.docApi.applyUserActions(actions);
-    const table = await grist.docApi.fetchTable(DEMO_TABLE);
-    return { tableId: DEMO_TABLE, rows: GristBI.data.tableToRows(table) };
+    await applyActionsInChunks('fill', actions, onProgress);
   }
 
-  GristBI.api = { init, loadConfig, saveConfig, generateDemoData };
+  // Se connecte à une table de données de démo/test de charge : la CRÉE et la REMPLIT seulement
+  // si elle n'existe pas encore, sinon se contente de la relire telle quelle. Volontairement
+  // idempotent — cliquer plusieurs fois sur "Générer" ne doit pas renvoyer des dizaines de milliers
+  // de lignes à Grist à chaque fois une fois que la table existe déjà. Si le jeu de données doit
+  // changer plus tard, le mécanisme est une nouvelle version de schéma (voir
+  // DEMO_TABLE_SCHEMA_VERSION/STRESS_TABLE_SCHEMA_VERSION plus haut : une table du nom courant
+  // n'existe pas encore -> génération fraîche), pas une régénération en place.
+  async function loadOrCreateTable(tableId, columns, buildRows, onProgress) {
+    const alreadyExists = await tableExists(tableId);
+    await ensureTableExists(tableId, columns);
+    if (!alreadyExists) await fillTable(tableId, buildRows(), columns, onProgress);
+    const table = await grist.docApi.fetchTable(tableId);
+    return { tableId, rows: GristBI.data.tableToRows(table), created: !alreadyExists };
+  }
+
+  function loadOrCreateDemoData(onProgress) {
+    return loadOrCreateTable(DEMO_TABLE, GristBI.demoData.COLUMNS, GristBI.demoData.buildSampleRows, onProgress);
+  }
+
+  function loadOrCreateStressData(onProgress) {
+    return loadOrCreateTable(STRESS_TABLE, GristBI.demoData.COLUMNS_LARGE, GristBI.demoData.buildLargeSampleRows, onProgress);
+  }
+
+  GristBI.api = { init, loadConfig, saveConfig, loadOrCreateDemoData, loadOrCreateStressData };
 })(window);

@@ -147,20 +147,38 @@ const rows = [
   console.log('OK state.toggleFilter (cumul multi-colonnes) + clearFilter(column)');
 }
 
-// state: drill-down (un seul niveau, par tuile)
+// state: drill-down multi-niveaux (chemin empilé, remontée à une profondeur donnée)
 {
   const store = state.createStore();
-  store.addTile({ id: 't1', type: 'bar', dimension: 'Annee', drillDimension: 'Mois', measure: 'Montant', aggFn: 'sum' });
+  store.addTile({
+    id: 't1', type: 'bar', dimension: 'Annee', drillDimensions: ['Mois', 'Semaine'],
+    measure: 'Montant', aggFn: 'sum'
+  });
   assert.strictEqual(store.getState().drillIns.t1, undefined); // niveau racine par défaut
-  store.drillInto('t1', 'Annee', 2026);
-  assert.deepStrictEqual(store.getState().drillIns.t1, { column: 'Annee', value: 2026 });
-  store.drillUp('t1');
+  store.drillInto('t1', 'Annee', 2026); // -> niveau 1 (Mois)
+  assert.deepStrictEqual(store.getState().drillIns.t1, [{ column: 'Annee', value: 2026 }]);
+  store.drillInto('t1', 'Mois', 'Mars'); // -> niveau 2 (Semaine)
+  assert.deepStrictEqual(store.getState().drillIns.t1, [
+    { column: 'Annee', value: 2026 }, { column: 'Mois', value: 'Mars' }
+  ]);
+  store.drillUp('t1', 1); // remonte au niveau 1 seulement (garde juste Annee=2026)
+  assert.deepStrictEqual(store.getState().drillIns.t1, [{ column: 'Annee', value: 2026 }]);
+  store.drillUp('t1'); // sans argument -> remonte complètement à la racine
   assert.strictEqual(store.getState().drillIns.t1, undefined);
+  store.drillUp('t1'); // déjà à la racine -> no-op, pas d'erreur
   // Supprimer une tuile drillée nettoie aussi son état de drill (pas de fuite mémoire/état fantôme)
   store.drillInto('t1', 'Annee', 2026);
   store.removeTile('t1');
   assert.strictEqual('t1' in store.getState().drillIns, false);
-  console.log('OK state.drillInto/drillUp (+ nettoyage à la suppression de tuile)');
+  console.log('OK state.drillInto/drillUp multi-niveaux (empilage + remontée à une profondeur + nettoyage)');
+}
+
+// data.tileDrillLevels : nouveau format (tableau) et ancien format (chaîne unique) tous deux acceptés
+{
+  assert.deepStrictEqual(data.tileDrillLevels({ drillDimensions: ['Mois', 'Semaine'] }), ['Mois', 'Semaine']);
+  assert.deepStrictEqual(data.tileDrillLevels({ drillDimension: 'Mois' }), ['Mois']); // ancien format (compat)
+  assert.deepStrictEqual(data.tileDrillLevels({}), []);
+  console.log('OK data.tileDrillLevels (nouveau format tableau + ancien format compat)');
 }
 
 // state: addTile / removeTile
@@ -227,7 +245,7 @@ const rows = [
   // ... puis restaurer le bookmark doit tout remettre en place
   store.applyBookmark('bm1');
   assert.deepStrictEqual(store.getState().activeFilters, [{ column: 'Region', value: 'Nord', sourceTileId: 'tileA' }]);
-  assert.deepStrictEqual(store.getState().drillIns.t1, { column: 'Annee', value: 2026 });
+  assert.deepStrictEqual(store.getState().drillIns.t1, [{ column: 'Annee', value: 2026 }]);
 
   store.removeBookmark('bm1');
   assert.strictEqual(store.getState().bookmarks.length, 0);
@@ -239,7 +257,7 @@ const rows = [
 {
   const sample = demoData.buildSampleRows();
   const expectedCount = demoData.REGIONS.length * demoData.PRODUITS.length
-    * demoData.ANNEES.length * demoData.MOIS.length;
+    * demoData.ANNEES.length * demoData.MOIS.length * demoData.SEMAINES.length;
   assert.strictEqual(sample.length, expectedCount);
   const colIds = demoData.COLUMNS.map((c) => c.id);
   for (const row of sample) {
@@ -270,15 +288,54 @@ const rows = [
     assert.ok(tile.id && tile.type && tile.measure && tile.aggFn);
     assert.ok(availableCols.has(tile.measure), `mesure inconnue: ${tile.measure}`);
     if (tile.type !== 'kpi') assert.ok(availableCols.has(tile.dimension), `dimension inconnue: ${tile.dimension}`);
-    if (tile.drillDimension) assert.ok(availableCols.has(tile.drillDimension), `drillDimension inconnue: ${tile.drillDimension}`);
+    for (const lvl of data.tileDrillLevels(tile)) {
+      assert.ok(availableCols.has(lvl), `niveau de drill-down inconnu: ${lvl}`);
+    }
     if (tile.trendDimension) assert.ok(availableCols.has(tile.trendDimension), `trendDimension inconnue: ${tile.trendDimension}`);
   }
-  assert.ok(tiles.some((t) => t.drillDimension), 'au moins une tuile de démo devrait démontrer le drill-down');
+  assert.ok(tiles.some((t) => data.tileDrillLevels(t).length >= 2), 'au moins une tuile de démo devrait démontrer le drill-down à 2 niveaux');
   assert.ok(tiles.some((t) => t.trendDimension), 'au moins une tuile de démo devrait démontrer la tendance KPI');
   const store = state.createStore();
   store.setTiles(tiles);
   assert.strictEqual(store.getState().tiles.length, tiles.length);
   console.log('OK demoData.defaultTiles (cohérentes avec buildSampleRows + state.js)');
+}
+
+// demo-data: jeu de données "test de charge" - volume + cohérence + perf d'agrégation côté client
+{
+  const t0 = Date.now();
+  const large = demoData.buildLargeSampleRows();
+  const buildMs = Date.now() - t0;
+  const expectedLargeCount = demoData.REGIONS.length * demoData.PRODUITS.length
+    * demoData.ANNEES_LARGE.length * demoData.MOIS.length * demoData.JOURS_PAR_MOIS;
+  assert.strictEqual(large.length, expectedLargeCount);
+  const colIds = demoData.COLUMNS_LARGE.map((c) => c.id);
+  for (const col of colIds) assert.ok(col in large[0], `colonne manquante: ${col}`);
+  assert.ok(large.every((r) => r.Quantite > 0 && r.Montant > 0));
+
+  const t1 = Date.now();
+  const parAnnee = data.groupByAggregate(large, 'Annee', 'Montant', 'sum');
+  const parMois = data.groupByAggregate(large, 'Mois', 'Montant', 'avg');
+  const filtered = data.applyFilters(large, [{ column: 'Region', value: 'Nord' }, { column: 'Annee', value: 2026 }]);
+  const aggregateMs = Date.now() - t1;
+
+  assert.strictEqual(parAnnee.length, demoData.ANNEES_LARGE.length);
+  assert.strictEqual(parMois.length, demoData.MOIS.length);
+  assert.ok(filtered.length > 0 && filtered.length < large.length);
+  // Pas une assertion stricte de perf (dépend trop de la machine) : juste un garde-fou généreux
+  // pour repérer une régression algorithmique grossière (ex. un tri/parcours O(n²) introduit par
+  // erreur), pas pour valider un budget de perf précis.
+  assert.ok(aggregateMs < 2000, `agrégation anormalement lente pour ${large.length} lignes : ${aggregateMs}ms`);
+
+  const largeTiles = demoData.defaultLargeTiles();
+  const availableLargeCols = new Set(colIds);
+  for (const tile of largeTiles) {
+    if (tile.type !== 'kpi') assert.ok(availableLargeCols.has(tile.dimension));
+    for (const lvl of data.tileDrillLevels(tile)) assert.ok(availableLargeCols.has(lvl));
+  }
+
+  console.log(`OK demoData.buildLargeSampleRows (${large.length} lignes, génération ${buildMs}ms, `
+    + `3 agrégations/filtrage ${aggregateMs}ms) + defaultLargeTiles`);
 }
 
 console.log('\nTous les tests data.js/state.js/demo-data.js sont passés.');

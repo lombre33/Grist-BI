@@ -15,9 +15,9 @@
 
   function createStore() {
     let rows = [];
-    let tiles = []; // { id, type: 'bar'|'pie'|'kpi', title, dimension, measure, aggFn, drillDimension?, trendDimension? }
+    let tiles = []; // { id, type: 'bar'|'pie'|'kpi', title, dimension, measure, aggFn, drillDimensions?, trendDimension? }
     let activeFilters = []; // [{ column, value, sourceTileId }, ...] — au plus un filtre par colonne
-    let drillIns = {}; // tileId -> { column, value } | absent (absent = niveau racine, pas drillé)
+    let drillIns = {}; // tileId -> [{ column, value }, ...] — chemin de drill-down, [] ou absent = niveau racine
     let bookmarks = []; // [{ id, name, activeFilters, drillIns }, ...] — vues sauvegardées (voir saveBookmark)
     const listeners = new Set();
 
@@ -80,18 +80,25 @@
       notify();
     }
 
-    // Drill-down : approfondit une tuile qui déclare un `drillDimension` sur la valeur cliquée au
-    // niveau racine. Un seul niveau de profondeur (pas de hiérarchie arbitraire - hors scope, voir
-    // HYPOTHESES.md).
+    // Drill-down : approfondit une tuile qui déclare des `drillDimensions` d'un cran (empile sur le
+    // chemin déjà parcouru — voir GristBI.data.tileDrillLevels pour la liste des niveaux possibles
+    // d'une tuile, jusqu'à 2 au-delà de sa dimension racine).
     function drillInto(tileId, column, value) {
-      drillIns = Object.assign({}, drillIns, { [tileId]: { column, value } });
+      const path = drillIns[tileId] || [];
+      drillIns = Object.assign({}, drillIns, { [tileId]: path.concat([{ column, value }]) });
       notify();
     }
 
-    function drillUp(tileId) {
-      if (!(tileId in drillIns)) return;
+    // Remonte au niveau `depth` du chemin de drill-down (0 = racine, retire tout ; 1 = garde le 1er
+    // cran seulement, etc.). Sans argument : remonte complètement (comportement historique).
+    function drillUp(tileId, depth) {
+      const path = drillIns[tileId];
+      if (!path || !path.length) return;
+      const targetDepth = depth || 0;
+      if (targetDepth >= path.length) return; // déjà à ce niveau ou plus profond -> no-op
       drillIns = Object.assign({}, drillIns);
-      delete drillIns[tileId];
+      if (targetDepth === 0) delete drillIns[tileId];
+      else drillIns[tileId] = path.slice(0, targetDepth);
       notify();
     }
 

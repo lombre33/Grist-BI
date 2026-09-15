@@ -17,9 +17,17 @@
     <h1>Dashboard BI <span class="badge-poc">POC</span></h1>
     <div class="topbar-info">
       <span id="row-count" class="row-count">0 ligne(s)</span>
+      <span id="render-time" class="render-time"></span>
       <span id="filter-badges" class="filter-badges"></span>
       <button id="clear-filter" type="button" class="btn-secondary" hidden>Effacer les filtres</button>
-      <button id="generate-demo" type="button" class="btn-secondary">🎲 Générer des données de démo</button>
+      <button id="generate-demo" type="button" class="btn-secondary"
+        title="Se connecte à la table de démo si elle existe déjà dans ce document (aucune donnée renvoyée à Grist) ; la crée sinon.">
+        🎲 Données de démo
+      </button>
+      <button id="generate-stress" type="button" class="btn-secondary"
+        title="~47 000 lignes réparties sur 7 ans, dans une table séparée — pour tester les limites d'agrégation et d'envoi vers Grist. Se connecte à la table existante si déjà créée, ne la renvoie qu'une seule fois.">
+        🔥 Gros jeu de données (test de charge)
+      </button>
     </div>
   </header>
 
@@ -55,8 +63,12 @@
       <select id="tile-dimension"></select>
     </div>
     <div class="field" id="tile-drill-field">
-      <label for="tile-drill-dimension">Drill-down</label>
-      <select id="tile-drill-dimension"><option value="">(aucun)</option></select>
+      <label for="tile-drill-dimension-1">Drill-down (niveau 1)</label>
+      <select id="tile-drill-dimension-1"><option value="">(aucun)</option></select>
+    </div>
+    <div class="field" id="tile-drill-field-2" hidden>
+      <label for="tile-drill-dimension-2">Drill-down (niveau 2)</label>
+      <select id="tile-drill-dimension-2"><option value="">(aucun)</option></select>
     </div>
     <div class="field">
       <label for="tile-measure">Mesure</label>
