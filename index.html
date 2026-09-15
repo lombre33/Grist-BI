@@ -20,14 +20,6 @@
       <span id="render-time" class="render-time"></span>
       <span id="filter-badges" class="filter-badges"></span>
       <button id="clear-filter" type="button" class="btn-secondary" hidden>Effacer les filtres</button>
-      <button id="generate-demo" type="button" class="btn-secondary"
-        title="Se connecte à la table de démo si elle existe déjà dans ce document (aucune donnée renvoyée à Grist) ; la crée sinon.">
-        🎲 Données de démo
-      </button>
-      <button id="generate-stress" type="button" class="btn-secondary"
-        title="~47 000 lignes réparties sur 7 ans, dans une table séparée — pour tester les limites d'agrégation et d'envoi vers Grist. Se connecte à la table existante si déjà créée, ne la renvoie qu'une seule fois.">
-        🔥 Gros jeu de données (test de charge)
-      </button>
     </div>
   </header>
 
@@ -36,12 +28,6 @@
     <button id="delete-bookmark" type="button" class="btn-secondary" disabled>🗑 Supprimer la vue</button>
     <button id="save-bookmark" type="button" class="btn-secondary">★ Sauvegarder la vue actuelle</button>
   </div>
-
-  <p id="demo-banner" class="demo-banner" hidden>
-    Mode démo : le dashboard affiche la table <code id="demo-banner-table"></code> générée
-    ci-dessus, pas la table liée au widget dans la page.
-    <button id="back-to-linked" type="button" class="btn-link">Revenir à la table liée</button>
-  </p>
 
   <p id="echarts-warning" class="demo-banner warning-banner" hidden>
     ⚠️ La bibliothèque de graphiques (ECharts, <code>js/vendor/echarts/echarts.min.js</code>) n'a
@@ -100,11 +86,10 @@
 
   <main id="tiles" class="tiles"></main>
   <p id="empty-state" class="empty-state">
-    Aucune tuile pour l'instant. Ajoutez-en une ci-dessus — ou cliquez sur « Générer des données de
-    démo » pour tester tout de suite avec un jeu de données prêt à l'emploi. Cliquer sur une
-    barre/part filtre les autres tuiles (cumulable entre colonnes différentes ; recliquer retire le
-    filtre). Une tuile avec un « Drill-down » se détaille au clic ; une carte KPI avec une
-    « Tendance vs » affiche l'évolution par rapport à la période précédente.
+    Aucune tuile pour l'instant. Ajoutez-en une ci-dessus. Cliquer sur une barre/part filtre les
+    autres tuiles (cumulable entre colonnes différentes ; recliquer retire le filtre). Une tuile
+    avec un « Drill-down » se détaille au clic ; une carte KPI avec une « Tendance vs » affiche
+    l'évolution par rapport à la période précédente.
   </p>
 
   <script src="js/data.js"></script>

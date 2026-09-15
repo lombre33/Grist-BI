@@ -1,10 +1,11 @@
 /*
  * Glue vers l'API Grist Custom Widget. Patterns repris (et simplifiés) du widget
- * publipostageGrist du même auteur : grist.ready({requiredAccess:'full'}), grist.onRecords()
- * pour la table liée, et une table interne cachée (préfixe "BI_") pour persister la config —
- * même mécanisme que Publipostage_Modeles/Publipostage_LiensTables, dont on sait qu'il fonctionne
- * en Grist réel. Voir HYPOTHESES.md pour ce qui reste à valider (ex. grist.setOptions() comme
- * alternative plus simple, non testée ici).
+ * publipostageGrist du même auteur : grist.ready({requiredAccess:'full'}) et des tables internes
+ * cachées (préfixe "BI_") pour les données ET la config — même mécanisme que
+ * Publipostage_Modeles/Publipostage_LiensTables, dont on sait qu'il fonctionne en Grist réel. Pas
+ * de dépendance à grist.onRecords()/la table liée au widget dans la page (voir HYPOTHESES.md et
+ * main.js:bootstrap). Voir HYPOTHESES.md pour ce qui reste à valider (ex. grist.setOptions() comme
+ * alternative plus simple à la table de config, non testée ici).
  */
 (function (global) {
   const GristBI = global.GristBI || (global.GristBI = {});
@@ -34,7 +35,11 @@
   let _rawTables = null;
   let _configRowIdByTable = {};
 
-  async function init(handlers) {
+  // Ne s'appuie plus sur `grist.onRecords()`/la table liée au widget dans la page (voir
+  // HYPOTHESES.md) : le dashboard se connecte directement à sa propre table de test de charge au
+  // démarrage (voir main.js), même pattern que publipostageGrist qui gère ses propres tables
+  // internes sans dépendre d'une sélection de table faite par l'auteur de la page Grist.
+  async function init() {
     if (typeof grist === 'undefined') {
       console.warn('[GristBI] grist-plugin-api.js indisponible (widget ouvert hors Grist ?).');
       return;
@@ -44,10 +49,6 @@
     } catch (e) {
       console.error('[GristBI] grist.ready() a échoué', e);
     }
-    grist.onRecords((records, mappings) => {
-      const tableId = (mappings && mappings.tableId) || null;
-      handlers.onRows(records || [], tableId);
-    });
   }
 
   async function listAllTablesCached() {

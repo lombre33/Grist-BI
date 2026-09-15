@@ -92,17 +92,6 @@ body {
 .btn-secondary:hover { background: #eef1f5; }
 .btn-secondary:disabled { opacity: 0.6; cursor: default; }
 
-.btn-link {
-  background: none;
-  border: none;
-  color: var(--accent);
-  text-decoration: underline;
-  cursor: pointer;
-  padding: 0;
-  font-size: inherit;
-  font-weight: 600;
-}
-
 .demo-banner {
   display: flex;
   align-items: center;

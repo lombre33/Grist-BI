@@ -2,9 +2,11 @@
 
 **Brouillon / preuve de concept — pas prêt pour un usage réel.** Widget personnalisé
 [Grist](https://www.getgrist.com/) explorant un dashboard "façon Power BI" à l'intérieur d'un seul
-widget : plusieurs tuiles (graphiques + cartes KPI) lisant la même table liée, avec un
+widget : plusieurs tuiles (graphiques + cartes KPI) lisant la même table, avec un
 **cross-filtering** au clic entre tuiles (cliquer sur une barre/un secteur filtre les autres tuiles,
-recliquer retire le filtre — comme un slicer Power BI).
+recliquer retire le filtre — comme un slicer Power BI). Le widget se connecte automatiquement, au
+chargement, à sa propre table de travail (un gros jeu de données de test, voir plus bas) : pas de
+bouton à cliquer ni de table à lier soi-même pour avoir un dashboard fonctionnel tout de suite.
 
 Ce projet fait suite à une discussion sur ce que Power BI a que Grist n'a pas nativement
 (cross-filtering entre visuels, mesures agrégées, mise en forme conditionnelle, etc.) — voir
@@ -41,32 +43,29 @@ laisserait sinon les tuiles graphiques vides sans erreur explicite.
   en un clic. Ne capture pas les tuiles elles-mêmes (déjà persistées à part).
 - Persistance de la configuration du dashboard (tuiles + vues sauvegardées) dans le document Grist
   (par table liée), donc conservée entre deux ouvertures du widget.
-- **Données de démo** : bouton « 🎲 Données de démo » — se **connecte** à une table de 1920 lignes
-  de données de vente cohérentes (Région × Produit × Année × Mois × Semaine, montants = quantité ×
-  prix unitaire du produit, croissance simulée en 2026) avec 5 tuiles pré-configurées (dont une avec
-  drill-down à 2 niveaux et une avec tendance). Si la table n'existe pas encore dans le document, le
-  bouton la crée et l'envoie à Grist (avec une barre de progression) ; si elle existe déjà, il se
-  contente de la relire — **aucune donnée n'est renvoyée à Grist sur un clic ultérieur**. N'affecte
-  jamais la table liée au widget dans la page. Un bandeau « Revenir à la table liée » permet de
-  repasser sur les vraies données à tout moment.
-- **Jeu de données "test de charge"** : bouton « 🔥 Gros jeu de données (test de charge)» — même
-  principe de connexion idempotente que ci-dessus, mais avec ~47 040 lignes (4 régions × 5 produits ×
-  7 années × 12 mois × 28 jours) dans une table séparée, pour tester les limites d'agrégation et
-  d'envoi vers Grist sans jamais impacter le jeu de démo rapide. L'envoi initial se fait par lots de
-  2000 actions plutôt qu'en un seul appel géant. Mesures locales : génération + agrégation en ~30ms,
-  rendu des tuiles en 35-60ms (affiché dans le bandeau, `#render-time`) — voir HYPOTHESES.md pour le
-  détail et ce qui reste à confirmer en conditions réelles (round-trip réseau vers un vrai document).
+- **Table de travail par défaut, connectée automatiquement** : au chargement, le widget se connecte
+  tout seul (`js/main.js:bootstrap`) à sa table de test de charge (`BI_StressTest_v1`, ~47 040
+  lignes : 4 régions × 5 produits × 7 années × 12 mois × 28 jours) avec 4 tuiles pré-configurées
+  (dont une avec drill-down à 2 niveaux et cross-filtering activé). Si la table n'existe pas encore
+  dans le document, elle est créée et remplie (avec une progression affichée) ; si elle existe
+  déjà, le widget se contente de la relire — **aucune donnée n'est renvoyée à Grist au
+  rechargement suivant**. C'est désormais LA table de travail du widget (plus de bascule vers une
+  autre table). L'envoi initial se fait par lots de 2000 actions plutôt qu'en un seul appel géant.
+  Mesures locales : génération + agrégation en ~30ms, rendu des tuiles en 35-60ms (affiché dans le
+  bandeau, `#render-time`) — voir HYPOTHESES.md pour le détail et ce qui reste à confirmer en
+  conditions réelles (round-trip réseau vers un vrai document). Si le schéma doit se complexifier
+  plus tard (colonnes en plus), bumper `STRESS_TABLE_SCHEMA_VERSION` (`js/grist-api.js`) suffit :
+  une table fraîche est créée automatiquement au chargement suivant, sans bouton à remettre.
 
 ## Installation dans Grist
 
 1. Publier ce dépôt en page statique (GitHub Pages : Settings → Pages → Deploy from branch → `main`
    / racine), comme pour publipostageGrist.
 2. Dans une page Grist, ajouter un widget personnalisé, coller l'URL GitHub Pages. Lier le widget à
-   une table (n'importe laquelle, même vide) est nécessaire pour l'ajout du widget, mais **pas**
-   pour tester les fonctionnalités : cliquer sur « Générer des données de démo » suffit.
-3. Accepter la demande d'accès du widget au chargement (voir *Sécurité et permissions* ci-dessous).
-4. Cliquer sur « 🎲 Données de démo » pour un dashboard fonctionnel immédiatement, ou ajouter des
-   tuiles à la main via le formulaire en haut du widget.
+   une table (n'importe laquelle, même vide) est nécessaire pour l'ajout du widget, mais le widget
+   n'en tient pas compte : il se connecte tout seul à sa propre table de travail (voir plus haut).
+3. Accepter la demande d'accès du widget au chargement (voir *Sécurité et permissions* ci-dessous) :
+   le dashboard se construit alors automatiquement, sans autre action.
 
 ## Sécurité et permissions
 
@@ -94,11 +93,13 @@ formulaire de tuile (`.hidden = true` en JS) ne se masquaient en réalité jamai
 en testant leur visibilité réelle plutôt que juste l'état JS. Depuis : édition et réorganisation de
 tuile, `ResizeObserver`, tri chronologique, filtres croisés cumulables, tendance KPI, vues
 sauvegardées, drill-down étendu à 2 niveaux (avec cross-filtering optionnel PAR TUILE à chaque
-niveau franchi), jeu de données de démo enrichi (1920 lignes, Semaine), un jeu de données "test de
-charge" séparé (~47 040 lignes) avec envoi par lots, et une connexion **idempotente** aux tables de
-démo/test de charge (un clic ne renvoie les données à Grist que si la table n'existe pas encore —
-plus de renvoi systématique à chaque test). Voir HYPOTHESES.md pour la liste des points encore à
-valider, notamment la validation en conditions réelles du round-trip réseau sur le gros volume.
+niveau franchi), un jeu de données "test de charge" (~47 040 lignes) avec envoi par lots, une
+connexion **idempotente** aux tables générées (un clic/chargement ne renvoie les données à Grist
+que si la table n'existe pas encore), et le passage à une **connexion automatique** à cette table
+comme UNIQUE table de travail au démarrage (plus de boutons « Générer », plus de bascule
+démo/table liée — voir HYPOTHESES.md). Voir HYPOTHESES.md pour la liste des points encore à
+valider, notamment la validation en conditions réelles du round-trip réseau sur le gros volume dès
+le premier chargement.
 
 ## Licence
 

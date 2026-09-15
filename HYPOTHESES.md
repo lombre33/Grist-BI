@@ -205,6 +205,29 @@ dans une seule instance de widget, avec ses propres tuiles internes.
        vérifie explicitement `isHidden()`/`isVisible()`. Corrigé par `.field[hidden] { display:
        none; }`, qui gagne en spécificité (classe + attribut) plutôt qu'en misant sur l'ordre de
        chargement.
+- **Connexion automatique à une table de travail unique, sans bouton** (`main.js:bootstrap`) :
+  suite à un retour utilisateur (« quand j'arrive sur la page le widget n'a plus de donnée par
+  défaut, il faudrait le plug sur la plage de donnée du stress test par défaut, et on y touche
+  plus, ça devient sa table par défaut »), le widget se connecte désormais tout seul, au
+  chargement, à la table de test de charge (`BI_StressTest_v1`, ~47 040 lignes) via
+  `loadOrCreateStressData()` — plus besoin de cliquer sur un bouton pour avoir un dashboard à
+  tester. Les boutons « 🎲 Données de démo »/« 🔥 Gros jeu de données » et le bandeau « Mode démo /
+  Revenir à la table liée » ont été retirés de l'UI (`index.html`, `dev-tests/harness.html`,
+  `js/main.js`) : il n'y a plus qu'UNE table de travail, plus de bascule entre plusieurs sources.
+  `js/grist-api.js:init()` n'appelle donc plus `grist.onRecords()` (la table liée au widget dans
+  la page Grist n'est plus consultée du tout pour l'instant — voir point 1 ci-dessous, désormais
+  obsolète). Si le schéma doit se complexifier plus tard (colonnes en plus), le mécanisme déjà en
+  place suffit sans repasser par un bouton : bumper `STRESS_TABLE_SCHEMA_VERSION`
+  (`js/grist-api.js`) crée automatiquement une table fraîche au chargement suivant (même logique
+  que `DEMO_TABLE_SCHEMA_VERSION`, voir plus haut) ; un bouton manuel resterait facile à ajouter en
+  plus si un déclenchement explicite (sans recharger la page) s'avère utile un jour. Le jeu de
+  données de démo « rapide » (`BI_Demo_Ventes_v3`, `loadOrCreateDemoData`, 1920 lignes) reste dans
+  le code et testé sous Node, mais n'est plus atteignable depuis l'UI — délibérément conservé
+  plutôt que supprimé, au cas où un jeu de données plus petit redevienne utile pour un test rapide.
+  Testé avec Playwright : premier chargement de page connecte automatiquement les ~47 040 lignes
+  et les 4 tuiles par défaut sans aucun clic, les boutons de génération et le bandeau démo ont bien
+  disparu du DOM, et un second appel direct à `loadOrCreateStressData()` (simulant un rechargement
+  de page une fois la table déjà créée) ne renvoie aucune donnée à Grist (0 action `AddRecord`).
 
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
@@ -231,10 +254,14 @@ dans une seule instance de widget, avec ses propres tuiles internes.
 
 ## Points à valider en conditions réelles (pas testables depuis ce sandbox)
 
-1. **`grist.onRecords` avec de vraies données** : le mock ne renvoie qu'un seul jeu de lignes une
-   fois au chargement. Le vrai widget doit être testé avec des mises à jour live de la table liée
-   (édition, filtre Grist appliqué en amont, changement de sélection) pour confirmer que
-   `onRecords` se redéclenche comme attendu et que le dashboard se met à jour sans état incohérent.
+1. **[DEVENU SANS OBJET POUR L'INSTANT] `grist.onRecords`/la table liée au widget dans la page** :
+   ce point supposait que le dashboard afficherait la table réellement liée au widget dans la page
+   Grist. Suite au passage à une connexion automatique à `BI_StressTest_v1` comme UNIQUE table de
+   travail (voir plus haut), `js/grist-api.js:init()` n'appelle plus `grist.onRecords()` du tout —
+   la table liée au widget dans la page (s'il y en a une) n'est plus consultée. Ce point ne
+   redeviendra pertinent que si/quand le widget doit à nouveau afficher les vraies données d'un
+   document plutôt que son jeu de test fixe ; à ce moment-là il faudra réintroduire `onRecords` et
+   retester ce qu'il décrivait à l'origine (mises à jour live, filtre Grist en amont...).
 2. **[PARTIELLEMENT RÉPONDU en local, pas encore en réel] Volume de données réel** : à partir de
    combien de lignes l'agrégation client devient-elle perceptible ? Réponse empirique obtenue via le
    jeu de données "test de charge" (~47 040 lignes, voir plus haut) : génération + agrégation en
@@ -293,7 +320,8 @@ dans une seule instance de widget, avec ses propres tuiles internes.
    dans le document de l'utilisateur (ancien schéma, plus jamais utilisée). Pas grave en soi (juste
    une table à supprimer à la main s'il le souhaite), mais à surveiller si le schéma doit encore
    évoluer : chaque bump laisse une table de plus derrière lui. S'applique désormais aussi à
-   `BI_StressTest_v1`.
+   `BI_StressTest_v1`, qui est LA table concernée en pratique puisque `BI_Demo_Ventes_v3` n'est
+   plus créée automatiquement (voir plus haut : plus de bouton pour la déclencher).
 10. **Envoi par lots et connexion idempotente, jamais exécutés contre un vrai `grist.docApi`** :
     `applyActionsInChunks` (2000 actions/appel) et `loadOrCreateTable` (ne renvoie les ~47 000 lignes
     du jeu de charge qu'une seule fois, se contente de relire la table ensuite — voir plus haut) ne
@@ -308,17 +336,21 @@ dans une seule instance de widget, avec ses propres tuiles internes.
    localement a résolu le premier problème remonté (point 3), confirmé fonctionnel par l'utilisateur.
 2. ~~Générer les données de démo~~ — fait, a remonté un vrai bug (point 9, KeyError sur schéma
    obsolète) corrigé et confirmé recorrigé côté utilisateur.
-3. Tester en conditions réelles : filtres simultanés, tendance KPI, drill-down (y compris le
-   2e niveau, Année > Mois > Semaine), réorganisation des tuiles, et **surtout** les vues
-   sauvegardées (nouveau format de `ConfigJSON` jamais exécuté contre un vrai document — point 4) —
-   tout testé ici via Playwright contre le mock uniquement.
-4. Vérifier les points 1 et 6 ci-dessus (mise à jour live de la table liée, redimensionnement du
-   panneau Grist).
-5. **Nouveau, priorité haute** : générer le jeu de données "test de charge" (~47 040 lignes) dans un
-   vrai document Grist, pour valider en conditions réelles ce que le mock ne peut pas prouver (point
-   10) — le découpage en lots tient-il la route sur le réseau réel, et la reconnexion sans renvoi de
-   données reste-t-elle instantanée. C'est la seule façon de vraiment trancher le point 2
-   (l'agrégation elle-même est déjà innocentée en local).
+3. **Priorité haute** : ouvrir le widget dans un vrai document Grist et vérifier que la connexion
+   automatique à `BI_StressTest_v1` (voir plus haut) se déroule bien de bout en bout dès le premier
+   chargement — création initiale des ~47 040 lignes (le découpage en lots tient-il la route sur le
+   réseau réel ?), puis rechargements suivants (la reconnexion sans renvoi de données reste-t-elle
+   quasi instantanée, comme observé dans le mock ? point 10). C'est la seule façon de vraiment
+   trancher le point 2 (l'agrégation elle-même est déjà innocentée en local).
+4. Tester en conditions réelles, sur cette même table : filtres simultanés, tendance KPI,
+   drill-down (y compris le 2e niveau et le cross-filtering par tuile), réorganisation des tuiles,
+   et **surtout** les vues sauvegardées (nouveau format de `ConfigJSON` jamais exécuté contre un
+   vrai document — point 4 des points à valider) — tout testé ici via Playwright contre le mock
+   uniquement.
+5. Vérifier le point 6 ci-dessus (redimensionnement du panneau Grist). Le point 1 (table liée /
+   `onRecords`) est pour l'instant sans objet (voir plus haut) — à reprendre seulement si le widget
+   doit un jour revenir à afficher les vraies données d'un document plutôt que sa table de travail
+   fixe.
 6. Si le round-trip réseau réel s'avère être le vrai goulot (et pas l'agrégation, voir point 2) :
    reconsidérer DuckDB-WASM n'aiderait pas dans ce cas précis (c'est un problème d'I/O, pas de calcul)
    — plutôt regarder du côté d'une pagination/chargement progressif des lignes.

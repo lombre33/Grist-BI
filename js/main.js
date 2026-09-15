@@ -1,6 +1,8 @@
 /*
  * Bootstrap de l'UI : formulaire d'ajout/édition de tuile, rendu de la grille et des filtres
- * croisés actifs, câblage store <-> GristBI.api (lecture de la table liée + persistance config).
+ * croisés actifs, câblage store <-> GristBI.api (connexion à la table de travail + persistance
+ * config). Le widget se connecte automatiquement à sa table de test de charge au démarrage (voir
+ * bootstrap() en bas de fichier) plutôt que d'attendre un clic ou une table liée dans la page.
  */
 (function () {
   'use strict';
@@ -12,9 +14,6 @@
   let saveTimer = null;
   let lastRenderedTiles = null; // référence, pour ne pas re-sauvegarder la config à chaque rafraîchissement de données
   let lastRenderedBookmarks = null; // idem, côté bookmarks
-  let demoActive = false;
-  let linkedTableId = null; // dernière table réellement liée au widget dans la page Grist (via onRecords)
-  let linkedRows = null;
   let editingTileId = null; // id de la tuile en cours d'édition via le formulaire, ou null (mode ajout)
 
   const tilesContainer = document.getElementById('tiles');
@@ -41,11 +40,6 @@
   const bookmarkSelect = document.getElementById('bookmark-select');
   const deleteBookmarkBtn = document.getElementById('delete-bookmark');
   const saveBookmarkBtn = document.getElementById('save-bookmark');
-  const generateDemoBtn = document.getElementById('generate-demo');
-  const generateStressBtn = document.getElementById('generate-stress');
-  const demoBanner = document.getElementById('demo-banner');
-  const demoBannerTable = document.getElementById('demo-banner-table');
-  const backToLinkedBtn = document.getElementById('back-to-linked');
   const renderTimeEl = document.getElementById('render-time');
   const echartsWarning = document.getElementById('echarts-warning');
 
@@ -115,9 +109,9 @@
     });
 
     emptyState.hidden = state.tiles.length > 0;
-    // Temps de rendu affiché dans le bandeau : utile pour repérer à l'œil un ralentissement en
-    // testant un gros volume de données (voir le bouton "test de charge"), sans devoir ouvrir les
-    // DevTools à chaque fois.
+    // Temps de rendu affiché dans le bandeau : utile pour repérer à l'œil un ralentissement sur le
+    // gros volume de la table de travail par défaut (~47 000 lignes, voir bootstrap() plus bas),
+    // sans devoir ouvrir les DevTools à chaque fois.
     const renderStart = performance.now();
     for (const tile of state.tiles) GristBI.charts.renderTile(tile, state, tilesContainer);
     // Le nombre de tuiles change la largeur de chaque colonne de la grille CSS ; ECharts ne
@@ -325,85 +319,48 @@
     }, 600);
   }
 
-  // Bascule l'affichage sur `tableId`/`rows` (table liée réelle OU table de démo générée).
-  // `seedTiles()` ne sert que si aucune config n'a jamais été sauvegardée pour cette table.
-  async function switchTable(tableId, rows, { isDemo, seedTiles } = {}) {
+  // Bascule l'affichage sur `tableId`/`rows`. `seedTiles()` ne sert que si aucune config n'a
+  // jamais été sauvegardée pour cette table. N'est en pratique appelée qu'UNE fois (voir
+  // bootstrap() plus bas : plus de changement de table en cours de session), mais reste générique
+  // (et testable) plutôt que codée en dur pour un seul appel.
+  async function switchTable(tableId, rows, { seedTiles } = {}) {
     const isNewTable = tableId !== currentTableId;
     currentTableId = tableId;
-    demoActive = !!isDemo;
     refreshColumnSelects(rows);
     store.setRows(rows);
     if (isNewTable) {
-      // Un filtre croisé référence une colonne/valeur d'un dataset précis : le garder en changeant
-      // de table (démo <-> table liée) afficherait un badge sans rapport avec ce qui est affiché.
-      // À l'inverse, une simple régénération des données de LA MÊME table de démo (isNewTable
-      // false) doit le laisser actif.
       store.clearFilter();
       if (editingTileId) stopEditTile(); // le formulaire en cours d'édition référence une tuile de l'ancienne table
       const saved = await GristBI.api.loadConfig(tableId);
       store.setTiles(saved.tiles.length ? saved.tiles : (seedTiles ? seedTiles() : []));
       store.setBookmarks(saved.bookmarks);
     }
-    updateDemoBanner();
   }
-
-  function updateDemoBanner() {
-    const show = demoActive && linkedTableId && linkedTableId !== currentTableId;
-    demoBanner.hidden = !show;
-    // Nom de la table de démo lu dynamiquement (currentTableId) plutôt que codé en dur dans le
-    // HTML : son nom change à chaque évolution du schéma (voir DEMO_TABLE_SCHEMA_VERSION,
-    // js/grist-api.js), un texte figé serait rapidement faux.
-    if (show) demoBannerTable.textContent = currentTableId;
-  }
-
-  // Factorisé entre le bouton de démo "rapide" et celui de test de charge : même cycle
-  // désactivation/progression/réactivation, seule la fonction d'API et le jeu de tuiles par défaut
-  // changent. Idempotent côté grist-api.js (loadOrCreateDemoData/loadOrCreateStressData) : si la
-  // table existe déjà, on se contente de la relire (rapide, `onProgress` jamais appelé) plutôt que
-  // de renvoyer tout le volume à Grist à chaque clic - `onProgress(phase, sent, total)` n'alimente
-  // le texte du bouton que lors d'une VRAIE première création.
-  function wireGenerateButton(button, loadOrCreateFn, seedTilesFn, errorContext) {
-    button.addEventListener('click', async () => {
-      button.disabled = true;
-      const originalLabel = button.textContent;
-      const onProgress = (phase, sent, total) => {
-        const pct = Math.round((sent / total) * 100);
-        button.textContent = `Création… ${pct}% (${sent.toLocaleString('fr-FR')}/${total.toLocaleString('fr-FR')})`;
-      };
-      button.textContent = 'Connexion…';
-      try {
-        const { tableId, rows, created } = await loadOrCreateFn(onProgress);
-        if (created) console.log(`[GristBI] ${tableId} créée (${rows.length} lignes).`);
-        else console.log(`[GristBI] ${tableId} déjà présente, réutilisée telle quelle (${rows.length} lignes).`);
-        await switchTable(tableId, rows, { isDemo: true, seedTiles: seedTilesFn });
-      } catch (e) {
-        console.error(`[GristBI] échec de ${errorContext}`, e);
-        alert(`Échec de ${errorContext} : ${e.message}`);
-      } finally {
-        button.disabled = false;
-        button.textContent = originalLabel;
-      }
-    });
-  }
-
-  wireGenerateButton(generateDemoBtn, GristBI.api.loadOrCreateDemoData, GristBI.demoData.defaultTiles, 'la connexion aux données de démo');
-  wireGenerateButton(generateStressBtn, GristBI.api.loadOrCreateStressData, GristBI.demoData.defaultLargeTiles, 'la connexion au jeu de données de test de charge');
-
-  backToLinkedBtn.addEventListener('click', () => {
-    if (linkedTableId && linkedRows) switchTable(linkedTableId, linkedRows, { isDemo: false });
-  });
 
   store.subscribe(render);
 
-  GristBI.api.init({
-    onRows: (rows, tableId) => {
-      linkedTableId = tableId;
-      linkedRows = rows;
-      if (!demoActive) {
-        switchTable(tableId, rows, { isDemo: false });
-      } else {
-        updateDemoBanner(); // la table liée a changé en arrière-plan ; ne pas quitter le mode démo tout seul
-      }
+  // Connexion automatique, au chargement, à la table de test de charge (~47 000 lignes) : c'est
+  // désormais LA table de travail par défaut du widget, plus besoin de cliquer sur un bouton pour
+  // avoir un dashboard à tester. Idempotent côté grist-api.js (loadOrCreateStressData) : ne
+  // recrée/renvoie les lignes que si la table n'existe pas encore dans le document, sinon se
+  // contente de la relire (quasi instantané). Si le schéma doit un jour se complexifier (colonnes
+  // en plus), il suffit de bumper STRESS_TABLE_SCHEMA_VERSION (js/grist-api.js) : une table du
+  // nouveau nom sera automatiquement créée au prochain chargement, sans bouton à remettre pour ça.
+  async function bootstrap() {
+    await GristBI.api.init();
+    rowCountEl.textContent = 'Connexion…';
+    const onProgress = (phase, sent, total) => {
+      const pct = Math.round((sent / total) * 100);
+      rowCountEl.textContent = `Création… ${pct}% (${sent.toLocaleString('fr-FR')}/${total.toLocaleString('fr-FR')})`;
+    };
+    try {
+      const { tableId, rows, created } = await GristBI.api.loadOrCreateStressData(onProgress);
+      console.log(`[GristBI] ${tableId} ${created ? 'créée' : 'déjà présente, réutilisée telle quelle'} (${rows.length} lignes).`);
+      await switchTable(tableId, rows, { seedTiles: GristBI.demoData.defaultLargeTiles });
+    } catch (e) {
+      console.error('[GristBI] échec de la connexion automatique au jeu de données de test de charge', e);
+      rowCountEl.textContent = 'Échec de la connexion aux données — voir la console (F12).';
     }
-  });
+  }
+  bootstrap();
 })();
