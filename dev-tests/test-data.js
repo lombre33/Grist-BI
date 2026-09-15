@@ -1,10 +1,11 @@
 /*
- * Tests unitaires (Node, sans navigateur ni Grist) des fonctions pures de js/data.js et js/state.js.
- * Lancer avec: node dev-tests/test-data.js
+ * Tests unitaires (Node, sans navigateur ni Grist) des fonctions pures de js/data.js, js/state.js
+ * et js/demo-data.js. Lancer avec: node dev-tests/test-data.js
  */
 const assert = require('assert');
 const data = require('../js/data.js');
 const state = require('../js/state.js');
+const demoData = require('../js/demo-data.js');
 
 const rows = [
   { id: 1, Region: 'Nord', Montant: 100 },
@@ -87,4 +88,37 @@ const rows = [
   console.log('OK state.addTile/removeTile');
 }
 
-console.log('\nTous les tests data.js/state.js sont passés.');
+// demo-data: buildSampleRows -> des valeurs cohérentes (Montant/Quantite positifs, colonnes complètes)
+{
+  const sample = demoData.buildSampleRows();
+  const expectedCount = demoData.REGIONS.length * demoData.PRODUITS.length * demoData.MOIS.length;
+  assert.strictEqual(sample.length, expectedCount);
+  const colIds = demoData.COLUMNS.map((c) => c.id);
+  for (const row of sample) {
+    for (const col of colIds) assert.ok(col in row, `colonne manquante: ${col}`);
+    assert.ok(row.Quantite > 0 && Number.isFinite(row.Quantite));
+    assert.ok(row.Montant > 0 && Number.isFinite(row.Montant));
+  }
+  console.log(`OK demoData.buildSampleRows (${sample.length} lignes)`);
+}
+
+// demo-data: defaultTiles -> compatibles avec le store, et référencent des colonnes qui existent
+// réellement dans buildSampleRows() (regression guard si une colonne est renommée d'un côté sans
+// l'autre).
+{
+  const sample = demoData.buildSampleRows();
+  const availableCols = new Set(Object.keys(sample[0]));
+  const tiles = demoData.defaultTiles();
+  assert.ok(tiles.length >= 3);
+  for (const tile of tiles) {
+    assert.ok(tile.id && tile.type && tile.measure && tile.aggFn);
+    assert.ok(availableCols.has(tile.measure), `mesure inconnue: ${tile.measure}`);
+    if (tile.type !== 'kpi') assert.ok(availableCols.has(tile.dimension), `dimension inconnue: ${tile.dimension}`);
+  }
+  const store = state.createStore();
+  store.setTiles(tiles);
+  assert.strictEqual(store.getState().tiles.length, tiles.length);
+  console.log('OK demoData.defaultTiles (cohérentes avec buildSampleRows + state.js)');
+}
+
+console.log('\nTous les tests data.js/state.js/demo-data.js sont passés.');

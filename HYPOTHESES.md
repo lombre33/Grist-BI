@@ -39,6 +39,22 @@ dans une seule instance de widget, avec ses propres tuiles internes.
   `AddRecord`/`UpdateRecord`), plutôt qu'une API non testée ici. Le mock de `dev-tests/grist-stub.js`
   simule ces actions en mémoire pour vérifier le round-trip logique, mais **ne prouve pas** le
   comportement du vrai `grist.docApi` en document réel.
+- **Génération de données de démo** (`js/demo-data.js`, `generateDemoData()` dans `js/grist-api.js`) :
+  crée/vide/remplit une table `BI_Demo_Ventes` en n'utilisant que des verbes déjà éprouvés
+  (`AddTable`, `AddRecord`, `RemoveRecord` — délibérément **pas** `BulkAddRecord`/`RemoveTable`,
+  jamais utilisés côté publipostageGrist, donc non éprouvés ici ; voir point 7 ci-dessous). Testé de
+  bout en bout avec Playwright contre le mock : génération (120 lignes, 4 tuiles auto-créées),
+  cross-filtering sur les données générées, régénération (les tuiles construites par l'utilisateur
+  sont conservées, seules les valeurs changent), retour à la table liée. **Deux vrais bugs trouvés
+  et corrigés grâce à ce test** :
+  1. `.demo-banner { display: flex }` avait la même spécificité CSS que la règle native
+     `[hidden] { display: none }` et l'emportait (chargée après) : `.hidden = true` en JS n'avait
+     plus aucun effet visuel sur cet élément précis — corrigé par une règle
+     `.demo-banner[hidden] { display: none }` plus spécifique.
+  2. Le filtre croisé actif restait affiché (et donc appliqué) après un changement de table
+     (démo → table liée ou l'inverse), alors qu'il référence une colonne/valeur qui n'a plus de
+     sens dans le nouveau contexte — corrigé en réinitialisant le filtre sur changement de table
+     (mais pas sur simple régénération des données de la même table, où le garder est voulu).
 
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
@@ -84,12 +100,27 @@ dans une seule instance de widget, avec ses propres tuiles internes.
 6. **Redimensionnement du widget dans la mise en page Grist** : `resizeAll()` est appelé après
    chaque changement de tuiles, mais pas sur un `ResizeObserver` du widget lui-même — un
    redimensionnement du panneau Grist (pas juste un ajout/suppression de tuile) n'est pas testé.
+7. **Types de colonnes `Numeric`/`Int` dans `AddTable`** : `js/demo-data.js` déclare `Quantite` en
+   `Int` et `Montant` en `Numeric`. publipostageGrist n'a jamais utilisé que `Text` dans ses propres
+   `AddTable` ; ces deux identifiants de type sont corrects dans le modèle de colonnes Grist à ma
+   connaissance, mais **jamais exécutés contre un vrai document** — le mock accepte n'importe quelle
+   chaîne sans validation. Si `AddTable` échoue en réel à cause du type, le bouton « Générer des
+   données de démo » le signalera (une alerte, `applyUserActions` rejetterait la promesse) plutôt
+   que de corrompre des données — mais ça vaut la peine de vérifier au premier essai.
+8. **~240 actions (`AddRecord`/`RemoveRecord`) en un seul `applyUserActions()`** lors d'une
+   régénération de données de démo (120 suppressions + 120 ajouts au pire cas) : chaque verbe est
+   individuellement éprouvé, mais pas ce volume-là en un seul appel. Devrait bien se comporter
+   (c'est l'usage normal de `applyUserActions` avec un tableau d'actions), à confirmer en réel —
+   notamment le temps de réponse perçu en cliquant sur le bouton.
 
 ## Prochaines étapes suggérées
 
 1. Installer ce widget dans un vrai document Grist de test, sur une table avec un volume réaliste.
-2. Vérifier les points 1, 3, 4, 6 ci-dessus.
-3. Si le concept tient la route : édition de tuile, un deuxième niveau de filtre simultané,
+2. Cliquer sur « Générer des données de démo » en tout premier, pour valider en une fois les points
+   4, 7 et 8 (table interne, types de colonnes, volume d'actions) sans dépendre d'avoir préparé une
+   table réelle au préalable.
+3. Vérifier ensuite les points 1, 3, 6 ci-dessus (nécessitent une vraie table liée).
+4. Si le concept tient la route : édition de tuile, un deuxième niveau de filtre simultané,
    `ResizeObserver` sur le conteneur racine.
-4. Si la perf devient un problème réel (point 2) : spike DuckDB-WASM avant d'aller plus loin sur
+5. Si la perf devient un problème réel (point 2) : spike DuckDB-WASM avant d'aller plus loin sur
    les mesures.

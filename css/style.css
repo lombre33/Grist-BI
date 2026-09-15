@@ -71,6 +71,41 @@ body {
 .btn-primary:hover { filter: brightness(1.08); }
 .btn-secondary { background: var(--card-bg); border-color: var(--border); color: var(--text); }
 .btn-secondary:hover { background: #eef1f5; }
+.btn-secondary:disabled { opacity: 0.6; cursor: default; }
+
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+  font-size: inherit;
+  font-weight: 600;
+}
+
+.demo-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: #fff3cd;
+  color: #7a5b00;
+  border: 1px solid #f1d27a;
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin: 0 0 12px;
+  font-size: 12px;
+}
+/* `display:flex` ci-dessus a la même spécificité que la règle native [hidden]{display:none} et la
+   emporte à spécificité égale (chargée après) : sans ce override, `.hidden = true` en JS n'aurait
+   plus aucun effet visuel sur cet élément. */
+.demo-banner[hidden] { display: none; }
+.demo-banner code {
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 3px;
+  padding: 1px 5px;
+}
 
 .add-tile-form {
   display: flex;
@@ -161,4 +196,6 @@ body {
   }
   .badge-poc { background: #3a2e00; color: #f1d27a; border-color: #5c4900; }
   .filter-badge { background: #16233f; border-color: #2a3f6b; }
+  .demo-banner { background: #3a2e00; color: #f1d27a; border-color: #5c4900; }
+  .demo-banner code { background: rgba(255, 255, 255, 0.12); }
 }

@@ -10,6 +10,9 @@
   let currentTableId = null;
   let saveTimer = null;
   let lastRenderedTiles = null; // référence, pour ne pas re-sauvegarder la config à chaque rafraîchissement de données
+  let demoActive = false;
+  let linkedTableId = null; // dernière table réellement liée au widget dans la page Grist (via onRecords)
+  let linkedRows = null;
 
   const tilesContainer = document.getElementById('tiles');
   const emptyState = document.getElementById('empty-state');
@@ -21,6 +24,9 @@
   const clearFilterBtn = document.getElementById('clear-filter');
   const filterBadge = document.getElementById('filter-badge');
   const rowCountEl = document.getElementById('row-count');
+  const generateDemoBtn = document.getElementById('generate-demo');
+  const demoBanner = document.getElementById('demo-banner');
+  const backToLinkedBtn = document.getElementById('back-to-linked');
 
   function availableColumns(rows) {
     if (!rows.length) return [];
@@ -145,16 +151,60 @@
     }, 600);
   }
 
+  // Bascule l'affichage sur `tableId`/`rows` (table liée réelle OU table de démo générée).
+  // `seedTiles()` ne sert que si aucune config n'a jamais été sauvegardée pour cette table.
+  async function switchTable(tableId, rows, { isDemo, seedTiles } = {}) {
+    const isNewTable = tableId !== currentTableId;
+    currentTableId = tableId;
+    demoActive = !!isDemo;
+    refreshColumnSelects(rows);
+    store.setRows(rows);
+    if (isNewTable) {
+      // Un filtre croisé référence une colonne/valeur d'un dataset précis : le garder en changeant
+      // de table (démo <-> table liée) afficherait un badge sans rapport avec ce qui est affiché.
+      // À l'inverse, une simple régénération des données de LA MÊME table de démo (isNewTable
+      // false) doit le laisser actif.
+      store.clearFilter();
+      const saved = await GristBI.api.loadConfig(tableId);
+      store.setTiles(saved.length ? saved : (seedTiles ? seedTiles() : []));
+    }
+    updateDemoBanner();
+  }
+
+  function updateDemoBanner() {
+    demoBanner.hidden = !(demoActive && linkedTableId && linkedTableId !== currentTableId);
+  }
+
+  generateDemoBtn.addEventListener('click', async () => {
+    generateDemoBtn.disabled = true;
+    const originalLabel = generateDemoBtn.textContent;
+    generateDemoBtn.textContent = 'Génération…';
+    try {
+      const { tableId, rows } = await GristBI.api.generateDemoData();
+      await switchTable(tableId, rows, { isDemo: true, seedTiles: GristBI.demoData.defaultTiles });
+    } catch (e) {
+      console.error('[GristBI] échec de génération des données de démo', e);
+      alert('Échec de la génération des données de démo : ' + e.message);
+    } finally {
+      generateDemoBtn.disabled = false;
+      generateDemoBtn.textContent = originalLabel;
+    }
+  });
+
+  backToLinkedBtn.addEventListener('click', () => {
+    if (linkedTableId && linkedRows) switchTable(linkedTableId, linkedRows, { isDemo: false });
+  });
+
   store.subscribe(render);
 
   GristBI.api.init({
     onRows: (rows, tableId) => {
-      const isNewTable = tableId !== currentTableId;
-      currentTableId = tableId;
-      refreshColumnSelects(rows);
-      store.setRows(rows);
-      if (isNewTable) {
-        GristBI.api.loadConfig(tableId).then((tiles) => store.setTiles(tiles || []));
+      linkedTableId = tableId;
+      linkedRows = rows;
+      if (!demoActive) {
+        switchTable(tableId, rows, { isDemo: false });
+      } else {
+        updateDemoBanner(); // la table liée a changé en arrière-plan ; ne pas quitter le mode démo tout seul
       }
     }
   });

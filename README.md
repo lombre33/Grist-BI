@@ -23,15 +23,23 @@ config du dashboard stockée dans une table Grist interne cachée (`BI_Dashboard
 - Cross-filtering au clic entre tuiles, un seul filtre actif à la fois.
 - Persistance de la configuration du dashboard dans le document Grist (par table liée), donc
   conservée entre deux ouvertures du widget.
+- **Génération de données de démo** : bouton « 🎲 Générer des données de démo » — crée (ou
+  régénère) une table `BI_Demo_Ventes` avec 120 lignes de données de vente cohérentes (Région ×
+  Produit × Mois, montants = quantité × prix unitaire du produit) et 4 tuiles pré-configurées, pour
+  tester le dashboard sans avoir à préparer une table soi-même. N'affecte jamais la table liée au
+  widget dans la page. Un bandeau « Revenir à la table liée » permet de repasser sur les vraies
+  données à tout moment ; régénérer ne perd pas les tuiles déjà construites, seulement les valeurs.
 
 ## Installation dans Grist
 
 1. Publier ce dépôt en page statique (GitHub Pages : Settings → Pages → Deploy from branch → `main`
    / racine), comme pour publipostageGrist.
-2. Dans une page Grist, ajouter un widget personnalisé, coller l'URL GitHub Pages, et lier le
-   widget à la table source du dashboard.
+2. Dans une page Grist, ajouter un widget personnalisé, coller l'URL GitHub Pages. Lier le widget à
+   une table (n'importe laquelle, même vide) est nécessaire pour l'ajout du widget, mais **pas**
+   pour tester les fonctionnalités : cliquer sur « Générer des données de démo » suffit.
 3. Accepter la demande d'accès du widget au chargement (voir *Sécurité et permissions* ci-dessous).
-4. Ajouter des tuiles via le formulaire en haut du widget.
+4. Cliquer sur « 🎲 Générer des données de démo » pour un dashboard fonctionnel immédiatement, ou
+   ajouter des tuiles à la main via le formulaire en haut du widget.
 
 ## Sécurité et permissions
 

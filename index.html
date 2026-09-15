@@ -15,8 +15,15 @@
       <span id="row-count" class="row-count">0 ligne(s)</span>
       <span id="filter-badge" class="filter-badge" hidden></span>
       <button id="clear-filter" type="button" class="btn-secondary">Effacer le filtre</button>
+      <button id="generate-demo" type="button" class="btn-secondary">🎲 Générer des données de démo</button>
     </div>
   </header>
+
+  <p id="demo-banner" class="demo-banner" hidden>
+    Mode démo : le dashboard affiche la table <code>BI_Demo_Ventes</code> générée ci-dessus, pas la
+    table liée au widget dans la page.
+    <button id="back-to-linked" type="button" class="btn-link">Revenir à la table liée</button>
+  </p>
 
   <form id="add-tile-form" class="add-tile-form">
     <div class="field">
@@ -50,11 +57,13 @@
 
   <main id="tiles" class="tiles"></main>
   <p id="empty-state" class="empty-state">
-    Aucune tuile pour l'instant. Ajoutez-en une ci-dessus, puis cliquez sur une barre ou une part
-    pour filtrer les autres tuiles (cliquer à nouveau retire le filtre).
+    Aucune tuile pour l'instant. Ajoutez-en une ci-dessus — ou cliquez sur « Générer des données de
+    démo » pour tester tout de suite avec un jeu de données prêt à l'emploi. Cliquer sur une
+    barre/part filtre les autres tuiles (cliquer à nouveau retire le filtre).
   </p>
 
   <script src="js/data.js"></script>
+  <script src="js/demo-data.js"></script>
   <script src="js/state.js"></script>
   <script src="js/charts.js"></script>
   <script src="js/grist-api.js"></script>

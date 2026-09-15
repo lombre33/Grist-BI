@@ -10,6 +10,7 @@
   const GristBI = global.GristBI || (global.GristBI = {});
 
   const CONFIG_TABLE = 'BI_Dashboard_Config';
+  const DEMO_TABLE = 'BI_Demo_Ventes';
 
   let _rawTables = null;
   let _configRowIdByTable = {};
@@ -90,5 +91,41 @@
     _configRowIdByTable[tableId] = rowId;
   }
 
-  GristBI.api = { init, loadConfig, saveConfig };
+  async function tableExists(tableId) {
+    const tables = await listAllTablesCached();
+    return tables.some((t) => (typeof t === 'string' ? t : t.id) === tableId);
+  }
+
+  async function ensureDemoTableExists() {
+    if (await tableExists(DEMO_TABLE)) return;
+    await grist.docApi.applyUserActions([['AddTable', DEMO_TABLE, GristBI.demoData.COLUMNS]]);
+    _rawTables.push(DEMO_TABLE);
+  }
+
+  // Vide la table de démo ligne par ligne (RemoveRecord, déjà validé côté publipostageGrist)
+  // plutôt que RemoveTable+AddTable : évite d'introduire un verbe d'action non éprouvé ici.
+  async function clearDemoTableRows() {
+    const data = await grist.docApi.fetchTable(DEMO_TABLE);
+    const ids = (data && data.id) || [];
+    if (!ids.length) return;
+    await grist.docApi.applyUserActions(ids.map((id) => ['RemoveRecord', DEMO_TABLE, id]));
+  }
+
+  // (Re)génère la table de démo avec un jeu de données neuf. N'affecte que BI_Demo_Ventes,
+  // jamais la table liée réelle de l'utilisateur.
+  async function generateDemoData() {
+    await ensureDemoTableExists();
+    await clearDemoTableRows();
+    const rows = GristBI.demoData.buildSampleRows();
+    const actions = rows.map((row) => {
+      const fields = {};
+      for (const col of GristBI.demoData.COLUMNS) fields[col.id] = row[col.id];
+      return ['AddRecord', DEMO_TABLE, null, fields];
+    });
+    await grist.docApi.applyUserActions(actions);
+    const table = await grist.docApi.fetchTable(DEMO_TABLE);
+    return { tableId: DEMO_TABLE, rows: GristBI.data.tableToRows(table) };
+  }
+
+  GristBI.api = { init, loadConfig, saveConfig, generateDemoData };
 })(window);
