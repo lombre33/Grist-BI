@@ -90,19 +90,39 @@
       if (activeIndex >= 0 && items[activeIndex]) items[activeIndex].scrollIntoView({ block: 'nearest' });
     }
 
-    // `query` par défaut = ce que l'utilisateur tape (filtre au fil de la saisie, voir l'écouteur
-    // 'input'). Sur `focus`/clic (voir plus bas), on force une query VIDE : rouvrir un champ déjà
-    // rempli doit montrer TOUTES les options (comme un <select> natif), pas juste celles qui
-    // matchent la valeur déjà commitée (qui ne matcherait souvent qu'elle-même).
-    function openList(query) {
-      currentQuery = query == null ? inputEl.value : query;
-      matches = filterOptions(options, currentQuery);
-      const hasBlank = !!blankLabel;
-      if (!matches.length && !hasBlank) { closeList(); return; }
-      activeIndex = -1;
+    function showList() {
       renderList();
       listEl.hidden = false;
       inputEl.setAttribute('aria-expanded', 'true');
+    }
+
+    // Ouverture PASSIVE (focus, ou clic sur un champ qui a déjà le focus) : montre TOUTES les
+    // options (comme un <select> natif), quelle que soit la valeur déjà commitée — mais ne
+    // présélectionne RIEN, même si le champ est déjà vide. L'utilisateur n'a encore rien tapé ; un
+    // Entrée égaré (ex. en tabulant dans le formulaire) ne doit jamais modifier un champ déjà valide.
+    function openPassive() {
+      currentQuery = '';
+      matches = filterOptions(options, '');
+      if (!matches.length && !blankLabel) return;
+      activeIndex = -1;
+      showList();
+    }
+
+    // Ouverture ACTIVE (l'utilisateur tape, y compris pour vider le champ) : filtre sur ce qui est
+    // tapé et présélectionne la meilleure correspondance, pour qu'Entrée fonctionne immédiatement
+    // sans ArrowDown préalable — c'est l'usage principal (taper un nom de colonne puis valider).
+    // Cas particulier : vider complètement le champ (currentQuery === '') présélectionne le "blank"
+    // (`(aucun)`) s'il existe — un champ explicitement vidé PUIS validé doit se réinitialiser,
+    // contrairement à l'ouverture passive ci-dessus où rien n'a été tapé.
+    function openOnType() {
+      currentQuery = inputEl.value;
+      matches = filterOptions(options, currentQuery);
+      const hasBlank = !!blankLabel;
+      if (!matches.length && !hasBlank) { closeList(); return; }
+      if (currentQuery === '' && hasBlank) activeIndex = 0;
+      else if (matches.length) activeIndex = hasBlank ? 1 : 0;
+      else activeIndex = -1;
+      showList();
     }
 
     function commit(value) {
@@ -125,23 +145,22 @@
     }
 
     // Focus (ou clic sur un champ déjà rempli) : sélectionne tout le texte (prêt à être remplacé en
-    // tapant, affordance standard) et montre TOUTES les options plutôt que de filtrer sur la valeur
-    // déjà commitée. Les deux écouteurs (focus ET click) sont nécessaires : cliquer un champ qui a
-    // déjà le focus (ex. juste après avoir validé une sélection) ne redéclenche PAS 'focus'.
-    const openFresh = () => { inputEl.select(); openList(''); };
-    inputEl.addEventListener('focus', openFresh);
-    inputEl.addEventListener('click', openFresh);
-    inputEl.addEventListener('input', () => openList(inputEl.value));
+    // tapant, affordance standard) et ouvre passivement (voir openPassive). Les deux écouteurs
+    // (focus ET click) sont nécessaires : cliquer un champ qui a déjà le focus (ex. juste après
+    // avoir validé une sélection) ne redéclenche PAS 'focus'.
+    inputEl.addEventListener('focus', () => { inputEl.select(); openPassive(); });
+    inputEl.addEventListener('click', () => { inputEl.select(); openPassive(); });
+    inputEl.addEventListener('input', openOnType);
 
     inputEl.addEventListener('keydown', (e) => {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
-        if (listEl.hidden) { openList(); return; }
+        if (listEl.hidden) { openOnType(); return; }
         activeIndex = Math.min(activeIndex + 1, optionCount() - 1);
         updateActiveHighlight();
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
-        if (listEl.hidden) { openList(); return; }
+        if (listEl.hidden) { openOnType(); return; }
         activeIndex = Math.max(activeIndex - 1, 0);
         updateActiveHighlight();
       } else if (e.key === 'Enter') {

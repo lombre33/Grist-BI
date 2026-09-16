@@ -64,6 +64,11 @@ graphiques vides (ou l'export Excel muet) sans erreur explicite.
   avancés et niveau de drill-down par tuile appliqués. Basé sur [SheetJS](https://sheetjs.com/)
   embarqué localement ; le déclenchement du téléchargement depuis l'iframe du widget n'est pas
   encore vérifié en conditions réelles Grist (voir HYPOTHESES.md).
+- **Autocomplétion partout où l'on choisit une colonne** : dimension, mesure, mesure Y, tendance
+  KPI, chaque niveau de drill-down et la colonne du filtre avancé sont des champs avec
+  autocomplétion (composant maison, `js/combobox.js`) plutôt que des menus déroulants bruts — on
+  tape pour filtrer, le texte tapé est surligné dans les suggestions, navigation clavier complète.
+  Confortable dès qu'une vraie table Grist a des dizaines de colonnes.
 - Persistance de la configuration du dashboard (tuiles + vues sauvegardées) dans le document Grist
   (par table liée), donc conservée entre deux ouvertures du widget.
 - **Table de travail par défaut, connectée automatiquement** : au chargement, le widget se connecte
@@ -112,14 +117,16 @@ premier commit.
 
 ## État du projet
 
-Plusieurs allers-retours avec un usage réel, sept vrais bugs remontés/trouvés et corrigés : un souci
+Plusieurs allers-retours avec un usage réel, huit vrais bugs remontés/trouvés et corrigés : un souci
 de chargement d'ECharts sur réseau filtré (HYPOTHESES.md point 3), un `KeyError` de génération de
 données de démo dû à un schéma de table obsolète (point 9), un bug CSS où plusieurs champs du
 formulaire de tuile (`.hidden = true` en JS) ne se masquaient en réalité jamais à l'écran, des
 libellés d'axe tronqués sur de grandes valeurs, des graduations de jauge qui se chevauchaient, un
-point de scatter qui aurait rendu le clic muet sans un champ `name` explicite, et des tuiles qui
+point de scatter qui aurait rendu le clic muet sans un champ `name` explicite, des tuiles qui
 s'étiraient à l'infini vers le bas (boucle resize↔layout entre `.tile`/ECharts, remontée par
-l'utilisateur en conditions réelles) — la plupart repérés
+l'utilisateur en conditions réelles), et un combobox qui ne commitait rien en tapant puis Entrée
+sans navigation clavier préalable (trouvé en migrant le vrai formulaire, pas par les tests du
+composant isolé) — la plupart repérés
 uniquement en vérifiant le rendu réel (visibilité/capture d'écran), jamais via une simple absence
 d'erreur JS. Depuis : édition et réorganisation de
 tuile, `ResizeObserver`, tri chronologique, filtres croisés cumulables, tendance KPI, vues
@@ -134,10 +141,12 @@ tuiles (treemap plat, nuage de points agrégé, jauge), des **dashboards multi-p
 croisés/drill-down délibérément globaux entre pages, format de config persisté rétrocompatible avec
 les deux formats antérieurs), des **filtres avancés typés** (plage numérique, plage de dates,
 dates relatives, recherche texte — une colonne `Date` ISO a été ajoutée aux jeux de données pour les
-rendre démontrables), et un **export Excel** (SheetJS embarqué localement, une feuille par tuile
-reflétant exactement les filtres/drill-down actifs à l'écran). La Roadmap Tier 1 est désormais
-**entièrement terminée** — voir [ROADMAP.md](./ROADMAP.md) pour la suite (Tier 2 : moteur DuckDB,
-mesures façon DAX, tableau croisé dynamique...) priorisée par valeur x risque de faisabilité, avec un
+rendre démontrables), un **export Excel** (SheetJS embarqué localement, une feuille par tuile
+reflétant exactement les filtres/drill-down actifs à l'écran), et une **autocomplétion** (composant
+Combobox maison) sur tous les sélecteurs de colonne du formulaire de tuile et de la barre de
+filtres. La Roadmap Tier 1 est désormais **entièrement terminée** — voir [ROADMAP.md](./ROADMAP.md)
+pour la suite (Tier 2 : moteur DuckDB, mesures façon DAX, tableau croisé dynamique...) priorisée par
+valeur x risque de faisabilité, avec un
 [TEST_PROTOCOL.md](./TEST_PROTOCOL.md) associé qui grandit à chaque nouvelle feature. Voir
 HYPOTHESES.md pour la liste des points encore à valider, notamment la validation en conditions
 réelles du round-trip réseau sur le gros volume dès le premier chargement et du déclenchement de

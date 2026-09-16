@@ -546,6 +546,40 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     au clic, filtrage + surlignage en tapant, navigation clavier complète, sélection souris, les deux
     reprises en mode strict (blur/Escape), sélection du blank, mode texte libre, `setOptions()` sans
     valeur courante valide) + captures d'écran clair/sombre.
+- **Migration de tous les sélecteurs de colonne vers Combobox** (`index.html`, `dev-tests/harness.html`,
+  `js/main.js`) : dimension, mesure, mesure Y, tendance KPI, les N niveaux de drill-down (créés
+  dynamiquement) et la colonne du filtre avancé passent tous du `<select>` au Combobox — plus aucun
+  sélecteur brut pour une colonne dans ce widget.
+  - **`fillSelect` renommée `fillCombobox`**, devenue une simple délégation à
+    `input.setOptions(...)` : tous les sites d'appel existants (`refreshColumnSelects`, le
+    préremplissage en édition, l'ajout de niveaux de drill) n'ont pas eu besoin de changer leur
+    LOGIQUE, seulement leur type d'entrée.
+  - **`createDrillLevelSelect`** construit maintenant un wrapper `<div class="combobox">` + `<input>`
+    + `<ul>` plutôt qu'un `<select>` nu, et retourne l'`<input>` (comme avant) — `input.parentElement`
+    est le wrapper à insérer dans le DOM. `truncateDrillLevelsAfter` retire `.parentElement` (le
+    wrapper entier), pas l'input seul, sinon un `<div class="combobox">` vide serait resté orphelin
+    dans le DOM à chaque niveau retiré.
+  - **[BUG RÉEL trouvé en migrant, pas en testant le composant isolément]** Taper un nom de colonne
+    puis appuyer directement sur Entrée (sans `ArrowDown` préalable) ne commitait RIEN : aucune
+    option n'était présélectionnée après une frappe, donc `activeIndex` restait à `-1` et la
+    condition de commit (`activeIndex >= 0`) échouait silencieusement. Or c'est l'usage le PLUS
+    courant d'un combobox (taper, valider), jamais exercé par les tests du composant en isolation
+    (`combobox-test.js` testait la navigation clavier ET la frappe, mais jamais les deux combinées
+    dans cet ordre précis). Corrigé en distinguant deux façons d'ouvrir la liste :
+    `openPassive()` (focus/clic, rien présélectionné, pour ne jamais modifier un champ déjà valide
+    sur un Entrée égaré) et `openOnType()` (frappe réelle, présélectionne le 1er vrai résultat — ou
+    le "blank" si le champ est explicitement vidé, pour que vider un niveau de drill-down puis
+    valider fonctionne aussi). Seul un test d'INTÉGRATION dans le vrai formulaire
+    (`combobox-integration-test.js` : créer une tuile en tapant dimension+mesure puis Entrée) a
+    révélé ce bug — les tests du composant isolé, aussi complets soient-ils, ne remplacent pas un
+    test dans son contexte réel d'usage.
+  - Testé : Playwright (`combobox-integration-test.js` : tuile créée en tapant dimension/mesure via
+    le vrai formulaire, 3 comboboxes indépendants dans le même formulaire scatter sans interférence,
+    drill-down à 2 niveaux via comboboxes dynamiques, préremplissage en édition + réouverture avec
+    toutes les options, filtre avancé dont le combobox de colonne déclenche bien le bon type de
+    champ) + 2 nouveaux cas ajoutés à `combobox-test.js` après la découverte du bug ci-dessus (vider
+    un champ puis Entrée commite le blank ; ouverture passive sans frappe ne présélectionne rien) +
+    capture d'écran clair/sombre du formulaire réel avec le menu ouvert.
 
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 

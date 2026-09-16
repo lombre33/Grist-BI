@@ -41,7 +41,10 @@
   <form id="advanced-filter-form" class="advanced-filters-bar">
     <div class="field">
       <label for="filter-column">Filtre avancé</label>
-      <select id="filter-column"></select>
+      <div class="combobox">
+        <input type="text" id="filter-column" class="combobox-input" />
+        <ul class="combobox-list" hidden></ul>
+      </div>
     </div>
     <div class="field" id="filter-number-field">
       <label for="filter-min">Plage</label>
@@ -102,7 +105,10 @@
     </div>
     <div class="field" id="tile-dimension-field">
       <label for="tile-dimension">Dimension</label>
-      <select id="tile-dimension"></select>
+      <div class="combobox">
+        <input type="text" id="tile-dimension" class="combobox-input" />
+        <ul class="combobox-list" hidden></ul>
+      </div>
     </div>
     <div class="field" id="tile-drill-field">
       <label for="tile-drill-dimension-1">Drill-down</label>
@@ -117,11 +123,17 @@
     </div>
     <div class="field">
       <label for="tile-measure" id="tile-measure-label">Mesure</label>
-      <select id="tile-measure"></select>
+      <div class="combobox">
+        <input type="text" id="tile-measure" class="combobox-input" />
+        <ul class="combobox-list" hidden></ul>
+      </div>
     </div>
     <div class="field" id="tile-measure-y-field" hidden>
       <label for="tile-measure-y">Mesure Y</label>
-      <select id="tile-measure-y"></select>
+      <div class="combobox">
+        <input type="text" id="tile-measure-y" class="combobox-input" />
+        <ul class="combobox-list" hidden></ul>
+      </div>
     </div>
     <div class="field">
       <label for="tile-agg">Agrégat</label>
@@ -143,7 +155,10 @@
     </div>
     <div class="field" id="tile-trend-field" hidden>
       <label for="tile-trend-dimension">Tendance vs</label>
-      <select id="tile-trend-dimension"><option value="">(aucune)</option></select>
+      <div class="combobox">
+        <input type="text" id="tile-trend-dimension" class="combobox-input" />
+        <ul class="combobox-list" hidden></ul>
+      </div>
     </div>
     <button id="submit-tile" type="submit" class="btn-primary">+ Ajouter la tuile</button>
     <button id="cancel-edit" type="button" class="btn-secondary" hidden>Annuler</button>
@@ -158,6 +173,7 @@
   </p>
 
   <script src="js/data.js"></script>
+  <script src="js/combobox.js"></script>
   <script src="js/demo-data.js"></script>
   <script src="js/state.js"></script>
   <script src="js/charts.js"></script>

@@ -75,6 +75,14 @@
   const renderTimeEl = document.getElementById('render-time');
   const echartsWarning = document.getElementById('echarts-warning');
 
+  // Tous les champs qui référencent une COLONNE deviennent des comboboxes avec autocomplétion
+  // (demande explicite de l'utilisateur, voir js/combobox.js) — en mode strict : la valeur doit
+  // rester l'une des colonnes réellement chargées, comme un <select>. `.nextElementSibling` est le
+  // <ul class="combobox-list"> voisin dans le même wrapper `.combobox` (voir index.html/harness.html).
+  [dimensionSelect, measureSelect, measureYSelect, trendDimensionSelect, filterColumnSelect].forEach((input) => {
+    GristBI.combobox.attach(input, input.nextElementSibling, { strict: true });
+  });
+
   // Si le <script> ECharts (js/vendor/echarts/, voir index.html) n'a pas pu se charger, les tuiles
   // barres/camembert resteraient vides SANS AUCUNE erreur visible — seules les cartes KPI
   // fonctionneraient (elles ne dépendent pas d'ECharts). Signal explicite plutôt que de laisser
@@ -90,21 +98,22 @@
     return Object.keys(rows[0]).filter((k) => k !== 'id');
   }
 
-  function fillSelect(select, options, { blankLabel } = {}) {
-    const current = select.value;
-    const optionsHtml = options.map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
-    select.innerHTML = blankLabel ? `<option value="">${escapeHtml(blankLabel)}</option>${optionsHtml}` : optionsHtml;
-    if (options.includes(current) || (blankLabel && current === '')) select.value = current;
+  // Fin délégué à Combobox.setOptions (voir js/combobox.js) : tous les champs qui référencent une
+  // colonne sont désormais des comboboxes avec autocomplétion (demande explicite de l'utilisateur),
+  // plus de <select> brut. Le nom `fillCombobox` (plutôt que l'ancien `fillSelect`) reflète ça —
+  // gardé comme petite fonction dédiée pour que les sites d'appel restent lisibles.
+  function fillCombobox(input, options, { blankLabel } = {}) {
+    input.setOptions(options, { blankLabel: blankLabel || null });
   }
 
   function refreshColumnSelects(rows) {
     const cols = availableColumns(rows);
-    fillSelect(dimensionSelect, cols);
-    fillSelect(measureSelect, cols);
-    fillSelect(measureYSelect, cols);
-    drillLevelSelects.forEach((select) => fillSelect(select, cols, { blankLabel: '(aucun)' }));
-    fillSelect(trendDimensionSelect, cols, { blankLabel: '(aucune)' });
-    fillSelect(filterColumnSelect, cols);
+    fillCombobox(dimensionSelect, cols);
+    fillCombobox(measureSelect, cols);
+    fillCombobox(measureYSelect, cols);
+    drillLevelSelects.forEach((select) => fillCombobox(select, cols, { blankLabel: '(aucun)' }));
+    fillCombobox(trendDimensionSelect, cols, { blankLabel: '(aucune)' });
+    fillCombobox(filterColumnSelect, cols);
     updateAdvancedFilterFieldsForColumn();
   }
 
@@ -149,15 +158,27 @@
   // KPI et jauge : une seule valeur agrégée, pas de dimension de regroupement ni de drill-down.
   function typeHasNoDimension(type) { return type === 'kpi' || type === 'gauge'; }
 
-  // Drill-down à N niveaux : un <select> par niveau, créé dynamiquement ("+ Niveau") plutôt que des
+  // Drill-down à N niveaux : un combobox par niveau, créé dynamiquement ("+ Niveau") plutôt que des
   // champs figés dans le HTML — data.js/state.js/charts.js gèrent déjà un tableau drillDimensions
-  // de longueur quelconque, seul le formulaire limitait ça à 2 champs statiques auparavant.
+  // de longueur quelconque, seul le formulaire limitait ça à 2 champs statiques auparavant. Retourne
+  // l'INPUT (enrichi par Combobox.attach, voir js/combobox.js) : `drillLevelSelects` en garde la
+  // référence pour `.value`/`.setOptions` ; `input.parentElement` est le wrapper `.combobox` à
+  // insérer dans le DOM (voir les sites d'appel), pas l'input seul.
   function createDrillLevelSelect(index) {
-    const select = document.createElement('select');
-    select.id = `tile-drill-dimension-${index + 1}`;
-    select.innerHTML = '<option value="">(aucun)</option>';
-    select.addEventListener('change', () => {
-      if (!select.value) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'combobox';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.id = `tile-drill-dimension-${index + 1}`;
+    input.className = 'combobox-input';
+    const list = document.createElement('ul');
+    list.className = 'combobox-list';
+    list.hidden = true;
+    wrapper.appendChild(input);
+    wrapper.appendChild(list);
+    GristBI.combobox.attach(input, list, { strict: true, blankLabel: '(aucun)' });
+    input.addEventListener('change', () => {
+      if (!input.value) {
         // Niveau vidé -> tout niveau plus profond n'a plus de sens (un trou dans la hiérarchie,
         // ex. Année > (rien) > Semaine, ne veut rien dire) : on les retire.
         truncateDrillLevelsAfter(index);
@@ -165,12 +186,12 @@
       }
       updateDrillLevelsUI();
     });
-    return select;
+    return input;
   }
 
   function truncateDrillLevelsAfter(index) {
     while (drillLevelSelects.length > index + 1) {
-      drillLevelSelects.pop().remove();
+      drillLevelSelects.pop().parentElement.remove(); // retire le wrapper .combobox entier, pas juste l'input
     }
   }
 
@@ -187,8 +208,8 @@
   addDrillLevelBtn.addEventListener('click', () => {
     if (drillLevelSelects.length >= MAX_DRILL_LEVELS) return;
     const select = createDrillLevelSelect(drillLevelSelects.length);
-    fillSelect(select, availableColumns(store.getState().rows), { blankLabel: '(aucun)' });
-    drillLevelsContainer.appendChild(select);
+    fillCombobox(select, availableColumns(store.getState().rows), { blankLabel: '(aucun)' });
+    drillLevelsContainer.appendChild(select.parentElement);
     drillLevelSelects.push(select);
     updateDrillLevelsUI();
   });
@@ -203,7 +224,7 @@
   // dynamiquement au clic sur "+ Niveau" ou lors du préremplissage en édition.
   (function initFirstDrillLevel() {
     const select = createDrillLevelSelect(0);
-    drillLevelsContainer.appendChild(select);
+    drillLevelsContainer.appendChild(select.parentElement);
     drillLevelSelects.push(select);
   })();
 
@@ -446,8 +467,8 @@
     levels.forEach((lvl, i) => {
       if (i >= drillLevelSelects.length) {
         const select = createDrillLevelSelect(i);
-        fillSelect(select, cols, { blankLabel: '(aucun)' });
-        drillLevelsContainer.appendChild(select);
+        fillCombobox(select, cols, { blankLabel: '(aucun)' });
+        drillLevelsContainer.appendChild(select.parentElement);
         drillLevelSelects.push(select);
       }
       drillLevelSelects[i].value = lvl;
