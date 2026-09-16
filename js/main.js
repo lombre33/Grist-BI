@@ -12,6 +12,7 @@
 
   let currentTableId = null;
   let saveTimer = null;
+  let pendingSave = null; // { tableId, pages, currentPageId, bookmarks } en attente d'écriture, voir flushPendingSave()
   let lastRenderedPages = null; // référence, pour ne pas re-sauvegarder la config à chaque rafraîchissement de données
   let lastRenderedCurrentPageId = null; // idem, côté page active (changer de page se sauvegarde aussi)
   let lastRenderedBookmarks = null; // idem, côté bookmarks
@@ -55,6 +56,7 @@
   const deleteBookmarkBtn = document.getElementById('delete-bookmark');
   const saveBookmarkBtn = document.getElementById('save-bookmark');
   const exportExcelBtn = document.getElementById('export-excel');
+  const tableSelectInput = document.getElementById('table-select');
   const pageTabsEl = document.getElementById('page-tabs');
   const addPageBtn = document.getElementById('add-page');
   const advancedFilterForm = document.getElementById('advanced-filter-form');
@@ -82,6 +84,10 @@
   [dimensionSelect, measureSelect, measureYSelect, trendDimensionSelect, filterColumnSelect].forEach((input) => {
     GristBI.combobox.attach(input, input.nextElementSibling, { strict: true });
   });
+
+  // Sélecteur de TABLE (pas une colonne, mais même composant/mêmes raisons : autocomplétion,
+  // simple et efficace) — voir refreshTablePicker()/le listener 'change' plus bas.
+  GristBI.combobox.attach(tableSelectInput, tableSelectInput.nextElementSibling, { strict: true });
 
   // Si le <script> ECharts (js/vendor/echarts/, voir index.html) n'a pas pu se charger, les tuiles
   // barres/camembert resteraient vides SANS AUCUNE erreur visible — seules les cartes KPI
@@ -645,21 +651,44 @@
     observer.observe(document.body);
   }
 
+  // `tableId` capturé À L'APPEL (pas relu dans le setTimeout) : sans ça, changer de table pendant
+  // les 600ms de debounce fait s'exécuter la sauvegarde sous le tableId de la table SUIVANTE (bug
+  // réel trouvé en testant le sélecteur de table — voir flushPendingSave()/HYPOTHESES.md).
   function scheduleSave(pages, currentPageId, bookmarks) {
     if (!currentTableId) return;
     clearTimeout(saveTimer);
+    pendingSave = { tableId: currentTableId, pages, currentPageId, bookmarks };
     saveTimer = setTimeout(() => {
-      GristBI.api.saveConfig(currentTableId, pages, currentPageId, bookmarks).catch((e) => {
+      saveTimer = null;
+      const p = pendingSave;
+      pendingSave = null;
+      GristBI.api.saveConfig(p.tableId, p.pages, p.currentPageId, p.bookmarks).catch((e) => {
         console.error('[GristBI] échec de sauvegarde de la config', e);
       });
     }, 600);
   }
 
+  // Écrit IMMÉDIATEMENT une sauvegarde encore en attente (debounce de scheduleSave), au lieu
+  // d'attendre les 600ms. Indispensable avant de changer de table : `switchTable` va lui-même
+  // déclencher un rendu (chargement de la config de la table suivante), donc un nouvel appel à
+  // scheduleSave qui réutilise le même `saveTimer` — sans ce flush, ce nouvel appel annule
+  // silencieusement la sauvegarde en attente de l'ANCIENNE table (`clearTimeout`), qui perd
+  // alors sa configuration jamais écrite dans Grist.
+  function flushPendingSave() {
+    if (!pendingSave) return Promise.resolve();
+    clearTimeout(saveTimer);
+    saveTimer = null;
+    const p = pendingSave;
+    pendingSave = null;
+    return GristBI.api.saveConfig(p.tableId, p.pages, p.currentPageId, p.bookmarks).catch((e) => {
+      console.error('[GristBI] échec de sauvegarde de la config', e);
+    });
+  }
+
   // Bascule l'affichage sur `tableId`/`rows`. `seedTiles()` ne sert que si aucune config n'a
-  // jamais été sauvegardée pour cette table. N'est en pratique appelée qu'UNE fois (voir
-  // bootstrap() plus bas : plus de changement de table en cours de session), mais reste générique
-  // (et testable) plutôt que codée en dur pour un seul appel.
+  // jamais été sauvegardée pour cette table.
   async function switchTable(tableId, rows, { seedTiles } = {}) {
+    await flushPendingSave();
     const isNewTable = tableId !== currentTableId;
     currentTableId = tableId;
     refreshColumnSelects(rows);
@@ -681,13 +710,48 @@
 
   store.subscribe(render);
 
+  // Liste les tables du document dans le sélecteur (voir GristBI.api.listAvailableTables — relit
+  // TOUJOURS à la demande, jamais un cache, pour refléter une table créée dans Grist entre-temps) et
+  // remet la valeur sur `currentTableId`. Rechargée après chaque changement de table réussi, pas
+  // seulement au démarrage : la table qu'on vient de rejoindre doit rester sélectionnée à l'écran.
+  async function refreshTablePicker() {
+    try {
+      const tables = await GristBI.api.listAvailableTables();
+      fillCombobox(tableSelectInput, tables);
+      tableSelectInput.value = currentTableId;
+    } catch (e) {
+      console.error('[GristBI] échec du chargement de la liste des tables', e);
+    }
+  }
+
+  // Reconnexion à une AUTRE table du document, choisie via le sélecteur (demande explicite de
+  // l'utilisateur : pas seulement la table de test de charge par défaut). Contrairement au
+  // chargement de démarrage, ne crée/ne remplit jamais rien (`GristBI.api.loadTable`, la table
+  // choisie existe forcément déjà — elle vient de `listAvailableTables`) et ne préconfigure aucune
+  // tuile (`seedTiles` omis) : une table quelconque du document démarre sur un dashboard VIDE à
+  // construire soi-même, contrairement à `BI_StressTest` qui a ses 4 tuiles de démonstration.
+  tableSelectInput.addEventListener('change', async () => {
+    const tableId = tableSelectInput.value;
+    if (!tableId) return;
+    try {
+      const { rows } = await GristBI.api.loadTable(tableId);
+      await switchTable(tableId, rows);
+      await refreshTablePicker();
+    } catch (e) {
+      console.error('[GristBI] échec de la connexion à la table choisie', e);
+      alert(`Impossible de se connecter à la table "${tableId}" — voir la console (F12).`);
+      tableSelectInput.value = currentTableId; // revient sur la table encore effectivement active
+    }
+  });
+
   // Connexion automatique, au chargement, à la table de test de charge (~47 000 lignes) : c'est
   // désormais LA table de travail par défaut du widget, plus besoin de cliquer sur un bouton pour
   // avoir un dashboard à tester. Idempotent côté grist-api.js (loadOrCreateStressData) : ne
   // recrée/renvoie les lignes que si la table n'existe pas encore dans le document, sinon se
   // contente de la relire (quasi instantané). Si le schéma doit un jour se complexifier (colonnes
   // en plus), `ensureColumnsUpToDate` (js/grist-api.js) ajoute la colonne manquante à la table déjà
-  // présente et remplit les lignes déjà là — jamais une nouvelle table à recréer.
+  // présente et remplit les lignes déjà là — jamais une nouvelle table à recréer. L'utilisateur peut
+  // ensuite se reconnecter à N'IMPORTE QUELLE AUTRE table du document via le sélecteur ci-dessus.
   async function bootstrap() {
     await GristBI.api.init();
     rowCountEl.textContent = 'Connexion…';
@@ -700,6 +764,7 @@
       const { tableId, rows, created } = await GristBI.api.loadOrCreateStressData(onProgress);
       console.log(`[GristBI] ${tableId} ${created ? 'créée' : 'déjà présente, réutilisée telle quelle'} (${rows.length} lignes).`);
       await switchTable(tableId, rows, { seedTiles: GristBI.demoData.defaultLargeTiles });
+      await refreshTablePicker();
     } catch (e) {
       console.error('[GristBI] échec de la connexion automatique au jeu de données de test de charge', e);
       rowCountEl.textContent = 'Échec de la connexion aux données — voir la console (F12).';

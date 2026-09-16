@@ -69,6 +69,11 @@ graphiques vides (ou l'export Excel muet) sans erreur explicite.
   autocomplétion (composant maison, `js/combobox.js`) plutôt que des menus déroulants bruts — on
   tape pour filtrer, le texte tapé est surligné dans les suggestions, navigation clavier complète.
   Confortable dès qu'une vraie table Grist a des dizaines de colonnes.
+- **Sélecteur de table** (barre du haut, aussi en autocomplétion) : le widget peut se reconnecter à
+  n'importe quelle table du document Grist choisie manuellement, pas seulement sa table de test de
+  charge par défaut — une table quelconque démarre sur un dashboard vide à construire soi-même, avec
+  sa propre configuration sauvegardée indépendamment (persistance déjà par table, réutilisée telle
+  quelle). Revenir sur une table déjà visitée restaure ses tuiles.
 - Persistance de la configuration du dashboard (tuiles + vues sauvegardées) dans le document Grist
   (par table liée), donc conservée entre deux ouvertures du widget.
 - **Table de travail par défaut, connectée automatiquement** : au chargement, le widget se connecte
@@ -77,8 +82,7 @@ graphiques vides (ou l'export Excel muet) sans erreur explicite.
   (dont une avec drill-down à 2 niveaux et cross-filtering activé). Si la table n'existe pas encore
   dans le document, elle est créée et remplie (avec une progression affichée) ; si elle existe
   déjà, le widget se contente de la relire — **aucune donnée n'est renvoyée à Grist au
-  rechargement suivant**. C'est désormais LA table de travail du widget (plus de bascule vers une
-  autre table). L'envoi initial se fait par lots de 2000 actions plutôt qu'en un seul appel géant.
+  rechargement suivant**. L'envoi initial se fait par lots de 2000 actions plutôt qu'en un seul appel géant.
   Mesures locales : génération + agrégation en ~30ms, rendu des tuiles en 35-60ms (affiché dans le
   bandeau, `#render-time`) — voir HYPOTHESES.md pour le détail et ce qui reste à confirmer en
   conditions réelles (round-trip réseau vers un vrai document). **Le nom de cette table ne change
@@ -117,7 +121,7 @@ premier commit.
 
 ## État du projet
 
-Plusieurs allers-retours avec un usage réel, huit vrais bugs remontés/trouvés et corrigés : un souci
+Plusieurs allers-retours avec un usage réel, neuf vrais bugs remontés/trouvés et corrigés : un souci
 de chargement d'ECharts sur réseau filtré (HYPOTHESES.md point 3), un `KeyError` de génération de
 données de démo dû à un schéma de table obsolète (point 9), un bug CSS où plusieurs champs du
 formulaire de tuile (`.hidden = true` en JS) ne se masquaient en réalité jamais à l'écran, des
@@ -126,7 +130,9 @@ point de scatter qui aurait rendu le clic muet sans un champ `name` explicite, d
 s'étiraient à l'infini vers le bas (boucle resize↔layout entre `.tile`/ECharts, remontée par
 l'utilisateur en conditions réelles), et un combobox qui ne commitait rien en tapant puis Entrée
 sans navigation clavier préalable (trouvé en migrant le vrai formulaire, pas par les tests du
-composant isolé) — la plupart repérés
+composant isolé), et une sauvegarde de configuration perdue en revenant sur une table déjà visitée
+(race condition sur le debounce de sauvegarde, invisible tant que le widget ne changeait jamais de
+table en cours de session) — la plupart repérés
 uniquement en vérifiant le rendu réel (visibilité/capture d'écran), jamais via une simple absence
 d'erreur JS. Depuis : édition et réorganisation de
 tuile, `ResizeObserver`, tri chronologique, filtres croisés cumulables, tendance KPI, vues
@@ -142,9 +148,12 @@ croisés/drill-down délibérément globaux entre pages, format de config persis
 les deux formats antérieurs), des **filtres avancés typés** (plage numérique, plage de dates,
 dates relatives, recherche texte — une colonne `Date` ISO a été ajoutée aux jeux de données pour les
 rendre démontrables), un **export Excel** (SheetJS embarqué localement, une feuille par tuile
-reflétant exactement les filtres/drill-down actifs à l'écran), et une **autocomplétion** (composant
+reflétant exactement les filtres/drill-down actifs à l'écran), une **autocomplétion** (composant
 Combobox maison) sur tous les sélecteurs de colonne du formulaire de tuile et de la barre de
-filtres. La Roadmap Tier 1 est désormais **entièrement terminée** — voir [ROADMAP.md](./ROADMAP.md)
+filtres, et un **sélecteur de table** (Combobox également) permettant de reconnecter le widget à
+n'importe quelle table du document — la connexion automatique à `BI_StressTest` reste le
+comportement par défaut au démarrage, mais n'est plus la seule table possible en cours de session.
+La Roadmap Tier 1 est désormais **entièrement terminée** — voir [ROADMAP.md](./ROADMAP.md)
 pour la suite (Tier 2 : moteur DuckDB, mesures façon DAX, tableau croisé dynamique...) priorisée par
 valeur x risque de faisabilité, avec un
 [TEST_PROTOCOL.md](./TEST_PROTOCOL.md) associé qui grandit à chaque nouvelle feature. Voir

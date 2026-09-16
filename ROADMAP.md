@@ -111,7 +111,7 @@ Pas dans la roadmap initiale : demande directe de l'utilisateur après la fin du
 |---|---|---|---|
 | Combobox réutilisable (autocomplétion) | Haute (transversale) | Faible | ✅ fait (2026-09-16) |
 | Migrer les sélecteurs de colonne (dimension/mesure/drill-down/filtre) vers Combobox | Haute | Faible | ✅ fait (2026-09-16) |
-| Sélecteur de table (reconnexion à une table Grist au choix, pas seulement BI_StressTest) | Haute | Moyen *(généralise `switchTable`, déjà conçue pour ça)* | ⬜ à faire |
+| Sélecteur de table (reconnexion à une table Grist au choix, pas seulement BI_StressTest) | Haute | Moyen *(généralise `switchTable`, déjà conçue pour ça)* | ✅ fait (2026-09-16) |
 | Autocomplétion des VALEURS dans la barre de filtres avancés | Moyenne | Faible | ⬜ à faire |
 
 ### Tier 2 — Chantiers structurants, toujours sans backend

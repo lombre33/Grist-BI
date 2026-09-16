@@ -580,6 +580,46 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     champ) + 2 nouveaux cas ajoutés à `combobox-test.js` après la découverte du bug ci-dessus (vider
     un champ puis Entrée commite le blank ; ouverture passive sans frappe ne présélectionne rien) +
     capture d'écran clair/sombre du formulaire réel avec le menu ouvert.
+- **Sélecteur de table** (`js/grist-api.js`, `js/main.js`, `index.html`, `dev-tests/harness.html`,
+  `css/style.css`) : le widget peut désormais se reconnecter à N'IMPORTE QUELLE table du document
+  Grist, pas seulement `BI_StressTest`, via un Combobox `.table-bar` en haut du dashboard.
+  - **`GristBI.api.listAvailableTables()`** relit TOUJOURS la liste fraîche du document (jamais de
+    cache) — filtre juste la table de config interne (`BI_Dashboard_Config`). **`loadTable(tableId)`**
+    ne fait qu'un `fetchTable` (pas de création/remplissage : contrairement à
+    `loadOrCreateDemoData`/`loadOrCreateStressData`, la table choisie existe forcément déjà, elle
+    vient de `listAvailableTables()`).
+  - **`switchTable(tableId, rows, { seedTiles })`** (déjà présente, conçue générique dès le départ —
+    voir commentaire historique dans `main.js`) est maintenant réellement appelée plusieurs fois par
+    session, pas juste une fois au démarrage. Une table choisie manuellement ne reçoit PAS de
+    `seedTiles` (dashboard vide à construire), contrairement à `BI_StressTest` qui garde ses 4 tuiles
+    de démo par défaut — décision utilisateur ("Colonnes + choix de la table").
+  - **`refreshTablePicker()`** ne recharge la liste qu'au démarrage et après un changement de table
+    RÉUSSI, pas à chaque ouverture du menu déroulant : éviter un aller-retour réseau à chaque simple
+    clic dans le champ. Conséquence assumée et documentée : une table créée dans Grist entre deux
+    ouvertures du menu n'apparaît qu'après le prochain changement de table effectif (vérifié dans
+    `table-picker-test.js` en appelant `listAvailableTables()` directement plutôt que de s'attendre
+    à un rafraîchissement automatique du menu).
+  - **[BUG RÉEL trouvé en testant le retour sur une table déjà visitée]** Revenir sur `BI_StressTest`
+    après être passé par une autre table perdait ses 4 tuiles (config vide relue). Cause : `scheduleSave`
+    utilise UN SEUL timer partagé (`saveTimer`, débounce 600ms) et relit `currentTableId` — une
+    variable de fermeture — au moment où le timer se déclenche, pas au moment où il est programmé.
+    `switchTable` déclenche elle-même un rendu (chargement de la config de la table suivante), donc un
+    nouvel appel à `scheduleSave` qui fait `clearTimeout(saveTimer)` : la sauvegarde en attente de
+    l'ANCIENNE table est silencieusement annulée avant d'avoir jamais été écrite dans Grist. Invisible
+    tant qu'une seule table existait par session (le bug ne peut se manifester qu'en changeant
+    RÉELLEMENT de table, ce que ce widget ne faisait pas avant cette feature). Corrigé par
+    `flushPendingSave()` : `scheduleSave` capture désormais `tableId` dans l'objet `pendingSave` (pas
+    juste dans la closure), et `switchTable` appelle `await flushPendingSave()` en tout premier, avant
+    de toucher `currentTableId` — la sauvegarde en attente de la table qu'on quitte est écrite
+    IMMÉDIATEMENT plutôt que d'attendre (et de risquer d'être annulée par) les 600ms de débounce.
+  - Testé : Playwright (`table-picker-test.js`, 5 scénarios : sélection de `BI_StressTest` au
+    démarrage + table de config exclue de la liste, `listAvailableTables()` reflète une table créée
+    entre-temps, reconnexion à une autre table — lignes rechargées, dashboard vide, tuiles de
+    l'ancienne table disparues —, retour sur une table déjà visitée restaure SA configuration propre,
+    une tuile ajoutée sur une table quelconque est bien persistée et retrouvée en y revenant) +
+    régression complète (`dev-tests/test-data.js` + les 8 autres suites Playwright existantes,
+    aucune n'a été affectée par le fix `flushPendingSave`) + capture d'écran clair/sombre du menu
+    ouvert avec deux tables listées.
 
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 

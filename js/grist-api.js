@@ -239,5 +239,30 @@
     );
   }
 
-  GristBI.api = { init, loadConfig, saveConfig, loadOrCreateDemoData, loadOrCreateStressData };
+  // Toutes les tables du document, table de config interne exclue (jamais une donnée à visualiser)
+  // — pour le sélecteur de table (voir main.js). `_rawTables` remis à `null` avant de relire :
+  // volontairement une lecture FRAÎCHE à chaque appel (pas de cache ici, contrairement à
+  // `listAllTablesCached` utilisé ailleurs pour les vérifications d'existence internes) — la liste
+  // proposée à l'utilisateur doit refléter les tables les plus récentes du document, y compris une
+  // table créée dans Grist depuis le dernier chargement du widget.
+  async function listAvailableTables() {
+    _rawTables = null;
+    const tables = await listAllTablesCached();
+    return tables
+      .map((t) => (typeof t === 'string' ? t : t.id))
+      .filter((id) => id !== CONFIG_TABLE);
+  }
+
+  // Lit une table déjà existante (choisie via le sélecteur de table, voir main.js) — contrairement
+  // à `loadOrCreateTable`, ne crée ni ne remplit jamais rien : la table doit déjà exister (elle vient
+  // de `listAvailableTables`), sinon `fetchTable` renverrait une table vide silencieusement.
+  async function loadTable(tableId) {
+    const table = await grist.docApi.fetchTable(tableId);
+    return { tableId, rows: GristBI.data.tableToRows(table) };
+  }
+
+  GristBI.api = {
+    init, loadConfig, saveConfig, loadOrCreateDemoData, loadOrCreateStressData,
+    listAvailableTables, loadTable
+  };
 })(window);
