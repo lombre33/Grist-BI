@@ -103,6 +103,17 @@ Grist". Les avoir vraiment nécessite un service externe séparé (backend + cro
 | Filtres avancés (plage de dates, dates relatives, recherche) | Haute | Moyen | ✅ fait (2026-09-16) |
 | Export Excel | Haute | Moyen | ✅ fait (2026-09-16) |
 
+### Tier 1.5 — Améliorations UX demandées après le Tier 1 — EN COURS
+
+Pas dans la roadmap initiale : demande directe de l'utilisateur après la fin du Tier 1.
+
+| Feature | Valeur | Risque | Statut |
+|---|---|---|---|
+| Combobox réutilisable (autocomplétion) | Haute (transversale) | Faible | ✅ fait (2026-09-16) |
+| Migrer les sélecteurs de colonne (dimension/mesure/drill-down/filtre) vers Combobox | Haute | Faible | ⬜ à faire |
+| Sélecteur de table (reconnexion à une table Grist au choix, pas seulement BI_StressTest) | Haute | Moyen *(généralise `switchTable`, déjà conçue pour ça)* | ⬜ à faire |
+| Autocomplétion des VALEURS dans la barre de filtres avancés | Moyenne | Faible | ⬜ à faire |
+
 ### Tier 2 — Chantiers structurants, toujours sans backend
 
 | Feature | Valeur | Risque | Note |

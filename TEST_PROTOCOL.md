@@ -157,6 +157,26 @@ une feature "testée", vérifier qu'on s'est posé chacune de ces questions :
 - [x] `saveBookmark`/`applyBookmark` capturent `advancedFilters` au même titre que `activeFilters`/`drillIns` ✅
 - [x] `applyBookmark` sur un bookmark sans champ `advancedFilters` (sauvegardé avant cette feature) → restaure `[]`, pas `undefined` [compat ascendante] ✅
 
+### `js/combobox.js` (Node pour la logique pure, Playwright pour le câblage DOM — demande explicite de l'utilisateur : autocomplétion partout où l'on choisit une colonne)
+
+- [x] `filterOptions` — sous-chaîne insensible à la casse, ordre d'origine préservé (pas alphabétique) ✅
+- [x] `filterOptions` — query vide → toutes les options (état du menu à l'ouverture avant saisie) ✅
+- [x] `filterOptions` — espaces superflus dans la query ignorés (`trim()`) ✅
+- [x] `filterOptions` — aucune option ne matche → tableau vide ✅
+- [x] `highlightMatch` — découpe correcte autour de la 1re occurrence, insensible à la casse mais la casse D'ORIGINE du texte est conservée dans `match` ✅
+- [x] `highlightMatch` — query vide/sans match → `match` vide (pas de surlignage) ✅
+- [x] `attach` — focus (ou clic sur un champ déjà rempli) ouvre le menu avec TOUTES les options, blank en premier si prévu 🌐
+- [x] `attach` — cliquer un champ qui a DÉJÀ le focus (juste après une sélection) rouvre bien le menu [le seul écouteur `focus` ne suffit pas, `click` est nécessaire en plus — un focus déjà là ne redéclenche pas l'événement `focus`] 🌐
+- [x] `attach` — taper filtre la liste ET surligne (`<mark>`) le texte tapé dans chaque suggestion 🌐
+- [x] `attach` — `ArrowDown`/`ArrowUp` déplacent la sélection active, `Enter` commite et déclenche un vrai événement `'change'` (compatible `addEventListener('change', ...)` existant) 🌐
+- [x] `attach` — cliquer une option (souris) commite aussi, sans perdre le clic à cause d'un `blur` prématuré (`mousedown` sur la liste en `preventDefault`) 🌐
+- [x] `attach` mode strict — saisie invalide au `blur` → revient à la dernière valeur valide ✅ [ne PAS laisser une colonne inexistante comme valeur, contrairement à un texte libre] 🌐
+- [x] `attach` mode strict — `Escape` revient aussi à la dernière valeur valide, sans perdre le focus 🌐
+- [x] `attach` mode strict — sélectionner l'option "blank" donne une valeur `''` (chaîne vide), PAS le texte du `blankLabel` affiché (le label n'est qu'un `placeholder`, pas une vraie option textuelle) 🌐
+- [x] `attach` mode texte libre (`strict:false`) — accepte une saisie absente de la liste de suggestions, aucune correction forcée au blur 🌐
+- [x] `setOptions` — ne plante jamais même si la valeur courante n'existe plus dans la nouvelle liste ✅
+- [ ] Plus de `MAX_VISIBLE_OPTIONS` (50) suggestions simultanément — troncature silencieuse, pas de message "+N de plus" ; à revoir si un vrai document Grist a des colonnes avec des centaines de valeurs distinctes (autocomplétion de valeurs, voir plus bas) ⬜
+
 ### `js/demo-data.js` (Node, `dev-tests/test-data.js`)
 
 - [x] `buildSampleRows` — nombre de lignes exact (produit cartésien des dimensions) ✅

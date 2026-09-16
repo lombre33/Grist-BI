@@ -1,11 +1,12 @@
 /*
- * Tests unitaires (Node, sans navigateur ni Grist) des fonctions pures de js/data.js, js/state.js
- * et js/demo-data.js. Lancer avec: node dev-tests/test-data.js
+ * Tests unitaires (Node, sans navigateur ni Grist) des fonctions pures de js/data.js, js/state.js,
+ * js/demo-data.js et js/combobox.js. Lancer avec: node dev-tests/test-data.js
  */
 const assert = require('assert');
 const data = require('../js/data.js');
 const state = require('../js/state.js');
 const demoData = require('../js/demo-data.js');
+const combobox = require('../js/combobox.js');
 
 const rows = [
   { id: 1, Region: 'Nord', Montant: 100 },
@@ -737,4 +738,25 @@ const rows = [
     + `3 agrégations/filtrage ${aggregateMs}ms) + defaultLargeTiles`);
 }
 
-console.log('\nTous les tests data.js/state.js/demo-data.js sont passés.');
+// combobox.filterOptions : sous-chaîne insensible à la casse, ordre d'origine préservé, query vide
+// -> tout matche (état du menu à l'ouverture avant toute saisie)
+{
+  const options = ['Région', 'Produit', 'Montant', 'Quantite'];
+  assert.deepStrictEqual(combobox.filterOptions(options, ''), options);
+  assert.deepStrictEqual(combobox.filterOptions(options, 'on'), ['Région', 'Montant']); // ordre d'origine, pas alphabétique
+  assert.deepStrictEqual(combobox.filterOptions(options, 'MON'), ['Montant']); // insensible à la casse
+  assert.deepStrictEqual(combobox.filterOptions(options, 'xyz'), []);
+  assert.deepStrictEqual(combobox.filterOptions(options, '  produit  '), ['Produit']); // espaces superflus ignorés
+  console.log('OK combobox.filterOptions (sous-chaîne insensible à la casse, ordre préservé, query vide/espaces)');
+}
+
+// combobox.highlightMatch : découpe autour de la 1re occurrence, pour surligner le texte tapé
+{
+  assert.deepStrictEqual(combobox.highlightMatch('Montant', 'ont'), { before: 'M', match: 'ont', after: 'ant' });
+  assert.deepStrictEqual(combobox.highlightMatch('Montant', 'MON'), { before: '', match: 'Mon', after: 'tant' }); // insensible à la casse, casse d'origine conservée dans `match`
+  assert.deepStrictEqual(combobox.highlightMatch('Montant', ''), { before: 'Montant', match: '', after: '' });
+  assert.deepStrictEqual(combobox.highlightMatch('Montant', 'xyz'), { before: 'Montant', match: '', after: '' });
+  console.log('OK combobox.highlightMatch (découpe autour de la 1re occurrence, insensible à la casse)');
+}
+
+console.log('\nTous les tests data.js/state.js/demo-data.js/combobox.js sont passés.');

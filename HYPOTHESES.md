@@ -512,6 +512,40 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     la page de test Playwright n'avait pas de `<meta charset="UTF-8">`, ce qui corrompait les noms de
     mois accentués (`Décembre` lu comme `DÃ©cembre`) — `index.html`/`harness.html` déclarent bien ce
     charset, seule la page de test jetable en manquait.
+- **Composant Combobox réutilisable (autocomplétion)** (`js/combobox.js`, demande explicite de
+  l'utilisateur : "partout où l'on fait référence à une colonne cela puisse être un choix de
+  l'utilisateur avec autocomplétion") :
+  - **Décision d'implémentation** : combobox JS maison plutôt que `<input>` + `<datalist>` natif
+    (option plus simple envisagée puis écartée par l'utilisateur) — plus de contrôle sur le style
+    (cohérent pixel-perfect avec le design system sobre déjà en place) et le comportement (résultat
+    identique quel que soit le navigateur, contrairement à `<datalist>` dont le rendu/filtrage varie
+    réellement d'un moteur à l'autre).
+  - **Deux modes** : `strict: true` (défaut, pour choisir une COLONNE) — la valeur doit être l'une
+    des options fournies, une saisie invalide au blur/Escape revient à la dernière valeur valide,
+    comme un `<select>`. `strict: false` (pour une VALEUR de filtre, voir plus bas) — texte libre,
+    la liste n'est qu'une suggestion, aucune correction forcée.
+  - **`attach(inputEl, listEl, config)` retourne `inputEl` lui-même**, enrichi d'une méthode
+    `setOptions()` : tout le reste du code continue de lire/écrire `.value` et d'écouter `'change'`
+    exactement comme sur un `<select>` classique — migrer un champ existant ne demande de changer
+    QUE son balisage HTML (un `<select>` devient un `<div class="combobox">` avec `<input>` +
+    `<ul>`), pas les lectures/écritures de valeur déjà présentes dans `main.js`.
+  - **Le "blank" (ex. "(aucun)" pour un niveau de drill-down optionnel) n'est PAS un texte
+    sélectionnable** dont la valeur serait la chaîne `"(aucun)"` (ce qui casserait tous les tests de
+    vérité `if (dimension)` existants) : c'est un `placeholder` HTML natif (affiché en grisé quand le
+    champ est vide) + une entrée de menu dédiée qui, sélectionnée, remet `.value` à `''` — valeur et
+    texte affiché restent alors toujours identiques, aucune correspondance value↔label à maintenir
+    séparément.
+  - **[BUG RÉEL trouvé en Playwright avant même d'exister ailleurs]** : cliquer un champ qui a DÉJÀ
+    le focus (juste après avoir validé une sélection, par exemple) ne redéclenchait pas le menu — un
+    seul écouteur `'focus'` ne suffit pas, car le navigateur ne redéclenche PAS l'événement `focus`
+    sur un élément qui l'a déjà. Corrigé en ajoutant aussi un écouteur `'click'` appelant la même
+    logique d'ouverture. Repéré uniquement en testant le scénario réaliste "commiter une valeur PUIS
+    recliquer pour en choisir une autre", pas en testant chaque interaction isolément.
+  - Testé : Node (`filterOptions`/`highlightMatch`, logique de correspondance/surlignage pure) +
+    Playwright (`combobox-test.js`, 9 scénarios sur une page de test dédiée : ouverture au focus ET
+    au clic, filtrage + surlignage en tapant, navigation clavier complète, sélection souris, les deux
+    reprises en mode strict (blur/Escape), sélection du blank, mode texte libre, `setOptions()` sans
+    valeur courante valide) + captures d'écran clair/sombre.
 
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
