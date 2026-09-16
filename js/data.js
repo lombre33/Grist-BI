@@ -141,6 +141,28 @@
     return aggregator(rows.map((r) => r[measureCol]));
   }
 
+  // Valeurs distinctes (converties en chaîne) présentes dans `column`, dans l'ordre de première
+  // apparition (même convention que groupByAggregate — pas de tri alphabétique, qui casserait un
+  // ordre chronologique comme les mois). Sert à SUGGÉRER des valeurs dans la barre de filtres
+  // avancés (voir js/main.js) : `null`/`undefined`/`''` ignorés (rien à suggérer), et un plafond
+  // `max` pour rester utilisable même sur une colonne quasi unique (ex. Montant sur ~47 000 lignes)
+  // sans construire une liste de dizaines de milliers d'entrées pour rien.
+  function distinctColumnValues(rows, column, max) {
+    const limit = max || 500;
+    const seen = new Set();
+    const out = [];
+    for (const row of rows) {
+      const v = row[column];
+      if (v === null || v === undefined || v === '') continue;
+      const s = String(v);
+      if (seen.has(s)) continue;
+      seen.add(s);
+      out.push(s);
+      if (out.length >= limit) break;
+    }
+    return out;
+  }
+
   // Tendance d'une carte KPI vs la période précédente : regroupe `rows` par `trendDimension`, ne
   // garde que les groupes dont la clé est numérique (ex. Annee=2025/2026 ; une dimension texte
   // comme "Mois" est ignorée plutôt que de produire un delta absurde), et compare les deux plus
@@ -265,7 +287,7 @@
 
   return {
     tableToRows, applyFilters, matchesFilter, sameValue, parseDateValue, relativeDateRange,
-    RELATIVE_DATE_PRESETS, groupByAggregate, aggregateSingle, computeTrend,
+    RELATIVE_DATE_PRESETS, groupByAggregate, aggregateSingle, distinctColumnValues, computeTrend,
     escapeHtml, tileDrillLevels, currentDimension, rowsForTile, tileExportSheet,
     sanitizeSheetName, buildWorkbookSheets, AGGREGATORS
   };

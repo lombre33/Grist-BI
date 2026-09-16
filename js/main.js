@@ -85,9 +85,20 @@
     GristBI.combobox.attach(input, input.nextElementSibling, { strict: true });
   });
 
+  // Champ "Recherche" (filtre avancé "contient") : mode `strict: false`, la liste n'est qu'une
+  // SUGGESTION des valeurs réellement présentes dans la colonne choisie (voir
+  // updateAdvancedFilterFieldsForColumn) — l'utilisateur tape une sous-chaîne libre (ex. "cam" pour
+  // "Webcam"), pas forcément une valeur exacte de la liste. Demande explicite de l'utilisateur
+  // ("Colonnes ET valeurs" pour l'autocomplétion des filtres).
+  GristBI.combobox.attach(filterTextInput, filterTextInput.nextElementSibling, { strict: false });
+
   // Sélecteur de TABLE (pas une colonne, mais même composant/mêmes raisons : autocomplétion,
-  // simple et efficace) — voir refreshTablePicker()/le listener 'change' plus bas.
-  GristBI.combobox.attach(tableSelectInput, tableSelectInput.nextElementSibling, { strict: true });
+  // simple et efficace) — voir refreshTablePicker()/le listener 'change' plus bas. `beforeOpen`
+  // relit la liste des tables à CHAQUE ouverture du menu (pas seulement au démarrage/après un
+  // changement de table réussi comme le fait refreshTablePicker par ailleurs) : une table créée
+  // dans Grist après le chargement du widget doit rester atteignable sans recharger la page
+  // [BUG RÉEL, voir HYPOTHESES.md].
+  GristBI.combobox.attach(tableSelectInput, tableSelectInput.nextElementSibling, { strict: true, beforeOpen: refreshTablePicker });
 
   // Si le <script> ECharts (js/vendor/echarts/, voir index.html) n'a pas pu se charger, les tuiles
   // barres/camembert resteraient vides SANS AUCUNE erreur visible — seules les cartes KPI
@@ -120,7 +131,7 @@
     drillLevelSelects.forEach((select) => fillCombobox(select, cols, { blankLabel: '(aucun)' }));
     fillCombobox(trendDimensionSelect, cols, { blankLabel: '(aucune)' });
     fillCombobox(filterColumnSelect, cols);
-    updateAdvancedFilterFieldsForColumn();
+    updateAdvancedFilterFieldsForColumn(rows);
   }
 
   // Devine le "type" d'une colonne en inspectant une VALEUR réelle plutôt qu'un nom de colonne
@@ -130,8 +141,8 @@
   // le nom. `GristBI.data.parseDateValue` reconnaît le seul format de date utilisé ici (AAAA-MM-JJ,
   // voir demo-data.js:isoDate) ; une chaîne numérique (ex. Grist renvoie parfois des nombres en
   // chaîne) compte comme 'number', pas comme texte.
-  function inferColumnKind(column) {
-    const rows = store.getState().rows;
+  function inferColumnKind(column, rows) {
+    rows = rows || store.getState().rows;
     if (!rows.length) return 'text';
     const sample = rows.find((r) => r[column] != null && r[column] !== '');
     if (!sample) return 'text';
@@ -144,10 +155,15 @@
   // Bascule les champs du formulaire de filtre avancé selon le "type" inféré de la colonne
   // choisie : plage min/max (numérique), plage de dates OU période relative au choix (date, via
   // `#filter-date-mode`), recherche texte (tout le reste). Même pattern que
-  // `updateFormFieldsForType` pour le formulaire de tuile.
-  function updateAdvancedFilterFieldsForColumn() {
+  // `updateFormFieldsForType` pour le formulaire de tuile. `rows` optionnel : passé explicitement
+  // par `refreshColumnSelects` (table qui vient de changer — `store.getState().rows` n'est mis à
+  // jour qu'APRÈS refreshColumnSelects dans switchTable, donc serait encore celui de l'ANCIENNE
+  // table à cet instant précis) ; sinon (changement de colonne/mode par l'utilisateur, table déjà
+  // stable) repli sur `store.getState().rows`, à jour dans ce cas.
+  function updateAdvancedFilterFieldsForColumn(rows) {
+    rows = rows || store.getState().rows;
     const column = filterColumnSelect.value;
-    const kind = column ? inferColumnKind(column) : 'text';
+    const kind = column ? inferColumnKind(column, rows) : 'text';
     filterNumberField.hidden = kind !== 'number';
     filterDateModeField.hidden = kind !== 'date';
     filterTextField.hidden = kind !== 'text';
@@ -159,6 +175,13 @@
       filterDateRangeField.hidden = true;
       filterRelativeDateField.hidden = true;
     }
+    // Valeurs réellement présentes dans la colonne choisie, juste des SUGGESTIONS (voir l'attach
+    // en `strict: false` plus haut) — uniquement pour la recherche texte : pour une colonne
+    // numérique quasi unique (ex. Montant), la liste des valeurs distinctes n'aiderait pas plus
+    // qu'un champ nombre natif, qui garde en plus son clavier numérique dédié ; idem pour les
+    // dates, où le sélecteur natif du navigateur est déjà une meilleure UX qu'une liste de ~47 000
+    // jours quasi tous différents. Décision de périmètre documentée dans HYPOTHESES.md.
+    filterTextInput.setOptions(kind === 'text' && column ? GristBI.data.distinctColumnValues(rows, column) : []);
   }
 
   // KPI et jauge : une seule valeur agrégée, pas de dimension de regroupement ni de drill-down.
@@ -554,8 +577,13 @@
 
   cancelEditBtn.addEventListener('click', stopEditTile);
 
-  filterColumnSelect.addEventListener('change', updateAdvancedFilterFieldsForColumn);
-  filterDateModeSelect.addEventListener('change', updateAdvancedFilterFieldsForColumn);
+  // Appelées SANS argument (via une flèche plutôt qu'en passant la fonction directement en callback)
+  // : un `addEventListener` passe l'Event en 1er argument, qui satisferait silencieusement le
+  // paramètre optionnel `rows` de `updateAdvancedFilterFieldsForColumn` à sa place (`rows` vaudrait
+  // l'Event, pas les lignes) — `distinctColumnValues` plante alors sur un Event non itérable [BUG
+  // RÉEL trouvé en testant l'autocomplétion des valeurs, voir HYPOTHESES.md/TEST_PROTOCOL.md].
+  filterColumnSelect.addEventListener('change', () => updateAdvancedFilterFieldsForColumn());
+  filterDateModeSelect.addEventListener('change', () => updateAdvancedFilterFieldsForColumn());
 
   advancedFilterForm.addEventListener('submit', (evt) => {
     evt.preventDefault();

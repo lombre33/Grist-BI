@@ -620,6 +620,84 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     régression complète (`dev-tests/test-data.js` + les 8 autres suites Playwright existantes,
     aucune n'a été affectée par le fix `flushPendingSave`) + capture d'écran clair/sombre du menu
     ouvert avec deux tables listées.
+- **Autocomplétion des VALEURS dans la barre de filtres avancés** (`js/data.js`, `js/combobox.js`,
+  `js/main.js`, `index.html`, `dev-tests/harness.html`) : demande explicite de l'utilisateur
+  ("Colonnes ET valeurs" pour l'autocomplétion des filtres). Périmètre réduit, délibérément, au seul
+  champ "Recherche" (`#filter-text`, filtre `contains`) plutôt qu'aux 5 champs min/max/date évoqués
+  initialement dans la description de la tâche : pour min/max, une colonne quasi unique (ex. Montant
+  sur ~47 000 lignes) ne bénéficierait pas plus de suggestions qu'un `<input type="number">` natif,
+  qui garde en plus son clavier numérique dédié ; pour les dates, le sélecteur natif du navigateur
+  (calendrier) est déjà une bien meilleure UX qu'une liste de ~47 000 jours quasi tous différents.
+  Décision de conception assumée, pas un oubli — facile à étendre plus tard si demandé.
+  - **`GristBI.data.distinctColumnValues(rows, column, max)`** (nouvelle fonction pure, testée sous
+    Node) : valeurs distinctes d'une colonne, converties en chaîne, dans l'ordre de 1re apparition
+    (même convention que `groupByAggregate` — pas de tri alphabétique), `null`/`undefined`/`''`
+    ignorés, plafonnées à `max` (500 par défaut) pour rester utilisable même sur une colonne
+    quasi unique.
+  - **`#filter-text` en mode `strict: false`** : la liste n'est qu'une SUGGESTION, jamais une
+    contrainte — taper "cam" pour chercher "contient cam" (sous-chaîne de "Webcam HD") doit rester
+    possible même si "cam" seul n'est la valeur exacte d'aucune ligne.
+  - **[BUG RÉEL #1 — `setOptions()` écrasait une saisie libre hors-liste]** `setOptions()` corrigeait
+    systématiquement une valeur invalide vers le blank/la 1re option, **même en mode `strict: false`**
+    — jamais remarqué avant car aucun champ non strict n'existait encore en production. Rafraîchir
+    les suggestions (ex. changer de colonne de filtre) aurait donc effacé une recherche texte libre
+    déjà tapée par l'utilisateur. Corrigé : `setOptions()` ne corrige la valeur que si `strict` est
+    vrai.
+  - **[BUG RÉEL #2 — l'Event du `change` listener satisfaisait silencieusement le nouveau paramètre
+    `rows`]** `updateAdvancedFilterFieldsForColumn(rows)` a été rendue capable de recevoir `rows` en
+    argument (pour corriger une staleness lors d'un changement de table, voir plus bas), mais restait
+    câblée directement via `filterColumnSelect.addEventListener('change', updateAdvancedFilterFieldsForColumn)`
+    — un `addEventListener` passe l'`Event` en 1er argument, qui satisfaisait silencieusement le
+    paramètre `rows` (`rows = rows || store.getState().rows` ne retombe jamais sur le repli, l'Event
+    étant "truthy") ; `distinctColumnValues(event, column)` plantait alors sur un Event non itérable.
+    Corrigé en enveloppant l'appel dans une flèche (`() => updateAdvancedFilterFieldsForColumn()`)
+    pour les deux `addEventListener` concernés.
+  - **[BUG RÉEL #3 — staleness d'un cycle des lignes lors d'un changement de table]**
+    `inferColumnKind`/`updateAdvancedFilterFieldsForColumn` lisaient `store.getState().rows`, mais
+    `switchTable` appelle `refreshColumnSelects(rows)` **avant** `store.setRows(rows)` — un
+    changement de table calculait donc le type de colonne et les suggestions de valeurs sur les
+    lignes de l'ANCIENNE table pendant un cycle. Corrigé en faisant transiter `rows` explicitement
+    depuis `refreshColumnSelects(rows)` (qui les a déjà, fraîches) plutôt que de les relire dans le
+    store à un moment où elles ne le sont pas encore.
+  - **[BUG RÉEL #4 — le plus significatif, pas spécifique à cette feature] Entrée sur une saisie
+    strictement invalide (aucune correspondance) laissait fuiter l'évènement `change` NATIF du
+    navigateur avec le texte brut non validé.** En ajoutant `openOnType()` qui ne présélectionne
+    JAMAIS en mode `strict: false` (voir juste en dessous), il est apparu qu'un Entrée strict sans
+    AUCUNE correspondance ne faisait qu'`return` sans jamais appeler `e.preventDefault()` — ce que
+    seule la branche `commit()` faisait jusque-là. Résultat : le navigateur, constatant que la valeur
+    de l'`<input>` a changé depuis le focus et qu'Entrée a été pressée, déclenche lui-même un
+    évènement `change` natif AVEC LE TEXTE BRUT/INVALIDE, qui remonte (bubbles) et atteint tout
+    listener `change` externe exactement comme une vraie sélection — court-circuitant complètement
+    `commit()` et toute la validation stricte. Trouvé concrètement en tapant le nom d'une table qui
+    n'existe pas encore dans le sélecteur de table (`#table-select`) et en pressant Entrée : ça
+    déclenchait quand même une tentative de connexion à cette table inexistante
+    (`switchTable('BI_Demo_Ventes', [])`, 0 ligne). Corrigé en ajoutant un `e.preventDefault()`
+    explicite dans le cas strict-sans-correspondance aussi. Régression ajoutée à
+    `combobox-test.js` (via `strictChangeCount`, un compteur d'évènements `change` observés).
+  - **[Conséquence du bug #4 — révélait un vrai trou d'UX du sélecteur de table, déjà committé pour
+    la Task #9]** Une fois le bug #4 corrigé, `table-picker-test.js` s'est mis à ÉCHOUER : sa
+    capacité à "switcher" vers une table fraîchement créée (`BI_Demo_Ventes`) ne fonctionnait EN
+    RÉALITÉ que grâce au bug #4 (la fuite d'évènement `change` natif laissait passer un nom de table
+    tapé alors qu'il n'était pas encore dans la liste connue du sélecteur, `refreshTablePicker()` ne
+    se relançant qu'au démarrage/après un changement réussi, jamais à l'ouverture du menu). Sans ce
+    bug, une table créée après le démarrage du widget restait donc INATTEIGNABLE via le sélecteur
+    tant qu'on ne rechargeait pas la page — un vrai défaut, pas juste un détail de test. Corrigé
+    proprement en ajoutant un hook optionnel **`beforeOpen`** à `Combobox.attach()` : si fourni, il
+    est attendu (`await`) avant d'afficher la liste à l'ouverture PASSIVE (focus/clic) — pas
+    seulement au montage. `#table-select` est maintenant attaché avec `beforeOpen: refreshTablePicker`
+    : la liste des tables se relit à CHAQUE ouverture du menu, garantissant qu'une table créée
+    entre-temps reste toujours atteignable sans recharger le widget.
+  - Testé : Node (`distinctColumnValues`, 6 assertions : ordre de 1re apparition, conversion en
+    chaîne, valeurs vides ignorées, dédupliqué, plafonné, tableau vide) + Playwright
+    (`filter-value-autocomplete-test.js`, 7 scénarios : suggestions = valeurs réelles dans l'ordre de
+    1re apparition, ArrowDown+Entrée remplit sans soumettre, un Entrée nu soumet le formulaire comme
+    les autres champs de la barre, sous-chaîne libre survit au blur + filtrage par sous-chaîne,
+    changer de colonne ne corrige/écrase jamais une saisie libre, soumission réelle via le bouton
+    "+ Filtre" avec effet sur les tuiles, changement de table rafraîchit bien les suggestions sur les
+    lignes de la NOUVELLE table) + régression complète (`combobox-test.js` avec le nouveau cas
+    `strictChangeCount`, `table-picker-test.js` re-vérifié après le fix `beforeOpen`, les 9 autres
+    suites Playwright existantes, `dev-tests/test-data.js`) + capture d'écran clair/sombre montrant
+    "cam" suggérant "Webcam HD" en surlignant la sous-chaîne tapée.
 
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 

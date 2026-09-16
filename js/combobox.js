@@ -100,7 +100,18 @@
     // options (comme un <select> natif), quelle que soit la valeur déjà commitée — mais ne
     // présélectionne RIEN, même si le champ est déjà vide. L'utilisateur n'a encore rien tapé ; un
     // Entrée égaré (ex. en tabulant dans le formulaire) ne doit jamais modifier un champ déjà valide.
-    function openPassive() {
+    // `config.beforeOpen`, si fourni, est attendu avant d'afficher la liste : sert à une source
+    // d'options EXTERNE et changeante (ex. le sélecteur de table, voir js/main.js) qui doit relire
+    // l'état le plus frais possible à l'ouverture plutôt qu'un instantané figé depuis le dernier
+    // `setOptions()` explicite — sans ça, une option ajoutée depuis (une table créée dans Grist
+    // entre-temps) reste invisible/inatteignable tant que ce rafraîchissement explicite n'a pas eu
+    // lieu ailleurs [BUG RÉEL trouvé en testant l'autocomplétion des valeurs de filtre : après avoir
+    // corrigé la fuite d'évènement 'change' natif ci-dessous, taper le nom d'une table fraîchement
+    // créée mais jamais encore "vue" par ce combobox ne matchait plus RIEN du tout].
+    async function openPassive() {
+      if (opts.beforeOpen) {
+        try { await opts.beforeOpen(); } catch (e) { /* liste peut-être obsolète, mieux que rien */ }
+      }
       currentQuery = '';
       matches = filterOptions(options, '');
       if (!matches.length && !blankLabel) return;
@@ -109,17 +120,23 @@
     }
 
     // Ouverture ACTIVE (l'utilisateur tape, y compris pour vider le champ) : filtre sur ce qui est
-    // tapé et présélectionne la meilleure correspondance, pour qu'Entrée fonctionne immédiatement
-    // sans ArrowDown préalable — c'est l'usage principal (taper un nom de colonne puis valider).
-    // Cas particulier : vider complètement le champ (currentQuery === '') présélectionne le "blank"
-    // (`(aucun)`) s'il existe — un champ explicitement vidé PUIS validé doit se réinitialiser,
-    // contrairement à l'ouverture passive ci-dessus où rien n'a été tapé.
+    // tapé. En mode STRICT, présélectionne la meilleure correspondance pour qu'Entrée fonctionne
+    // immédiatement sans ArrowDown préalable — c'est l'usage principal (taper un nom de colonne puis
+    // valider). Cas particulier : vider complètement le champ (currentQuery === '') présélectionne
+    // le "blank" (`(aucun)`) s'il existe — un champ explicitement vidé PUIS validé doit se
+    // réinitialiser, contrairement à l'ouverture passive ci-dessus où rien n'a été tapé.
+    // En mode NON STRICT (texte libre, ex. recherche "contient"), ne présélectionne JAMAIS : une
+    // suggestion qui matche ce qui est tapé reste une suggestion, pas un remplacement automatique —
+    // Entrée doit valider ce qui est RÉELLEMENT tapé (ex. "cam"), pas le compléter silencieusement
+    // vers "Webcam HD" juste parce qu'une seule suggestion matche. L'utilisateur choisit une
+    // suggestion explicitement (clic, ou ArrowDown puis Entrée), jamais par un Entrée nu.
     function openOnType() {
       currentQuery = inputEl.value;
       matches = filterOptions(options, currentQuery);
       const hasBlank = !!blankLabel;
       if (!matches.length && !hasBlank) { closeList(); return; }
-      if (currentQuery === '' && hasBlank) activeIndex = 0;
+      if (!strict) activeIndex = -1;
+      else if (currentQuery === '' && hasBlank) activeIndex = 0;
       else if (matches.length) activeIndex = hasBlank ? 1 : 0;
       else activeIndex = -1;
       showList();
@@ -169,6 +186,18 @@
           commit(valueAt(activeIndex));
         } else if (!strict) {
           closeList();
+        } else {
+          // Mode strict, aucune correspondance valide à commiter : `e.preventDefault()` est
+          // indispensable ICI aussi, pas seulement dans la branche `commit()` ci-dessus. Sans lui,
+          // le NAVIGATEUR déclenche son PROPRE évènement 'change' natif (texte modifié depuis le
+          // focus + Entrée pressée) avec la valeur brute/invalide tapée — un évènement qui court-
+          // circuite complètement `commit()`/la validation ci-dessus, et que tout code qui écoute
+          // 'change' sur ce champ (ex. le sélecteur de table) reçoit comme si c'était une vraie
+          // sélection. [BUG RÉEL trouvé en testant l'autocomplétion des valeurs de filtre : taper le
+          // nom d'une table qui n'existe pas encore puis Entrée déclenchait quand même une tentative
+          // de connexion à cette table inexistante.] La révision au blur (`isValid`, plus bas) reste
+          // le filet de sécurité pour une saisie laissée telle quelle sans jamais presser Entrée.
+          e.preventDefault();
         }
       } else if (e.key === 'Escape') {
         if (strict) inputEl.value = lastValidValue;
@@ -196,13 +225,18 @@
     inputEl.setAttribute('autocomplete', 'off');
     listEl.setAttribute('role', 'listbox');
 
-    // Remplace la liste d'options (comme `fillSelect` pour un <select>) : conserve la valeur
-    // actuelle si elle reste valide, sinon revient au blank (si prévu) ou à la 1re option.
+    // Remplace la liste d'options (comme `fillSelect` pour un <select>) : en mode strict, conserve
+    // la valeur actuelle si elle reste valide, sinon revient au blank (si prévu) ou à la 1re
+    // option — comme un <select>. En mode `strict: false` (valeurs de filtre, texte libre), la
+    // valeur tapée par l'utilisateur n'est PAS une "option" à valider : une liste de suggestions
+    // qui se rafraîchit (ex. changement de colonne filtrée) ne doit jamais écraser un texte de
+    // recherche déjà saisi, même s'il ne correspond littéralement à aucune valeur connue (c'est
+    // justement le cas d'usage d'une recherche "contient" par sous-chaîne).
     inputEl.setOptions = function (newOptions, cfg) {
       options = (newOptions || []).slice();
       if (cfg && 'blankLabel' in cfg) blankLabel = cfg.blankLabel || null;
       if (blankLabel) inputEl.placeholder = blankLabel;
-      if (!isValid(inputEl.value)) inputEl.value = blankLabel ? '' : (options[0] || '');
+      if (strict && !isValid(inputEl.value)) inputEl.value = blankLabel ? '' : (options[0] || '');
       lastValidValue = inputEl.value;
     };
 

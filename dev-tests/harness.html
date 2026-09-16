@@ -82,7 +82,10 @@
     </div>
     <div class="field" id="filter-text-field" hidden>
       <label for="filter-text">Recherche</label>
-      <input type="text" id="filter-text" placeholder="contient…" />
+      <div class="combobox">
+        <input type="text" id="filter-text" class="combobox-input" placeholder="contient…" />
+        <ul class="combobox-list" hidden></ul>
+      </div>
     </div>
     <button id="apply-advanced-filter" type="submit" class="btn-secondary">+ Filtre</button>
   </form>

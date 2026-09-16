@@ -169,6 +169,19 @@ const rows = [
   console.log('OK aggregateSingle');
 }
 
+// distinctColumnValues (suggestions de valeurs, barre de filtres avancés)
+{
+  assert.deepStrictEqual(data.distinctColumnValues(rows, 'Region'), ['Nord', 'Sud']); // ordre de 1re apparition, pas alphabétique — Sud avant Nord donnerait un ordre différent si trié
+  assert.deepStrictEqual(data.distinctColumnValues(rows, 'Montant'), ['100', '50', '30', '70']); // converties en chaîne (cohérent avec un <input> texte)
+  const withBlanks = rows.concat([{ id: 5, Region: '', Montant: null }, { id: 6, Region: undefined, Montant: 100 }]);
+  assert.deepStrictEqual(data.distinctColumnValues(withBlanks, 'Region'), ['Nord', 'Sud']); // null/undefined/'' ignorés, rien à suggérer
+  assert.deepStrictEqual(data.distinctColumnValues(withBlanks, 'Montant'), ['100', '50', '30', '70']); // doublon (id 6, Montant=100) dédupliqué
+  const manyRows = Array.from({ length: 1000 }, (_, i) => ({ id: i, Unique: i }));
+  assert.strictEqual(data.distinctColumnValues(manyRows, 'Unique', 500).length, 500); // plafond respecté (colonne quasi unique, type Montant sur le jeu de charge)
+  assert.strictEqual(data.distinctColumnValues([], 'Region').length, 0);
+  console.log('OK distinctColumnValues (ordre de 1re apparition, valeurs vides ignorées, dédupliqué, plafonné)');
+}
+
 // tableToRows (format colonnaire -> lignes, utilisé pour la table de config)
 {
   const table = { id: [1, 2], TableId: ['Ventes', 'Autre'], ConfigJSON: ['[]', '[{"a":1}]'] };

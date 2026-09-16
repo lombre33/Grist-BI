@@ -69,6 +69,12 @@ graphiques vides (ou l'export Excel muet) sans erreur explicite.
   autocomplétion (composant maison, `js/combobox.js`) plutôt que des menus déroulants bruts — on
   tape pour filtrer, le texte tapé est surligné dans les suggestions, navigation clavier complète.
   Confortable dès qu'une vraie table Grist a des dizaines de colonnes.
+- **Autocomplétion des VALEURS dans le filtre "Recherche"** : ce champ (filtre avancé `contient`)
+  suggère les valeurs réellement présentes dans la colonne choisie (texte libre, la liste n'est
+  qu'une suggestion — taper "cam" pour chercher "contient cam" reste possible même si "cam" seul
+  n'est la valeur exacte d'aucune ligne). Les champs min/max/date restent volontairement natifs
+  (`<input type="number/date">`) : une colonne numérique quasi unique ou un calendrier natif sont
+  déjà une meilleure UX qu'une liste de suggestions dans ces cas (voir HYPOTHESES.md).
 - **Sélecteur de table** (barre du haut, aussi en autocomplétion) : le widget peut se reconnecter à
   n'importe quelle table du document Grist choisie manuellement, pas seulement sa table de test de
   charge par défaut — une table quelconque démarre sur un dashboard vide à construire soi-même, avec
@@ -121,7 +127,7 @@ premier commit.
 
 ## État du projet
 
-Plusieurs allers-retours avec un usage réel, neuf vrais bugs remontés/trouvés et corrigés : un souci
+Plusieurs allers-retours avec un usage réel, treize vrais bugs remontés/trouvés et corrigés : un souci
 de chargement d'ECharts sur réseau filtré (HYPOTHESES.md point 3), un `KeyError` de génération de
 données de démo dû à un schéma de table obsolète (point 9), un bug CSS où plusieurs champs du
 formulaire de tuile (`.hidden = true` en JS) ne se masquaient en réalité jamais à l'écran, des
@@ -130,9 +136,15 @@ point de scatter qui aurait rendu le clic muet sans un champ `name` explicite, d
 s'étiraient à l'infini vers le bas (boucle resize↔layout entre `.tile`/ECharts, remontée par
 l'utilisateur en conditions réelles), et un combobox qui ne commitait rien en tapant puis Entrée
 sans navigation clavier préalable (trouvé en migrant le vrai formulaire, pas par les tests du
-composant isolé), et une sauvegarde de configuration perdue en revenant sur une table déjà visitée
+composant isolé), une sauvegarde de configuration perdue en revenant sur une table déjà visitée
 (race condition sur le debounce de sauvegarde, invisible tant que le widget ne changeait jamais de
-table en cours de session) — la plupart repérés
+table en cours de session), un combobox en mode texte libre qui pouvait se faire écraser sa saisie
+par un rafraîchissement de suggestions, un paramètre de fonction silencieusement écrasé par
+l'`Event` du navigateur sur un `addEventListener` direct, et — le plus significatif — un Entrée sur
+une saisie de combobox strict sans AUCUNE correspondance qui laissait fuiter l'évènement `change`
+natif du navigateur avec la valeur brute invalide, contournant toute la validation (révélait au
+passage que le sélecteur de table, déjà "vert", ne fonctionnait en réalité que grâce à ce bug) —
+la plupart repérés
 uniquement en vérifiant le rendu réel (visibilité/capture d'écran), jamais via une simple absence
 d'erreur JS. Depuis : édition et réorganisation de
 tuile, `ResizeObserver`, tri chronologique, filtres croisés cumulables, tendance KPI, vues
@@ -150,10 +162,12 @@ dates relatives, recherche texte — une colonne `Date` ISO a été ajoutée aux
 rendre démontrables), un **export Excel** (SheetJS embarqué localement, une feuille par tuile
 reflétant exactement les filtres/drill-down actifs à l'écran), une **autocomplétion** (composant
 Combobox maison) sur tous les sélecteurs de colonne du formulaire de tuile et de la barre de
-filtres, et un **sélecteur de table** (Combobox également) permettant de reconnecter le widget à
+filtres, un **sélecteur de table** (Combobox également) permettant de reconnecter le widget à
 n'importe quelle table du document — la connexion automatique à `BI_StressTest` reste le
-comportement par défaut au démarrage, mais n'est plus la seule table possible en cours de session.
-La Roadmap Tier 1 est désormais **entièrement terminée** — voir [ROADMAP.md](./ROADMAP.md)
+comportement par défaut au démarrage, mais n'est plus la seule table possible en cours de session —
+et une **autocomplétion des valeurs** dans le filtre "Recherche" (suggestions des valeurs réelles de
+la colonne choisie, texte libre). La Roadmap Tier 1 **et le Tier 1.5** sont désormais **entièrement
+terminés** — voir [ROADMAP.md](./ROADMAP.md)
 pour la suite (Tier 2 : moteur DuckDB, mesures façon DAX, tableau croisé dynamique...) priorisée par
 valeur x risque de faisabilité, avec un
 [TEST_PROTOCOL.md](./TEST_PROTOCOL.md) associé qui grandit à chaque nouvelle feature. Voir
