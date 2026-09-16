@@ -292,7 +292,15 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
   padding: 12px 14px;
-  min-height: 224px;
+  /* `height` fixe, PAS `min-height` [BUG RÉEL] : `.tile-chart` en dessous a `flex:1` sans hauteur
+     définie sur ce parent, ce qui rend sa taille dépendante du contenu qu'ECharts y dessine.
+     `resizeAll()` (ResizeObserver sur `document.body`, voir main.js) re-mesure alors un conteneur
+     dont la taille dépend en boucle du graphique lui-même : chaque cycle grandit d'un cran, sans
+     jamais se stabiliser (tuile qui s'étire à l'infini vers le bas, aucune erreur JS). Une hauteur
+     FIXE ici casse la dépendance circulaire : `flex:1` a une base de calcul stable et ECharts se
+     redimensionne toujours vers la même valeur d'un cycle à l'autre.
+  */
+  height: 224px;
   display: flex;
   flex-direction: column;
   transition: box-shadow 0.15s var(--ease);

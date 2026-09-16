@@ -56,6 +56,13 @@ une feature "testée", vérifier qu'on s'est posé chacune de ces questions :
   grand), prendre une capture d'écran Playwright et la regarder — un test qui vérifie seulement
   l'absence d'erreur JS peut laisser passer un rendu visuellement cassé (voir [BUG RÉEL] libellés
   d'axe tronqués ci-dessous, détecté uniquement en regardant une capture, aucune erreur JS levée).
+- [ ] **Stabilité dans le temps, pas juste un instant T** : pour tout ce qui touche à la mise en page
+  d'une tuile contenant un graphique ECharts (CSS flex/grid autour de `.tile-chart`, tout ce qui
+  déclenche `resizeAll()`), mesurer sa hauteur/largeur réelle à PLUSIEURS instants successifs (pas
+  juste une fois après le rendu), pour détecter une boucle de rétroaction resize↔layout qui grandit
+  ou rétrécit progressivement — invisible sur un seul screenshot statique OU une seule lecture d'état
+  (voir [BUG RÉEL] tuiles qui s'étirent à l'infini ci-dessous, repéré uniquement en comparant la
+  hauteur sur 8 échantillons dans le temps).
 
 ## Catalogue exhaustif par module
 
@@ -277,6 +284,8 @@ une feature "testée", vérifier qu'on s'est posé chacune de ces questions :
 - [x] `.field[hidden]` masque réellement l'élément (pas seulement `display:flex` de `.field` qui gagne à spécificité égale) [BUG RÉEL, trouvé 2 fois sur des champs différents] ✅ (règle en place)
 - [ ] `.demo-banner[hidden]` — obsolète depuis le retrait du bandeau démo, à retirer de cette checklist si le sélecteur est un jour supprimé du CSS
 - [ ] **Règle générale à vérifier pour tout NOUVEAU sélecteur avec `hidden`** : si le sélecteur porte `display: <autre chose que none>` sans variante `[hidden]`, il faut la règle `[hidden]{display:none}` explicite — ajouter un test Playwright `isHidden()` pour tout nouveau champ conditionnel
+- [x] `.tile` a une hauteur FIXE (`height`, pas `min-height`) tant qu'un descendant a `flex:1` géré par `resizeAll()`/ECharts [BUG RÉEL : boucle resize↔layout, tuiles qui grandissaient à l'infini] ✅ (règle en place, testée sur 8 cycles de resize consécutifs)
+- [ ] **Règle générale pour tout NOUVEAU conteneur de graphique ECharts** : si son parent utilise `flex:1`/`fr` (grid) sans hauteur explicite sur un ancêtre, mesurer sa hauteur sur plusieurs cycles de resize avant de considérer la mise en page correcte — pas seulement au premier rendu
 
 ## Bugs réels déjà trouvés (liste de non-régression — ne jamais retirer une entrée)
 
@@ -289,6 +298,7 @@ une feature "testée", vérifier qu'on s'est posé chacune de ces questions :
 7. **Filtres croisés/état de drill orphelins** — `removeTile`/`updateTile` ne nettoyaient pas les filtres croisés (`toggleFilter` ou `drillCrossFilter`) posés par la tuile supprimée/éditée. Corrigé en même temps que l'ajout de `drillCrossFilter`, avant qu'un utilisateur ne le rencontre en réel.
 8. **Libellés d'axe Y tronqués sur de grandes valeurs** [BUG RÉEL trouvé en capturant un screenshot pendant la passe de design] — sur le jeu de test de charge (valeurs ~2,7M), ECharts réservait une marge gauche estimée AVANT de connaître la largeur réelle du texte produit par un `axisLabel.formatter` personnalisé (format compact) ; l'estimation était trop courte, une partie du texte se dessinait hors du canvas et disparaissait silencieusement (aucune erreur JS, juste des libellés du type "000" au lieu de "2,7 M"). Corrigé par `grid: { containLabel: true }`, qui force ECharts à recalculer la marge à partir du texte réellement rendu plutôt que d'une estimation.
 9. **Graduations de jauge chevauchées** [BUG RÉEL trouvé en capturant un screenshot en ajoutant le type "gauge"] — le `splitNumber` par défaut d'ECharts (10, donc 11 libellés) produisait des graduations illisibles, superposées, à la taille d'une tuile normale. Corrigé par `splitNumber: 4` (5 libellés espacés). Même famille que le bug #8 : un réglage ECharts par défaut, pensé pour un espace plus grand qu'une tuile de dashboard, doit être revu explicitement pour CHAQUE nouveau type de série ECharts introduit, pas seulement testé "ça s'affiche sans erreur".
+10. **Tuiles qui s'étirent à l'infini vers le bas** [BUG RÉEL remonté par l'utilisateur en réel] — `.tile` n'avait qu'un `min-height` (pas de hauteur fixe) alors que `.tile-chart` en dessous a `flex:1` : le `ResizeObserver` sur `document.body` (voir `main.js`) redéclenchait `resizeAll()` en boucle, chaque cycle mesurant un conteneur dont la taille dépendait CIRCULAIREMENT du graphique ECharts qu'il contient (`flex:1` sans base de calcul stable) — croissance monotone d'environ 20-25px par cycle, sans jamais se stabiliser, et sans la moindre erreur JS. Repéré en mesurant la hauteur réelle des tuiles sur plusieurs cycles de resize consécutifs (jamais visible via une simple absence d'erreur, ni même sur un seul screenshot statique — il fallait comparer plusieurs instants). Corrigé par une hauteur FIXE sur `.tile` (`height: 224px` plutôt que `min-height: 224px`), qui casse la dépendance circulaire. Même famille de leçon que les bugs #8/#9 : un réglage de layout qui semble correct sur un rendu statique unique peut cacher une boucle de rétroaction qui ne se révèle qu'en observant plusieurs instants dans le temps.
 
 ## Fragilité de test connue (PAS un bug produit — investiguée en profondeur, à ne pas re-diagnostiquer)
 

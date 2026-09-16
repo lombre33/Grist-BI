@@ -442,6 +442,32 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     SheetJS neutralise volontairement `require('fs')`, donc `XLSX.readFile()` échoue sous Node
     (`Cannot access file`) ; le test lit le fichier via `fs.readFileSync` puis `XLSX.read(buffer,
     {type:'buffer'})`, pas une limite du widget lui-même.
+- **[BUG RÉEL remonté par l'utilisateur en réel] Tuiles qui s'étirent à l'infini vers le bas**
+  (`css/style.css:.tile`) :
+  - **Symptôme** : après le chargement (ou l'ajout d'une nouvelle tuile), les tuiles contenant un
+    graphique ECharts grandissaient continuellement vers le bas, sans jamais se stabiliser — aucune
+    erreur JS, aucun message dans la console.
+  - **Cause** : `.tile` n'avait qu'un `min-height: 224px` (hauteur dérivée du contenu), tandis que
+    `.tile-chart` (le conteneur du graphique) a `flex: 1` (grandit pour occuper l'espace disponible).
+    Sans hauteur FIXE sur `.tile`, la taille de `.tile-chart` dépend circulairement du graphique
+    qu'il contient. Le `ResizeObserver` posé sur `document.body` (voir `main.js`, pensé pour capter
+    un redimensionnement du panneau Grist hébergeant l'iframe) redéclenche `resizeAll()` à chaque
+    changement de mise en page ; chaque cycle de `chart.resize()` mesurait alors un conteneur
+    légèrement plus grand qu'au cycle précédent, dans une boucle de rétroaction qui ne convergeait
+    jamais (~20-25px de plus toutes les quelques centaines de ms).
+  - **Diagnostic** : impossible à voir sur un screenshot unique (l'état à l'instant T semble normal)
+    ni via l'absence d'erreur JS. Repéré en mesurant la hauteur réelle de `.tile-chart` à PLUSIEURS
+    instants successifs via Playwright (`getBoundingClientRect().height` échantillonnée toutes les
+    ~300-400ms sur plusieurs secondes) — la seule méthode qui révèle une boucle de rétroaction dans
+    le temps. Nouvelle catégorie ajoutée à la checklist méthodologique de TEST_PROTOCOL.md :
+    "Stabilité dans le temps, pas juste un instant T".
+  - **Correction** : `.tile` passe de `min-height: 224px` à `height: 224px` (hauteur fixe). Casse la
+    dépendance circulaire : `flex: 1` a désormais une base de calcul stable, indépendante du contenu
+    qu'ECharts y dessine. Vérifié sur 8 cycles de resize consécutifs (~2s) : hauteur parfaitement
+    stable à 180px (le plancher de `.tile-chart`) après le fix, contre une croissance continue avant.
+  - Testé : Playwright dédié (`tile-height-stability-test.js`), ajouté comme garde de non-régression
+    permanente pour cette classe de bug (toute future tuile avec un graphique ECharts dans un
+    conteneur `flex`/`grid` sans hauteur explicite sur un ancêtre y est exposée).
 
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 

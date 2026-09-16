@@ -109,12 +109,14 @@ premier commit.
 
 ## État du projet
 
-Deux allers-retours avec un usage réel, six vrais bugs remontés/trouvés et corrigés : un souci de
-chargement d'ECharts sur réseau filtré (HYPOTHESES.md point 3), un `KeyError` de génération de
+Plusieurs allers-retours avec un usage réel, sept vrais bugs remontés/trouvés et corrigés : un souci
+de chargement d'ECharts sur réseau filtré (HYPOTHESES.md point 3), un `KeyError` de génération de
 données de démo dû à un schéma de table obsolète (point 9), un bug CSS où plusieurs champs du
 formulaire de tuile (`.hidden = true` en JS) ne se masquaient en réalité jamais à l'écran, des
-libellés d'axe tronqués sur de grandes valeurs, des graduations de jauge qui se chevauchaient, et un
-point de scatter qui aurait rendu le clic muet sans un champ `name` explicite — la plupart repérés
+libellés d'axe tronqués sur de grandes valeurs, des graduations de jauge qui se chevauchaient, un
+point de scatter qui aurait rendu le clic muet sans un champ `name` explicite, et des tuiles qui
+s'étiraient à l'infini vers le bas (boucle resize↔layout entre `.tile`/ECharts, remontée par
+l'utilisateur en conditions réelles) — la plupart repérés
 uniquement en vérifiant le rendu réel (visibilité/capture d'écran), jamais via une simple absence
 d'erreur JS. Depuis : édition et réorganisation de
 tuile, `ResizeObserver`, tri chronologique, filtres croisés cumulables, tendance KPI, vues
