@@ -398,6 +398,50 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     retirés via leur badge, effet réel vérifié sur l'agrégat d'une tuile après retrait d'un filtre,
     non-présence dans la config persistée, capture par bookmark) + captures d'écran clair/sombre.
     Aucun bug produit trouvé sur cette feature.
+- **Export Excel du dashboard** (`js/vendor/xlsx/`, `js/export.js`, `js/data.js`, Roadmap Tier 1) :
+  - **SheetJS (`xlsx`, npm `xlsx@0.18.5`, Apache-2.0) embarqué localement**, même raisonnement que
+    `js/vendor/echarts/` (voir README.md) : pas de dépendance à un CDN externe. Build `xlsx.full.min.js`
+    choisie (UMD, expose `window.XLSX`) plutôt que `xlsx.mini.min.js` (plus légère mais sans certains
+    formats de lecture — sans intérêt ici puisque ce POC n'écrit QUE des `.xlsx`, jamais n'en relit).
+  - **Refactor pour éliminer la duplication rendu/export** : la composition de filtres qui vivait en
+    ligne dans `charts.js:renderTile` (filtres croisés des autres tuiles + filtres avancés +
+    drill-down) est devenue `GristBI.data.rowsForTile(tile, state)`, et `currentDimension` (dimension
+    actuellement affichée compte tenu du drill-down) a migré de `charts.js` vers `data.js` — les deux
+    étaient déjà PURES (aucune dépendance DOM/ECharts), seulement mal placées dans un module
+    browser-only. Résultat : une SEULE source de vérité pour "que voit l'utilisateur pour cette
+    tuile", partagée par le rendu ET l'export, testable sous Node (alors que `charts.js` ne l'est
+    pas, voir TEST_PROTOCOL.md). Ce que l'utilisateur exporte correspond ainsi exactement, et
+    automatiquement, à ce qu'il voit à l'écran (mêmes filtres croisés, mêmes filtres avancés, même
+    niveau de drill-down par tuile) sans code dédié à synchroniser les deux.
+  - **`GristBI.data.tileExportSheet(tile, state)`** : une feuille par tuile, agrégée EXACTEMENT
+    comme le rendu (`aggregateSingle` pour kpi/gauge, `groupByAggregate` pour bar/pie/treemap, les
+    deux mesures alignées par nom de dimension pour scatter — même technique que le rendu scatter,
+    voir plus haut). Retourne `{header, rows}` plutôt qu'un tableau d'objets : contrôle explicite de
+    l'en-tête même quand `rows` est vide (tuile entièrement filtrée), ce que
+    `XLSX.utils.json_to_sheet([])` ne permettrait pas (pas d'objet pour déduire les colonnes).
+  - **`GristBI.data.buildWorkbookSheets(state)`** : une feuille par tuile, TOUTES PAGES confondues
+    (pas seulement la page actuellement affichée — exporter le dashboard entier a plus de valeur
+    qu'exporter un instantané d'écran) ; le nom de page préfixe le titre de la tuile seulement s'il y
+    a plusieurs pages. `sanitizeSheetName` applique les contraintes Excel (31 caractères max,
+    caractères `: \ / ? * [ ]` interdits, unicité dans le classeur) avec un suffixe `" (n)"` en cas de
+    collision après troncature/nettoyage — deux tuiles peuvent parfaitement partager le même titre.
+  - **`js/export.js`** ne fait QUE parler à `XLSX` (construction du classeur + `XLSX.writeFile`, qui
+    gère lui-même Blob + ancre de téléchargement + clic synthétique) : aucune logique testable sous
+    Node n'y réside, conformément à la même séparation que `grist-api.js`/`charts.js` (browser-only,
+    Playwright uniquement). `XLSX.writeFile` fonctionne car l'iframe du widget N'EST PAS sandboxée
+    (voir ROADMAP.md, limites structurelles) — **jamais vérifié en conditions réelles Grist** que le
+    téléchargement se déclenche bien depuis l'iframe (voir "Points à valider" plus bas).
+  - Testé : Node (`tileExportSheet` pour bar/kpi/scatter + cas d'une tuile vidée par un filtre,
+    `sanitizeSheetName` pour les 3 contraintes Excel, `buildWorkbookSheets` pour le préfixage
+    conditionnel par page) + Playwright — celui-ci va jusqu'à **relire le fichier .xlsx réellement
+    téléchargé** (`page.waitForEvent('download')` + SheetJS côté Node sur le buffer téléchargé) et
+    comparer son contenu exact à `buildWorkbookSheets` calculé côté navigateur au même instant, y
+    compris avec un filtre avancé actif (l'export reflète bien les données filtrées, pas les données
+    brutes) et le cas "aucune tuile" (alerte, aucun téléchargement déclenché). Aucun bug produit
+    trouvé sur cette feature — une limitation d'outillage notée en marge : la build "browser" de
+    SheetJS neutralise volontairement `require('fs')`, donc `XLSX.readFile()` échoue sous Node
+    (`Cannot access file`) ; le test lit le fichier via `fs.readFileSync` puis `XLSX.read(buffer,
+    {type:'buffer'})`, pas une limite du widget lui-même.
 
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
@@ -495,6 +539,15 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     vérifier en réel : le découpage en lots de 2000 suffit-il à éviter un timeout/une erreur de
     payload sur la création initiale des ~47 000 lignes ? La reconnexion (relecture seule, sans
     envoi) est-elle bien quasi instantanée sur un vrai document, comme observé dans le mock ?
+11. **Déclenchement du téléchargement Excel depuis l'iframe du widget, jamais vérifié en conditions
+    réelles Grist** : `XLSX.writeFile` (voir `js/export.js`) crée un Blob + une ancre `<a download>`
+    + un clic synthétique, qui fonctionne dans Chromium headless (Playwright, voir plus haut) et
+    repose sur le fait, vérifié dans le code source de Grist, que l'iframe d'un widget custom n'est
+    PAS sandboxée (voir ROADMAP.md). Reste non vérifié dans un vrai navigateur à l'intérieur d'un vrai
+    document Grist : (a) le téléchargement se déclenche-t-il sans prompt de confirmation bloquant
+    inattendu (certains navigateurs demandent une confirmation pour un téléchargement initié depuis un
+    iframe tiers) ; (b) le nom de fichier (`dashboard-bi.xlsx`) et l'emplacement de téléchargement se
+    comportent-ils comme dans un onglet normal.
 
 ## Prochaines étapes suggérées
 

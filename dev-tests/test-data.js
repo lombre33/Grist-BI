@@ -177,6 +177,124 @@ const rows = [
   console.log('OK tableToRows');
 }
 
+// currentDimension : dimension racine si drillPath vide, sinon le niveau correspondant à la
+// profondeur atteinte
+{
+  const tile = { dimension: 'Annee', drillDimensions: ['Mois', 'Jour'] };
+  assert.strictEqual(data.currentDimension(tile, []), 'Annee');
+  assert.strictEqual(data.currentDimension(tile, undefined), 'Annee');
+  assert.strictEqual(data.currentDimension(tile, [{ column: 'Annee', value: 2026 }]), 'Mois');
+  assert.strictEqual(data.currentDimension(tile, [{ column: 'Annee', value: 2026 }, { column: 'Mois', value: 'Mars' }]), 'Jour');
+  console.log('OK currentDimension');
+}
+
+// rowsForTile : source de vérité partagée rendu/export — filtres des AUTRES tuiles + filtres
+// avancés + drill-down propre à la tuile, la tuile SOURCE d'un filtre croisé n'est pas filtrée sur
+// CE filtre-là (reste cliquable sur tous ses segments)
+{
+  const tileRows = [
+    { Region: 'Nord', Produit: 'A', Montant: 10 },
+    { Region: 'Nord', Produit: 'B', Montant: 20 },
+    { Region: 'Sud', Produit: 'A', Montant: 30 }
+  ];
+  const state1 = {
+    rows: tileRows,
+    activeFilters: [{ column: 'Region', value: 'Nord', sourceTileId: 't1' }],
+    advancedFilters: [],
+    drillIns: {}
+  };
+  // La tuile t1 (source du filtre) le voit ignoré -> toutes les lignes
+  assert.strictEqual(data.rowsForTile({ id: 't1' }, state1).length, 3);
+  // Une AUTRE tuile le subit -> seulement Nord
+  assert.strictEqual(data.rowsForTile({ id: 't2' }, state1).length, 2);
+
+  // advancedFilters s'appliquent à TOUTES les tuiles sans exception, y compris la source d'un filtre croisé
+  const state2 = Object.assign({}, state1, { advancedFilters: [{ column: 'Produit', type: 'contains', query: 'A' }] });
+  assert.strictEqual(data.rowsForTile({ id: 't1' }, state2).length, 2); // Nord/A + Sud/A, le filtre croisé Region reste ignoré pour t1
+  assert.strictEqual(data.rowsForTile({ id: 't2' }, state2).length, 1); // Nord ET Produit contient A -> juste Nord/A
+
+  // drillIns propre à la tuile s'applique même pour la tuile source d'un filtre croisé
+  const state3 = Object.assign({}, state1, { drillIns: { t1: [{ column: 'Produit', value: 'B' }] } });
+  assert.deepStrictEqual(data.rowsForTile({ id: 't1' }, state3).map((r) => r.Produit), ['B']);
+  console.log('OK rowsForTile (source de vérité partagée rendu/export)');
+}
+
+// tileExportSheet : une feuille par type de tuile, avec les mêmes agrégats que le rendu
+{
+  const exportRows = [
+    { Region: 'Nord', Produit: 'Casque audio', Quantite: 2, Montant: 100 },
+    { Region: 'Sud', Produit: 'Casque audio', Quantite: 3, Montant: 150 },
+    { Region: 'Nord', Produit: 'Clavier', Quantite: 1, Montant: 90 }
+  ];
+  const baseState = { rows: exportRows, activeFilters: [], advancedFilters: [], drillIns: {} };
+
+  const barTile = { id: 't1', type: 'bar', title: 'Montant par Région', dimension: 'Region', measure: 'Montant', aggFn: 'sum' };
+  const barSheet = data.tileExportSheet(barTile, baseState);
+  assert.strictEqual(barSheet.name, 'Montant par Région');
+  assert.deepStrictEqual(barSheet.header, ['Region', 'Montant']);
+  assert.deepStrictEqual(barSheet.rows, [['Nord', 190], ['Sud', 150]]);
+
+  const kpiTile = { id: 't2', type: 'kpi', measure: 'Montant', aggFn: 'sum' };
+  const kpiSheet = data.tileExportSheet(kpiTile, baseState);
+  assert.strictEqual(kpiTile.title, undefined); // titre absent -> repli sur aggFn(measure)
+  assert.strictEqual(kpiSheet.name, 'sum(Montant)');
+  assert.deepStrictEqual(kpiSheet.header, ['Mesure', 'Valeur']);
+  assert.deepStrictEqual(kpiSheet.rows, [['sum(Montant)', 340]]);
+
+  const scatterTile = { id: 't3', type: 'scatter', title: 'Quantité vs Montant', dimension: 'Produit', measure: 'Quantite', measureY: 'Montant', aggFn: 'sum' };
+  const scatterSheet = data.tileExportSheet(scatterTile, baseState);
+  assert.deepStrictEqual(scatterSheet.header, ['Produit', 'Quantite', 'Montant']);
+  assert.deepStrictEqual(scatterSheet.rows, [['Casque audio', 5, 250], ['Clavier', 1, 90]]);
+
+  // Tuile filtrée jusqu'à zéro ligne -> en-têtes présents, aucune ligne (pas planté, pas d'en-tête absent)
+  const emptyState = Object.assign({}, baseState, { activeFilters: [{ column: 'Region', value: 'Ouest', sourceTileId: 'autre' }] });
+  const emptySheet = data.tileExportSheet(barTile, emptyState);
+  assert.deepStrictEqual(emptySheet.header, ['Region', 'Montant']);
+  assert.deepStrictEqual(emptySheet.rows, []);
+  console.log('OK tileExportSheet (bar/kpi/scatter + tuile vide après filtrage)');
+}
+
+// sanitizeSheetName : caractères interdits Excel, troncature à 31, unicité dans le classeur
+{
+  const used = new Set();
+  assert.strictEqual(data.sanitizeSheetName('Montant par Région', used), 'Montant par Région');
+  assert.strictEqual(data.sanitizeSheetName('Ventes: Q1/Q2 [2026]?*', used), 'Ventes  Q1 Q2  2026');
+  const long = 'Un titre de tuile vraiment beaucoup trop long pour Excel';
+  assert.strictEqual(data.sanitizeSheetName(long, used).length, 31);
+  // Collision : le même nom une 2e fois -> suffixe " (2)" plutôt qu'une erreur/écrasement
+  const dup1 = data.sanitizeSheetName('Montant', used);
+  const dup2 = data.sanitizeSheetName('Montant', used);
+  assert.strictEqual(dup1, 'Montant');
+  assert.strictEqual(dup2, 'Montant (2)');
+  assert.ok(dup2.length <= 31);
+  console.log('OK sanitizeSheetName (caractères interdits, troncature 31, unicité)');
+}
+
+// buildWorkbookSheets : une feuille par tuile, toutes pages confondues, préfixée par le nom de la
+// page seulement s'il y en a plusieurs
+{
+  const wbRows = [{ Region: 'Nord', Montant: 10 }, { Region: 'Sud', Montant: 20 }];
+  const singlePageState = {
+    rows: wbRows, activeFilters: [], advancedFilters: [], drillIns: {},
+    pages: [{ id: 'p1', name: 'Page 1', tiles: [
+      { id: 't1', type: 'bar', title: 'Montant par Région', dimension: 'Region', measure: 'Montant', aggFn: 'sum' }
+    ] }]
+  };
+  const singlePageSheets = data.buildWorkbookSheets(singlePageState);
+  assert.strictEqual(singlePageSheets.length, 1);
+  assert.strictEqual(singlePageSheets[0].name, 'Montant par Région'); // pas de préfixe : une seule page
+
+  const multiPageState = Object.assign({}, singlePageState, {
+    pages: [
+      { id: 'p1', name: 'Ventes', tiles: [{ id: 't1', type: 'kpi', measure: 'Montant', aggFn: 'sum' }] },
+      { id: 'p2', name: 'Stock', tiles: [{ id: 't2', type: 'kpi', measure: 'Montant', aggFn: 'sum' }] }
+    ]
+  });
+  const multiPageSheets = data.buildWorkbookSheets(multiPageState);
+  assert.deepStrictEqual(multiPageSheets.map((s) => s.name), ['Ventes - sum(Montant)', 'Stock - sum(Montant)']);
+  console.log('OK buildWorkbookSheets (préfixe de page conditionnel + une feuille par tuile toutes pages confondues)');
+}
+
 // state: toggle de filtre croisé - un seul filtre par colonne (activation/toggle-off/remplacement)
 {
   const store = state.createStore();

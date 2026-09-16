@@ -92,6 +92,20 @@ une feature "testée", vérifier qu'on s'est posé chacune de ces questions :
 - [x] `parseDateValue` — format ISO valide → timestamp, format non-ISO (ex. `JJ/MM/AAAA`) → `null` plutôt que mal interprété, chaîne non-date → `null` ✅
 - [x] `relativeDateRange` — `now` explicite plutôt que l'horloge réelle (testable sous Node), preset inconnu → `null` ✅
 - [ ] `matchesFilter` — type `range`/`dateRange` avec `min > max` ou `start > end` (bornes incohérentes) — non gardé dans `data.js` lui-même (le formulaire de `main.js` empêche de le soumettre, mais la fonction pure ne le revalide pas) ⬜
+- [x] `currentDimension` — dimension racine si `drillPath` vide/`undefined`, sinon le niveau correspondant à la profondeur atteinte ✅
+- [x] `rowsForTile` — la tuile SOURCE d'un filtre croisé ne le subit pas elle-même (reste cliquable sur tous ses segments), une AUTRE tuile le subit ✅
+- [x] `rowsForTile` — les filtres avancés s'appliquent à TOUTES les tuiles sans exception, y compris la source d'un filtre croisé ✅
+- [x] `rowsForTile` — le drill-down propre à la tuile s'applique même pour la tuile source d'un filtre croisé ✅
+- [x] `tileExportSheet` — bar (header/rows agrégés comme le rendu) ✅
+- [x] `tileExportSheet` — kpi (repli du nom de feuille sur `aggFn(measure)` si `tile.title` absent) ✅
+- [x] `tileExportSheet` — scatter (2 mesures alignées par nom de dimension, pas par index) ✅
+- [x] `tileExportSheet` — tuile entièrement filtrée (0 ligne) → en-têtes présents, `rows: []` (pas planté, pas d'en-tête absent) ✅
+- [ ] `tileExportSheet` — gauge, treemap ⬜ (mêmes chemins de code que kpi/bar respectivement, pas de cas Playwright/Node dédié)
+- [x] `sanitizeSheetName` — caractères interdits Excel (`: \ / ? * [ ]`) remplacés par des espaces ✅
+- [x] `sanitizeSheetName` — troncature à 31 caractères ✅
+- [x] `sanitizeSheetName` — collision de nom → suffixe `" (n)"`, jamais un nom dupliqué dans le classeur ✅
+- [x] `buildWorkbookSheets` — une seule page → pas de préfixe de nom de page ✅
+- [x] `buildWorkbookSheets` — plusieurs pages → préfixe `"NomPage - "` sur chaque feuille, toutes pages confondues dans le même classeur ✅
 
 ### `js/state.js` — store pub/sub (Node, `dev-tests/test-data.js`)
 
@@ -246,6 +260,17 @@ une feature "testée", vérifier qu'on s'est posé chacune de ces questions :
 - [x] Un bookmark capture le filtre avancé courant et le restaure après un `clearAdvancedFilter()` 🌐
 - [ ] Changer de TABLE (bootstrap une 2e fois) vide bien les filtres avancés (`store.clearAdvancedFilter()` dans `switchTable`) ⬜ **[NON TESTABLE ICI]** — un seul chargement de table par session dans ce POC (voir HYPOTHESES.md), jamais de vrai changement de table à tester
 - [ ] Deux filtres avancés dont un devient incohérent après édition manuelle du formulaire (ex. `min`/`max` inversés sans repasser par la validation du formulaire) ⬜ — voir aussi la limite notée dans `matchesFilter` plus haut
+
+### `js/export.js` — export Excel (Roadmap Tier 1, Playwright)
+
+- [x] Cliquer « Exporter en Excel » déclenche un vrai téléchargement (`page.waitForEvent('download')`), nom de fichier `dashboard-bi.xlsx` 🌐
+- [x] **Le fichier .xlsx réellement téléchargé est relu** (SheetJS côté Node sur le buffer, pas juste l'appel JS) et son contenu (noms de feuilles + cellules) comparé exactement à `buildWorkbookSheets` calculé côté navigateur au même instant 🌐
+- [x] Le nombre de feuilles correspond au nombre de tuiles (4 tuiles pré-configurées → 4 feuilles) 🌐
+- [x] Un filtre avancé actif au moment de l'export se reflète dans le fichier téléchargé (pas les données brutes) 🌐
+- [x] Aucune tuile → une alerte ("Aucune tuile à exporter"), AUCUN téléchargement ne se déclenche (vérifié en garantissant l'absence de l'événement `download`, pas juste l'absence d'erreur) 🌐
+- [ ] Plusieurs pages → préfixe de nom de page sur chaque feuille, feuilles de TOUTES les pages présentes dans le même classeur (couvert côté Node via `buildWorkbookSheets`, pas encore rejoué en Playwright avec de vraies pages + export combinés) ⬜
+- [ ] Deux tuiles avec le même titre → noms de feuilles dédupliqués avec suffixe `" (2)"` (couvert côté Node via `sanitizeSheetName`, pas de cas Playwright dédié avec de vraies tuiles dupliquées) ⬜
+- [ ] **[NON TESTABLE ICI]** Déclenchement du téléchargement depuis l'intérieur d'une VRAIE iframe de widget Grist (pas juste une page top-level Chromium headless) — voir HYPOTHESES.md, point 11
 
 ### CSS — classe de bug à systématiquement re-vérifier
 

@@ -6,7 +6,8 @@
 (function (global) {
   const GristBI = global.GristBI || (global.GristBI = {});
   const {
-    groupByAggregate, applyFilters, sameValue, aggregateSingle, computeTrend, escapeHtml, tileDrillLevels
+    groupByAggregate, sameValue, aggregateSingle, computeTrend, escapeHtml, tileDrillLevels,
+    currentDimension, rowsForTile
   } = GristBI.data;
 
   const chartInstances = new Map();
@@ -20,33 +21,21 @@
     '#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948'
   ];
 
-  // Dimension actuellement affichée par une tuile bar/pie : sa dimension racine si `drillPath` est
-  // vide, sinon le niveau correspondant à la profondeur atteinte (voir state.js:drillInto/drillUp).
-  function currentDimension(tile, drillPath) {
-    if (!drillPath || !drillPath.length) return tile.dimension;
-    const levels = tileDrillLevels(tile);
-    return levels[drillPath.length - 1] || tile.dimension;
-  }
-
   function renderTile(tile, state, container) {
-    // Une tuile qui EST la source d'un filtre croisé s'affiche non filtrée SUR CE FILTRE LÀ (pour
-    // rester cliquable sur tous ses segments) ; elle reçoit quand même les filtres posés par
-    // d'AUTRES tuiles. Les filtres avancés (barre de filtres, pas un clic sur une tuile) n'ont pas
-    // cette exception : ils s'appliquent à TOUTES les tuiles sans distinction, `sourceTileId` n'a
-    // jamais de sens pour eux. Tout s'applique en ET (plage + recherche + drill-down + cross-filter).
-    const filtersFromOtherTiles = state.activeFilters.filter((f) => f.sourceTileId !== tile.id);
+    // Filtrage délégué à GristBI.data.rowsForTile (source de vérité partagée avec l'export Excel,
+    // voir data.js) : une tuile qui EST la source d'un filtre croisé s'affiche non filtrée SUR CE
+    // FILTRE LÀ (pour rester cliquable sur tous ses segments) ; elle reçoit quand même les filtres
+    // posés par d'AUTRES tuiles ainsi que les filtres avancés (qui s'appliquent à toutes les tuiles
+    // sans exception, `sourceTileId` n'a jamais de sens pour eux) et son propre drill-down.
     const drillPath = (state.drillIns && state.drillIns[tile.id]) || [];
-    const rowsForTile = applyFilters(
-      state.rows,
-      filtersFromOtherTiles.concat(state.advancedFilters || []).concat(drillPath)
-    );
+    const rows = rowsForTile(tile, state);
 
     if (tile.type === 'kpi') {
-      renderKpi(tile, rowsForTile, container);
+      renderKpi(tile, rows, container);
     } else if (tile.type === 'gauge') {
-      renderGauge(tile, rowsForTile, container);
+      renderGauge(tile, rows, container);
     } else {
-      renderChart(tile, rowsForTile, state, container, drillPath);
+      renderChart(tile, rows, state, container, drillPath);
     }
   }
 

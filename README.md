@@ -15,10 +15,11 @@ délibérément hors scope, et ce qui reste à valider en conditions réelles.
 
 Architecture reprise du widget [publipostageGrist](https://github.com/lombre33/publipostagegrist)
 du même auteur : page statique unique, **aucune étape de build**, config du dashboard stockée dans
-une table Grist interne cachée (`BI_Dashboard_Config`). ECharts (la bibliothèque de graphiques) est
-embarqué directement dans le repo (`js/vendor/echarts/`, Apache-2.0) plutôt que chargé depuis un
-CDN externe — un réseau qui filtre `cdnjs.cloudflare.com` (proxy d'entreprise/institution, etc.)
-laisserait sinon les tuiles graphiques vides sans erreur explicite.
+une table Grist interne cachée (`BI_Dashboard_Config`). ECharts (la bibliothèque de graphiques) et
+SheetJS (l'export Excel) sont embarqués directement dans le repo (`js/vendor/echarts/` et
+`js/vendor/xlsx/`, tous deux Apache-2.0) plutôt que chargés depuis un CDN externe — un réseau qui
+filtre `cdnjs.cloudflare.com` (proxy d'entreprise/institution, etc.) laisserait sinon les tuiles
+graphiques vides (ou l'export Excel muet) sans erreur explicite.
 
 ## Fonctionnalités du POC
 
@@ -58,6 +59,11 @@ laisserait sinon les tuiles graphiques vides sans erreur explicite.
   `Date`, recherche texte (insensible à la casse) pour le reste. Le type de champ affiché s'adapte
   automatiquement à la colonne choisie, en inspectant une valeur réelle (pas son nom). Se cumulent en
   ET avec les filtres croisés existants et s'appliquent à toutes les tuiles.
+- **Export Excel** : « Exporter en Excel » télécharge un classeur `.xlsx` avec une feuille par tuile
+  (toutes pages confondues), agrégées exactement comme à l'écran — mêmes filtres croisés, filtres
+  avancés et niveau de drill-down par tuile appliqués. Basé sur [SheetJS](https://sheetjs.com/)
+  embarqué localement ; le déclenchement du téléchargement depuis l'iframe du widget n'est pas
+  encore vérifié en conditions réelles Grist (voir HYPOTHESES.md).
 - Persistance de la configuration du dashboard (tuiles + vues sauvegardées) dans le document Grist
   (par table liée), donc conservée entre deux ouvertures du widget.
 - **Table de travail par défaut, connectée automatiquement** : au chargement, le widget se connecte
@@ -121,15 +127,19 @@ démo/table liée — voir HYPOTHESES.md), une **refonte visuelle sobre et épur
 catégorielle validée colorblind-safe, ombres douces, typographie affinée), 3 nouveaux types de
 tuiles (treemap plat, nuage de points agrégé, jauge), des **dashboards multi-pages** (filtres
 croisés/drill-down délibérément globaux entre pages, format de config persisté rétrocompatible avec
-les deux formats antérieurs), et des **filtres avancés typés** (plage numérique, plage de dates,
+les deux formats antérieurs), des **filtres avancés typés** (plage numérique, plage de dates,
 dates relatives, recherche texte — une colonne `Date` ISO a été ajoutée aux jeux de données pour les
-rendre démontrables). Une [ROADMAP.md](./ROADMAP.md) priorisée
-(valeur x risque de faisabilité) trace la suite vers un outil BI plus complet, avec un
+rendre démontrables), et un **export Excel** (SheetJS embarqué localement, une feuille par tuile
+reflétant exactement les filtres/drill-down actifs à l'écran). La Roadmap Tier 1 est désormais
+**entièrement terminée** — voir [ROADMAP.md](./ROADMAP.md) pour la suite (Tier 2 : moteur DuckDB,
+mesures façon DAX, tableau croisé dynamique...) priorisée par valeur x risque de faisabilité, avec un
 [TEST_PROTOCOL.md](./TEST_PROTOCOL.md) associé qui grandit à chaque nouvelle feature. Voir
 HYPOTHESES.md pour la liste des points encore à valider, notamment la validation en conditions
-réelles du round-trip réseau sur le gros volume dès le premier chargement.
+réelles du round-trip réseau sur le gros volume dès le premier chargement et du déclenchement de
+l'export Excel depuis l'iframe du widget.
 
 ## Licence
 
 MIT pour le code de ce dépôt. `js/vendor/echarts/` contient [Apache ECharts](https://echarts.apache.org/)
-embarqué tel quel (Apache-2.0, licence incluse dans ce dossier).
+et `js/vendor/xlsx/` contient [SheetJS](https://sheetjs.com/), tous deux embarqués tels quels
+(Apache-2.0, licence incluse dans chaque dossier).

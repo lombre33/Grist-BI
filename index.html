@@ -10,6 +10,9 @@
      script, que le navigateur refuse d'exécuter (X-Content-Type-Options: nosniff) - la bibliothèque
      ne se charge jamais et les tuiles graphiques restent vides sans erreur explicite. -->
 <script src="js/vendor/echarts/echarts.min.js"></script>
+<!-- SheetJS embarqué localement (js/vendor/xlsx/, Apache-2.0) pour l'export Excel du dashboard,
+     même raisonnement que ECharts ci-dessus : pas de dépendance à un CDN externe. -->
+<script src="js/vendor/xlsx/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
@@ -32,6 +35,7 @@
     <select id="bookmark-select"><option value="">Vues sauvegardées…</option></select>
     <button id="delete-bookmark" type="button" class="btn-secondary" disabled>Supprimer la vue</button>
     <button id="save-bookmark" type="button" class="btn-secondary">Sauvegarder la vue actuelle</button>
+    <button id="export-excel" type="button" class="btn-secondary">Exporter en Excel</button>
   </div>
 
   <form id="advanced-filter-form" class="advanced-filters-bar">
@@ -157,6 +161,7 @@
   <script src="js/demo-data.js"></script>
   <script src="js/state.js"></script>
   <script src="js/charts.js"></script>
+  <script src="js/export.js"></script>
   <script src="js/grist-api.js"></script>
   <script src="js/main.js"></script>
 </body>

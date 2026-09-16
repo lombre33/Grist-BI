@@ -178,9 +178,95 @@
     return [];
   }
 
+  // Dimension actuellement affichée par une tuile bar/pie/treemap/scatter : sa dimension racine si
+  // `drillPath` est vide, sinon le niveau correspondant à la profondeur atteinte (voir
+  // state.js:drillInto/drillUp). Partagée entre le rendu (charts.js) et l'export Excel
+  // (buildWorkbookSheets ci-dessous) : les deux doivent afficher/exporter le même niveau de détail.
+  function currentDimension(tile, drillPath) {
+    if (!drillPath || !drillPath.length) return tile.dimension;
+    const levels = tileDrillLevels(tile);
+    return levels[drillPath.length - 1] || tile.dimension;
+  }
+
+  // Lignes visibles pour `tile` compte tenu de l'état interactif courant : filtres croisés posés
+  // par les AUTRES tuiles (`tile` reste non filtrée sur SON PROPRE filtre pour rester cliquable sur
+  // tous ses segments, voir charts.js), filtres avancés (s'appliquent à toutes les tuiles sans
+  // exception), et son propre chemin de drill-down. Seule source de vérité pour cette composition de
+  // filtres, réutilisée par charts.js (rendu) ET l'export Excel (buildWorkbookSheets) : ce que
+  // l'utilisateur exporte doit correspondre exactement à ce qu'il voit à l'écran.
+  function rowsForTile(tile, state) {
+    const filtersFromOtherTiles = state.activeFilters.filter((f) => f.sourceTileId !== tile.id);
+    const drillPath = (state.drillIns && state.drillIns[tile.id]) || [];
+    return applyFilters(state.rows, filtersFromOtherTiles.concat(state.advancedFilters || []).concat(drillPath));
+  }
+
+  // Représentation tabulaire d'une tuile pour l'export Excel : mêmes agrégats que le rendu
+  // (aggregateSingle pour kpi/gauge, groupByAggregate pour bar/pie/treemap, les deux mesures pour
+  // scatter), mais en lignes de tableau plutôt qu'en graphique. `header`/`rows` plutôt qu'un tableau
+  // d'objets : contrôle explicite des en-têtes même quand `rows` est vide (aucune ligne visible
+  // après filtrage), ce que `XLSX.utils.json_to_sheet([])` ne permettrait pas (pas d'en-tête sans
+  // au moins un objet pour les déduire).
+  function tileExportSheet(tile, state) {
+    const rows = rowsForTile(tile, state);
+    const title = tile.title || `${tile.aggFn}(${tile.measure})`;
+    if (tile.type === 'kpi' || tile.type === 'gauge') {
+      return { name: title, header: ['Mesure', 'Valeur'], rows: [[`${tile.aggFn}(${tile.measure})`, aggregateSingle(rows, tile.measure, tile.aggFn)]] };
+    }
+    const drillPath = (state.drillIns && state.drillIns[tile.id]) || [];
+    const dimension = currentDimension(tile, drillPath);
+    if (tile.type === 'scatter') {
+      const aggX = groupByAggregate(rows, dimension, tile.measure, tile.aggFn);
+      const yByDimension = new Map(groupByAggregate(rows, dimension, tile.measureY, tile.aggFn).map((d) => [d.dimension, d.value]));
+      return {
+        name: title,
+        header: [dimension, tile.measure, tile.measureY],
+        rows: aggX.map((d) => [d.dimension, d.value, yByDimension.get(d.dimension)])
+      };
+    }
+    const agg = groupByAggregate(rows, dimension, tile.measure, tile.aggFn);
+    return { name: title, header: [dimension, tile.measure], rows: agg.map((d) => [d.dimension, d.value]) };
+  }
+
+  // Un nom de feuille Excel ne peut pas dépasser 31 caractères, ne peut pas contenir
+  // `: \ / ? * [ ]`, et doit être unique dans le classeur (deux tuiles peuvent avoir le même
+  // titre). `usedNames` est un Set mutable rempli au fil des appels (un par tuile exportée) pour
+  // garantir l'unicité sur tout le classeur, pas seulement dans une page.
+  const INVALID_SHEET_CHARS = /[:\\/?*[\]]/g;
+  function sanitizeSheetName(name, usedNames) {
+    const base = (String(name || 'Feuille').replace(INVALID_SHEET_CHARS, ' ').trim() || 'Feuille').slice(0, 31);
+    let candidate = base;
+    let n = 2;
+    while (usedNames.has(candidate)) {
+      const suffix = ` (${n})`;
+      candidate = base.slice(0, 31 - suffix.length) + suffix;
+      n++;
+    }
+    usedNames.add(candidate);
+    return candidate;
+  }
+
+  // Une feuille par tuile, toutes pages confondues (pas seulement la page courante : exporter le
+  // dashboard entier, pas juste ce qui est affiché à l'écran à cet instant précis). Le nom de page
+  // préfixe le titre de la tuile seulement s'il y a plusieurs pages (sinon inutile, voir
+  // sanitizeSheetName pour la troncature/l'unicité qui s'appliquent après ce préfixage).
+  function buildWorkbookSheets(state) {
+    const usedNames = new Set();
+    const sheets = [];
+    const multiPage = state.pages.length > 1;
+    for (const page of state.pages) {
+      for (const tile of page.tiles) {
+        const sheet = tileExportSheet(tile, state);
+        const label = multiPage ? `${page.name} - ${sheet.name}` : sheet.name;
+        sheets.push({ name: sanitizeSheetName(label, usedNames), header: sheet.header, rows: sheet.rows });
+      }
+    }
+    return sheets;
+  }
+
   return {
     tableToRows, applyFilters, matchesFilter, sameValue, parseDateValue, relativeDateRange,
     RELATIVE_DATE_PRESETS, groupByAggregate, aggregateSingle, computeTrend,
-    escapeHtml, tileDrillLevels, AGGREGATORS
+    escapeHtml, tileDrillLevels, currentDimension, rowsForTile, tileExportSheet,
+    sanitizeSheetName, buildWorkbookSheets, AGGREGATORS
   };
 });

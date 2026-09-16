@@ -90,7 +90,7 @@ Grist". Les avoir vraiment nécessite un service externe séparé (backend + cro
 
 ## Roadmap priorisée
 
-### Tier 1 — Gains rapides (haute valeur, risque faible/moyen, dans l'architecture actuelle) — EN COURS
+### Tier 1 — Gains rapides (haute valeur, risque faible/moyen, dans l'architecture actuelle) — ✅ TERMINÉ (2026-09-16)
 
 | Feature | Valeur | Risque | Statut |
 |---|---|---|---|
@@ -101,7 +101,7 @@ Grist". Les avoir vraiment nécessite un service externe séparé (backend + cro
 | Scatter (version agrégée) | Haute | Moyen | ✅ fait (2026-09-16) |
 | Dashboards multi-pages | Haute | Faible | ✅ fait (2026-09-16) |
 | Filtres avancés (plage de dates, dates relatives, recherche) | Haute | Moyen | ✅ fait (2026-09-16) |
-| Export Excel | Haute | Moyen | ⬜ à faire |
+| Export Excel | Haute | Moyen | ✅ fait (2026-09-16) |
 
 ### Tier 2 — Chantiers structurants, toujours sans backend
 

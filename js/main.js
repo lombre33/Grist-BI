@@ -54,6 +54,7 @@
   const bookmarkSelect = document.getElementById('bookmark-select');
   const deleteBookmarkBtn = document.getElementById('delete-bookmark');
   const saveBookmarkBtn = document.getElementById('save-bookmark');
+  const exportExcelBtn = document.getElementById('export-excel');
   const pageTabsEl = document.getElementById('page-tabs');
   const addPageBtn = document.getElementById('add-page');
   const advancedFilterForm = document.getElementById('advanced-filter-form');
@@ -580,6 +581,21 @@
     const name = (prompt('Nom de la vue à sauvegarder :') || '').trim();
     if (!name) return; // annulé ou vide
     store.saveBookmark('bm_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name);
+  });
+
+  // Une feuille par tuile, toutes pages confondues (voir GristBI.data.buildWorkbookSheets) — les
+  // données déjà agrégées/filtrées EXACTEMENT comme à l'écran (rowsForTile est la même fonction que
+  // charts.js). Jamais vérifié en conditions réelles Grist que le téléchargement se déclenche bien
+  // depuis l'iframe du widget (voir HYPOTHESES.md) — fonctionne dans ce harness et un navigateur
+  // standard, l'iframe n'étant pas sandboxée (voir ROADMAP.md).
+  exportExcelBtn.addEventListener('click', () => {
+    try {
+      const exported = GristBI.exportExcel.exportDashboardToExcel(store.getState());
+      if (!exported) alert('Aucune tuile à exporter.');
+    } catch (e) {
+      console.error('[GristBI] échec de l\'export Excel', e);
+      alert("Échec de l'export Excel — voir la console (F12).");
+    }
   });
 
   addPageBtn.addEventListener('click', () => {
