@@ -38,7 +38,10 @@
       <select id="tile-type">
         <option value="bar">Barres</option>
         <option value="pie">Camembert</option>
+        <option value="treemap">Treemap</option>
+        <option value="scatter">Nuage de points</option>
         <option value="kpi">Carte KPI</option>
+        <option value="gauge">Jauge</option>
       </select>
     </div>
     <div class="field" id="tile-dimension-field">
@@ -57,8 +60,12 @@
       </label>
     </div>
     <div class="field">
-      <label for="tile-measure">Mesure</label>
+      <label for="tile-measure" id="tile-measure-label">Mesure</label>
       <select id="tile-measure"></select>
+    </div>
+    <div class="field" id="tile-measure-y-field" hidden>
+      <label for="tile-measure-y">Mesure Y</label>
+      <select id="tile-measure-y"></select>
     </div>
     <div class="field">
       <label for="tile-agg">Agrégat</label>
@@ -69,6 +76,14 @@
         <option value="min">Min</option>
         <option value="max">Max</option>
       </select>
+    </div>
+    <div class="field" id="tile-gauge-min-field" hidden>
+      <label for="tile-gauge-min">Min</label>
+      <input type="number" id="tile-gauge-min" value="0" />
+    </div>
+    <div class="field" id="tile-gauge-max-field" hidden>
+      <label for="tile-gauge-max">Max</label>
+      <input type="number" id="tile-gauge-max" value="100" />
     </div>
     <div class="field" id="tile-trend-field" hidden>
       <label for="tile-trend-dimension">Tendance vs</label>

@@ -22,8 +22,11 @@ laisserait sinon les tuiles graphiques vides sans erreur explicite.
 
 ## Fonctionnalités du POC
 
-- 3 types de tuiles : barres, camembert, carte KPI. Ajout, édition (bouton crayon) et
-  **réorganisation** (◂ ▸, modifie l'ordre sans perdre les autres réglages de la tuile).
+- 6 types de tuiles : barres, camembert, treemap, nuage de points, carte KPI, jauge. Ajout, édition
+  (bouton crayon) et **réorganisation** (◂ ▸, modifie l'ordre sans perdre les autres réglages de la
+  tuile). Le nuage de points est une version **agrégée** (un point par catégorie, deux mesures en
+  X/Y), pas ligne-à-ligne. La jauge compare une valeur agrégée à un Min/Max défini dans son
+  formulaire.
 - Constructeur de tuile simple : dimension + mesure + agrégat (somme/moyenne/comptage/min/max) —
   volontairement **pas** un langage de mesures façon DAX (voir HYPOTHESES.md, point 1).
 - **Filtres croisés cumulables** : cliquer sur un segment filtre les autres tuiles ; cliquer sur une
@@ -89,27 +92,27 @@ premier commit.
 
 ## État du projet
 
-Deux allers-retours avec un usage réel, quatre vrais bugs remontés/trouvés et corrigés : un souci de
+Deux allers-retours avec un usage réel, six vrais bugs remontés/trouvés et corrigés : un souci de
 chargement d'ECharts sur réseau filtré (HYPOTHESES.md point 3), un `KeyError` de génération de
 données de démo dû à un schéma de table obsolète (point 9), un bug CSS où plusieurs champs du
-formulaire de tuile (`.hidden = true` en JS) ne se masquaient en réalité jamais à l'écran, et des
-libellés d'axe tronqués sur de grandes valeurs (marge ECharts mal estimée) — les deux derniers
-repérés uniquement en vérifiant le rendu réel (visibilité/capture d'écran), jamais via une simple
-absence d'erreur JS. Depuis : édition et réorganisation de
+formulaire de tuile (`.hidden = true` en JS) ne se masquaient en réalité jamais à l'écran, des
+libellés d'axe tronqués sur de grandes valeurs, des graduations de jauge qui se chevauchaient, et un
+point de scatter qui aurait rendu le clic muet sans un champ `name` explicite — la plupart repérés
+uniquement en vérifiant le rendu réel (visibilité/capture d'écran), jamais via une simple absence
+d'erreur JS. Depuis : édition et réorganisation de
 tuile, `ResizeObserver`, tri chronologique, filtres croisés cumulables, tendance KPI, vues
 sauvegardées, drill-down étendu à N niveaux (avec cross-filtering optionnel PAR TUILE à chaque
 niveau franchi), un jeu de données "test de charge" (~47 040 lignes) avec envoi par lots, une
 connexion **idempotente** aux tables générées (un clic/chargement ne renvoie les données à Grist
 que si la table n'existe pas encore), le passage à une **connexion automatique** à cette table
 comme UNIQUE table de travail au démarrage (plus de boutons « Générer », plus de bascule
-démo/table liée — voir HYPOTHESES.md), et une **refonte visuelle sobre et épurée** (palette
-catégorielle validée colorblind-safe, ombres douces, typographie affinée) qui a aussi révélé un
-quatrième vrai bug (libellés d'axe tronqués sur de grandes valeurs, aucune erreur JS — repéré
-uniquement en regardant un screenshot). Une [ROADMAP.md](./ROADMAP.md) priorisée (valeur x risque de
-faisabilité) trace la suite vers un outil BI plus complet, avec un [TEST_PROTOCOL.md](./TEST_PROTOCOL.md)
-associé qui grandit à chaque nouvelle feature. Voir HYPOTHESES.md pour la liste des points encore à
-valider, notamment la validation en conditions réelles du round-trip réseau sur le gros volume dès
-le premier chargement.
+démo/table liée — voir HYPOTHESES.md), une **refonte visuelle sobre et épurée** (palette
+catégorielle validée colorblind-safe, ombres douces, typographie affinée), et 3 nouveaux types de
+tuiles (treemap plat, nuage de points agrégé, jauge). Une [ROADMAP.md](./ROADMAP.md) priorisée
+(valeur x risque de faisabilité) trace la suite vers un outil BI plus complet, avec un
+[TEST_PROTOCOL.md](./TEST_PROTOCOL.md) associé qui grandit à chaque nouvelle feature. Voir
+HYPOTHESES.md pour la liste des points encore à valider, notamment la validation en conditions
+réelles du round-trip réseau sur le gros volume dès le premier chargement.
 
 ## Licence
 

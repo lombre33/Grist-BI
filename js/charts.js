@@ -1,8 +1,7 @@
 /*
- * Rendu des tuiles (bar/pie/kpi) avec ECharts : filtres croisés multiples, tendance KPI, et
- * drill-down multi-niveaux (jusqu'à 2 niveaux au-delà de la dimension racine, voir
- * GristBI.data.tileDrillLevels) avec fil d'Ariane. Dépend du global `echarts` (js/vendor/echarts/,
- * voir index.html) et de GristBI.data/GristBI.store.
+ * Rendu des tuiles (bar/pie/kpi/gauge/treemap/scatter) avec ECharts : filtres croisés multiples,
+ * tendance KPI, et drill-down multi-niveaux (voir GristBI.data.tileDrillLevels) avec fil d'Ariane.
+ * Dépend du global `echarts` (js/vendor/echarts/, voir index.html) et de GristBI.data/GristBI.store.
  */
 (function (global) {
   const GristBI = global.GristBI || (global.GristBI = {});
@@ -39,6 +38,8 @@
 
     if (tile.type === 'kpi') {
       renderKpi(tile, rowsForTile, container);
+    } else if (tile.type === 'gauge') {
+      renderGauge(tile, rowsForTile, container);
     } else {
       renderChart(tile, rowsForTile, state, container, drillPath);
     }
@@ -60,6 +61,48 @@
     trendEl.hidden = false;
     trendEl.className = `tile-kpi-trend ${isUp ? 'trend-up' : 'trend-down'}`;
     trendEl.textContent = `${isUp ? '▲' : '▼'} ${Math.abs(trend.deltaPct).toFixed(1)}% vs ${trend.previousKey}`;
+  }
+
+  // Une jauge est sémantiquement proche d'une carte KPI (une seule valeur agrégée, pas de
+  // dimension) : réutilise aggregateSingle telle quelle. Rendue via ECharts (contrairement à la
+  // carte KPI, en texte pur) pour l'aiguille/le cadran, donc utilise .tile-chart comme bar/pie.
+  // Pas de dimension -> pas de gestionnaire de clic (rien à filtrer/détailler par segment).
+  function renderGauge(tile, rows, container) {
+    const el = container.querySelector(`[data-tile-id="${tile.id}"] .tile-chart`);
+    if (!el) return;
+    if (typeof echarts === 'undefined') {
+      el.textContent = 'ECharts indisponible — voir le bandeau en haut de page.';
+      return;
+    }
+    let instance = chartInstances.get(tile.id);
+    if (!instance || instance.isDisposed()) {
+      instance = echarts.init(el);
+      chartInstances.set(tile.id, instance);
+    }
+    const value = aggregateSingle(rows, tile.measure, tile.aggFn);
+    const min = Number.isFinite(tile.gaugeMin) ? tile.gaugeMin : 0;
+    const max = Number.isFinite(tile.gaugeMax) ? tile.gaugeMax : Math.max(value * 1.5, 1);
+    instance.setOption({
+      series: [{
+        type: 'gauge',
+        min,
+        max,
+        // splitNumber par défaut d'ECharts (10, donc 11 libellés) se chevauche systématiquement à
+        // la taille d'une tuile [BUG RÉEL trouvé en capturant un screenshot] : 4 divisions (5
+        // libellés : min, 1/4, 1/2, 3/4, max) restent lisibles à n'importe quelle taille de jauge.
+        splitNumber: 4,
+        itemStyle: { color: CATEGORICAL_PALETTE[0] },
+        progress: { show: true, width: 12 },
+        axisLine: { lineStyle: { width: 12 } },
+        axisTick: { show: false },
+        splitLine: { length: 12 },
+        axisLabel: { distance: 14, fontSize: 10, formatter: formatCompactNumber },
+        pointer: { show: true },
+        title: { show: false },
+        detail: { valueAnimation: true, formatter: (v) => formatNumber(v), fontSize: 18, offsetCenter: [0, '70%'] },
+        data: [{ value }]
+      }]
+    }, true);
   }
 
   function renderChart(tile, rows, state, container, drillPath) {
@@ -105,33 +148,88 @@
     const dim = (d) => (activeOnThisDimension && !sameValue(activeOnThisDimension.value, d)
       ? { opacity: 0.3 }
       : undefined);
+    // `containLabel: true` : sans ça, ECharts réserve une marge estimée AVANT de savoir combien de
+    // place le formatter compact va réellement prendre (variable selon la valeur : "0" vs "2,7 M")
+    // — l'estimation était trop courte, dessinant une partie du texte hors du canvas (silencieusement
+    // coupé, pas d'erreur, voir HYPOTHESES.md). `containLabel` recalcule la marge à partir du texte
+    // réellement rendu. Réutilisé pour tout axe numérique (bar, scatter), pas seulement le cas où le
+    // bug a été trouvé la première fois.
+    const numericGrid = { containLabel: true, left: 8, right: 16, top: 24, bottom: 8 };
 
-    const option = tile.type === 'pie'
-      ? {
-          color: CATEGORICAL_PALETTE,
-          tooltip: { trigger: 'item' },
-          series: [{
-            type: 'pie',
-            radius: '65%',
-            data: agg.map((d) => ({ name: d.dimension, value: d.value, itemStyle: dim(d.dimension) }))
-          }]
-        }
-      : {
-          color: CATEGORICAL_PALETTE,
-          // `containLabel: true` : sans ça, ECharts réserve une marge gauche estimée AVANT de
-          // savoir combien de place le formatter compact va réellement prendre (variable selon la
-          // valeur : "0" vs "2,7 M") — l'estimation était trop courte, dessinant une partie du
-          // texte hors du canvas (silencieusement coupé, pas d'erreur). `containLabel` fait
-          // recalculer la marge à partir du texte réellement rendu.
-          grid: { containLabel: true, left: 8, right: 12, top: 24, bottom: 8 },
-          tooltip: { trigger: 'axis' },
-          xAxis: { type: 'category', data: agg.map((d) => d.dimension) },
-          yAxis: { type: 'value', axisLabel: { formatter: formatCompactNumber } },
-          series: [{
-            type: 'bar',
-            data: agg.map((d) => ({ value: d.value, itemStyle: dim(d.dimension) }))
-          }]
-        };
+    let option;
+    if (tile.type === 'pie') {
+      option = {
+        color: CATEGORICAL_PALETTE,
+        tooltip: { trigger: 'item' },
+        series: [{
+          type: 'pie',
+          radius: '65%',
+          data: agg.map((d) => ({ name: d.dimension, value: d.value, itemStyle: dim(d.dimension) }))
+        }]
+      };
+    } else if (tile.type === 'treemap') {
+      option = {
+        color: CATEGORICAL_PALETTE,
+        tooltip: { trigger: 'item' },
+        series: [{
+          type: 'treemap',
+          roam: false,
+          // Version PLATE délibérément (voir ROADMAP.md) : un seul niveau de rectangles, pas de
+          // hiérarchie imbriquée. `nodeClick: false` désactive le zoom-sur-clic natif d'ECharts
+          // (pensé pour une hiérarchie à plusieurs niveaux) pour laisser le clic au gestionnaire
+          // générique ci-dessus (drill-down/cross-filter), sans comportement concurrent.
+          nodeClick: false,
+          breadcrumb: { show: false },
+          data: agg.map((d) => ({ name: d.dimension, value: d.value, itemStyle: dim(d.dimension) }))
+        }]
+      };
+    } else if (tile.type === 'scatter') {
+      // Version agrégée (pas ligne-à-ligne) : un point par valeur de la dimension, ses coordonnées
+      // X/Y sont les agrégats de deux mesures DIFFÉRENTES sur ce même groupe. Les deux appels à
+      // groupByAggregate portent sur le même `rows`/`dimension`, donc le même ensemble de groupes,
+      // mais on associe par NOM de dimension (Map) plutôt que par index pour rester correct même si
+      // l'ordre venait à diverger un jour entre les deux appels.
+      const aggY = groupByAggregate(rows, dimension, tile.measureY, tile.aggFn);
+      const aggYByDimension = new Map(aggY.map((d) => [d.dimension, d.value]));
+      option = {
+        color: CATEGORICAL_PALETTE,
+        grid: numericGrid,
+        tooltip: {
+          trigger: 'item',
+          formatter: (params) => `${escapeHtml(String(params.name))}<br/>`
+            + `${escapeHtml(tile.measure)} : ${formatNumber(params.value[0])}<br/>`
+            + `${escapeHtml(tile.measureY)} : ${formatNumber(params.value[1])}`
+        },
+        xAxis: { type: 'value', axisLabel: { formatter: formatCompactNumber } },
+        yAxis: { type: 'value', axisLabel: { formatter: formatCompactNumber } },
+        series: [{
+          type: 'scatter',
+          symbolSize: 14,
+          // `name` explicite : contrairement à bar (axe catégoriel, ECharts déduit params.name de
+          // l'index sur l'axe), scatter a deux axes numériques -> rien n'associe un point à sa
+          // catégorie sans ce champ, et le gestionnaire de clic générique deviendrait muet
+          // (params.name undefined, drill/cross-filter sur une valeur "undefined").
+          data: agg.map((d) => ({
+            name: d.dimension,
+            value: [d.value, aggYByDimension.get(d.dimension)],
+            itemStyle: dim(d.dimension)
+          }))
+        }]
+      };
+    } else {
+      // bar (par défaut)
+      option = {
+        color: CATEGORICAL_PALETTE,
+        grid: numericGrid,
+        tooltip: { trigger: 'axis' },
+        xAxis: { type: 'category', data: agg.map((d) => d.dimension) },
+        yAxis: { type: 'value', axisLabel: { formatter: formatCompactNumber } },
+        series: [{
+          type: 'bar',
+          data: agg.map((d) => ({ value: d.value, itemStyle: dim(d.dimension) }))
+        }]
+      };
+    }
     instance.setOption(option, true);
   }
 

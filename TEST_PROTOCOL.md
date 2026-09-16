@@ -176,6 +176,22 @@ une feature "testée", vérifier qu'on s'est posé chacune de ces questions :
 - [ ] Deux niveaux de drill (hors racine) avec la même colonne (ex. niveau 2 = niveau 4) → même garde-fou anti-doublon ⬜ (couvert par construction via `new Set(allDims).size !== allDims.length`, pas de cas Playwright dédié à ce sous-cas précis)
 - [ ] Basculer le type de tuile vers "kpi" avec des niveaux de drill déjà configurés → `drillField` se cache, `drillDimensions` repart à `undefined` à la soumission ⬜
 
+### `js/charts.js` + `js/main.js` — jauge, treemap, scatter (Roadmap Tier 1, Playwright)
+
+- [x] Jauge : champs dimension/drill-down cachés (comme KPI), champs min/max visibles 🌐
+- [x] Jauge : `aggregateSingle` réutilisée telle quelle, valeur agrégée positive affichée 🌐
+- [x] Jauge : garde-fou min/max — `max <= min` déclenche une alerte, aucune tuile créée 🌐
+- [x] Jauge : `splitNumber: 4` (5 graduations) plutôt que le défaut ECharts (11) [BUG RÉEL trouvé en capturant un screenshot : graduations qui se chevauchaient à la taille d'une tuile] 🌐
+- [x] Treemap : version plate, une tuile par valeur de dimension, aucun asset externe requis 🌐
+- [x] Treemap : `nodeClick: false` — le clic déclenche le gestionnaire générique (cross-filter/drill), pas le zoom natif d'ECharts pensé pour une hiérarchie multi-niveaux 🌐
+- [x] Treemap : cliquer un rectangle cross-filtre bien les autres tuiles (KPI) 🌐
+- [x] Scatter : libellé du champ mesure change en "Mesure X", champ "Mesure Y" apparaît 🌐
+- [x] Scatter : deux `groupByAggregate` (une mesure par axe) associés par NOM de dimension (Map), pas par index 🌐
+- [x] Scatter : chaque point porte un `name` explicite (contrairement à bar, l'axe est numérique des deux côtés — sans `name`, `params.name` serait `undefined` au clic) 🌐
+- [x] Scatter : cliquer un point cross-filtre les autres tuiles ET pose le bon badge (`Produit = ...`) 🌐
+- [ ] Jauge/treemap/scatter dans une tuile éditée (préremplissage du formulaire) ⬜ (préremplissage générique déjà couvert pour dimension/mesure/agrégat communs à tous les types ; pas de cas dédié pour measureY/gaugeMin/gaugeMax en édition)
+- [ ] Treemap/scatter avec drill-down configuré (le mécanisme est générique, jamais testé explicitement sur ces 2 nouveaux types) ⬜
+
 ### CSS — classe de bug à systématiquement re-vérifier
 
 - [x] `.field[hidden]` masque réellement l'élément (pas seulement `display:flex` de `.field` qui gagne à spécificité égale) [BUG RÉEL, trouvé 2 fois sur des champs différents] ✅ (règle en place)
@@ -192,6 +208,7 @@ une feature "testée", vérifier qu'on s'est posé chacune de ces questions :
 6. **`.field[hidden]`** — même famille de bug que #2, retrouvé sur un NOUVEAU champ (`tile-drill-crossfilter-field`) alors que le bug #2 avait déjà été "corrigé" ailleurs — preuve que ce type de bug CSS doit être vérifié à chaque nouveau champ conditionnel, pas juste corrigé une fois.
 7. **Filtres croisés/état de drill orphelins** — `removeTile`/`updateTile` ne nettoyaient pas les filtres croisés (`toggleFilter` ou `drillCrossFilter`) posés par la tuile supprimée/éditée. Corrigé en même temps que l'ajout de `drillCrossFilter`, avant qu'un utilisateur ne le rencontre en réel.
 8. **Libellés d'axe Y tronqués sur de grandes valeurs** [BUG RÉEL trouvé en capturant un screenshot pendant la passe de design] — sur le jeu de test de charge (valeurs ~2,7M), ECharts réservait une marge gauche estimée AVANT de connaître la largeur réelle du texte produit par un `axisLabel.formatter` personnalisé (format compact) ; l'estimation était trop courte, une partie du texte se dessinait hors du canvas et disparaissait silencieusement (aucune erreur JS, juste des libellés du type "000" au lieu de "2,7 M"). Corrigé par `grid: { containLabel: true }`, qui force ECharts à recalculer la marge à partir du texte réellement rendu plutôt que d'une estimation.
+9. **Graduations de jauge chevauchées** [BUG RÉEL trouvé en capturant un screenshot en ajoutant le type "gauge"] — le `splitNumber` par défaut d'ECharts (10, donc 11 libellés) produisait des graduations illisibles, superposées, à la taille d'une tuile normale. Corrigé par `splitNumber: 4` (5 libellés espacés). Même famille que le bug #8 : un réglage ECharts par défaut, pensé pour un espace plus grand qu'une tuile de dashboard, doit être revu explicitement pour CHAQUE nouveau type de série ECharts introduit, pas seulement testé "ça s'affiche sans erreur".
 
 ## Design system (`css/style.css`, passe du 2026-09-15)
 

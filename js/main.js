@@ -34,8 +34,15 @@
   const addDrillLevelBtn = document.getElementById('tile-drill-add-level');
   const drillCrossFilterField = document.getElementById('tile-drill-crossfilter-field');
   const drillCrossFilterCheckbox = document.getElementById('tile-drill-crossfilter');
+  const measureLabel = document.getElementById('tile-measure-label');
   const measureSelect = document.getElementById('tile-measure');
+  const measureYField = document.getElementById('tile-measure-y-field');
+  const measureYSelect = document.getElementById('tile-measure-y');
   const aggSelect = document.getElementById('tile-agg');
+  const gaugeMinField = document.getElementById('tile-gauge-min-field');
+  const gaugeMinInput = document.getElementById('tile-gauge-min');
+  const gaugeMaxField = document.getElementById('tile-gauge-max-field');
+  const gaugeMaxInput = document.getElementById('tile-gauge-max');
   const trendField = document.getElementById('tile-trend-field');
   const trendDimensionSelect = document.getElementById('tile-trend-dimension');
   const submitTileBtn = document.getElementById('submit-tile');
@@ -75,9 +82,13 @@
     const cols = availableColumns(rows);
     fillSelect(dimensionSelect, cols);
     fillSelect(measureSelect, cols);
+    fillSelect(measureYSelect, cols);
     drillLevelSelects.forEach((select) => fillSelect(select, cols, { blankLabel: '(aucun)' }));
     fillSelect(trendDimensionSelect, cols, { blankLabel: '(aucune)' });
   }
+
+  // KPI et jauge : une seule valeur agrégée, pas de dimension de regroupement ni de drill-down.
+  function typeHasNoDimension(type) { return type === 'kpi' || type === 'gauge'; }
 
   // Drill-down à N niveaux : un <select> par niveau, créé dynamiquement ("+ Niveau") plutôt que des
   // champs figés dans le HTML — data.js/state.js/charts.js gèrent déjà un tableau drillDimensions
@@ -108,10 +119,10 @@
   // séquentielle, comme l'ancien niveau 2 qui n'apparaissait qu'une fois le niveau 1 choisi) et que
   // le plafond n'est pas atteint ; recalcule aussi la visibilité de la case cross-filter.
   function updateDrillLevelsUI() {
-    const isKpi = tileTypeSelect.value === 'kpi';
+    const noDimension = typeHasNoDimension(tileTypeSelect.value);
     const lastSelect = drillLevelSelects[drillLevelSelects.length - 1];
-    addDrillLevelBtn.hidden = isKpi || !lastSelect || !lastSelect.value || drillLevelSelects.length >= MAX_DRILL_LEVELS;
-    drillCrossFilterField.hidden = isKpi || !drillLevelSelects[0] || !drillLevelSelects[0].value;
+    addDrillLevelBtn.hidden = noDimension || !lastSelect || !lastSelect.value || drillLevelSelects.length >= MAX_DRILL_LEVELS;
+    drillCrossFilterField.hidden = noDimension || !drillLevelSelects[0] || !drillLevelSelects[0].value;
   }
 
   addDrillLevelBtn.addEventListener('click', () => {
@@ -258,12 +269,20 @@
   }
 
   function updateFormFieldsForType() {
-    const isKpi = tileTypeSelect.value === 'kpi';
-    // Une carte KPI n'a pas de dimension de regroupement ni de drill-down, juste un agrégat sur
-    // toute la sélection (éventuellement comparé à une période via "Tendance vs").
-    dimensionField.hidden = isKpi;
-    drillField.hidden = isKpi;
+    const type = tileTypeSelect.value;
+    const isKpi = type === 'kpi';
+    const isGauge = type === 'gauge';
+    const isScatter = type === 'scatter';
+    // KPI/jauge : pas de dimension de regroupement ni de drill-down, juste un agrégat sur toute la
+    // sélection (le KPI peut en plus le comparer à une période via "Tendance vs", la jauge le
+    // positionne sur un cadran Min/Max). Le nuage de points ajoute une 2e mesure (axe Y).
+    dimensionField.hidden = typeHasNoDimension(type);
+    drillField.hidden = typeHasNoDimension(type);
     trendField.hidden = !isKpi;
+    gaugeMinField.hidden = !isGauge;
+    gaugeMaxField.hidden = !isGauge;
+    measureYField.hidden = !isScatter;
+    measureLabel.textContent = isScatter ? 'Mesure X' : 'Mesure';
     updateDrillLevelsUI();
   }
 
@@ -284,6 +303,9 @@
       drillLevelSelects[i].value = lvl;
     });
     drillCrossFilterCheckbox.checked = !!tile.drillCrossFilter;
+    measureYSelect.value = tile.measureY || '';
+    gaugeMinInput.value = Number.isFinite(tile.gaugeMin) ? tile.gaugeMin : 0;
+    gaugeMaxInput.value = Number.isFinite(tile.gaugeMax) ? tile.gaugeMax : 100;
     updateFormFieldsForType();
     measureSelect.value = tile.measure;
     aggSelect.value = tile.aggFn;
@@ -304,29 +326,46 @@
   addTileForm.addEventListener('submit', (evt) => {
     evt.preventDefault();
     const type = tileTypeSelect.value;
+    const isKpi = type === 'kpi';
+    const isGauge = type === 'gauge';
+    const isScatter = type === 'scatter';
+    const hasDimension = !typeHasNoDimension(type);
     const dimension = dimensionSelect.value;
     const measure = measureSelect.value;
     const aggFn = aggSelect.value;
-    if (!measure || (type !== 'kpi' && !dimension)) return;
-    const drillDimensions = type !== 'kpi' ? drillLevelSelects.map((s) => s.value).filter(Boolean) : [];
+    if (!measure || (hasDimension && !dimension)) return;
+    if (isScatter && !measureYSelect.value) return; // 2e mesure obligatoire pour un nuage de points
+    let gaugeMin, gaugeMax;
+    if (isGauge) {
+      gaugeMin = parseFloat(gaugeMinInput.value);
+      gaugeMax = parseFloat(gaugeMaxInput.value);
+      if (!Number.isFinite(gaugeMin) || !Number.isFinite(gaugeMax) || gaugeMax <= gaugeMin) {
+        alert('Les valeurs Min/Max de la jauge doivent être des nombres valides, avec Max > Min.');
+        return;
+      }
+    }
+    const drillDimensions = hasDimension ? drillLevelSelects.map((s) => s.value).filter(Boolean) : [];
     // Garde-fou : une même colonne ne peut pas apparaître deux fois dans le chemin de drill (ni
     // reprendre la dimension racine) — un cas non gardé auparavant, repéré en généralisant à N
     // niveaux (voir ROADMAP.md, cluster "Hiérarchies & drill-down").
-    const allDims = type !== 'kpi' ? [dimension].concat(drillDimensions) : [];
+    const allDims = hasDimension ? [dimension].concat(drillDimensions) : [];
     if (new Set(allDims).size !== allDims.length) {
       alert('Une même colonne ne peut pas apparaître deux fois dans le drill-down, ni reprendre la dimension racine.');
       return;
     }
-    const title = type === 'kpi' ? `${aggFn}(${measure})` : `${measure} par ${dimension}`;
+    const title = hasDimension ? `${measure} par ${dimension}` : `${aggFn}(${measure})`;
     const tileData = { type, dimension, measure, aggFn, title };
-    // drillDimensions/drillCrossFilter/trendDimension explicitement mis à `undefined` quand non
-    // pertinents pour le type (plutôt que simplement omis) : `store.updateTile` fusionne le patch
-    // via Object.assign, qui ne fait QUE écraser les clés présentes dans l'objet — omettre une clé
-    // laisserait une ancienne valeur fantôme sur la tuile éditée (ex. un drill-down retiré via le
-    // formulaire resterait actif en pratique) ; l'inclure avec `undefined` l'efface bien.
+    // Champs spécifiques à un type explicitement mis à `undefined` quand non pertinents (plutôt que
+    // simplement omis) : `store.updateTile` fusionne le patch via Object.assign, qui ne fait QUE
+    // écraser les clés présentes dans l'objet — omettre une clé laisserait une ancienne valeur
+    // fantôme sur la tuile éditée (ex. un drill-down retiré via le formulaire resterait actif en
+    // pratique) ; l'inclure avec `undefined` l'efface bien.
     tileData.drillDimensions = drillDimensions.length ? drillDimensions : undefined;
     tileData.drillCrossFilter = drillDimensions.length ? drillCrossFilterCheckbox.checked : undefined;
-    tileData.trendDimension = (type === 'kpi' && trendDimensionSelect.value) ? trendDimensionSelect.value : undefined;
+    tileData.trendDimension = (isKpi && trendDimensionSelect.value) ? trendDimensionSelect.value : undefined;
+    tileData.measureY = isScatter ? measureYSelect.value : undefined;
+    tileData.gaugeMin = isGauge ? gaugeMin : undefined;
+    tileData.gaugeMax = isGauge ? gaugeMax : undefined;
     if (editingTileId) {
       store.updateTile(editingTileId, tileData);
       stopEditTile();

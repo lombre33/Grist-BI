@@ -205,7 +205,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
-.field select {
+.field select, .field input[type="number"] {
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   padding: 6px 9px;
@@ -216,7 +216,8 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   min-width: 130px;
   transition: border-color 0.12s var(--ease);
 }
-.field select:hover { border-color: var(--muted); }
+.field input[type="number"] { min-width: 80px; }
+.field select:hover, .field input[type="number"]:hover { border-color: var(--muted); }
 
 .field-checkbox label {
   display: flex;

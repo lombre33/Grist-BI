@@ -267,6 +267,45 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     précision exacte) — plus lisible, et ce qui a permis de révéler le bug en premier lieu
     puisqu'avant lui les nombres bruts à 7 chiffres débordaient encore plus largement, juste d'une
     façon moins visible (retour à la ligne au lieu d'un simple décalage).
+- **Trois nouveaux types de tuiles : jauge, treemap, nuage de points (scatter)** (`js/charts.js`,
+  `js/main.js`, Roadmap Tier 1) :
+  - **Jauge** : sémantiquement proche d'une carte KPI (pas de dimension, une seule valeur agrégée —
+    réutilise `aggregateSingle` telle quelle), mais rendue via une série ECharts `gauge` plutôt qu'en
+    texte pur. Deux nouveaux champs de tuile persistés, `gaugeMin`/`gaugeMax` (nombres, saisis dans le
+    formulaire), avec garde-fou (`max > min`, sinon alerte et la tuile n'est pas créée). Pas de
+    gestionnaire de clic (rien à filtrer/détailler sur une seule valeur).
+  - **Treemap** : version **plate** délibérément (voir ROADMAP.md) — dimension + mesure + agrégat,
+    quasi identique au camembert (même palette catégorielle, même fonction `dim()` d'opacité pour le
+    cross-filtering). `nodeClick: false` désactive le zoom-sur-clic natif d'ECharts (pensé pour une
+    hiérarchie à plusieurs niveaux, pas notre cas plat) pour laisser le clic au gestionnaire
+    générique existant (drill-down/cross-filter), sans comportement concurrent. Drill-down
+    disponible comme sur bar/pie (mécanisme générique, aucun code spécifique au treemap requis).
+  - **Nuage de points (scatter), version agrégée** : PAS ligne-à-ligne (aurait cassé le modèle
+    d'agrégation partagé par toutes les tuiles et jamais été mesuré en performance à l'échelle de
+    ~47 000 lignes, voir ROADMAP.md) — un point par valeur de la dimension, ses coordonnées X/Y sont
+    les agrégats de DEUX mesures différentes (`tile.measure` et le nouveau `tile.measureY`) sur ce
+    même groupe. Les deux `groupByAggregate` sont associés par NOM de dimension (une `Map`), pas par
+    index, pour rester corrects même si l'ordre venait à diverger entre les deux appels. Le
+    formulaire relabellise dynamiquement "Mesure" en "Mesure X" et affiche un nouveau champ
+    "Mesure Y" quand ce type est sélectionné.
+  - **Deux vrais bugs trouvés en capturant des screenshots en ajoutant ces types** (même famille que
+    le bug précédent : un réglage ECharts pensé pour un espace plus grand qu'une tuile de dashboard
+    doit être revu explicitement pour chaque nouveau type de série, pas seulement "testé sans
+    erreur JS") :
+    1. Les graduations de la jauge se chevauchaient (le `splitNumber` par défaut d'ECharts, 10,
+       produit 11 libellés — illisible à la taille d'une tuile). Corrigé par `splitNumber: 4`.
+    2. Un point de scatter sans `name` explicite aurait rendu le gestionnaire de clic générique muet
+       (`params.name` undefined, drill/cross-filter sur une valeur "undefined") : contrairement à
+       bar (axe catégoriel, ECharts déduit `params.name` de l'index sur l'axe), scatter a deux axes
+       numériques — rien n'associe un point à sa catégorie sans ce champ. Repéré et corrigé avant
+       même d'atteindre l'étape du screenshot, en relisant le code par analogie avec pie/treemap qui
+       fixent déjà `name` explicitement.
+  - Testé avec Playwright : jauge (champs cachés/visibles selon type, garde-fou min/max, valeur
+    agrégée affichée), treemap (rendu plat, cross-filtering au clic sur un rectangle), scatter
+    (relabellisation du champ mesure, 2e mesure obligatoire, cross-filtering au clic sur un point
+    avec le bon badge de filtre). Tuiles par défaut (`demoData.js`) délibérément PAS étendues pour
+    démontrer ces 3 nouveaux types (éviter un dashboard par défaut toujours plus long) — à tester en
+    ajoutant une tuile via le formulaire.
 
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
