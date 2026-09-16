@@ -419,7 +419,15 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 .breadcrumb-sep { opacity: 0.5; }
 .breadcrumb-hint { font-style: italic; opacity: 0.75; }
 
-.tile-chart { flex: 1; min-height: 180px; }
+/* PAS de `min-height` ici [BUG RÉEL] : `.tile` a une hauteur FIXE (224px, voir plus haut) et est un
+   conteneur flex colonne — `flex: 1` seul suffit déjà à occuper tout l'espace RESTANT après
+   l'en-tête/le fil d'Ariane, sans jamais déborder (flex-shrink par défaut). Un `min-height: 180px`
+   FORÇAIT cette zone à au moins 180px même quand l'espace réellement disponible (224px moins
+   padding/en-tête/fil d'Ariane) était inférieur — le canvas ECharts débordait alors visiblement
+   sous la carte (jusqu'à ~22px sur une tuile avec drill-down, mesuré), sans la moindre erreur JS.
+   Repéré en mesurant `canvas.getBoundingClientRect().bottom` contre `.tile.getBoundingClientRect().bottom`,
+   pas juste "ça a l'air correct" sur une capture d'écran statique. */
+.tile-chart { flex: 1; }
 
 .tile-kpi {
   flex: 1;

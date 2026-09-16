@@ -746,6 +746,35 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     les 4 tuiles de `defaultLargeTiles()`, JAMAIS visible sur une autre table même vide, la
     restauration est bien persistée en y revenant) + capture d'écran clair/sombre de l'état vide
     avec le bouton visible.
+- **Les éléments graphiques débordaient sous les cartes** (`css/style.css`) [BUG RÉEL remonté par
+  l'utilisateur en réel : "les éléments graphique dépasse par le bas des cartes au lieu de rester
+  dans les cartes"] — `.tile-chart { flex: 1; min-height: 180px; }` : ce `min-height` datait d'AVANT
+  le passage de `.tile` à une hauteur FIXE (224px, correctif de la boucle resize↔layout documenté
+  plus haut) et n'avait jamais été révisé à ce moment-là. Une fois `.tile` fixée à 224px, l'espace
+  RÉELLEMENT disponible pour `.tile-chart` (224px moins padding/en-tête/fil d'Ariane) pouvait
+  descendre sous 180px selon le contenu de la tuile — le `min-height` forçait alors `.tile-chart` (et
+  le canvas ECharts qu'il contient) à occuper plus d'espace que ce qu'il restait, débordant du bas de
+  la carte. Mesuré précisément (`canvas.getBoundingClientRect().bottom` contre
+  `.tile.getBoundingClientRect().bottom`) : ~6px sur une tuile "au repos" (juste l'en-tête), jusqu'à
+  ~22px sur une tuile drillée avec un fil d'Ariane à 2 niveaux réellement affiché (encore moins
+  d'espace vertical disponible). Discret sur les captures d'écran précédentes de ce projet (6px passe
+  facilement inaperçu), mais bien réel et cumulatif avec le nombre de niveaux de drill.
+  - Corrigé en retirant simplement le `min-height` : `.tile` étant un conteneur flex COLONNE à
+    hauteur FIXE, `flex: 1` seul sur `.tile-chart` suffit à occuper exactement tout l'espace restant
+    après l'en-tête/le fil d'Ariane, sans jamais déborder (flex-shrink par défaut). Aucune autre
+    logique à changer : `resizeAll()`/ECharts se redimensionnent déjà correctement au conteneur réel.
+  - Même famille de leçon que le bug de croissance infinie (voir plus haut) : un réglage de layout
+    devenu incohérent avec un changement structurel ultérieur (ici, `min-height` laissé après le
+    passage de `.tile` à une hauteur fixe) doit être ré-audité AU MOMENT de ce changement, pas laissé
+    en place parce que "ça avait l'air correct" sur les captures d'écran de l'époque.
+  - Testé : Playwright (`tile-height-stability-test.js`, étendu) — aucun canvas ne déborde de sa
+    carte à l'état initial (toutes les tuiles) ET sur une tuile drillée avec fil d'Ariane à 2 niveaux
+    réellement affiché (pire cas mesuré manuellement avant le fix, ~22px) ; l'assertion de stabilité
+    existante (hauteur invariante sur 8 cycles de resize) est conservée, seule l'ancienne assertion
+    "180px partout" (devenue fausse par construction : la hauteur dépend maintenant de l'espace
+    réellement disponible par tuile, pas d'un plancher uniforme) a été remplacée par la vérification
+    de non-débordement, qui est la propriété qui compte réellement ici + capture d'écran clair/sombre
+    avant/après montrant les libellés d'axe désormais bien contenus dans la carte.
 
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
