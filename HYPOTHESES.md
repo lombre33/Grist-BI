@@ -775,6 +775,87 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     réellement disponible par tuile, pas d'un plancher uniforme) a été remplacée par la vérification
     de non-débordement, qui est la propriété qui compte réellement ici + capture d'écran clair/sombre
     avant/après montrant les libellés d'axe désormais bien contenus dans la carte.
+- **Course au démarrage entre `grist.ready()` et le 1er appel `docApi` — risque de duplication de
+  données réelles** (`js/grist-api.js`, `dev-tests/grist-stub.js`) [LE BUG LE PLUS GRAVE trouvé à ce
+  jour dans ce projet — remonté par l'utilisateur : "le widget regénère encore une table ... pourquoi
+  elle se lance encore ?"]. Diagnostic mené SANS accès à un vrai document Grist (rien dans ce sandbox
+  ne peut le reproduire directement) : d'abord clarifié avec l'utilisateur (AskUserQuestion) ce qu'il
+  observait précisément — une barre de progression "Création… X%" complète, pas juste un message de
+  connexion, et confirmé qu'il testait bien la version déployée après un rechargement complet (pas un
+  problème de cache navigateur/GitHub Pages).
+  - **Cause racine** : `grist.ready()` ne renvoie PAS de promesse (vérifié contre le code source
+    TypeScript réel de `grist-plugin-api.ts` — `WebFetch`/`WebSearch`, `support.getgrist.com` étant
+    bloqué par le proxy réseau de ce sandbox, le dépôt GitHub `gristlabs/grist-core` a servi de
+    source). La vraie négociation d'accès avec l'hôte Grist (un `postMessage` asynchrone,
+    `rpc.sendReadyMessage()`) se termine APRÈS que `ready()` a déjà rendu la main à l'appelant.
+    `bootstrap()` (`main.js`) enchaînait pourtant IMMÉDIATEMENT sur `grist.docApi.listTables()` sans
+    le moindre délai — un appel parti avant la fin de cette négociation peut renvoyer une liste
+    incomplète/vide, faisant croire à tort qu'une table n'existe pas encore. Comparé au widget frère
+    `publipostageGrist` du même auteur (cité en tête de `grist-api.js` comme "dont on sait qu'il
+    fonctionne en Grist réel") : celui-ci a naturellement plus de temps entre `ready()` et son premier
+    VRAI appel `docApi`, car son flux attend `Editor.init()` (travail asynchrone indépendant) et son
+    interaction principale part d'un message ENTRANT (`onRecord`, dont la seule réception prouve déjà
+    que le canal est vivant) plutôt que d'un appel sortant immédiat — ce widget-ci n'a jamais eu cet
+    amortisseur naturel, `bootstrap()` fonçant droit sur `listTables()`.
+  - **Conséquence si non corrigée** : un faux négatif déclenche `AddTable` + le remplissage complet
+    (`fillTable`) sur une table qui existe DÉJÀ — un rechargement du widget pouvait donc dupliquer les
+    ~47 040 lignes de `BI_StressTest` dans le document RÉEL de l'utilisateur, potentiellement à
+    CHAQUE réouverture. Jamais reproduit dans ce sandbox avant ce correctif : le mock `grist-stub.js`
+    est entièrement synchrone (pas de vraie négociation réseau à rater), donc aucun des tests
+    Playwright précédents — pourtant une couverture déjà large — n'a jamais pu exercer ce chemin.
+  - **Correctif** : `tableExistsConfirmed()` — avant de conclure qu'une table n'existe VRAIMENT pas
+    (et donc avant toute action destructrice de création), une seconde lecture FRAÎCHE (cache vidé)
+    après un court délai (500ms), plutôt que de faire confiance à la toute première réponse. Limité au
+    TOUT PREMIER contrôle d'existence de la session (`_raceGuardArmed`, une variable de fermeture qui
+    se désarme après le premier appel) : une première version de ce correctif appliquait la
+    revérification à CHAQUE contrôle d'existence (`BI_StressTest` PUIS `BI_Dashboard_Config`
+    quelques instants plus tard) et cassait plusieurs tests existants (`multi-page-test.js`,
+    `export-excel-test.js`, ...) à cause du délai cumulé (~1000ms) qui faisait courir les tests en
+    avance sur le seeding réel des tuiles par défaut — corrigé en ne gardant la revérification QUE
+    pour le 1er appel de la session, le seul moment où la négociation d'accès peut réellement être
+    encore en cours (tout appel `docApi` réussi ultérieur prouve déjà que le canal est vivant).
+    `loadOrCreateTable` calcule désormais `alreadyExists` UNE SEULE fois (via `tableExistsConfirmed`)
+    et le réutilise pour LES DEUX décisions (créer la table ET la remplir), au lieu de deux
+    vérifications séparées (`ensureTableExists` a été fusionnée dans `loadOrCreateTable`) qui
+    pouvaient en théorie se contredire à des instants différents.
+  - **Découverte indépendante en cours de route** : `grist.docApi.listTables()` renvoie en réalité un
+    tableau de CHAÎNES (`Promise<string[]>`, vérifié contre le code source réel), pas des objets
+    `{id}` — le mock `grist-stub.js` renvoyait des objets `{id}` depuis le tout début du projet, donc
+    AUCUN test Playwright précédent n'a jamais exercé la branche `typeof t === 'string'` du code
+    défensif qui gère les deux formes (`(typeof t === 'string' ? t : t.id)`, présent dans le code
+    depuis le début). Cette branche s'est avérée correcte une fois vérifiée, mais c'était un angle
+    mort de couverture jamais remarqué avant cet incident. Corrigé dans le mock pour refléter la
+    vraie forme de l'API — tous les tests existants ont été revérifiés après ce changement.
+  - **Simulation déterministe pour les tests** (`dev-tests/grist-stub.js`) : `window.__gristStubRaceCalls`
+    (compteur d'appels, pas un vrai délai réseau — déterministe, aucune flakiness liée au timing réel
+    d'un test) fait renvoyer `[]` à `listTables()` pour les N premiers appels, simulant le faux négatif
+    sans dépendre d'une vraie course réseau à gagner/perdre dans un test automatisé.
+    `window.__gristStubPreseed` (injecté via `page.addInitScript()`, donc AVANT que `grist-stub.js` ne
+    s'exécute) simule un document qui a DÉJÀ ces tables d'une session widget précédente — le seul
+    contexte où un faux négatif a un sens (sur une table qui vient tout juste d'être créée dans LA
+    session courante, il n'y a rien à "retrouver"). **[BUG DE TEST trouvé en écrivant ce test]** :
+    `grist-stub.js` réinitialisait inconditionnellement `window.__gristStubRaceCalls = 0` à son
+    chargement, écrasant SILENCIEUSEMENT la valeur armée par `page.addInitScript()` avant même que le
+    script ne s'exécute — la simulation de course était donc totalement inopérante, et le test
+    "passait" indépendamment de la présence du correctif (il ne vérifiait littéralement rien).
+    Découvert en vérifiant explicitement que le test échoue SANS le correctif (`git stash` isolant
+    temporairement `js/grist-api.js` à son état pré-correctif) avant de le considérer comme fiable —
+    exactement la méthode qui a permis de repérer que la simulation ne s'armait pas : le test passait
+    aussi bien AVEC que SANS le correctif, un signal fort qu'il ne testait rien de significatif.
+    Corrigé (`if (typeof window.__gristStubRaceCalls !== 'number') window.__gristStubRaceCalls = 0;`),
+    puis reconfirmé que le test échoue bien sans le correctif ET passe avec.
+  - Testé : Playwright (`table-race-test.js`, 3 scénarios : session sans course = création normale ;
+    session avec course simulée sur une table déjà existante = PAS de recréation, PAS de duplication
+    de lignes ; sans course réelle, le rattrapage ne coûte jamais plus d'un délai par session) +
+    vérifié positivement (le test échoue bien sans le correctif, via `git stash`) + régression
+    complète (`dev-tests/test-data.js` + les 12 autres suites Playwright existantes, aucune affectée
+    par le passage du mock à la vraie forme `string[]` sauf `schema-migration-test.js` dont
+    l'assertion `.map(t => t.id)` a été corrigée en conséquence).
+  - **Reste À VALIDER en conditions réelles** (voir aussi la section dédiée plus bas) : le délai de
+    500ms est un choix pragmatique, jamais calibré contre le vrai timing de négociation d'accès Grist
+    — une négociation anormalement lente (réseau très dégradé) pourrait en théorie excéder ce délai et
+    laisser le faux négatif se reproduire malgré le correctif. Pas de mécanisme de retry illimité par
+    prudence (éviter qu'un widget bloqué sur un problème de connexion réessaie indéfiniment).
 
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
@@ -889,6 +970,14 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     ne simule que le strict nécessaire). À vérifier en réel : `AddColumn` sur une table de plusieurs
     dizaines de milliers de lignes se comporte-t-il comme attendu (colonne vide plutôt qu'une erreur
     de volume) ; `RenameTable` préserve-t-il bien les données/lignes existantes.
+13. **[PRIORITÉ HAUTE] Le délai de rattrapage de `tableExistsConfirmed` (500ms, voir plus haut) n'a
+    jamais été calibré contre le vrai timing de la négociation d'accès `grist.ready()`** : choisi par
+    prudence/pragmatisme, jamais mesuré contre un vrai document Grist (ce sandbox ne peut simuler
+    qu'un faux négatif DÉTERMINISTE, pas le vrai délai réseau qui le cause). À vérifier en réel,
+    idéalement en observant le widget se reconnecter plusieurs fois de suite à un document où
+    `BI_StressTest` existe déjà : le correctif empêche-t-il bien toute duplication de lignes en
+    pratique, et 500ms est-il suffisamment généreux même sur une connexion lente (sinon, augmenter ce
+    délai — le coût ne se paie qu'une fois par session, voir la doc de `_raceGuardArmed`) ?
 
 ## Prochaines étapes suggérées
 

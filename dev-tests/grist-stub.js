@@ -40,10 +40,28 @@
   const SAMPLE_ROWS = buildSampleRows();
   const SAMPLE_TABLE_ID = 'Ventes';
 
-  const tables = {}; // tableId -> format colonnaire {id:[], ColA:[], ...}
-  let nextRowId = 1;
+  // Pré-remplissage optionnel AVANT ce script (via page.addInitScript(), voir table-race-test.js) :
+  // simule un document Grist qui a DÉJÀ ces tables d'une session widget précédente, pour tester ce
+  // qui se passe à la RECONNEXION (le seul moment où le "faux négatif" décrit ci-dessous a un sens —
+  // sur une table qui vient tout juste d'être créée dans CETTE session, il n'y a rien à retrouver).
+  const tables = window.__gristStubPreseed ? JSON.parse(JSON.stringify(window.__gristStubPreseed)) : {};
+  let nextRowId = 1 + Object.values(tables).reduce((max, t) => Math.max(max, ...(t.id || [0])), 0);
 
   function cloneColumnar(t) { return JSON.parse(JSON.stringify(t)); }
+
+  // Simulation du "faux négatif" d'existence de table trouvé en conditions réelles (voir
+  // js/grist-api.js:tableExistsConfirmed) : `grist.ready()` ne renvoie pas de promesse, la vraie
+  // négociation d'accès avec Grist se termine de façon ASYNCHRONE, et un `listTables()` envoyé trop
+  // tôt côté widget peut renvoyer une liste incomplète/vide. `window.__gristStubRaceCalls` (compteur,
+  // pas un délai réel — déterministe, pas de flakiness liée au timing du test) : tant qu'il est > 0,
+  // chaque appel à `listTables()` renvoie `[]` (comme si la table n'existait pas encore) et
+  // décrémente le compteur ; les tests qui veulent reproduire le bug l'arment explicitement via
+  // `page.addInitScript()` (qui s'exécute AVANT ce script) — `typeof ... !== 'number'` pour ne PAS
+  // écraser cette valeur pré-armée [BUG DE TEST trouvé en écrivant table-race-test.js : une
+  // affectation inconditionnelle ici annulait silencieusement l'armement fait par le test avant même
+  // que ce script ne s'exécute, rendant la simulation de course totalement inopérante — le test
+  // "passait" alors indépendamment de la présence du correctif, donc sans jamais rien vérifier].
+  if (typeof window.__gristStubRaceCalls !== 'number') window.__gristStubRaceCalls = 0;
 
   window.grist = {
     ready(opts) {
@@ -57,7 +75,13 @@
     onOptions() {},
     docApi: {
       async listTables() {
-        return Object.keys(tables).map((id) => ({ id }));
+        // Le vrai grist.docApi.listTables() renvoie un tableau de chaînes (les tableId), PAS des
+        // objets {id} — vérifié contre la définition TypeScript de l'API Grist réelle.
+        if (window.__gristStubRaceCalls > 0) {
+          window.__gristStubRaceCalls--;
+          return [];
+        }
+        return Object.keys(tables);
       },
       async fetchTable(tableId) {
         return tables[tableId] ? cloneColumnar(tables[tableId]) : { id: [] };

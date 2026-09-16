@@ -132,7 +132,7 @@ premier commit.
 
 ## État du projet
 
-Plusieurs allers-retours avec un usage réel, quatorze vrais bugs remontés/trouvés et corrigés : un souci
+Plusieurs allers-retours avec un usage réel, quinze vrais bugs remontés/trouvés et corrigés : un souci
 de chargement d'ECharts sur réseau filtré (HYPOTHESES.md point 3), un `KeyError` de génération de
 données de démo dû à un schéma de table obsolète (point 9), un bug CSS où plusieurs champs du
 formulaire de tuile (`.hidden = true` en JS) ne se masquaient en réalité jamais à l'écran, des
@@ -151,7 +151,12 @@ natif du navigateur avec la valeur brute invalide, contournant toute la validati
 passage que le sélecteur de table, déjà "vert", ne fonctionnait en réalité que grâce à ce bug), et
 des éléments graphiques qui débordaient sous les cartes (`min-height` sur `.tile-chart` resté
 incohérent après le passage de `.tile` à une hauteur fixe, remonté par l'utilisateur en conditions
-réelles) — la plupart repérés
+réelles), et — le plus grave trouvé à ce jour — une course au démarrage entre `grist.ready()`
+(qui ne renvoie pas de promesse) et le tout premier appel `docApi`, pouvant faire recréer/remplir
+une table qui existe déjà à chaque réouverture du widget, avec un vrai risque de duplication de
+données dans le document réel de l'utilisateur (remonté en conditions réelles, jamais reproductible
+dans ce sandbox avant coup puisque le mock n'a aucune vraie négociation réseau à rater) — la plupart
+repérés
 uniquement en vérifiant le rendu réel (visibilité/capture d'écran), jamais via une simple absence
 d'erreur JS. Depuis : édition et réorganisation de
 tuile, `ResizeObserver`, tri chronologique, filtres croisés cumulables, tendance KPI, vues
