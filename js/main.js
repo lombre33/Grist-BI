@@ -665,14 +665,15 @@
   // avoir un dashboard à tester. Idempotent côté grist-api.js (loadOrCreateStressData) : ne
   // recrée/renvoie les lignes que si la table n'existe pas encore dans le document, sinon se
   // contente de la relire (quasi instantané). Si le schéma doit un jour se complexifier (colonnes
-  // en plus), il suffit de bumper STRESS_TABLE_SCHEMA_VERSION (js/grist-api.js) : une table du
-  // nouveau nom sera automatiquement créée au prochain chargement, sans bouton à remettre pour ça.
+  // en plus), `ensureColumnsUpToDate` (js/grist-api.js) ajoute la colonne manquante à la table déjà
+  // présente et remplit les lignes déjà là — jamais une nouvelle table à recréer.
   async function bootstrap() {
     await GristBI.api.init();
     rowCountEl.textContent = 'Connexion…';
     const onProgress = (phase, sent, total) => {
       const pct = Math.round((sent / total) * 100);
-      rowCountEl.textContent = `Création… ${pct}% (${sent.toLocaleString('fr-FR')}/${total.toLocaleString('fr-FR')})`;
+      const label = phase === 'migrate' ? 'Mise à jour du schéma…' : 'Création…';
+      rowCountEl.textContent = `${label} ${pct}% (${sent.toLocaleString('fr-FR')}/${total.toLocaleString('fr-FR')})`;
     };
     try {
       const { tableId, rows, created } = await GristBI.api.loadOrCreateStressData(onProgress);

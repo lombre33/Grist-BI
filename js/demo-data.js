@@ -22,6 +22,19 @@
   function pad2(n) { return String(n).padStart(2, '0'); }
   function isoDate(annee, moisIndex, jour) { return `${annee}-${pad2(moisIndex + 1)}-${pad2(jour)}`; }
 
+  // Calcule la colonne Date à partir des colonnes DÉJÀ présentes sur une ligne EXISTANTE
+  // (Annee/Mois + Semaine ou Jour selon la table) — réutilisé quand une colonne s'ajoute à une table
+  // déjà créée dans le document (voir grist-api.js:ensureColumnsUpToDate) : plutôt que de recréer la
+  // table sous un nouveau nom à chaque évolution de schéma, on ajoute la colonne manquante
+  // (AddColumn) puis on remplit les lignes déjà présentes avec de VRAIES valeurs calculées ici, pas
+  // une formule Grist (demande explicite de l'utilisateur — ce projet n'utilise nulle part le
+  // langage de formules Grist). Détecte laquelle des deux formes de table (démo avec Semaine, test
+  // de charge avec Jour) est en présence.
+  function deriveDateColumn(row) {
+    const jour = ('Jour' in row) ? row.Jour : 1 + (row.Semaine - 1) * 7;
+    return { Date: isoDate(row.Annee, MOIS.indexOf(row.Mois), jour) };
+  }
+
   const COLUMNS = [
     { id: 'Region', type: 'Text' },
     { id: 'Produit', type: 'Text' },
@@ -171,6 +184,7 @@
 
   return {
     COLUMNS, REGIONS, ANNEES, MOIS, SEMAINES, PRODUITS, buildSampleRows, defaultTiles,
-    COLUMNS_LARGE, ANNEES_LARGE, JOURS_PAR_MOIS, buildLargeSampleRows, defaultLargeTiles
+    COLUMNS_LARGE, ANNEES_LARGE, JOURS_PAR_MOIS, buildLargeSampleRows, defaultLargeTiles,
+    deriveDateColumn
   };
 });

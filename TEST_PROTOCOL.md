@@ -169,6 +169,9 @@ une feature "testée", vérifier qu'on s'est posé chacune de ces questions :
 - [x] `buildLargeSampleRows` — volume exact (~47 040), colonnes complètes, valeurs positives ✅
 - [x] `buildLargeSampleRows` — perf de génération + 3 agrégations/filtrages combinés (garde-fou généreux, pas un budget de perf précis) ✅
 - [x] `defaultLargeTiles` — mêmes vérifications que `defaultTiles` ✅
+- [x] `deriveDateColumn` — forme "démo" (Semaine, jour = 1 + (semaine-1)×7) ✅
+- [x] `deriveDateColumn` — forme "test de charge" (Jour direct) ✅
+- [x] `deriveDateColumn` — cohérent avec la colonne `Date` générée directement par `buildSampleRows`/`buildLargeSampleRows` (pas deux implémentations divergentes) ✅
 
 ### `js/grist-api.js` (Playwright contre `dev-tests/grist-stub.js` — mock en mémoire, PAS un vrai `grist.docApi`)
 
@@ -184,6 +187,15 @@ une feature "testée", vérifier qu'on s'est posé chacune de ces questions :
 - [ ] `saveConfig` — deux sauvegardes rapprochées (debounce 600ms) ne créent pas deux lignes `AddRecord` pour la même table ⬜
 - [ ] **[NON TESTABLE ICI]** round-trip réseau réel de `applyUserActions` contre un vrai `grist.docApi` (latence, taille de payload) — voir `HYPOTHESES.md` point 10
 - [ ] **[NON TESTABLE ICI]** lecture de `_grist_Tables`/`_grist_Tables_column` (types de colonnes réels) contre un vrai document — le mock ne simule pas ces tables système
+
+### `js/grist-api.js` — évolution de schéma SANS nouvelle table (`schema-migration-test.js`, Playwright, mock étendu avec `AddColumn`/`RenameTable`)
+
+- [x] Première installation (aucune table) → création fraîche sous le nom FIXE (`BI_StressTest`, sans suffixe de version), toutes les colonnes présentes dès la génération 🌐
+- [x] Rechargement avec un schéma déjà à jour → relecture simple, aucune action `AddColumn`/`UpdateRecord` déclenchée 🌐
+- [x] Table déjà existante sous le nom fixe mais avec un schéma ANCIEN (colonne manquante) → `AddColumn` puis backfill exact des lignes déjà présentes via `UpdateRecord` (valeurs calculées par `deriveDateColumn`, PAS une formule Grist), aucune ligne perdue ni dupliquée, `result.created === false` 🌐
+- [x] Ancien nom de table VERSIONNÉ (`BI_StressTest_v2`) existant, nom fixe absent → `RenameTable` vers le nom fixe, puis complétion du schéma comme ci-dessus ; UNE SEULE table dans le document au final (pas de doublon `_v2` + nom fixe) 🌐
+- [ ] Deux anciens noms versionnés coexistant (`_v2` ET `_v1`) → seul le premier de `LEGACY_*_TABLE_NAMES` (le plus récent) est renommé, l'autre reste orphelin ⬜ (comportement voulu — un seul cas réel plausible en pratique, l'utilisateur n'aurait jamais eu qu'UNE version legacy à la fois vu le rythme de ce projet) — pas de cas Playwright dédié
+- [ ] **[NON TESTABLE ICI]** `AddColumn`/`RenameTable` contre un vrai `grist.docApi` — le mock les simule de façon minimale (voir `grist-stub.js`), jamais vérifié en conditions réelles
 
 ### `js/charts.js` + `js/main.js` — rendu navigateur (Playwright contre `dev-tests/harness.html`)
 

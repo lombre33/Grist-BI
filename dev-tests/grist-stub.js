@@ -2,7 +2,7 @@
  * Mock minimal de l'API Grist Custom Widget pour tester dev-tests/harness.html hors d'un
  * vrai document Grist. Couvre uniquement ce que ce POC utilise : grist.ready, grist.onRecords,
  * grist.docApi.{listTables,fetchTable,applyUserActions} avec
- * AddTable/AddRecord/UpdateRecord/RemoveRecord.
+ * AddTable/AddRecord/UpdateRecord/RemoveRecord/AddColumn/RenameTable.
  * Ne PAS utiliser comme référence de l'API réelle — voir docs.getgrist.com pour la vraie surface.
  */
 (function () {
@@ -96,6 +96,17 @@
             const t = tables[tableId];
             const idx = t.id.indexOf(rowId);
             if (idx >= 0) for (const key of Object.keys(t)) t[key].splice(idx, 1);
+            retValues.push(null);
+          } else if (kind === 'AddColumn') {
+            const colId = action[2];
+            const t = tables[tableId];
+            t[colId] = new Array(t.id.length).fill(null);
+            retValues.push(null);
+          } else if (kind === 'RenameTable') {
+            const oldTableId = action[1];
+            const newTableId = action[2];
+            tables[newTableId] = tables[oldTableId];
+            delete tables[oldTableId];
             retValues.push(null);
           } else {
             console.warn('[grist-stub] action non gérée par le mock:', kind);

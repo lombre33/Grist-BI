@@ -683,6 +683,23 @@ const rows = [
   console.log('OK demoData.defaultTiles (cohérentes avec buildSampleRows + state.js)');
 }
 
+// demo-data: deriveDateColumn — recalcule Date à partir des colonnes déjà présentes sur une ligne
+// EXISTANTE (pas au moment de la génération), pour la migration de schéma d'une table déjà créée
+// (voir grist-api.js:ensureColumnsUpToDate) : AddColumn + remplissage, jamais une nouvelle table.
+{
+  // Forme "démo" (Semaine, pas Jour) : semaine 1 -> jour 1, semaine 3 -> jour 15
+  assert.deepStrictEqual(demoData.deriveDateColumn({ Annee: 2026, Mois: 'Mars', Semaine: 1 }), { Date: '2026-03-01' });
+  assert.deepStrictEqual(demoData.deriveDateColumn({ Annee: 2026, Mois: 'Mars', Semaine: 3 }), { Date: '2026-03-15' });
+  // Forme "test de charge" (Jour direct)
+  assert.deepStrictEqual(demoData.deriveDateColumn({ Annee: 2025, Mois: 'Décembre', Jour: 28 }), { Date: '2025-12-28' });
+  // Cohérent avec la colonne Date générée directement par buildSampleRows/buildLargeSampleRows
+  const sampleRow = demoData.buildSampleRows()[0];
+  assert.deepStrictEqual(demoData.deriveDateColumn(sampleRow), { Date: sampleRow.Date });
+  const largeRow = demoData.buildLargeSampleRows()[0];
+  assert.deepStrictEqual(demoData.deriveDateColumn(largeRow), { Date: largeRow.Date });
+  console.log('OK demoData.deriveDateColumn (formes Semaine et Jour, cohérent avec la génération directe)');
+}
+
 // demo-data: jeu de données "test de charge" - volume + cohérence + perf d'agrégation côté client
 {
   const t0 = Date.now();

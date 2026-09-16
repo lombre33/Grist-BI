@@ -158,8 +158,11 @@ dans une seule instance de widget, avec ses propres tuiles internes.
   précédent ("régénérer garde les tuiles, redonne des valeurs neuves") suite à un retour direct :
   renvoyer ~47 000 lignes à Grist à chaque clic de test est un gâchis, surtout si le round-trip
   réseau réel s'avère lent (point juste au-dessus). Si le jeu de données doit changer, le mécanisme
-  reste un bump de `DEMO_TABLE_SCHEMA_VERSION`/`STRESS_TABLE_SCHEMA_VERSION` (nouvelle table
-  fraîche), pas une régénération en place — plus d'option de régénération manuelle dans l'UI.
+  était à l'origine un bump de `DEMO_TABLE_SCHEMA_VERSION`/`STRESS_TABLE_SCHEMA_VERSION` (nouvelle
+  table fraîche) — **remplacé depuis par `ensureColumnsUpToDate`/`AddColumn` sur la table existante,
+  voir l'entrée "Changement de politique" plus bas : ces deux constantes n'existent plus** — mais le
+  principe "pas de régénération en place des lignes déjà là, plus d'option de régénération manuelle
+  dans l'UI" reste vrai.
   Testé avec Playwright : première connexion crée la table (progression affichée, valeurs
   aléatoires) ; en espionnant `applyUserActions`, une deuxième connexion à la table déjà créée
   n'envoie **aucune** action `AddRecord`/`RemoveRecord` et renvoie des valeurs **identiques** (pas
@@ -209,7 +212,7 @@ dans une seule instance de widget, avec ses propres tuiles internes.
   suite à un retour utilisateur (« quand j'arrive sur la page le widget n'a plus de donnée par
   défaut, il faudrait le plug sur la plage de donnée du stress test par défaut, et on y touche
   plus, ça devient sa table par défaut »), le widget se connecte désormais tout seul, au
-  chargement, à la table de test de charge (`BI_StressTest_v1`, ~47 040 lignes) via
+  chargement, à la table de test de charge (`BI_StressTest`, ~47 040 lignes) via
   `loadOrCreateStressData()` — plus besoin de cliquer sur un bouton pour avoir un dashboard à
   tester. Les boutons « 🎲 Données de démo »/« 🔥 Gros jeu de données » et le bandeau « Mode démo /
   Revenir à la table liée » ont été retirés de l'UI (`index.html`, `dev-tests/harness.html`,
@@ -217,11 +220,13 @@ dans une seule instance de widget, avec ses propres tuiles internes.
   `js/grist-api.js:init()` n'appelle donc plus `grist.onRecords()` (la table liée au widget dans
   la page Grist n'est plus consultée du tout pour l'instant — voir point 1 ci-dessous, désormais
   obsolète). Si le schéma doit se complexifier plus tard (colonnes en plus), le mécanisme déjà en
-  place suffit sans repasser par un bouton : bumper `STRESS_TABLE_SCHEMA_VERSION`
-  (`js/grist-api.js`) crée automatiquement une table fraîche au chargement suivant (même logique
-  que `DEMO_TABLE_SCHEMA_VERSION`, voir plus haut) ; un bouton manuel resterait facile à ajouter en
-  plus si un déclenchement explicite (sans recharger la page) s'avère utile un jour. Le jeu de
-  données de démo « rapide » (`BI_Demo_Ventes_v3`, `loadOrCreateDemoData`, 1920 lignes) reste dans
+  place suffit sans repasser par un bouton : `ensureColumnsUpToDate` (`js/grist-api.js`) ajoute la
+  colonne manquante à la table déjà présente et la remplit pour les lignes déjà là au chargement
+  suivant — **le nom de la table ne change plus jamais** (voir l'entrée "Changement de politique"
+  plus bas, qui remplace le mécanisme de bump de version de schéma décrit ici à l'origine) ; un
+  bouton manuel resterait facile à ajouter en plus si un déclenchement explicite (sans recharger la
+  page) s'avère utile un jour. Le jeu de données de démo « rapide » (`BI_Demo_Ventes`,
+  `loadOrCreateDemoData`, 1920 lignes) reste dans
   le code et testé sous Node, mais n'est plus atteignable depuis l'UI — délibérément conservé
   plutôt que supprimé, au cas où un jeu de données plus petit redevienne utile pour un test rapide.
   Testé avec Playwright : premier chargement de page connecte automatiquement les ~47 040 lignes
@@ -468,6 +473,45 @@ dans une seule instance de widget, avec ses propres tuiles internes.
   - Testé : Playwright dédié (`tile-height-stability-test.js`), ajouté comme garde de non-régression
     permanente pour cette classe de bug (toute future tuile avec un graphique ECharts dans un
     conteneur `flex`/`grid` sans hauteur explicite sur un ancêtre y est exposée).
+- **Changement de politique : plus JAMAIS de nouvelle table pour un changement de schéma**
+  (`js/grist-api.js`, demande explicite de l'utilisateur) :
+  - **Ce qui a motivé le changement** : l'ajout de la colonne `Date` (filtres avancés, voir plus
+    haut) avait suivi l'ancien mécanisme — bump de `STRESS_TABLE_SCHEMA_VERSION`/
+    `DEMO_TABLE_SCHEMA_VERSION`, nouvelle table `BI_StressTest_v2`/`BI_Demo_Ventes_v4` créée à côté
+    de `_v1`/`_v3`. L'utilisateur a fait remarquer à raison que ce n'était pas nécessaire : `AddColumn`
+    est un verbe Grist déjà vérifié comme fiable (voir ROADMAP.md, liste des verbes prouvés) —
+    l'ancien commentaire "AddColumn n'est pas un verbe éprouvé ICI" ne voulait dire que "jamais
+    utilisé dans ce codebase", pas "non fiable dans Grist". Consigne reçue : une seule table de test
+    traverse toute la vie du widget ; si une colonne manque, on l'ajoute à la table existante.
+  - **Nouveau mécanisme** : les noms de table sont désormais FIXES (`BI_Demo_Ventes`,
+    `BI_StressTest`, plus de suffixe `_v1`/`_v2`...). `ensureColumnsUpToDate(tableId, columns,
+    deriveMissingColumns, onProgress)` compare les colonnes attendues à celles réellement présentes
+    dans la table (`fetchTable`), ajoute les manquantes (`AddColumn`) puis les remplit pour les
+    lignes déjà là avec de VRAIES valeurs calculées côté JS et envoyées explicitement
+    (`UpdateRecord`, comme `fillTable` envoie ses `AddRecord`) — **PAS une formule Grist** (question
+    posée explicitement par l'utilisateur : la réponse est qu'une formule n'a jamais été
+    nécessaire, seulement suggérée à tort comme option ; ce projet n'utilise nulle part le langage
+    de formules Grist, cohérence délibérée). `GristBI.demoData.deriveDateColumn(row)` calcule la
+    valeur dérivée (ici `Date`) à partir des colonnes déjà présentes sur une ligne EXISTANTE
+    (Annee/Mois + Semaine ou Jour selon la table), réutilisable pour n'importe quelle future colonne
+    dérivable de la même façon.
+  - **Nettoyage des tables déjà créées par erreur** : `migrateLegacyTableName(tableId, legacyNames)`
+    détecte si un ancien nom versionné (`BI_StressTest_v2`, `BI_StressTest_v1`,
+    `BI_Demo_Ventes_v4`...) existe encore alors que le nom fixe n'existe pas, et le RENOMME
+    (`RenameTable`, verbe déjà vérifié) plutôt que de laisser une table orpheline en plus — corrige
+    directement les deux tables `_v2`/`_v4` créées par erreur dans les deux commits précédant celui-ci.
+  - **`dev-tests/grist-stub.js`** étendu pour supporter `AddColumn` (ajoute la colonne, remplie de
+    `null` pour les lignes déjà présentes, comme le ferait Grist) et `RenameTable` (déplace la
+    table interne d'une clé à l'autre) — nécessaires pour tester ce mécanisme sans vrai document.
+  - Testé : Node (`deriveDateColumn` pour les deux formes de table, Semaine et Jour, cohérent avec
+    la génération directe) + Playwright dédié (`schema-migration-test.js`, 3 scénarios : 1re
+    installation avec toutes les colonnes dès la génération ; table déjà existante avec un schéma
+    ancien → `AddColumn` + backfill exact par `UpdateRecord`, aucune ligne perdue/dupliquée, aucune
+    nouvelle table ; ancien nom versionné → renommage vers le nom fixe, une seule table au final
+    dans le document). Un vrai bug a été trouvé pendant l'écriture de CE test (pas dans le produit) :
+    la page de test Playwright n'avait pas de `<meta charset="UTF-8">`, ce qui corrompait les noms de
+    mois accentués (`Décembre` lu comme `DÃ©cembre`) — `index.html`/`harness.html` déclarent bien ce
+    charset, seule la page de test jetable en manquait.
 
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
@@ -574,6 +618,14 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     inattendu (certains navigateurs demandent une confirmation pour un téléchargement initié depuis un
     iframe tiers) ; (b) le nom de fichier (`dashboard-bi.xlsx`) et l'emplacement de téléchargement se
     comportent-ils comme dans un onglet normal.
+12. **`AddColumn`/`RenameTable` contre un vrai `grist.docApi`, jamais exécutés en conditions
+    réelles** : le nouveau mécanisme d'évolution de schéma (`ensureColumnsUpToDate`/
+    `migrateLegacyTableName`, voir plus haut) repose sur ces deux verbes, considérés fiables d'après
+    la lecture du code source de Grist (voir ROADMAP.md) mais jamais exercés contre un vrai document
+    dans ce projet — seulement contre le mock (`dev-tests/grist-stub.js`, étendu pour l'occasion, qui
+    ne simule que le strict nécessaire). À vérifier en réel : `AddColumn` sur une table de plusieurs
+    dizaines de milliers de lignes se comporte-t-il comme attendu (colonne vide plutôt qu'une erreur
+    de volume) ; `RenameTable` préserve-t-il bien les données/lignes existantes.
 
 ## Prochaines étapes suggérées
 

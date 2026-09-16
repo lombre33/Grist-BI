@@ -67,7 +67,7 @@ graphiques vides (ou l'export Excel muet) sans erreur explicite.
 - Persistance de la configuration du dashboard (tuiles + vues sauvegardées) dans le document Grist
   (par table liée), donc conservée entre deux ouvertures du widget.
 - **Table de travail par défaut, connectée automatiquement** : au chargement, le widget se connecte
-  tout seul (`js/main.js:bootstrap`) à sa table de test de charge (`BI_StressTest_v1`, ~47 040
+  tout seul (`js/main.js:bootstrap`) à sa table de test de charge (`BI_StressTest`, ~47 040
   lignes : 4 régions × 5 produits × 7 années × 12 mois × 28 jours) avec 4 tuiles pré-configurées
   (dont une avec drill-down à 2 niveaux et cross-filtering activé). Si la table n'existe pas encore
   dans le document, elle est créée et remplie (avec une progression affichée) ; si elle existe
@@ -76,9 +76,12 @@ graphiques vides (ou l'export Excel muet) sans erreur explicite.
   autre table). L'envoi initial se fait par lots de 2000 actions plutôt qu'en un seul appel géant.
   Mesures locales : génération + agrégation en ~30ms, rendu des tuiles en 35-60ms (affiché dans le
   bandeau, `#render-time`) — voir HYPOTHESES.md pour le détail et ce qui reste à confirmer en
-  conditions réelles (round-trip réseau vers un vrai document). Si le schéma doit se complexifier
-  plus tard (colonnes en plus), bumper `STRESS_TABLE_SCHEMA_VERSION` (`js/grist-api.js`) suffit :
-  une table fraîche est créée automatiquement au chargement suivant, sans bouton à remettre.
+  conditions réelles (round-trip réseau vers un vrai document). **Le nom de cette table ne change
+  plus jamais** : si le schéma doit se complexifier plus tard (colonnes en plus),
+  `ensureColumnsUpToDate` (`js/grist-api.js`) ajoute la colonne manquante à la table déjà présente
+  (`AddColumn`) et remplit les lignes déjà là avec de vraies valeurs calculées côté JS —
+  jamais une nouvelle table à recréer (voir HYPOTHESES.md pour l'historique : ça a été le mécanisme
+  jusqu'à cette évolution, corrigée à la demande de l'utilisateur pour éviter les tables orphelines).
 
 ## Installation dans Grist
 

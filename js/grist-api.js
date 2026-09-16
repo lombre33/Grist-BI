@@ -11,20 +11,22 @@
   const GristBI = global.GristBI || (global.GristBI = {});
 
   const CONFIG_TABLE = 'BI_Dashboard_Config';
-  // Suffixée par un numéro de schéma : `loadOrCreateTable` ne crée la table QUE si son nom
-  // n'existe pas encore, elle ne migre jamais les colonnes d'une table déjà présente. Sans ce
-  // suffixe, ajouter une colonne à GristBI.demoData.COLUMNS (ex. "Annee") casserait la génération
-  // chez quiconque avait déjà une ancienne BI_Demo_Ventes dans son document (AddRecord échoue avec
-  // "KeyError" sur la colonne manquante côté Grist) - vécu en pratique, pas juste théorique.
-  // Incrémenter ce numéro à chaque changement de GristBI.demoData.COLUMNS plutôt que d'introduire
-  // une logique de migration de schéma (AddColumn n'est pas un verbe éprouvé ici, voir HYPOTHESES.md).
-  const DEMO_TABLE_SCHEMA_VERSION = 4; // v4 : ajout de la colonne Date (filtres avancés, Roadmap Tier 1)
-  const DEMO_TABLE = 'BI_Demo_Ventes_v' + DEMO_TABLE_SCHEMA_VERSION;
+  // Noms FIXES, plus jamais suffixés par un numéro de schéma (demande explicite de l'utilisateur :
+  // une seule table de test traverse toute la vie du widget). Si `GristBI.demoData.COLUMNS`/
+  // `COLUMNS_LARGE` gagne une colonne, `ensureColumnsUpToDate` (plus bas) ajoute cette colonne à la
+  // table déjà présente (`AddColumn`) et remplit les lignes déjà là avec de vraies valeurs calculées
+  // côté JS (`GristBI.demoData.deriveDateColumn`, PAS une formule Grist) — jamais de nouvelle table.
+  const DEMO_TABLE = 'BI_Demo_Ventes';
   // Table séparée pour le test de charge (gros volume) : même schéma de colonnes que DEMO_TABLE
   // (voir GristBI.demoData.COLUMNS, partagé), mais un nom et un cycle de vie indépendants pour ne
   // jamais interférer avec la démo "rapide" ci-dessus.
-  const STRESS_TABLE_SCHEMA_VERSION = 2; // v2 : ajout de la colonne Date (filtres avancés, Roadmap Tier 1)
-  const STRESS_TABLE = 'BI_StressTest_v' + STRESS_TABLE_SCHEMA_VERSION;
+  const STRESS_TABLE = 'BI_StressTest';
+  // Anciens noms suffixés par un numéro de version, créés par une version antérieure de ce widget
+  // avant l'adoption d'un nom fixe ci-dessus — voir `migrateLegacyTableName` : si l'un de ces noms
+  // existe encore et que le nom fixe n'existe pas, on le RENOMME (`RenameTable`) plutôt que de
+  // laisser une table orpheline en plus dans le document.
+  const LEGACY_DEMO_TABLE_NAMES = ['BI_Demo_Ventes_v4', 'BI_Demo_Ventes_v3', 'BI_Demo_Ventes_v2', 'BI_Demo_Ventes_v1'];
+  const LEGACY_STRESS_TABLE_NAMES = ['BI_StressTest_v2', 'BI_StressTest_v1'];
   // Nombre d'actions envoyées par appel à applyUserActions() lors d'une génération/suppression en
   // masse : un seul appel avec des dizaines de milliers d'actions est un pari risqué (timeout,
   // limite de payload côté Grist - aucune des deux non testée ici, voir HYPOTHESES.md) ; les
@@ -140,6 +142,21 @@
     return tables.some((t) => (typeof t === 'string' ? t : t.id) === tableId);
   }
 
+  // Si `tableId` (le nom fixe courant) n'existe pas encore mais qu'un ancien nom versionné existe
+  // (voir LEGACY_*_TABLE_NAMES), le renomme plutôt que de laisser une table orpheline en plus dans
+  // le document. `RenameTable` est un verbe déjà vérifié (voir ROADMAP.md). No-op si `tableId`
+  // existe déjà, ou si aucun ancien nom n'est présent (première installation : rien à migrer).
+  async function migrateLegacyTableName(tableId, legacyNames) {
+    if (await tableExists(tableId)) return;
+    for (const legacyName of legacyNames) {
+      if (await tableExists(legacyName)) {
+        await grist.docApi.applyUserActions([['RenameTable', legacyName, tableId]]);
+        _rawTables = null; // le cache de listTables() doit être relu après un renommage
+        return;
+      }
+    }
+  }
+
   async function ensureTableExists(tableId, columns) {
     if (await tableExists(tableId)) return;
     await grist.docApi.applyUserActions([['AddTable', tableId, columns]]);
@@ -166,27 +183,60 @@
     await applyActionsInChunks('fill', actions, onProgress);
   }
 
+  // Ajoute à `tableId` (déjà existante) les colonnes de `columns` qui lui manquent encore
+  // (`AddColumn`), puis remplit leur valeur pour les lignes déjà présentes avec de VRAIES valeurs
+  // calculées par `deriveMissingColumns(row)` et envoyées explicitement via `UpdateRecord` (comme
+  // `fillTable` envoie ses `AddRecord`) — PAS une formule Grist : ce projet n'utilise nulle part le
+  // langage de formules Grist, cohérent avec le reste du schéma (demande explicite de l'utilisateur,
+  // qui a aussi demandé à ne plus jamais recréer de table pour un changement de schéma : ce
+  // mécanisme d'ajout de colonne en place remplace définitivement la logique de versionnage de nom
+  // de table utilisée avant). No-op si aucune colonne ne manque.
+  async function ensureColumnsUpToDate(tableId, columns, deriveMissingColumns, onProgress) {
+    const table = await grist.docApi.fetchTable(tableId);
+    const existingIds = new Set(Object.keys(table).filter((k) => k !== 'id'));
+    const missingColumns = columns.filter((c) => !existingIds.has(c.id));
+    if (!missingColumns.length) return;
+    await grist.docApi.applyUserActions(missingColumns.map((c) => ['AddColumn', tableId, c.id, { type: c.type }]));
+    const rows = GristBI.data.tableToRows(table);
+    const actions = rows.map((row, i) => {
+      const derived = deriveMissingColumns(row);
+      const fields = {};
+      for (const c of missingColumns) fields[c.id] = derived[c.id];
+      return ['UpdateRecord', tableId, table.id[i], fields];
+    });
+    await applyActionsInChunks('migrate', actions, onProgress);
+  }
+
   // Se connecte à une table de données de démo/test de charge : la CRÉE et la REMPLIT seulement
-  // si elle n'existe pas encore, sinon se contente de la relire telle quelle. Volontairement
-  // idempotent — cliquer plusieurs fois sur "Générer" ne doit pas renvoyer des dizaines de milliers
-  // de lignes à Grist à chaque fois une fois que la table existe déjà. Si le jeu de données doit
-  // changer plus tard, le mécanisme est une nouvelle version de schéma (voir
-  // DEMO_TABLE_SCHEMA_VERSION/STRESS_TABLE_SCHEMA_VERSION plus haut : une table du nom courant
-  // n'existe pas encore -> génération fraîche), pas une régénération en place.
-  async function loadOrCreateTable(tableId, columns, buildRows, onProgress) {
+  // si elle n'existe pas encore ; si elle existe déjà, complète seulement les colonnes manquantes
+  // (voir `ensureColumnsUpToDate`) sans jamais renvoyer les lignes déjà présentes ni recréer la
+  // table. Volontairement idempotent — cliquer plusieurs fois sur "Générer" ne doit pas renvoyer des
+  // dizaines de milliers de lignes à Grist à chaque fois une fois que la table existe déjà.
+  async function loadOrCreateTable(tableId, legacyNames, columns, buildRows, deriveMissingColumns, onProgress) {
+    await migrateLegacyTableName(tableId, legacyNames);
     const alreadyExists = await tableExists(tableId);
     await ensureTableExists(tableId, columns);
-    if (!alreadyExists) await fillTable(tableId, buildRows(), columns, onProgress);
+    if (!alreadyExists) {
+      await fillTable(tableId, buildRows(), columns, onProgress);
+    } else {
+      await ensureColumnsUpToDate(tableId, columns, deriveMissingColumns, onProgress);
+    }
     const table = await grist.docApi.fetchTable(tableId);
     return { tableId, rows: GristBI.data.tableToRows(table), created: !alreadyExists };
   }
 
   function loadOrCreateDemoData(onProgress) {
-    return loadOrCreateTable(DEMO_TABLE, GristBI.demoData.COLUMNS, GristBI.demoData.buildSampleRows, onProgress);
+    return loadOrCreateTable(
+      DEMO_TABLE, LEGACY_DEMO_TABLE_NAMES, GristBI.demoData.COLUMNS,
+      GristBI.demoData.buildSampleRows, GristBI.demoData.deriveDateColumn, onProgress
+    );
   }
 
   function loadOrCreateStressData(onProgress) {
-    return loadOrCreateTable(STRESS_TABLE, GristBI.demoData.COLUMNS_LARGE, GristBI.demoData.buildLargeSampleRows, onProgress);
+    return loadOrCreateTable(
+      STRESS_TABLE, LEGACY_STRESS_TABLE_NAMES, GristBI.demoData.COLUMNS_LARGE,
+      GristBI.demoData.buildLargeSampleRows, GristBI.demoData.deriveDateColumn, onProgress
+    );
   }
 
   GristBI.api = { init, loadConfig, saveConfig, loadOrCreateDemoData, loadOrCreateStressData };
