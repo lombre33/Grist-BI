@@ -84,6 +84,14 @@ une feature "testée", vérifier qu'on s'est posé chacune de ces questions :
 - [x] `tileDrillLevels` — nouveau format tableau ✅
 - [x] `tileDrillLevels` — ancien format chaîne unique (compat) ✅
 - [x] `tileDrillLevels` — tuile sans drill-down → `[]` ✅
+- [x] `matchesFilter`/`applyFilters` — type `range` : bornes min/max chacune optionnelle indépendamment, valeur non numérique jamais matchée ✅
+- [x] `matchesFilter`/`applyFilters` — type `dateRange` : bornes `start`/`end` inclusives des deux côtés, chacune optionnelle indépendamment ✅
+- [x] `matchesFilter`/`applyFilters` — type `relativeDate` : preset connu calcule la bonne plage, preset inconnu → aucune ligne ne matche (pas d'erreur) ✅
+- [x] `matchesFilter`/`applyFilters` — type `contains` : insensible à la casse, chaîne de recherche vide matche tout ✅
+- [x] `matchesFilter`/`applyFilters` — un filtre "eq" (clic) et des filtres avancés typés combinés en ET dans la même liste ✅
+- [x] `parseDateValue` — format ISO valide → timestamp, format non-ISO (ex. `JJ/MM/AAAA`) → `null` plutôt que mal interprété, chaîne non-date → `null` ✅
+- [x] `relativeDateRange` — `now` explicite plutôt que l'horloge réelle (testable sous Node), preset inconnu → `null` ✅
+- [ ] `matchesFilter` — type `range`/`dateRange` avec `min > max` ou `start > end` (bornes incohérentes) — non gardé dans `data.js` lui-même (le formulaire de `main.js` empêche de le soumettre, mais la fonction pure ne le revalide pas) ⬜
 
 ### `js/state.js` — store pub/sub (Node, `dev-tests/test-data.js`)
 
@@ -120,6 +128,13 @@ une feature "testée", vérifier qu'on s'est posé chacune de ces questions :
 - [x] `activeFilters`/`drillIns` restent GLOBAUX au changement de page (décision produit délibérée, voir HYPOTHESES.md) ✅
 - [x] `setPages` — charge un tableau de pages complet + `currentPageId`, avec repli sur la première page si le `currentPageId` fourni ne correspond à aucune page ✅
 - [x] `setPages` — un tableau de pages vide retombe sur une page par défaut (jamais zéro page) ✅
+- [x] `setAdvancedFilter` — pose un filtre avec son `type` + champs spécifiques, au plus un par colonne ✅
+- [x] `setAdvancedFilter` — reposer sur la MÊME colonne remplace l'ancien plutôt que de le cumuler ✅
+- [x] `setAdvancedFilter` — colonnes différentes se cumulent (ET) ✅
+- [x] `clearAdvancedFilter(column)` — retire seulement celui-là ✅
+- [x] `clearAdvancedFilter()` — sans argument, retire tout ✅
+- [x] `saveBookmark`/`applyBookmark` capturent `advancedFilters` au même titre que `activeFilters`/`drillIns` ✅
+- [x] `applyBookmark` sur un bookmark sans champ `advancedFilters` (sauvegardé avant cette feature) → restaure `[]`, pas `undefined` [compat ascendante] ✅
 
 ### `js/demo-data.js` (Node, `dev-tests/test-data.js`)
 
@@ -216,6 +231,22 @@ une feature "testée", vérifier qu'on s'est posé chacune de ces questions :
 - [ ] Renommer/supprimer une page pendant qu'une tuile de cette page est en cours d'édition dans le formulaire ⬜ (cas non couvert : `editingTileId` n'est réinitialisé que sur `removeTile`/changement de table, pas sur `removePage`)
 - [ ] Bookmarks (filtres/drill sauvegardés) restaurés après changement de page — cohérent avec le caractère global des filtres, mais jamais testé explicitement en combinant page + bookmark ⬜
 
+### `js/main.js` — barre de filtres avancés (Roadmap Tier 1, Playwright)
+
+- [x] Colonne numérique choisie → champ plage min/max visible, tout le reste caché 🌐
+- [x] Colonne `Date` choisie → sélecteur de mode visible ("Plage de dates" par défaut) 🌐
+- [x] Mode "Plage de dates" → champs Du/au visibles, "Période relative" caché 🌐
+- [x] Rebasculer le mode vers "Période relative" → champ preset visible, Du/au caché 🌐
+- [x] Colonne texte choisie → champ recherche visible, tout le reste caché 🌐
+- [x] Poser un filtre range → badge affiché avec les bonnes bornes, formulaire vidé après ajout 🌐
+- [x] Poser un filtre dateRange puis un filtre relativeDate sur la MÊME colonne → remplace (1 seul badge pour cette colonne), pas de cumul 🌐
+- [x] Un filtre sur une colonne différente s'ajoute (cumul, badges multiples) 🌐
+- [x] Retirer un filtre via son badge (`×`) change réellement l'agrégat affiché par les tuiles (pas seulement l'état du store) 🌐
+- [x] Les filtres avancés NE sont PAS dans la config persistée (`{pages, currentPageId, bookmarks}`, pas de champ `advancedFilters`) — vérifié en lisant directement la table de config mockée 🌐
+- [x] Un bookmark capture le filtre avancé courant et le restaure après un `clearAdvancedFilter()` 🌐
+- [ ] Changer de TABLE (bootstrap une 2e fois) vide bien les filtres avancés (`store.clearAdvancedFilter()` dans `switchTable`) ⬜ **[NON TESTABLE ICI]** — un seul chargement de table par session dans ce POC (voir HYPOTHESES.md), jamais de vrai changement de table à tester
+- [ ] Deux filtres avancés dont un devient incohérent après édition manuelle du formulaire (ex. `min`/`max` inversés sans repasser par la validation du formulaire) ⬜ — voir aussi la limite notée dans `matchesFilter` plus haut
+
 ### CSS — classe de bug à systématiquement re-vérifier
 
 - [x] `.field[hidden]` masque réellement l'élément (pas seulement `display:flex` de `.field` qui gagne à spécificité égale) [BUG RÉEL, trouvé 2 fois sur des champs différents] ✅ (règle en place)
@@ -233,6 +264,38 @@ une feature "testée", vérifier qu'on s'est posé chacune de ces questions :
 7. **Filtres croisés/état de drill orphelins** — `removeTile`/`updateTile` ne nettoyaient pas les filtres croisés (`toggleFilter` ou `drillCrossFilter`) posés par la tuile supprimée/éditée. Corrigé en même temps que l'ajout de `drillCrossFilter`, avant qu'un utilisateur ne le rencontre en réel.
 8. **Libellés d'axe Y tronqués sur de grandes valeurs** [BUG RÉEL trouvé en capturant un screenshot pendant la passe de design] — sur le jeu de test de charge (valeurs ~2,7M), ECharts réservait une marge gauche estimée AVANT de connaître la largeur réelle du texte produit par un `axisLabel.formatter` personnalisé (format compact) ; l'estimation était trop courte, une partie du texte se dessinait hors du canvas et disparaissait silencieusement (aucune erreur JS, juste des libellés du type "000" au lieu de "2,7 M"). Corrigé par `grid: { containLabel: true }`, qui force ECharts à recalculer la marge à partir du texte réellement rendu plutôt que d'une estimation.
 9. **Graduations de jauge chevauchées** [BUG RÉEL trouvé en capturant un screenshot en ajoutant le type "gauge"] — le `splitNumber` par défaut d'ECharts (10, donc 11 libellés) produisait des graduations illisibles, superposées, à la taille d'une tuile normale. Corrigé par `splitNumber: 4` (5 libellés espacés). Même famille que le bug #8 : un réglage ECharts par défaut, pensé pour un espace plus grand qu'une tuile de dashboard, doit être revu explicitement pour CHAQUE nouveau type de série ECharts introduit, pas seulement testé "ça s'affiche sans erreur".
+
+## Fragilité de test connue (PAS un bug produit — investiguée en profondeur, à ne pas re-diagnostiquer)
+
+En rejouant la suite Playwright existante pendant le développement des filtres avancés, le script
+`new-tile-types.js` (scratch, hors `dev-tests/`) a échoué de façon intermittente (~50% des essais)
+sur SA propre assertion "cliquer un point du scatter doit cross-filtrer le KPI", alors qu'il passait
+de façon fiable sur les commits précédents. Diagnostic complet (bissection par `git worktree` sur 3
+commits, comparaison des positions pixel exactes, appel direct de `store.toggleFilter` en
+contournant le clic physique) :
+
+- Le store/rendu ne sont PAS en cause : appeler `store.toggleFilter` directement (sans passer par un
+  clic Playwright) produit toujours le bon résultat, à 100%.
+- La taille/position du conteneur `.tile-chart` et les positions pixel calculées par
+  `convertToPixel` sont QUASI IDENTIQUES avant/après le travail sur les filtres avancés — pas un
+  problème de mise en page causé par la nouvelle barre de filtres.
+- La cause réelle : "Casque audio" et "Webcam HD" (2 des 5 produits de démo) ont des `Montant`
+  agrégés proches (~1,2-1,4M, contre 0,8M/2,1M/5,2M pour les 3 autres) — sur un axe Y compressé dans
+  une tuile de ~140px de haut, leurs points ne sont séparés que d'environ 5px, alors que le rayon par
+  défaut d'un symbole ECharts (`symbolSize` par défaut, ~10px de diamètre) dépasse largement cet
+  écart. Cliquer au centre EXACT du point "Casque audio" tombe alors à la limite du disque de
+  "Webcam HD" (dessiné par-dessus, donc gagnant du hit-test) — un cas limite au pixel près, sensible
+  à l'anti-aliasing/l'arrondi flottant du moteur de rendu, donc non déterministe d'une exécution à
+  l'autre.
+- **Ce n'est pas une régression de ce POC** : les données sont générées aléatoirement à chaque
+  chargement (pas de seed), donc CE cas limite existait déjà avant les filtres avancés — il n'a
+  simplement pas été tiré par le hasard lors des exécutions précédentes. Un vrai utilisateur cliquant
+  sur un point qu'il voit clairement à l'écran ne rencontre pas ce problème ; deux points qui se
+  chevauchent visuellement à l'écran sont de toute façon ambigus au clic, quel que soit l'outil BI.
+- **Aucun changement de code applicatif fait suite à ce diagnostic** — noté ici pour ne pas
+  re-invalider une session future à re-diagnostiquer le même faux signal. Si ce script scratch est
+  un jour promu dans `dev-tests/`, son assertion scatter devrait cliquer sur un point choisi pour
+  être géométriquement isolé (ex. le point avec le Montant le plus extrême), pas sur l'index 0 fixe.
 
 ## Design system (`css/style.css`, passe du 2026-09-15)
 

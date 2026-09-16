@@ -18,12 +18,12 @@
   // "KeyError" sur la colonne manquante côté Grist) - vécu en pratique, pas juste théorique.
   // Incrémenter ce numéro à chaque changement de GristBI.demoData.COLUMNS plutôt que d'introduire
   // une logique de migration de schéma (AddColumn n'est pas un verbe éprouvé ici, voir HYPOTHESES.md).
-  const DEMO_TABLE_SCHEMA_VERSION = 3; // v3 : ajout de la colonne Semaine (drill-down à 2 niveaux)
+  const DEMO_TABLE_SCHEMA_VERSION = 4; // v4 : ajout de la colonne Date (filtres avancés, Roadmap Tier 1)
   const DEMO_TABLE = 'BI_Demo_Ventes_v' + DEMO_TABLE_SCHEMA_VERSION;
   // Table séparée pour le test de charge (gros volume) : même schéma de colonnes que DEMO_TABLE
   // (voir GristBI.demoData.COLUMNS, partagé), mais un nom et un cycle de vie indépendants pour ne
   // jamais interférer avec la démo "rapide" ci-dessus.
-  const STRESS_TABLE_SCHEMA_VERSION = 1;
+  const STRESS_TABLE_SCHEMA_VERSION = 2; // v2 : ajout de la colonne Date (filtres avancés, Roadmap Tier 1)
   const STRESS_TABLE = 'BI_StressTest_v' + STRESS_TABLE_SCHEMA_VERSION;
   // Nombre d'actions envoyées par appel à applyUserActions() lors d'une génération/suppression en
   // masse : un seul appel avec des dizaines de milliers d'actions est un pari risqué (timeout,

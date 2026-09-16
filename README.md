@@ -52,6 +52,12 @@ laisserait sinon les tuiles graphiques vides sans erreur explicite.
   pour le supprimer (avec confirmation, sauf s'il ne reste qu'une seule page). Chaque page a ses
   propres tuiles ; les filtres croisés et le drill-down restent **globaux** entre les pages (choix
   délibéré pour cette v1, voir ROADMAP.md).
+- **Filtres avancés** : une barre dédiée (au-dessus des tuiles) pour filtrer sur une colonne sans
+  passer par un clic sur une tuile — plage min/max pour une colonne numérique, plage de dates OU
+  période relative (7/30 derniers jours, ce mois-ci, cette année, 12 derniers mois) pour la colonne
+  `Date`, recherche texte (insensible à la casse) pour le reste. Le type de champ affiché s'adapte
+  automatiquement à la colonne choisie, en inspectant une valeur réelle (pas son nom). Se cumulent en
+  ET avec les filtres croisés existants et s'appliquent à toutes les tuiles.
 - Persistance de la configuration du dashboard (tuiles + vues sauvegardées) dans le document Grist
   (par table liée), donc conservée entre deux ouvertures du widget.
 - **Table de travail par défaut, connectée automatiquement** : au chargement, le widget se connecte
@@ -113,9 +119,11 @@ que si la table n'existe pas encore), le passage à une **connexion automatique*
 comme UNIQUE table de travail au démarrage (plus de boutons « Générer », plus de bascule
 démo/table liée — voir HYPOTHESES.md), une **refonte visuelle sobre et épurée** (palette
 catégorielle validée colorblind-safe, ombres douces, typographie affinée), 3 nouveaux types de
-tuiles (treemap plat, nuage de points agrégé, jauge), et des **dashboards multi-pages** (filtres
+tuiles (treemap plat, nuage de points agrégé, jauge), des **dashboards multi-pages** (filtres
 croisés/drill-down délibérément globaux entre pages, format de config persisté rétrocompatible avec
-les deux formats antérieurs). Une [ROADMAP.md](./ROADMAP.md) priorisée
+les deux formats antérieurs), et des **filtres avancés typés** (plage numérique, plage de dates,
+dates relatives, recherche texte — une colonne `Date` ISO a été ajoutée aux jeux de données pour les
+rendre démontrables). Une [ROADMAP.md](./ROADMAP.md) priorisée
 (valeur x risque de faisabilité) trace la suite vers un outil BI plus complet, avec un
 [TEST_PROTOCOL.md](./TEST_PROTOCOL.md) associé qui grandit à chaque nouvelle feature. Voir
 HYPOTHESES.md pour la liste des points encore à valider, notamment la validation en conditions

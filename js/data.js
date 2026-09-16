@@ -37,9 +37,79 @@
   // filtrerait toutes les lignes (vécu en pratique avec le drill-down par Année, pas théorique).
   function sameValue(a, b) { return String(a) === String(b); }
 
+  // Parse une date au format ISO 'AAAA-MM-JJ' (seul format utilisé par ce POC, voir
+  // GristBI.demoData:isoDate) en timestamp minuit UTC, ou `null` si la valeur n'est pas une date
+  // valide dans ce format — plutôt que de tenter `new Date(x)` sur n'importe quelle chaîne, ce qui
+  // accepterait aussi des formats ambigus (MM/JJ/AAAA vs JJ/MM/AAAA) selon le moteur JS.
+  function parseDateValue(value) {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+    const t = Date.parse(value + 'T00:00:00Z');
+    return Number.isFinite(t) ? t : null;
+  }
+
+  const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+  // Presets pour le filtre "dates relatives" (Roadmap Tier 1) : chacun calcule sa plage [début, fin]
+  // en millisecondes à partir de `now` (paramètre plutôt que `Date.now()` en dur, pour rester
+  // testable sous Node sans dépendre de l'horloge réelle). Bornes inclusives des deux côtés.
+  const RELATIVE_DATE_PRESETS = {
+    last7d: (now) => [now - 6 * MS_PER_DAY, now],
+    last30d: (now) => [now - 29 * MS_PER_DAY, now],
+    thisMonth: (now) => {
+      const d = new Date(now);
+      const start = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1);
+      const end = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0);
+      return [start, end];
+    },
+    thisYear: (now) => {
+      const d = new Date(now);
+      return [Date.UTC(d.getUTCFullYear(), 0, 1), Date.UTC(d.getUTCFullYear(), 11, 31)];
+    },
+    last12m: (now) => [now - 364 * MS_PER_DAY, now]
+  };
+
+  function relativeDateRange(preset, now) {
+    const fn = RELATIVE_DATE_PRESETS[preset];
+    return fn ? fn(now == null ? Date.now() : now) : null;
+  }
+
+  // Une ligne matche un filtre selon son `type` (par défaut 'eq', le comportement historique posé
+  // par un clic ECharts — voir state.js:toggleFilter/drillInto). Chaque type ignore silencieusement
+  // (ne matche jamais) une valeur qu'il ne sait pas interpréter (ex. 'range' sur une colonne texte)
+  // plutôt que de lever une erreur — un mauvais choix de colonne dans le formulaire de filtre avancé
+  // doit juste vider le résultat, pas casser le rendu du dashboard.
+  function matchesFilter(rowValue, filter) {
+    switch (filter.type) {
+      case 'range': {
+        const num = Number(rowValue);
+        if (!Number.isFinite(num)) return false;
+        if (filter.min != null && num < filter.min) return false;
+        if (filter.max != null && num > filter.max) return false;
+        return true;
+      }
+      case 'dateRange': {
+        const t = parseDateValue(rowValue);
+        if (t == null) return false;
+        if (filter.start && t < parseDateValue(filter.start)) return false;
+        if (filter.end && t > parseDateValue(filter.end)) return false;
+        return true;
+      }
+      case 'relativeDate': {
+        const t = parseDateValue(rowValue);
+        if (t == null) return false;
+        const range = relativeDateRange(filter.preset, filter.now);
+        return !!range && t >= range[0] && t <= range[1];
+      }
+      case 'contains':
+        return String(rowValue).toLowerCase().includes(String(filter.query || '').toLowerCase());
+      default: // 'eq'
+        return sameValue(rowValue, filter.value);
+    }
+  }
+
   function applyFilters(rows, filters) {
     if (!filters || !filters.length) return rows;
-    return rows.filter((row) => filters.every((f) => sameValue(row[f.column], f.value)));
+    return rows.filter((row) => filters.every((f) => matchesFilter(row[f.column], f)));
   }
 
   const AGGREGATORS = {
@@ -109,7 +179,8 @@
   }
 
   return {
-    tableToRows, applyFilters, sameValue, groupByAggregate, aggregateSingle, computeTrend,
+    tableToRows, applyFilters, matchesFilter, sameValue, parseDateValue, relativeDateRange,
+    RELATIVE_DATE_PRESETS, groupByAggregate, aggregateSingle, computeTrend,
     escapeHtml, tileDrillLevels, AGGREGATORS
   };
 });

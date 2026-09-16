@@ -29,12 +29,17 @@
   }
 
   function renderTile(tile, state, container) {
-    // Une tuile qui EST la source d'un filtre s'affiche non filtrée SUR CE FILTRE LÀ (pour rester
-    // cliquable sur tous ses segments) ; elle reçoit quand même les filtres posés par d'AUTRES
-    // tuiles. Plusieurs filtres simultanés (sur des colonnes différentes) s'appliquent tous en ET.
+    // Une tuile qui EST la source d'un filtre croisé s'affiche non filtrée SUR CE FILTRE LÀ (pour
+    // rester cliquable sur tous ses segments) ; elle reçoit quand même les filtres posés par
+    // d'AUTRES tuiles. Les filtres avancés (barre de filtres, pas un clic sur une tuile) n'ont pas
+    // cette exception : ils s'appliquent à TOUTES les tuiles sans distinction, `sourceTileId` n'a
+    // jamais de sens pour eux. Tout s'applique en ET (plage + recherche + drill-down + cross-filter).
     const filtersFromOtherTiles = state.activeFilters.filter((f) => f.sourceTileId !== tile.id);
     const drillPath = (state.drillIns && state.drillIns[tile.id]) || [];
-    const rowsForTile = applyFilters(state.rows, filtersFromOtherTiles.concat(drillPath));
+    const rowsForTile = applyFilters(
+      state.rows,
+      filtersFromOtherTiles.concat(state.advancedFilters || []).concat(drillPath)
+    );
 
     if (tile.type === 'kpi') {
       renderKpi(tile, rowsForTile, container);

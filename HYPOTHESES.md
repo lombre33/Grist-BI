@@ -350,6 +350,54 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     cette feature (contrairement aux 3 précédentes) — hypothèse : moins de rendu ECharts
     spécifique en jeu, la feature touche surtout de la gestion d'état déjà bien couverte par les
     tests existants.
+- **Filtres avancés : plage numérique, plage de dates, dates relatives, recherche texte**
+  (`js/data.js`, `js/state.js`, `js/main.js`, Roadmap Tier 1) :
+  - **Généralisation du modèle de filtre** plutôt qu'un mécanisme séparé : `data.js:applyFilters`
+    déléguait déjà tout le matching à une seule fonction (`sameValue`) — remplacée par
+    `matchesFilter(rowValue, filter)`, un `switch` sur `filter.type` (`range`/`dateRange`/
+    `relativeDate`/`contains`, défaut `'eq'` = comportement historique du clic ECharts). Les
+    filtres croisés (`activeFilters`, posés par un clic) et les nouveaux filtres avancés
+    (`advancedFilters`, posés depuis une barre dédiée) sont simplement concaténés dans la même
+    liste passée à `applyFilters` (voir `charts.js:renderTile`) — aucune duplication de logique de
+    filtrage entre les deux mécanismes.
+  - **Colonne `Date` ajoutée aux jeux de données** (`js/demo-data.js`, ISO `AAAA-MM-JJ`, dérivée de
+    Annee/Mois/Semaine ou Jour) : c'est la SEULE colonne réellement de type date de ce POC —
+    Annee/Mois/Semaine/Jour existent séparément pour démontrer le drill-down hiérarchique, mais
+    aucune ne peut porter un filtre "plage de dates" à elle seule (une année seule ou un jour du
+    mois sans le mois n'a pas de sens comme date). Bump de `DEMO_TABLE_SCHEMA_VERSION` (3→4) et
+    `STRESS_TABLE_SCHEMA_VERSION` (1→2), même mécanique que les schémas précédents.
+  - **Détection du "type" d'une colonne par inspection de la donnée réelle**, PAS par son nom
+    (heuristique fragile) : `main.js:inferColumnKind` regarde une valeur échantillon de la colonne
+    choisie — `GristBI.data.parseDateValue` reconnaît le format ISO utilisé ici, sinon `typeof
+    === 'number'` (ou une chaîne numérique). Correction technique du 2026-09-15 : ce POC n'a
+    toujours pas de lecture des vrais types Grist (`_grist_Tables_column`, voir ROADMAP.md), donc
+    cette inspection par valeur est le même principe que la détection Date/Numeric de
+    publipostageGrist, appliqué à défaut de la vraie source de vérité.
+  - **UI** : une seule barre de filtre (pas un formulaire par type) qui bascule ses champs visibles
+    selon le type inféré de la colonne choisie (plage min/max ; mode "plage de dates" OU "période
+    relative" au choix pour une colonne Date ; recherche texte sinon) — même pattern que
+    `updateFormFieldsForType` du formulaire de tuile. Un seul filtre par colonne (comme
+    `toggleFilter`) : reposer un filtre sur une colonne déjà filtrée REMPLACE l'ancien (ex.
+    rebasculer "plage de dates" vers "période relative" sur la même colonne), plusieurs colonnes se
+    cumulent en ET.
+  - **Portée délibérée** : `advancedFilters` est GLOBAL (comme `activeFilters`/`drillIns`, même
+    décision produit que pour les pages) et s'applique à TOUTES les tuiles sans exception — pas de
+    notion de "tuile source" exemptée comme pour un clic de cross-filtering (`sourceTileId` n'a pas
+    de sens ici). Capturé par les bookmarks (comme `activeFilters`/`drillIns`), avec repli sur `[]`
+    pour un bookmark sauvegardé avant cette feature. **Non persisté** dans la config du dashboard
+    (comme `activeFilters`/`drillIns` déjà avant) : un filtre avancé est un état interactif de
+    session, pas une configuration de tuile — seul un bookmark le fait survivre.
+  - **Presets "dates relatives"** (`RELATIVE_DATE_PRESETS` dans `data.js`) calculés par rapport à
+    un `now` PASSÉ EN PARAMÈTRE (pas `Date.now()` en dur) pour rester testable sous Node sans
+    dépendre de l'horloge réelle.
+  - Testé : Node (`dev-tests/test-data.js` — `matchesFilter`/`applyFilters` pour les 4 nouveaux
+    types dont bornes optionnelles indépendamment, format de date non-ISO refusé plutôt que mal
+    interprété, combinaison filtre "eq" + filtres avancés en ET ; `state.js` — remplacement par
+    colonne, cumul multi-colonnes, capture/restauration par bookmark avec compat ascendante) +
+    Playwright (bascule des champs du formulaire selon le type inféré, les 4 types posés puis
+    retirés via leur badge, effet réel vérifié sur l'agrégat d'une tuile après retrait d'un filtre,
+    non-présence dans la config persistée, capture par bookmark) + captures d'écran clair/sombre.
+    Aucun bug produit trouvé sur cette feature.
 
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 

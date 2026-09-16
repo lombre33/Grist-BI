@@ -56,6 +56,21 @@
   const saveBookmarkBtn = document.getElementById('save-bookmark');
   const pageTabsEl = document.getElementById('page-tabs');
   const addPageBtn = document.getElementById('add-page');
+  const advancedFilterForm = document.getElementById('advanced-filter-form');
+  const filterColumnSelect = document.getElementById('filter-column');
+  const filterNumberField = document.getElementById('filter-number-field');
+  const filterMinInput = document.getElementById('filter-min');
+  const filterMaxInput = document.getElementById('filter-max');
+  const filterDateModeField = document.getElementById('filter-date-mode-field');
+  const filterDateModeSelect = document.getElementById('filter-date-mode');
+  const filterDateRangeField = document.getElementById('filter-date-range-field');
+  const filterDateStartInput = document.getElementById('filter-date-start');
+  const filterDateEndInput = document.getElementById('filter-date-end');
+  const filterRelativeDateField = document.getElementById('filter-relative-date-field');
+  const filterRelativePresetSelect = document.getElementById('filter-relative-preset');
+  const filterTextField = document.getElementById('filter-text-field');
+  const filterTextInput = document.getElementById('filter-text');
+  const advancedFilterBadgesEl = document.getElementById('advanced-filter-badges');
   const renderTimeEl = document.getElementById('render-time');
   const echartsWarning = document.getElementById('echarts-warning');
 
@@ -88,6 +103,46 @@
     fillSelect(measureYSelect, cols);
     drillLevelSelects.forEach((select) => fillSelect(select, cols, { blankLabel: '(aucun)' }));
     fillSelect(trendDimensionSelect, cols, { blankLabel: '(aucune)' });
+    fillSelect(filterColumnSelect, cols);
+    updateAdvancedFilterFieldsForColumn();
+  }
+
+  // Devine le "type" d'une colonne en inspectant une VALEUR réelle plutôt qu'un nom de colonne
+  // (heuristique fragile) — même principe que la détection Date/Numeric du widget publipostageGrist
+  // (voir ROADMAP.md, correction technique du 2026-09-15) : ce POC n'a pas encore de lecture des
+  // vrais types Grist (`_grist_Tables_column`), donc on infère depuis la donnée chargée, pas depuis
+  // le nom. `GristBI.data.parseDateValue` reconnaît le seul format de date utilisé ici (AAAA-MM-JJ,
+  // voir demo-data.js:isoDate) ; une chaîne numérique (ex. Grist renvoie parfois des nombres en
+  // chaîne) compte comme 'number', pas comme texte.
+  function inferColumnKind(column) {
+    const rows = store.getState().rows;
+    if (!rows.length) return 'text';
+    const sample = rows.find((r) => r[column] != null && r[column] !== '');
+    if (!sample) return 'text';
+    const v = sample[column];
+    if (GristBI.data.parseDateValue(v) != null) return 'date';
+    if (typeof v === 'number' || (typeof v === 'string' && v !== '' && Number.isFinite(Number(v)))) return 'number';
+    return 'text';
+  }
+
+  // Bascule les champs du formulaire de filtre avancé selon le "type" inféré de la colonne
+  // choisie : plage min/max (numérique), plage de dates OU période relative au choix (date, via
+  // `#filter-date-mode`), recherche texte (tout le reste). Même pattern que
+  // `updateFormFieldsForType` pour le formulaire de tuile.
+  function updateAdvancedFilterFieldsForColumn() {
+    const column = filterColumnSelect.value;
+    const kind = column ? inferColumnKind(column) : 'text';
+    filterNumberField.hidden = kind !== 'number';
+    filterDateModeField.hidden = kind !== 'date';
+    filterTextField.hidden = kind !== 'text';
+    if (kind === 'date') {
+      const mode = filterDateModeSelect.value;
+      filterDateRangeField.hidden = mode !== 'dateRange';
+      filterRelativeDateField.hidden = mode !== 'relativeDate';
+    } else {
+      filterDateRangeField.hidden = true;
+      filterRelativeDateField.hidden = true;
+    }
   }
 
   // KPI et jauge : une seule valeur agrégée, pas de dimension de regroupement ni de drill-down.
@@ -201,6 +256,7 @@
 
     renderPageTabs(state.pages, state.currentPageId);
     renderFilterBadges(state.activeFilters);
+    renderAdvancedFilterBadges(state.advancedFilters);
     renderBookmarks(state.bookmarks);
     rowCountEl.textContent = `${state.rows.length} ligne(s)`;
 
@@ -271,6 +327,52 @@
       btn.addEventListener('click', () => store.clearFilter(btn.dataset.column));
     }
     clearFilterBtn.hidden = activeFilters.length === 0;
+  }
+
+  const RELATIVE_DATE_LABELS = {
+    last7d: '7 derniers jours', last30d: '30 derniers jours', thisMonth: 'ce mois-ci',
+    thisYear: 'cette année', last12m: '12 derniers mois'
+  };
+
+  // Libellé lisible d'un filtre avancé pour son badge (voir GristBI.data.matchesFilter pour la
+  // sémantique de chaque type). Une plage/plage de dates avec une seule borne renseignée l'affiche
+  // sans l'autre plutôt que "… – " ou "de … à undefined".
+  function describeAdvancedFilter(f) {
+    switch (f.type) {
+      case 'range': {
+        if (f.min != null && f.max != null) return `${f.column} : ${f.min} – ${f.max}`;
+        if (f.min != null) return `${f.column} ≥ ${f.min}`;
+        if (f.max != null) return `${f.column} ≤ ${f.max}`;
+        return `${f.column} : (plage vide)`;
+      }
+      case 'dateRange': {
+        if (f.start && f.end) return `${f.column} : ${f.start} → ${f.end}`;
+        if (f.start) return `${f.column} ≥ ${f.start}`;
+        if (f.end) return `${f.column} ≤ ${f.end}`;
+        return `${f.column} : (plage vide)`;
+      }
+      case 'relativeDate':
+        return `${f.column} : ${RELATIVE_DATE_LABELS[f.preset] || f.preset}`;
+      case 'contains':
+        return `${f.column} contient "${f.query}"`;
+      default:
+        return `${f.column} : ${f.type}`;
+    }
+  }
+
+  // Filtres avancés (barre dédiée, pas un clic sur une tuile) : mêmes badges que les filtres
+  // croisés, mais retirés via clearAdvancedFilter et sans bouton "Effacer les filtres" partagé (une
+  // barre de filtres avancés vide se contente de n'afficher aucun badge).
+  function renderAdvancedFilterBadges(advancedFilters) {
+    advancedFilterBadgesEl.innerHTML = advancedFilters.map((f) => `
+      <span class="filter-chip">
+        ${escapeHtml(describeAdvancedFilter(f))}
+        <button type="button" class="advanced-filter-chip-remove" data-column="${escapeHtml(f.column)}" aria-label="Retirer ce filtre">&times;</button>
+      </span>
+    `).join('');
+    for (const btn of advancedFilterBadgesEl.querySelectorAll('.advanced-filter-chip-remove')) {
+      btn.addEventListener('click', () => store.clearAdvancedFilter(btn.dataset.column));
+    }
   }
 
   // Choisir une vue dans la liste l'applique immédiatement (voir le listener 'change' plus bas) :
@@ -424,6 +526,47 @@
 
   cancelEditBtn.addEventListener('click', stopEditTile);
 
+  filterColumnSelect.addEventListener('change', updateAdvancedFilterFieldsForColumn);
+  filterDateModeSelect.addEventListener('change', updateAdvancedFilterFieldsForColumn);
+
+  advancedFilterForm.addEventListener('submit', (evt) => {
+    evt.preventDefault();
+    const column = filterColumnSelect.value;
+    if (!column) return;
+    const kind = inferColumnKind(column);
+    let filter;
+    if (kind === 'number') {
+      const min = filterMinInput.value === '' ? null : parseFloat(filterMinInput.value);
+      const max = filterMaxInput.value === '' ? null : parseFloat(filterMaxInput.value);
+      if (min == null && max == null) { alert('Renseignez au moins une borne (Min ou Max).'); return; }
+      if (min != null && max != null && max < min) { alert('Max doit être supérieur ou égal à Min.'); return; }
+      filter = { type: 'range', min, max };
+    } else if (kind === 'date') {
+      if (filterDateModeSelect.value === 'relativeDate') {
+        filter = { type: 'relativeDate', preset: filterRelativePresetSelect.value };
+      } else {
+        const start = filterDateStartInput.value || null;
+        const end = filterDateEndInput.value || null;
+        if (!start && !end) { alert('Renseignez au moins une date (Du ou au).'); return; }
+        if (start && end && end < start) { alert('La date de fin doit être postérieure à la date de début.'); return; }
+        filter = { type: 'dateRange', start, end };
+      }
+    } else {
+      const query = filterTextInput.value.trim();
+      if (!query) { alert('Saisissez un texte à rechercher.'); return; }
+      filter = { type: 'contains', query };
+    }
+    store.setAdvancedFilter(column, filter);
+    // Formulaire remis à zéro après ajout (contrairement au formulaire de tuile, qui reste
+    // pré-rempli en mode édition) : un filtre avancé n'a pas de mode édition, juste
+    // ajout/remplacement par colonne (voir setAdvancedFilter) et suppression via son badge.
+    filterMinInput.value = '';
+    filterMaxInput.value = '';
+    filterDateStartInput.value = '';
+    filterDateEndInput.value = '';
+    filterTextInput.value = '';
+  });
+
   bookmarkSelect.addEventListener('change', () => {
     deleteBookmarkBtn.disabled = !bookmarkSelect.value;
     if (bookmarkSelect.value) store.applyBookmark(bookmarkSelect.value);
@@ -486,6 +629,7 @@
     store.setRows(rows);
     if (isNewTable) {
       store.clearFilter();
+      store.clearAdvancedFilter();
       if (editingTileId) stopEditTile(); // le formulaire en cours d'édition référence une tuile de l'ancienne table
       const saved = await GristBI.api.loadConfig(tableId);
       const hasAnyTile = saved.pages.some((p) => p.tiles.length > 0);

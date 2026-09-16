@@ -100,7 +100,7 @@ Grist". Les avoir vraiment nécessite un service externe séparé (backend + cro
 | Treemap (plat) | Moyenne | Faible | ✅ fait (2026-09-16) |
 | Scatter (version agrégée) | Haute | Moyen | ✅ fait (2026-09-16) |
 | Dashboards multi-pages | Haute | Faible | ✅ fait (2026-09-16) |
-| Filtres avancés (plage de dates, dates relatives, recherche) | Haute | Moyen | ⬜ à faire |
+| Filtres avancés (plage de dates, dates relatives, recherche) | Haute | Moyen | ✅ fait (2026-09-16) |
 | Export Excel | Haute | Moyen | ⬜ à faire |
 
 ### Tier 2 — Chantiers structurants, toujours sans backend

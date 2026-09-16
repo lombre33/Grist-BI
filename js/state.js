@@ -27,8 +27,14 @@
     let pages = [{ id: DEFAULT_PAGE_ID, name: 'Page 1', tiles: [] }];
     let currentPageId = pages[0].id;
     let activeFilters = []; // [{ column, value, sourceTileId, fromDrill? }, ...] — au plus un filtre par colonne
+    // [{ column, type: 'range'|'dateRange'|'relativeDate'|'contains', ... }, ...] — au plus un par
+    // colonne, comme activeFilters, mais posés depuis la barre de filtres avancés (pas un clic sur
+    // une tuile) : jamais de sourceTileId, s'appliquent donc à TOUTES les tuiles sans exception
+    // (voir charts.js). GLOBAUX entre pages, comme activeFilters/drillIns (même décision produit,
+    // voir HYPOTHESES.md/ROADMAP.md).
+    let advancedFilters = [];
     let drillIns = {}; // tileId -> [{ column, value }, ...] — chemin de drill-down, [] ou absent = niveau racine
-    let bookmarks = []; // [{ id, name, activeFilters, drillIns }, ...] — vues sauvegardées (voir saveBookmark)
+    let bookmarks = []; // [{ id, name, activeFilters, advancedFilters, drillIns }, ...] — vues sauvegardées (voir saveBookmark)
     const listeners = new Set();
 
     function currentPage() { return pages.find((p) => p.id === currentPageId) || pages[0]; }
@@ -40,7 +46,7 @@
     // page (elles disparaissent de `state.tiles`), donc la réconciliation DOM déjà en place dans
     // main.js:render() détruit leurs instances ECharts automatiquement, sans code dédié.
     function getState() {
-      return { rows, pages, currentPageId, tiles: currentPage().tiles, activeFilters, drillIns, bookmarks };
+      return { rows, pages, currentPageId, tiles: currentPage().tiles, activeFilters, advancedFilters, drillIns, bookmarks };
     }
     function notify() { listeners.forEach((fn) => fn(getState())); }
     function subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); }
@@ -168,6 +174,23 @@
       notify();
     }
 
+    // Pose/remplace le filtre avancé sur `column` (barre de filtres, PAS un clic sur une tuile) :
+    // au plus un par colonne, comme toggleFilter — poser un nouveau filtre sur une colonne déjà
+    // filtrée remplace l'ancien plutôt que de les cumuler (ex. changer les bornes d'une plage plutôt
+    // que d'en ajouter une seconde qui ne matcherait jamais rien en ET avec la première).
+    // `filter`: `{type: 'range'|'dateRange'|'relativeDate'|'contains', ...}` (voir data.js:matchesFilter).
+    function setAdvancedFilter(column, filter) {
+      const withoutThisColumn = advancedFilters.filter((f) => f.column !== column);
+      advancedFilters = withoutThisColumn.concat([Object.assign({ column }, filter)]);
+      notify();
+    }
+
+    // Sans argument : efface tous les filtres avancés. Avec une colonne : efface seulement celui-là.
+    function clearAdvancedFilter(column) {
+      advancedFilters = column ? advancedFilters.filter((f) => f.column !== column) : [];
+      notify();
+    }
+
     // Une tuile avec `drillCrossFilter: true` (case à cocher dans son formulaire, voir main.js)
     // filtre aussi les AUTRES tuiles à chaque niveau franchi, pas seulement au niveau le plus
     // profond (comportement par défaut, voir toggleFilter dans charts.js). Reconstruit entièrement
@@ -212,11 +235,11 @@
 
     function setBookmarks(newBookmarks) { bookmarks = newBookmarks || []; notify(); }
 
-    // Capture l'état interactif COURANT (filtres croisés + drill-down par tuile), PAS les tuiles
-    // elles-mêmes (déjà persistées séparément, voir js/grist-api.js) : une vue Power BI-like sur
-    // laquelle revenir en un clic, sans reconstruire les filtres à la main.
+    // Capture l'état interactif COURANT (filtres croisés + filtres avancés + drill-down par tuile),
+    // PAS les tuiles elles-mêmes (déjà persistées séparément, voir js/grist-api.js) : une vue
+    // Power BI-like sur laquelle revenir en un clic, sans reconstruire les filtres à la main.
     function saveBookmark(id, name) {
-      bookmarks = bookmarks.concat([{ id, name, activeFilters, drillIns }]);
+      bookmarks = bookmarks.concat([{ id, name, activeFilters, advancedFilters, drillIns }]);
       notify();
     }
 
@@ -224,6 +247,9 @@
       const bm = bookmarks.find((b) => b.id === id);
       if (!bm) return;
       activeFilters = bm.activeFilters;
+      // `|| []` : un bookmark sauvegardé avant l'ajout des filtres avancés n'a pas ce champ —
+      // le restaurer comme "aucun filtre avancé" plutôt que `undefined` (compat ascendante).
+      advancedFilters = bm.advancedFilters || [];
       drillIns = bm.drillIns;
       notify();
     }
@@ -237,7 +263,7 @@
       getState, subscribe, setRows,
       setPages, setCurrentPage, addPage, renamePage, removePage,
       addTile, removeTile, updateTile, moveTile,
-      toggleFilter, clearFilter, drillInto, drillUp,
+      toggleFilter, clearFilter, setAdvancedFilter, clearAdvancedFilter, drillInto, drillUp,
       setBookmarks, saveBookmark, applyBookmark, removeBookmark
     };
   }

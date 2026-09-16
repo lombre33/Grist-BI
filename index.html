@@ -34,6 +34,50 @@
     <button id="save-bookmark" type="button" class="btn-secondary">Sauvegarder la vue actuelle</button>
   </div>
 
+  <form id="advanced-filter-form" class="advanced-filters-bar">
+    <div class="field">
+      <label for="filter-column">Filtre avancé</label>
+      <select id="filter-column"></select>
+    </div>
+    <div class="field" id="filter-number-field">
+      <label for="filter-min">Plage</label>
+      <span class="range-inputs">
+        <input type="number" id="filter-min" placeholder="Min" />
+        <input type="number" id="filter-max" placeholder="Max" />
+      </span>
+    </div>
+    <div class="field" id="filter-date-mode-field" hidden>
+      <label for="filter-date-mode">Mode</label>
+      <select id="filter-date-mode">
+        <option value="dateRange">Plage de dates</option>
+        <option value="relativeDate">Période relative</option>
+      </select>
+    </div>
+    <div class="field" id="filter-date-range-field" hidden>
+      <label for="filter-date-start">Du / au</label>
+      <span class="range-inputs">
+        <input type="date" id="filter-date-start" />
+        <input type="date" id="filter-date-end" />
+      </span>
+    </div>
+    <div class="field" id="filter-relative-date-field" hidden>
+      <label for="filter-relative-preset">Période</label>
+      <select id="filter-relative-preset">
+        <option value="last7d">7 derniers jours</option>
+        <option value="last30d">30 derniers jours</option>
+        <option value="thisMonth">Ce mois-ci</option>
+        <option value="thisYear">Cette année</option>
+        <option value="last12m">12 derniers mois</option>
+      </select>
+    </div>
+    <div class="field" id="filter-text-field" hidden>
+      <label for="filter-text">Recherche</label>
+      <input type="text" id="filter-text" placeholder="contient…" />
+    </div>
+    <button id="apply-advanced-filter" type="submit" class="btn-secondary">+ Filtre</button>
+  </form>
+  <div id="advanced-filter-badges" class="filter-badges"></div>
+
   <p id="echarts-warning" class="warning-banner" hidden>
     ⚠️ La bibliothèque de graphiques (ECharts, <code>js/vendor/echarts/echarts.min.js</code>) n'a
     pas pu être chargée : les cartes KPI fonctionnent, mais les tuiles barres/camembert resteront

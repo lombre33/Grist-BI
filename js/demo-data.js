@@ -14,12 +14,21 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
+  // `Date` (ISO 'AAAA-MM-JJ', dérivée de Annee/Mois/Semaine ou Jour ci-dessous) : c'est la SEULE
+  // colonne réellement de type date de ce POC — Annee/Mois/Semaine/Jour existent séparément pour
+  // démontrer le drill-down hiérarchique, mais aucune ne peut porter un filtre "plage de dates" ou
+  // "dates relatives" à elle seule (Roadmap Tier 1, filtres avancés). Ajoutée en plus de ces
+  // colonnes plutôt qu'à leur place pour ne rien casser des tuiles/tests déjà construits dessus.
+  function pad2(n) { return String(n).padStart(2, '0'); }
+  function isoDate(annee, moisIndex, jour) { return `${annee}-${pad2(moisIndex + 1)}-${pad2(jour)}`; }
+
   const COLUMNS = [
     { id: 'Region', type: 'Text' },
     { id: 'Produit', type: 'Text' },
     { id: 'Annee', type: 'Int' },
     { id: 'Mois', type: 'Text' },
     { id: 'Semaine', type: 'Int' },
+    { id: 'Date', type: 'Date' },
     { id: 'Quantite', type: 'Int' },
     { id: 'Montant', type: 'Numeric' }
   ];
@@ -61,12 +70,16 @@
               // mensuels d'un ordre de grandeur comparable à avant l'ajout de ce niveau.
               const quantite = Math.round((1 + Math.random() * 7) * CROISSANCE_ANNUELLE[annee]);
               const prixUnitaire = PRIX_BASE[produit] * (0.9 + Math.random() * 0.3);
+              // Pas de vrai jour du mois ici (seulement 4 "semaines") : approximé par le 1er jour de
+              // chaque semaine (1, 8, 15, 22) — toujours <= 28, valide pour n'importe quel mois réel.
+              const jour = 1 + (semaine - 1) * 7;
               rows.push({
                 Region: region,
                 Produit: produit,
                 Annee: annee,
                 Mois: mois,
                 Semaine: semaine,
+                Date: isoDate(annee, MOIS.indexOf(mois), jour),
                 Quantite: quantite,
                 Montant: Math.round(quantite * prixUnitaire)
               });
@@ -105,6 +118,7 @@
     { id: 'Annee', type: 'Int' },
     { id: 'Mois', type: 'Text' },
     { id: 'Jour', type: 'Int' },
+    { id: 'Date', type: 'Date' },
     { id: 'Quantite', type: 'Int' },
     { id: 'Montant', type: 'Numeric' }
   ];
@@ -131,6 +145,7 @@
                 Annee: annee,
                 Mois: mois,
                 Jour: jour,
+                Date: isoDate(annee, MOIS.indexOf(mois), jour),
                 Quantite: quantite,
                 Montant: Math.round(quantite * prixUnitaire)
               });

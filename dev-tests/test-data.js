@@ -74,6 +74,69 @@ const rows = [
   console.log('OK applyFilters/sameValue (comparaison robuste au type, ex. clic ECharts sur une dimension numérique)');
 }
 
+// applyFilters — filtre "range" (Roadmap Tier 1, filtres avancés) : bornes min/max, chacune
+// optionnelle indépendamment, et une valeur non numérique ne matche jamais plutôt que de planter.
+{
+  const priceRows = [{ Montant: 10 }, { Montant: 50 }, { Montant: 100 }, { Montant: 'texte' }];
+  assert.strictEqual(data.applyFilters(priceRows, [{ column: 'Montant', type: 'range', min: 20, max: 80 }]).length, 1);
+  assert.strictEqual(data.applyFilters(priceRows, [{ column: 'Montant', type: 'range', min: 20 }]).length, 2); // pas de max -> non borné à droite
+  assert.strictEqual(data.applyFilters(priceRows, [{ column: 'Montant', type: 'range', max: 50 }]).length, 2); // pas de min -> non borné à gauche
+  assert.strictEqual(data.applyFilters(priceRows, [{ column: 'Montant', type: 'range', min: 0, max: 200 }]).length, 3); // la valeur texte ne matche jamais
+  console.log('OK applyFilters — filtre "range" (bornes optionnelles indépendamment, valeur non numérique jamais matchée)');
+}
+
+// applyFilters — filtres "dateRange"/"relativeDate" sur la colonne Date (AAAA-MM-JJ), et
+// parseDateValue/relativeDateRange en isolation.
+{
+  const dateRows = [
+    { Date: '2026-09-10', Montant: 1 },
+    { Date: '2026-09-14', Montant: 2 },
+    { Date: '2026-09-16', Montant: 3 },
+    { Date: 'pas une date', Montant: 4 }
+  ];
+  assert.strictEqual(data.parseDateValue('2026-09-16'), Date.parse('2026-09-16T00:00:00Z'));
+  assert.strictEqual(data.parseDateValue('16/09/2026'), null, 'format non-ISO refusé plutôt que mal interprété');
+  assert.strictEqual(data.parseDateValue('pas une date'), null);
+
+  const inRange = data.applyFilters(dateRows, [{ column: 'Date', type: 'dateRange', start: '2026-09-12', end: '2026-09-16' }]);
+  assert.deepStrictEqual(inRange.map((r) => r.Montant), [2, 3]); // borne 'start'/'end' inclusive des deux côtés
+  assert.strictEqual(data.applyFilters(dateRows, [{ column: 'Date', type: 'dateRange', start: '2026-09-12' }]).length, 2); // pas de 'end' -> non borné à droite
+
+  const now = Date.parse('2026-09-16T00:00:00Z');
+  const last7d = data.applyFilters(dateRows, [{ column: 'Date', type: 'relativeDate', preset: 'last7d', now }]);
+  assert.deepStrictEqual(last7d.map((r) => r.Montant), [1, 2, 3]); // 09-10 est exactement la borne basse (now-6j), incluse
+  assert.strictEqual(data.relativeDateRange('last7d', now)[0], Date.parse('2026-09-10T00:00:00Z'));
+  assert.strictEqual(data.relativeDateRange('inconnu', now), null, 'preset inconnu -> null plutôt qu\'une erreur');
+  console.log('OK applyFilters — filtres "dateRange"/"relativeDate" + parseDateValue/relativeDateRange');
+}
+
+// applyFilters — filtre "contains" (recherche texte, insensible à la casse)
+{
+  const textRows = [{ Produit: 'Casque audio' }, { Produit: 'Clavier mécanique' }, { Produit: 'Souris sans fil' }];
+  assert.strictEqual(data.applyFilters(textRows, [{ column: 'Produit', type: 'contains', query: 'clavier' }]).length, 1);
+  assert.strictEqual(data.applyFilters(textRows, [{ column: 'Produit', type: 'contains', query: 'AUDIO' }]).length, 1); // insensible à la casse
+  assert.strictEqual(data.applyFilters(textRows, [{ column: 'Produit', type: 'contains', query: 'inexistant' }]).length, 0);
+  assert.strictEqual(data.applyFilters(textRows, [{ column: 'Produit', type: 'contains', query: '' }]).length, 3); // chaîne vide -> tout matche (contains de '')
+  console.log('OK applyFilters — filtre "contains" (recherche texte insensible à la casse)');
+}
+
+// applyFilters — plusieurs filtres avancés de types différents combinés en ET, avec un filtre "eq"
+// classique (issu d'un clic) en même temps : les deux mécanismes doivent pouvoir cohabiter.
+{
+  const combinedRows = [
+    { Region: 'Nord', Montant: 50, Date: '2026-09-14' },
+    { Region: 'Nord', Montant: 500, Date: '2026-09-14' },
+    { Region: 'Sud', Montant: 50, Date: '2026-09-14' }
+  ];
+  const combined = data.applyFilters(combinedRows, [
+    { column: 'Region', value: 'Nord' }, // eq, comme un clic ECharts
+    { column: 'Montant', type: 'range', min: 0, max: 100 },
+    { column: 'Date', type: 'dateRange', start: '2026-09-01', end: '2026-09-30' }
+  ]);
+  assert.strictEqual(combined.length, 1);
+  console.log('OK applyFilters — filtre "eq" (clic) et filtres avancés typés combinés en ET');
+}
+
 // computeTrend (tendance KPI vs période précédente, sur une dimension numérique)
 {
   const yearly = [
@@ -326,6 +389,51 @@ const rows = [
   assert.strictEqual(store.getState().bookmarks.length, 0);
   store.applyBookmark('bm1'); // bookmark supprimé -> no-op, pas d'erreur
   console.log('OK state.saveBookmark/applyBookmark/removeBookmark');
+}
+
+// state: filtres avancés (setAdvancedFilter/clearAdvancedFilter) — au plus un par colonne comme
+// toggleFilter, mais jamais de sourceTileId (posés depuis la barre de filtres, pas un clic sur une
+// tuile) et capturés eux aussi dans les bookmarks.
+{
+  const store = state.createStore();
+  store.setAdvancedFilter('Montant', { type: 'range', min: 0, max: 100 });
+  assert.deepStrictEqual(store.getState().advancedFilters, [{ column: 'Montant', type: 'range', min: 0, max: 100 }]);
+
+  // Reposer un filtre sur la MÊME colonne remplace l'ancien plutôt que de le cumuler (comme
+  // toggleFilter sur une colonne déjà filtrée)
+  store.setAdvancedFilter('Montant', { type: 'range', min: 50, max: 200 });
+  assert.strictEqual(store.getState().advancedFilters.length, 1);
+  assert.strictEqual(store.getState().advancedFilters[0].min, 50);
+
+  // Une colonne différente s'ajoute (cumul en ET, comme les filtres croisés)
+  store.setAdvancedFilter('Produit', { type: 'contains', query: 'audio' });
+  assert.strictEqual(store.getState().advancedFilters.length, 2);
+
+  store.clearAdvancedFilter('Montant');
+  assert.deepStrictEqual(store.getState().advancedFilters.map((f) => f.column), ['Produit']);
+
+  store.clearAdvancedFilter(); // sans argument -> tout efface
+  assert.deepStrictEqual(store.getState().advancedFilters, []);
+  console.log('OK state.setAdvancedFilter/clearAdvancedFilter (remplacement par colonne, cumul multi-colonnes, effacement total)');
+}
+
+// state: les filtres avancés sont capturés par les bookmarks au même titre que activeFilters/drillIns,
+// avec repli sur [] pour un bookmark sauvegardé avant l'ajout de cette feature (compat ascendante)
+{
+  const store = state.createStore();
+  store.setAdvancedFilter('Montant', { type: 'range', min: 0, max: 100 });
+  store.saveBookmark('bm1', 'Petits montants');
+  store.clearAdvancedFilter();
+  assert.deepStrictEqual(store.getState().advancedFilters, []);
+  store.applyBookmark('bm1');
+  assert.deepStrictEqual(store.getState().advancedFilters, [{ column: 'Montant', type: 'range', min: 0, max: 100 }]);
+
+  // Bookmark "ancien format" simulé (pas de champ advancedFilters du tout, comme avant cette feature)
+  store.setBookmarks(store.getState().bookmarks.concat([{ id: 'bmOld', name: 'Ancien', activeFilters: [], drillIns: {} }]));
+  store.setAdvancedFilter('Produit', { type: 'contains', query: 'x' }); // état courant à écraser par applyBookmark
+  store.applyBookmark('bmOld');
+  assert.deepStrictEqual(store.getState().advancedFilters, [], 'un bookmark sans advancedFilters restaure une liste vide, pas undefined');
+  console.log('OK state.saveBookmark/applyBookmark capturent advancedFilters (+ compat ascendante bookmark sans ce champ)');
 }
 
 // state: dashboards multi-pages — nominal (addTile/removeTile/updateTile/moveTile n'agissent QUE

@@ -216,7 +216,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   min-width: 170px;
 }
 
-.add-tile-form {
+.add-tile-form, .advanced-filters-bar {
   display: flex;
   align-items: flex-end;
   gap: 12px;
@@ -228,6 +228,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   padding: 12px 14px;
   margin-bottom: 16px;
 }
+.advanced-filters-bar { margin-bottom: 8px; }
 
 .field { display: flex; flex-direction: column; gap: 5px; }
 /* Même bug que .warning-banner ci-dessus, retrouvé deux fois sur des champs différents au fil des
@@ -243,7 +244,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
-.field select, .field input[type="number"] {
+.field select, .field input[type="number"], .field input[type="date"], .field input[type="text"] {
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   padding: 6px 9px;
@@ -255,7 +256,12 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   transition: border-color 0.12s var(--ease);
 }
 .field input[type="number"] { min-width: 80px; }
-.field select:hover, .field input[type="number"]:hover { border-color: var(--muted); }
+.field select:hover, .field input[type="number"]:hover, .field input[type="date"]:hover, .field input[type="text"]:hover {
+  border-color: var(--muted);
+}
+
+.range-inputs { display: flex; align-items: center; gap: 6px; }
+.range-inputs input[type="number"], .range-inputs input[type="date"] { min-width: 0; width: 108px; }
 
 .field-checkbox label {
   display: flex;
