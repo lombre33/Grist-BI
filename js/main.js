@@ -12,7 +12,8 @@
 
   let currentTableId = null;
   let saveTimer = null;
-  let lastRenderedTiles = null; // référence, pour ne pas re-sauvegarder la config à chaque rafraîchissement de données
+  let lastRenderedPages = null; // référence, pour ne pas re-sauvegarder la config à chaque rafraîchissement de données
+  let lastRenderedCurrentPageId = null; // idem, côté page active (changer de page se sauvegarde aussi)
   let lastRenderedBookmarks = null; // idem, côté bookmarks
   let editingTileId = null; // id de la tuile en cours d'édition via le formulaire, ou null (mode ajout)
   // <select> de niveaux de drill-down actuellement affichés dans le formulaire, un par niveau
@@ -53,6 +54,8 @@
   const bookmarkSelect = document.getElementById('bookmark-select');
   const deleteBookmarkBtn = document.getElementById('delete-bookmark');
   const saveBookmarkBtn = document.getElementById('save-bookmark');
+  const pageTabsEl = document.getElementById('page-tabs');
+  const addPageBtn = document.getElementById('add-page');
   const renderTimeEl = document.getElementById('render-time');
   const echartsWarning = document.getElementById('echarts-warning');
 
@@ -196,17 +199,61 @@
       renderTimeEl.textContent = state.tiles.length ? `rendu : ${ms} ms` : '';
     }
 
+    renderPageTabs(state.pages, state.currentPageId);
     renderFilterBadges(state.activeFilters);
     renderBookmarks(state.bookmarks);
     rowCountEl.textContent = `${state.rows.length} ligne(s)`;
 
-    // `tiles`/`bookmarks` ne changent de référence que via leurs actions dédiées (state.js) : un
-    // rendu déclenché par un simple rafraîchissement de données (setRows) ne doit pas re-déclencher
-    // une écriture dans le document Grist (évite de polluer l'historique à chaque édition externe).
-    if (state.tiles !== lastRenderedTiles || state.bookmarks !== lastRenderedBookmarks) {
-      lastRenderedTiles = state.tiles;
+    // `pages`/`currentPageId`/`bookmarks` ne changent de référence/valeur que via leurs actions
+    // dédiées (state.js) : un rendu déclenché par un simple rafraîchissement de données (setRows) ne
+    // doit pas re-déclencher une écriture dans le document Grist (évite de polluer l'historique à
+    // chaque édition externe). Changer de page ne modifie QUE currentPageId (référence de `pages`
+    // inchangée) mais mérite quand même d'être sauvegardé, comme la page active dans Power BI.
+    if (state.pages !== lastRenderedPages || state.currentPageId !== lastRenderedCurrentPageId ||
+        state.bookmarks !== lastRenderedBookmarks) {
+      lastRenderedPages = state.pages;
+      lastRenderedCurrentPageId = state.currentPageId;
       lastRenderedBookmarks = state.bookmarks;
-      scheduleSave(state.tiles, state.bookmarks);
+      scheduleSave(state.pages, state.currentPageId, state.bookmarks);
+    }
+  }
+
+  // Une page ne se supprime jamais toute seule (state.js:removePage refuse de vider la dernière),
+  // donc pas besoin de gérer un état "aucune page" ici. Double-clic = renommer (pattern déjà utilisé
+  // nulle part ailleurs dans ce fichier mais discoverable, comme un onglet de tableur) ; le bouton
+  // ✕ n'apparaît que sur l'onglet actif pour ne pas encombrer les onglets inactifs, et seulement
+  // s'il y a plus d'une page (sinon il ne ferait jamais rien).
+  function renderPageTabs(pages, currentPageId) {
+    pageTabsEl.innerHTML = pages.map((p) => {
+      const active = p.id === currentPageId;
+      const removeBtn = active && pages.length > 1
+        ? `<span class="page-tab-remove" data-page-id="${escapeHtml(p.id)}" title="Supprimer cette page">&times;</span>`
+        : '';
+      return `<button type="button" class="page-tab${active ? ' active' : ''}" data-page-id="${escapeHtml(p.id)}">
+        ${escapeHtml(p.name)}${removeBtn}
+      </button>`;
+    }).join('');
+    for (const tab of pageTabsEl.querySelectorAll('.page-tab')) {
+      const pageId = tab.dataset.pageId;
+      tab.addEventListener('click', (e) => {
+        if (e.target.closest('.page-tab-remove')) return; // géré séparément ci-dessous
+        store.setCurrentPage(pageId);
+      });
+      tab.addEventListener('dblclick', () => {
+        const page = pages.find((p) => p.id === pageId);
+        const name = (prompt('Nouveau nom de la page :', page ? page.name : '') || '').trim();
+        if (name) store.renamePage(pageId, name);
+      });
+    }
+    for (const removeBtn of pageTabsEl.querySelectorAll('.page-tab-remove')) {
+      removeBtn.addEventListener('click', (e) => {
+        e.stopPropagation(); // ne pas aussi déclencher le clic de l'onglet parent (setCurrentPage, no-op ici)
+        const pageId = removeBtn.dataset.pageId;
+        const page = pages.find((p) => p.id === pageId);
+        if (confirm(`Supprimer la page « ${page ? page.name : ''} » et toutes ses tuiles ?`)) {
+          store.removePage(pageId);
+        }
+      });
     }
   }
 
@@ -392,6 +439,11 @@
     store.saveBookmark('bm_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name);
   });
 
+  addPageBtn.addEventListener('click', () => {
+    const name = (prompt('Nom de la nouvelle page :', `Page ${store.getState().pages.length + 1}`) || '').trim();
+    if (name) store.addPage(name);
+  });
+
   clearFilterBtn.addEventListener('click', () => store.clearFilter());
   window.addEventListener('resize', () => GristBI.charts.resizeAll());
 
@@ -413,11 +465,11 @@
     observer.observe(document.body);
   }
 
-  function scheduleSave(tiles, bookmarks) {
+  function scheduleSave(pages, currentPageId, bookmarks) {
     if (!currentTableId) return;
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
-      GristBI.api.saveConfig(currentTableId, tiles, bookmarks).catch((e) => {
+      GristBI.api.saveConfig(currentTableId, pages, currentPageId, bookmarks).catch((e) => {
         console.error('[GristBI] échec de sauvegarde de la config', e);
       });
     }, 600);
@@ -436,7 +488,12 @@
       store.clearFilter();
       if (editingTileId) stopEditTile(); // le formulaire en cours d'édition référence une tuile de l'ancienne table
       const saved = await GristBI.api.loadConfig(tableId);
-      store.setTiles(saved.tiles.length ? saved.tiles : (seedTiles ? seedTiles() : []));
+      const hasAnyTile = saved.pages.some((p) => p.tiles.length > 0);
+      if (!hasAnyTile && seedTiles) {
+        store.setPages([{ id: GristBI.state.DEFAULT_PAGE_ID, name: 'Page 1', tiles: seedTiles() }], GristBI.state.DEFAULT_PAGE_ID);
+      } else {
+        store.setPages(saved.pages, saved.currentPageId);
+      }
       store.setBookmarks(saved.bookmarks);
     }
   }

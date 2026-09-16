@@ -47,6 +47,11 @@ laisserait sinon les tuiles graphiques vides sans erreur explicite.
 - **Vues sauvegardées (bookmarks)** : « ★ Sauvegarder la vue actuelle » capture les filtres croisés
   et l'état de drill-down courants sous un nom ; les retrouver dans le menu déroulant les réapplique
   en un clic. Ne capture pas les tuiles elles-mêmes (déjà persistées à part).
+- **Dashboards multi-pages** : barre d'onglets au-dessus des tuiles, « + Page » en crée une nouvelle
+  (vide) et y navigue directement, double-clic sur un onglet pour le renommer, `×` sur l'onglet actif
+  pour le supprimer (avec confirmation, sauf s'il ne reste qu'une seule page). Chaque page a ses
+  propres tuiles ; les filtres croisés et le drill-down restent **globaux** entre les pages (choix
+  délibéré pour cette v1, voir ROADMAP.md).
 - Persistance de la configuration du dashboard (tuiles + vues sauvegardées) dans le document Grist
   (par table liée), donc conservée entre deux ouvertures du widget.
 - **Table de travail par défaut, connectée automatiquement** : au chargement, le widget se connecte
@@ -107,8 +112,10 @@ connexion **idempotente** aux tables générées (un clic/chargement ne renvoie 
 que si la table n'existe pas encore), le passage à une **connexion automatique** à cette table
 comme UNIQUE table de travail au démarrage (plus de boutons « Générer », plus de bascule
 démo/table liée — voir HYPOTHESES.md), une **refonte visuelle sobre et épurée** (palette
-catégorielle validée colorblind-safe, ombres douces, typographie affinée), et 3 nouveaux types de
-tuiles (treemap plat, nuage de points agrégé, jauge). Une [ROADMAP.md](./ROADMAP.md) priorisée
+catégorielle validée colorblind-safe, ombres douces, typographie affinée), 3 nouveaux types de
+tuiles (treemap plat, nuage de points agrégé, jauge), et des **dashboards multi-pages** (filtres
+croisés/drill-down délibérément globaux entre pages, format de config persisté rétrocompatible avec
+les deux formats antérieurs). Une [ROADMAP.md](./ROADMAP.md) priorisée
 (valeur x risque de faisabilité) trace la suite vers un outil BI plus complet, avec un
 [TEST_PROTOCOL.md](./TEST_PROTOCOL.md) associé qui grandit à chaque nouvelle feature. Voir
 HYPOTHESES.md pour la liste des points encore à valider, notamment la validation en conditions

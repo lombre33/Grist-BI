@@ -328,6 +328,86 @@ const rows = [
   console.log('OK state.saveBookmark/applyBookmark/removeBookmark');
 }
 
+// state: dashboards multi-pages — nominal (addTile/removeTile/updateTile/moveTile n'agissent QUE
+// sur la page courante, les autres pages restent intactes)
+{
+  const store = state.createStore();
+  const page1Id = store.getState().currentPageId; // page par défaut créée à l'initialisation
+  assert.strictEqual(store.getState().pages.length, 1);
+  store.addTile({ id: 't1', type: 'bar' });
+
+  const page2Id = store.addPage('Page 2');
+  assert.strictEqual(store.getState().currentPageId, page2Id, 'addPage navigue vers la page créée');
+  assert.strictEqual(store.getState().pages.length, 2);
+  assert.deepStrictEqual(store.getState().tiles, [], 'la nouvelle page démarre sans tuile');
+  store.addTile({ id: 't2', type: 'kpi' });
+  assert.deepStrictEqual(store.getState().tiles.map((t) => t.id), ['t2']);
+
+  store.setCurrentPage(page1Id);
+  assert.deepStrictEqual(store.getState().tiles.map((t) => t.id), ['t1'], 'la page 1 garde sa propre tuile, non affectée par les actions sur la page 2');
+  store.updateTile('t1', { title: 'Renommée' });
+  assert.strictEqual(store.getState().tiles[0].title, 'Renommée');
+
+  store.setCurrentPage(page2Id);
+  assert.strictEqual(store.getState().tiles[0].title, undefined, 'updateTile sur la page 1 ne doit pas modifier la tuile de la page 2');
+
+  store.setCurrentPage('id-inexistant');
+  assert.strictEqual(store.getState().currentPageId, page2Id, 'setCurrentPage avec un id inconnu est un no-op');
+
+  store.renamePage(page2Id, 'Ventes détaillées');
+  assert.strictEqual(store.getState().pages.find((p) => p.id === page2Id).name, 'Ventes détaillées');
+  console.log('OK state.addPage/setCurrentPage/renamePage (isolation des tuiles par page)');
+}
+
+// state: dashboards multi-pages — filtres croisés et drill-down restent GLOBAUX entre pages
+// (décision produit délibérée de v1, voir ROADMAP.md/HYPOTHESES.md), removePage nettoie les
+// filtres/drill-down des tuiles qui disparaissent avec elle, et une page unique ne se supprime
+// jamais (garde-fou : toujours au moins une page).
+{
+  const store = state.createStore();
+  const page1Id = store.getState().currentPageId;
+  store.addTile({ id: 't1', type: 'bar', dimension: 'Annee', drillDimension: 'Mois', drillCrossFilter: true, measure: 'Montant', aggFn: 'sum' });
+  store.drillInto('t1', 'Annee', 2026);
+  store.toggleFilter('Region', 'Nord', 'tileExterne');
+  assert.strictEqual(store.getState().activeFilters.length, 2); // le filtre externe + le cross-filter du drill
+
+  const page2Id = store.addPage('Page 2');
+  assert.strictEqual(store.getState().activeFilters.length, 2, 'les filtres actifs restent visibles après changement de page (globaux, pas par page)');
+  store.addTile({ id: 't2', type: 'kpi' });
+
+  store.removePage(page1Id);
+  assert.strictEqual(store.getState().pages.length, 1);
+  assert.strictEqual(store.getState().currentPageId, page2Id, 'supprimer la page courante bascule sur une page restante');
+  assert.strictEqual(store.getState().drillIns.t1, undefined, 'le drill-down de la tuile supprimée avec sa page est nettoyé');
+  assert.deepStrictEqual(store.getState().activeFilters, [{ column: 'Region', value: 'Nord', sourceTileId: 'tileExterne' }], 'le cross-filter posé par la tuile supprimée disparaît, le filtre externe reste');
+
+  store.removePage(page2Id); // dernière page restante -> no-op
+  assert.strictEqual(store.getState().pages.length, 1);
+  assert.strictEqual(store.getState().pages[0].id, page2Id);
+  console.log('OK state.removePage (nettoyage drill/filtres + garde-fou dernière page) + filtres globaux inter-pages');
+}
+
+// state: setPages — chargement d'une config multi-pages complète (voir grist-api.js), y compris le
+// repli si currentPageId sauvegardé ne correspond plus à aucune page (page supprimée entre deux
+// sauvegardes d'un autre poste, config corrompue à la main, etc.)
+{
+  const store = state.createStore();
+  const loaded = [
+    { id: 'pA', name: 'Ventes', tiles: [{ id: 't1', type: 'bar' }] },
+    { id: 'pB', name: 'Stock', tiles: [{ id: 't2', type: 'kpi' }] }
+  ];
+  store.setPages(loaded, 'pB');
+  assert.strictEqual(store.getState().currentPageId, 'pB');
+  assert.deepStrictEqual(store.getState().tiles.map((t) => t.id), ['t2']);
+
+  store.setPages(loaded, 'id-disparu');
+  assert.strictEqual(store.getState().currentPageId, 'pA', 'repli sur la première page si le currentPageId sauvegardé est invalide');
+
+  store.setPages([], 'peu-importe');
+  assert.strictEqual(store.getState().pages.length, 1, 'setPages avec un tableau vide retombe sur une page par défaut plutôt que zéro page');
+  console.log('OK state.setPages (chargement config + repli currentPageId invalide + garde-fou tableau vide)');
+}
+
 // demo-data: buildSampleRows -> des valeurs cohérentes (Montant/Quantite positifs, colonnes complètes)
 {
   const sample = demoData.buildSampleRows();
@@ -372,7 +452,7 @@ const rows = [
   assert.ok(tiles.some((t) => t.trendDimension), 'au moins une tuile de démo devrait démontrer la tendance KPI');
   assert.ok(tiles.some((t) => t.drillCrossFilter), 'au moins une tuile de démo devrait démontrer le cross-filtering pendant le drill-down');
   const store = state.createStore();
-  store.setTiles(tiles);
+  store.setPages([{ id: 'p1', name: 'Page 1', tiles }], 'p1');
   assert.strictEqual(store.getState().tiles.length, tiles.length);
   console.log('OK demoData.defaultTiles (cohérentes avec buildSampleRows + state.js)');
 }

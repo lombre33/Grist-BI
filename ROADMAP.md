@@ -99,7 +99,7 @@ Grist". Les avoir vraiment nécessite un service externe séparé (backend + cro
 | Jauge (gauge) | Moyenne | Faible | ✅ fait (2026-09-16) |
 | Treemap (plat) | Moyenne | Faible | ✅ fait (2026-09-16) |
 | Scatter (version agrégée) | Haute | Moyen | ✅ fait (2026-09-16) |
-| Dashboards multi-pages | Haute | Faible | ⬜ à faire |
+| Dashboards multi-pages | Haute | Faible | ✅ fait (2026-09-16) |
 | Filtres avancés (plage de dates, dates relatives, recherche) | Haute | Moyen | ⬜ à faire |
 | Export Excel | Haute | Moyen | ⬜ à faire |
 

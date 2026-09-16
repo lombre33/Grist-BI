@@ -13,24 +13,94 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
+  // { id, type: 'bar'|'pie'|'kpi'|'gauge'|'treemap'|'scatter', title, dimension, measure, aggFn,
+  //   drillDimensions?, drillCrossFilter?, trendDimension?, measureY?, gaugeMin?, gaugeMax? }
+  const DEFAULT_PAGE_ID = 'page_default';
+
   function createStore() {
     let rows = [];
-    let tiles = []; // { id, type: 'bar'|'pie'|'kpi', title, dimension, measure, aggFn, drillDimensions?, drillCrossFilter?, trendDimension? }
+    // pages: [{ id, name, tiles: [...] }, ...] — un dashboard multi-pages est un tableau de pages,
+    // chacune avec ses propres tuiles ; activeFilters/drillIns restent GLOBAUX (pas par page,
+    // décision produit délibérée : garder un mécanisme unique de cross-filtering plutôt que le
+    // dupliquer par page — voir HYPOTHESES.md/ROADMAP.md pour la discussion). Toujours au moins
+    // une page (jamais de tableau vide).
+    let pages = [{ id: DEFAULT_PAGE_ID, name: 'Page 1', tiles: [] }];
+    let currentPageId = pages[0].id;
     let activeFilters = []; // [{ column, value, sourceTileId, fromDrill? }, ...] — au plus un filtre par colonne
     let drillIns = {}; // tileId -> [{ column, value }, ...] — chemin de drill-down, [] ou absent = niveau racine
     let bookmarks = []; // [{ id, name, activeFilters, drillIns }, ...] — vues sauvegardées (voir saveBookmark)
     const listeners = new Set();
 
-    function getState() { return { rows, tiles, activeFilters, drillIns, bookmarks }; }
+    function currentPage() { return pages.find((p) => p.id === currentPageId) || pages[0]; }
+
+    // `tiles` dérivé de la page courante : expose la MÊME forme qu'avant les pages, pour que
+    // main.js/charts.js (render, renderTile, le gestionnaire de clic...) n'aient rien à changer -
+    // ils ne voient jamais que "les tuiles à afficher maintenant", peu importe combien de pages
+    // existent. Un effet de bord utile : changer de page retire du DOM les tuiles de l'ancienne
+    // page (elles disparaissent de `state.tiles`), donc la réconciliation DOM déjà en place dans
+    // main.js:render() détruit leurs instances ECharts automatiquement, sans code dédié.
+    function getState() {
+      return { rows, pages, currentPageId, tiles: currentPage().tiles, activeFilters, drillIns, bookmarks };
+    }
     function notify() { listeners.forEach((fn) => fn(getState())); }
     function subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 
     function setRows(newRows) { rows = newRows || []; notify(); }
-    function setTiles(newTiles) { tiles = newTiles || []; notify(); }
-    function addTile(tile) { tiles = tiles.concat([tile]); notify(); }
+
+    function replaceCurrentPageTiles(newTiles) {
+      pages = pages.map((p) => (p.id === currentPageId ? Object.assign({}, p, { tiles: newTiles }) : p));
+    }
+
+    // Charge un dashboard multi-pages complet (au chargement d'une table, voir grist-api.js) :
+    // remplace TOUTES les pages d'un coup, contrairement à addTile/updateTile/... qui n'agissent
+    // que sur la page courante.
+    function setPages(newPages, newCurrentPageId) {
+      pages = (newPages && newPages.length) ? newPages : [{ id: DEFAULT_PAGE_ID, name: 'Page 1', tiles: [] }];
+      currentPageId = (newCurrentPageId && pages.some((p) => p.id === newCurrentPageId)) ? newCurrentPageId : pages[0].id;
+      notify();
+    }
+
+    function setCurrentPage(pageId) {
+      if (!pages.some((p) => p.id === pageId)) return;
+      currentPageId = pageId;
+      notify();
+    }
+
+    function addPage(name) {
+      const id = 'page_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      pages = pages.concat([{ id, name, tiles: [] }]);
+      currentPageId = id; // navigue directement vers la page qu'on vient de créer
+      notify();
+      return id;
+    }
+
+    function renamePage(pageId, name) {
+      pages = pages.map((p) => (p.id === pageId ? Object.assign({}, p, { name }) : p));
+      notify();
+    }
+
+    // Toujours garder au moins une page (no-op sûr si on tente de supprimer la dernière). Nettoie
+    // aussi drillIns/activeFilters des tuiles qui disparaissent avec la page — même principe que
+    // removeTile, pour ne pas laisser un filtre orphelin sans plus aucune tuile source.
+    function removePage(pageId) {
+      if (pages.length <= 1) return;
+      const removedPage = pages.find((p) => p.id === pageId);
+      if (!removedPage) return;
+      pages = pages.filter((p) => p.id !== pageId);
+      if (currentPageId === pageId) currentPageId = pages[0].id;
+      const removedTileIds = new Set(removedPage.tiles.map((t) => t.id));
+      if (removedTileIds.size) {
+        drillIns = Object.assign({}, drillIns);
+        removedTileIds.forEach((id) => { delete drillIns[id]; });
+        activeFilters = activeFilters.filter((f) => !removedTileIds.has(f.sourceTileId));
+      }
+      notify();
+    }
+
+    function addTile(tile) { replaceCurrentPageTiles(currentPage().tiles.concat([tile])); notify(); }
 
     function removeTile(id) {
-      tiles = tiles.filter((t) => t.id !== id);
+      replaceCurrentPageTiles(currentPage().tiles.filter((t) => t.id !== id));
       if (id in drillIns) { drillIns = Object.assign({}, drillIns); delete drillIns[id]; }
       // Retire aussi tout filtre croisé (toggleFilter OU drill-cross-filter, voir
       // syncDrillCrossFilters) provenant de la tuile supprimée : sinon il reste actif, affiché,
@@ -44,7 +114,7 @@
     // Remplace une tuile existante en place (même id, mêmes voisines) plutôt que
     // supprimer+ajouter : garde sa position dans la grille.
     function updateTile(id, patch) {
-      tiles = tiles.map((t) => (t.id === id ? Object.assign({}, t, patch) : t));
+      replaceCurrentPageTiles(currentPage().tiles.map((t) => (t.id === id ? Object.assign({}, t, patch) : t)));
       // Une édition touchant le drill-down invalide le chemin de drill-down EN COURS pour cette
       // tuile : le garder référencerait potentiellement des niveaux qui n'ont plus cours (ex.
       // drill-down retiré via le formulaire), avec un filtre invisible sur ses propres données —
@@ -59,9 +129,11 @@
     }
 
     // Déplace une tuile d'un cran (direction: -1 = plus tôt, +1 = plus tard) dans l'ordre
-    // d'affichage. No-op silencieux si déjà en bout de liste (les boutons ◂/▸ sont désactivés côté
-    // UI dans ce cas, mais la fonction reste sûre si appelée directement).
+    // d'affichage, au sein de la page courante. No-op silencieux si déjà en bout de liste (les
+    // boutons ◂/▸ sont désactivés côté UI dans ce cas, mais la fonction reste sûre si appelée
+    // directement).
     function moveTile(id, direction) {
+      const tiles = currentPage().tiles;
       const idx = tiles.findIndex((t) => t.id === id);
       const target = idx + direction;
       if (idx < 0 || target < 0 || target >= tiles.length) return;
@@ -69,7 +141,7 @@
       const tmp = next[idx];
       next[idx] = next[target];
       next[target] = tmp;
-      tiles = next;
+      replaceCurrentPageTiles(next);
       notify();
     }
 
@@ -105,7 +177,7 @@
     // tuile (clic au niveau le plus profond), pour ne pas les effacer l'une l'autre par erreur.
     function syncDrillCrossFilters(tileId) {
       activeFilters = activeFilters.filter((f) => !(f.sourceTileId === tileId && f.fromDrill));
-      const tile = tiles.find((t) => t.id === tileId);
+      const tile = currentPage().tiles.find((t) => t.id === tileId);
       if (!tile || !tile.drillCrossFilter) return;
       const path = drillIns[tileId] || [];
       if (!path.length) return;
@@ -162,11 +234,13 @@
     }
 
     return {
-      getState, subscribe, setRows, setTiles, addTile, removeTile, updateTile, moveTile,
+      getState, subscribe, setRows,
+      setPages, setCurrentPage, addPage, renamePage, removePage,
+      addTile, removeTile, updateTile, moveTile,
       toggleFilter, clearFilter, drillInto, drillUp,
       setBookmarks, saveBookmark, applyBookmark, removeBookmark
     };
   }
 
-  return { createStore };
+  return { createStore, DEFAULT_PAGE_ID };
 });

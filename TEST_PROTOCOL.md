@@ -111,6 +111,15 @@ une feature "testée", vérifier qu'on s'est posé chacune de ces questions :
 - [x] `removeBookmark` — puis `applyBookmark` sur id supprimé → no-op ✅
 - [ ] Deux bookmarks avec le même nom (doublon de libellé, pas d'id) ⬜
 - [ ] `applyBookmark` pendant qu'une tuile référencée par le bookmark n'existe plus (tuile supprimée depuis) ⬜
+- [x] `addTile`/`removeTile`/`updateTile`/`moveTile` n'agissent que sur `currentPage().tiles`, les autres pages restent intactes ✅
+- [x] `addPage` — navigue automatiquement vers la page créée, celle-ci démarre sans tuile ✅
+- [x] `setCurrentPage` — id inconnu → no-op (pas d'erreur, pas de changement de `currentPageId`) ✅
+- [x] `renamePage` — renomme la bonne page, ne touche pas aux autres ✅
+- [x] `removePage` — nettoie `drillIns`/`activeFilters` des tuiles de la page supprimée, bascule `currentPageId` sur une page restante si c'était la page courante ✅
+- [x] `removePage` — garde-fou : jamais de tableau de pages vide (no-op sur la dernière page restante) ✅
+- [x] `activeFilters`/`drillIns` restent GLOBAUX au changement de page (décision produit délibérée, voir HYPOTHESES.md) ✅
+- [x] `setPages` — charge un tableau de pages complet + `currentPageId`, avec repli sur la première page si le `currentPageId` fourni ne correspond à aucune page ✅
+- [x] `setPages` — un tableau de pages vide retombe sur une page par défaut (jamais zéro page) ✅
 
 ### `js/demo-data.js` (Node, `dev-tests/test-data.js`)
 
@@ -132,8 +141,10 @@ une feature "testée", vérifier qu'on s'est posé chacune de ces questions :
 - [x] `loadOrCreateTable` — deuxième connexion renvoie des valeurs IDENTIQUES (pas régénérées) 🌐
 - [x] `applyActionsInChunks` — découpage en lots de 2000, progression appelée après chaque lot 🌐
 - [x] `loadConfig`/`saveConfig` — round-trip complet (tuiles réordonnées + bookmark) via appel direct à `loadConfig()` (pas de `page.reload()`, le mock n'a pas de stockage hors mémoire JS) 🌐
-- [x] `normalizeConfig` — ancien format tableau brut `[tiles]` lu correctement ⬜ (logique couverte, pas de cas Playwright dédié)
-- [x] `normalizeConfig` — nouveau format `{tiles, bookmarks}` lu correctement 🌐
+- [x] `normalizeConfig` — ancien format tableau brut `[tiles]` lu correctement, reconstitué en une page unique 🌐 (écrit directement dans `BI_Dashboard_Config` puis relu via `loadConfig()`)
+- [x] `normalizeConfig` — format intermédiaire `{tiles, bookmarks}` (avant les pages) lu correctement, tuiles + bookmarks conservés 🌐
+- [x] `normalizeConfig` — format courant `{pages, currentPageId, bookmarks}` round-trippé sans perte via `saveConfig`/`loadConfig` 🌐
+- [x] `normalizeConfig` — `currentPageId` sauvegardé ne correspondant à aucune page → repli sur la première page ✅ (Node, via `setPages` qui partage la même logique de repli)
 - [ ] `saveConfig` — deux sauvegardes rapprochées (debounce 600ms) ne créent pas deux lignes `AddRecord` pour la même table ⬜
 - [ ] **[NON TESTABLE ICI]** round-trip réseau réel de `applyUserActions` contre un vrai `grist.docApi` (latence, taille de payload) — voir `HYPOTHESES.md` point 10
 - [ ] **[NON TESTABLE ICI]** lecture de `_grist_Tables`/`_grist_Tables_column` (types de colonnes réels) contre un vrai document — le mock ne simule pas ces tables système
@@ -191,6 +202,19 @@ une feature "testée", vérifier qu'on s'est posé chacune de ces questions :
 - [x] Scatter : cliquer un point cross-filtre les autres tuiles ET pose le bon badge (`Produit = ...`) 🌐
 - [ ] Jauge/treemap/scatter dans une tuile éditée (préremplissage du formulaire) ⬜ (préremplissage générique déjà couvert pour dimension/mesure/agrégat communs à tous les types ; pas de cas dédié pour measureY/gaugeMin/gaugeMax en édition)
 - [ ] Treemap/scatter avec drill-down configuré (le mécanisme est générique, jamais testé explicitement sur ces 2 nouveaux types) ⬜
+
+### `js/main.js` + `js/state.js` — dashboards multi-pages (Roadmap Tier 1, Playwright)
+
+- [x] Démarrage : un seul onglet "Page 1", actif, aucun bouton de suppression tant qu'il n'y a qu'une page 🌐
+- [x] « + Page » (prompt du nom) → nouvel onglet, navigation automatique dessus, zone de tuiles vide (`#empty-state` visible) 🌐
+- [x] Ajouter une tuile sur la page 2 puis revenir sur la page 1 restaure EXACTEMENT les tuiles d'origine de la page 1, sans celle de la page 2 🌐
+- [x] Filtre croisé posé sur la page 1 reste actif après bascule vers la page 2 (comportement global attendu, pas un bug) 🌐
+- [x] Double-clic sur un onglet → `prompt()` de renommage → nom mis à jour dans l'onglet 🌐
+- [x] Bouton `×` de suppression visible UNIQUEMENT sur l'onglet actif, et seulement s'il y a plus d'une page 🌐
+- [x] Suppression d'une page (avec `confirm()` accepté) → bascule sur la page restante avec ses tuiles d'origine, `×` disparaît quand il ne reste qu'une page 🌐
+- [x] Persistance : après le debounce de `scheduleSave` (600ms), `BI_Dashboard_Config` contient bien `{pages, currentPageId, bookmarks}` (nouveau format), pas l'ancien `{tiles, bookmarks}` 🌐
+- [ ] Renommer/supprimer une page pendant qu'une tuile de cette page est en cours d'édition dans le formulaire ⬜ (cas non couvert : `editingTileId` n'est réinitialisé que sur `removeTile`/changement de table, pas sur `removePage`)
+- [ ] Bookmarks (filtres/drill sauvegardés) restaurés après changement de page — cohérent avec le caractère global des filtres, mais jamais testé explicitement en combinant page + bookmark ⬜
 
 ### CSS — classe de bug à systématiquement re-vérifier
 

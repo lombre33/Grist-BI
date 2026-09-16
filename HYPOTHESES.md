@@ -306,6 +306,50 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     avec le bon badge de filtre). Tuiles par défaut (`demoData.js`) délibérément PAS étendues pour
     démontrer ces 3 nouveaux types (éviter un dashboard par défaut toujours plus long) — à tester en
     ajoutant une tuile via le formulaire.
+- **Dashboards multi-pages** (`js/state.js`, `js/grist-api.js`, `js/main.js`, Roadmap Tier 1) :
+  - `state.js` passe d'un `tiles` plat à `pages: [{ id, name, tiles }]` + `currentPageId`.
+    `getState()` continue d'exposer `tiles` (dérivé de `currentPage().tiles`) EN PLUS de `pages`, en
+    lecture seule côté consommateur : `main.js`/`charts.js` (render, renderTile, gestionnaire de
+    clic, drill-down, cross-filtering...) n'ont **aucun changement** à faire — ils continuent de ne
+    voir "que les tuiles à afficher maintenant", peu importe le nombre de pages. Effet de bord
+    gratuit : changer de page retire du DOM les tuiles de l'ancienne page (elles disparaissent de
+    `state.tiles`), donc la réconciliation DOM déjà en place dans `main.js:render()` détruit leurs
+    instances ECharts automatiquement, sans code dédié pour le nettoyage à la navigation.
+  - **Décision produit délibérée : `activeFilters`/`drillIns` restent GLOBAUX, pas par page.**
+    Alternative envisagée (les dupliquer par page) rejetée pour la v1 : plus de code, deux
+    mécanismes de cross-filtering à maintenir en synchronisation, pour un bénéfice pas démontré —
+    aucune des demandes utilisateur n'appelait spécifiquement des filtres cloisonnés par page.
+    Documenté et **testé explicitement** (`dev-tests/test-data.js` + Playwright) : un filtre posé
+    sur la page 1 reste visible et actif après bascule vers la page 2. Vérifiable/réversible plus
+    tard si le besoin apparaît (structure `activeFilters`/`drillIns` déjà indexée par `sourceTileId`/
+    `tileId`, un filtrage par page se limiterait techniquement à croiser avec `page.tiles`).
+  - `removePage` nettoie `drillIns`/`activeFilters` des tuiles qui disparaissent avec leur page —
+    même principe que `removeTile` (déjà existant), pour ne pas laisser un filtre orphelin sans plus
+    aucune tuile source pour le faire évoluer ou le lever. Garde-fou : jamais de tableau de pages
+    vide (`removePage` sur la dernière page restante est un no-op silencieux, comme les boutons
+    ◂/▸ en bout de liste).
+  - **Persistance** : `js/grist-api.js` a déjà changé de format DEUX fois avant cette feature (un
+    tableau nu de tuiles, puis `{tiles, bookmarks}`) — même mécanique de compatibilité ascendante
+    reconduite pour le format courant `{pages, currentPageId, bookmarks}` : `normalizeConfig()`
+    détecte les 3 formes possibles d'un `ConfigJSON` existant et les convertit toutes vers la forme
+    courante, y compris un `currentPageId` sauvegardé qui ne correspondrait plus à aucune page
+    (repli sur la première page plutôt qu'un écran vide). Testé en Playwright en écrivant directement
+    les 2 anciens formats dans la table de config mockée puis en relisant via `loadConfig()`.
+  - **UI** : barre d'onglets sobre (`.pages-bar`/`.page-tab`, cohérente avec la refonte visuelle),
+    un bouton « + Page » (nomme via `prompt()`, même pattern que "Sauvegarder la vue"), double-clic
+    sur un onglet pour le renommer, bouton `×` de suppression affiché **uniquement sur l'onglet
+    actif** quand il y a plus d'une page (jamais sur les onglets inactifs, pour ne pas encombrer -
+    et il ne servirait à rien sur l'onglet inactif puisqu'on ne peut de toute façon pas supprimer
+    la dernière page). `confirm()` avant suppression (une page emporte toutes ses tuiles avec elle,
+    contrairement à la suppression d'une seule tuile qui ne demande pas confirmation).
+  - Testé : Node (`dev-tests/test-data.js`, isolation des tuiles par page, filtres globaux,
+    `removePage`/garde-fou dernière page, `setPages`/repli `currentPageId` invalide) + Playwright
+    (navigation complète onglets/ajout/renommage/suppression, filtres croisés vérifiés globaux au
+    changement de page, persistance au nouveau format vérifiée en lisant directement la table de
+    config mockée, compatibilité ascendante des 2 anciens formats). Aucun bug produit trouvé sur
+    cette feature (contrairement aux 3 précédentes) — hypothèse : moins de rendu ECharts
+    spécifique en jeu, la feature touche surtout de la gestion d'état déjà bien couverte par les
+    tests existants.
 
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
