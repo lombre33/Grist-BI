@@ -11,6 +11,10 @@
   const { escapeHtml, tileDrillLevels } = GristBI.data;
 
   let currentTableId = null;
+  // Id réel de LA table de travail par défaut (BI_StressTest), capturé au bootstrap plutôt que
+  // codé en dur ici — c'est la SEULE table pour laquelle ce widget connaît des tuiles par défaut
+  // (GristBI.demoData.defaultLargeTiles), donc la seule sur laquelle proposer de les restaurer.
+  let defaultTableId = null;
   let saveTimer = null;
   let pendingSave = null; // { tableId, pages, currentPageId, bookmarks } en attente d'écriture, voir flushPendingSave()
   let lastRenderedPages = null; // référence, pour ne pas re-sauvegarder la config à chaque rafraîchissement de données
@@ -27,6 +31,7 @@
 
   const tilesContainer = document.getElementById('tiles');
   const emptyState = document.getElementById('empty-state');
+  const restoreDefaultTilesBtn = document.getElementById('restore-default-tiles');
   const addTileForm = document.getElementById('add-tile-form');
   const tileTypeSelect = document.getElementById('tile-type');
   const dimensionField = document.getElementById('tile-dimension-field');
@@ -292,6 +297,10 @@
     });
 
     emptyState.hidden = state.tiles.length > 0;
+    // Visible seulement sur la table par défaut (la seule dont on connaît des tuiles toutes
+    // faites) ET quand la page courante est réellement vide — pas de sens sur une table choisie
+    // manuellement via le sélecteur (voir switchTable : dashboard vide par design dans ce cas).
+    restoreDefaultTilesBtn.hidden = state.tiles.length > 0 || currentTableId !== defaultTableId;
     // Temps de rendu affiché dans le bandeau : utile pour repérer à l'œil un ralentissement sur le
     // gros volume de la table de travail par défaut (~47 000 lignes, voir bootstrap() plus bas),
     // sans devoir ouvrir les DevTools à chaque fois.
@@ -752,6 +761,14 @@
     }
   }
 
+  // Se sortir seul d'un dashboard vide sur la table par défaut (ex. une config sauvegardée vide),
+  // sans avoir à reconstruire les tuiles à la main ni à aller manipuler la table de config interne
+  // dans Grist — demande explicite de l'utilisateur. N'ajoute qu'à la page COURANTE (`addTile`, pas
+  // `setPages`) : ne touche jamais aux autres pages d'un dashboard multi-pages.
+  restoreDefaultTilesBtn.addEventListener('click', () => {
+    GristBI.demoData.defaultLargeTiles().forEach((tile) => store.addTile(tile));
+  });
+
   // Reconnexion à une AUTRE table du document, choisie via le sélecteur (demande explicite de
   // l'utilisateur : pas seulement la table de test de charge par défaut). Contrairement au
   // chargement de démarrage, ne crée/ne remplit jamais rien (`GristBI.api.loadTable`, la table
@@ -791,6 +808,7 @@
     try {
       const { tableId, rows, created } = await GristBI.api.loadOrCreateStressData(onProgress);
       console.log(`[GristBI] ${tableId} ${created ? 'créée' : 'déjà présente, réutilisée telle quelle'} (${rows.length} lignes).`);
+      defaultTableId = tableId;
       await switchTable(tableId, rows, { seedTiles: GristBI.demoData.defaultLargeTiles });
       await refreshTablePicker();
     } catch (e) {

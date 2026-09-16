@@ -698,6 +698,54 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     `strictChangeCount`, `table-picker-test.js` re-vérifié après le fix `beforeOpen`, les 9 autres
     suites Playwright existantes, `dev-tests/test-data.js`) + capture d'écran clair/sombre montrant
     "cam" suggérant "Webcam HD" en surlignant la sous-chaîne tapée.
+- **Retrait de la table de démo "rapide" (`BI_Demo_Ventes`)** (`js/grist-api.js`, `js/demo-data.js`,
+  `dev-tests/test-data.js`) : demande explicite de l'utilisateur ("le widget a encore créé une
+  nouvelle table... il faut retirer ce code on en a plus besoin"). `GristBI.api.loadOrCreateDemoData()`
+  existait encore dans la surface PUBLIQUE de l'API (exposée sur `GristBI.api`) alors qu'aucun bouton
+  ni aucun appel du produit ne s'en servait plus depuis le passage à la connexion automatique unique à
+  `BI_StressTest` (voir plus haut, "connexion automatique") — seuls MES scripts de test l'appelaient
+  encore, pour se fabriquer une 2e table à des fins de test du sélecteur de table. Du code mort côté
+  produit, mais qui restait un risque réel : n'importe qui (y compris moi dans une future session)
+  pouvait encore l'invoquer et créer une table supplémentaire dans le document de l'utilisateur.
+  - Retiré : `DEMO_TABLE`/`LEGACY_DEMO_TABLE_NAMES` (grist-api.js), `loadOrCreateDemoData`, et côté
+    demo-data.js tout ce qui n'était utile qu'à cette table (`COLUMNS`, `ANNEES`, `SEMAINES`,
+    `buildSampleRows`, `defaultTiles`) — mais PAS `REGIONS`/`MOIS`/`PRODUITS`/`PRIX_BASE`, partagés
+    avec la table de test de charge qui reste la SEULE table du widget. `deriveDateColumn` simplifiée
+    (une seule forme de ligne à gérer désormais, `Jour` — plus de branche `Semaine` morte).
+  - **`ensureColumnsUpToDate`/`migrateLegacyTableName` restent INTACTS** : la clarification de
+    l'utilisateur ("sauf si à un moment on veut rajouter une date ou autre, et dans tous les cas ça
+    sera dans une table dédiée et pas une nouvelle") confirme que ce mécanisme — ajouter une colonne
+    à `BI_StressTest` déjà existante plutôt que de recréer une table — reste la seule façon prévue de
+    faire évoluer le schéma à l'avenir, pour cette table déjà dédiée à cet effet.
+  - Testé : `dev-tests/test-data.js` mis à jour (tests `buildSampleRows`/`defaultTiles` retirés avec
+    le code qu'ils testaient ; test `deriveDateColumn` simplifié à la seule forme restante) +
+    régression complète (12 suites Playwright, aucune ne créait cette table via du code produit —
+    seuls mes scripts de test l'utilisaient directement, adaptés pour créer leur propre 2e table de
+    test via le mock `grist.docApi.applyUserActions` plutôt que via une fonction produit vouée à
+    disparaître, voir `create-mock-table.js` dans le scratchpad).
+- **Bouton "Restaurer les tuiles par défaut"** (`index.html`, `dev-tests/harness.html`,
+  `css/style.css`, `js/main.js`) : demande explicite de l'utilisateur ("j'ai l'impression que je
+  n'ai plus de carte par défaut... peux-tu remettre quelques cartes par défaut ?"). Plutôt que
+  d'essayer de corriger à distance une configuration sauvegardée dans le document Grist RÉEL de
+  l'utilisateur (inaccessible depuis cette session — ni identifiants ni accès à son document), un
+  bouton en libre-service : visible dans `#empty-state` uniquement quand (a) la page courante est
+  vide ET (b) la table active est `BI_StressTest` — la SEULE table pour laquelle ce widget connaît
+  des tuiles toutes faites (`GristBI.demoData.defaultLargeTiles()`). Un clic ajoute ces 4 tuiles à
+  la page courante (`store.addTile`, pas `store.setPages`) : ne touche JAMAIS aux autres pages d'un
+  dashboard multi-pages, contrairement à un reset complet qui aurait pu effacer un travail existant
+  sur une autre page.
+  - **`defaultTableId`** (nouvelle variable module de `main.js`) capture l'id réel retourné par
+    `loadOrCreateStressData()` au bootstrap plutôt que de coder en dur la chaîne `'BI_StressTest'`
+    dans `main.js` — cette chaîne reste la propriété de `grist-api.js`.
+  - Le bouton n'apparaît JAMAIS sur une table quelconque choisie via le sélecteur : un dashboard vide
+    y est un état NORMAL et voulu (voir le sélecteur de table plus haut : pas de `seedTiles` hors
+    `BI_StressTest`), pas une anomalie à corriger — on ne connaît pas de tuiles par défaut sensées
+    pour une table dont on ignore tout du contenu.
+  - Testé : Playwright (`restore-default-tiles-test.js`, 5 scénarios : bouton caché tant que des
+    tuiles existent, apparaît une fois la page vidée sur `BI_StressTest`, clic restaure exactement
+    les 4 tuiles de `defaultLargeTiles()`, JAMAIS visible sur une autre table même vide, la
+    restauration est bien persistée en y revenant) + capture d'écran clair/sombre de l'état vide
+    avec le bouton visible.
 
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 

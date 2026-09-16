@@ -11,21 +11,18 @@
   const GristBI = global.GristBI || (global.GristBI = {});
 
   const CONFIG_TABLE = 'BI_Dashboard_Config';
-  // Noms FIXES, plus jamais suffixés par un numéro de schéma (demande explicite de l'utilisateur :
-  // une seule table de test traverse toute la vie du widget). Si `GristBI.demoData.COLUMNS`/
-  // `COLUMNS_LARGE` gagne une colonne, `ensureColumnsUpToDate` (plus bas) ajoute cette colonne à la
-  // table déjà présente (`AddColumn`) et remplit les lignes déjà là avec de vraies valeurs calculées
-  // côté JS (`GristBI.demoData.deriveDateColumn`, PAS une formule Grist) — jamais de nouvelle table.
-  const DEMO_TABLE = 'BI_Demo_Ventes';
-  // Table séparée pour le test de charge (gros volume) : même schéma de colonnes que DEMO_TABLE
-  // (voir GristBI.demoData.COLUMNS, partagé), mais un nom et un cycle de vie indépendants pour ne
-  // jamais interférer avec la démo "rapide" ci-dessus.
+  // Nom FIXE, plus jamais suffixé par un numéro de schéma (demande explicite de l'utilisateur : une
+  // SEULE table de test traverse toute la vie du widget, jamais une nouvelle table pour un
+  // changement de schéma). Si `GristBI.demoData.COLUMNS_LARGE` gagne une colonne, `ensureColumnsUpToDate`
+  // (plus bas) ajoute cette colonne à la table déjà présente (`AddColumn`) et remplit les lignes déjà
+  // là avec de vraies valeurs calculées côté JS (`GristBI.demoData.deriveDateColumn`, PAS une formule
+  // Grist) — ce mécanisme reste la SEULE façon prévue de faire évoluer le schéma, y compris pour un
+  // futur ajout de colonne : jamais une table supplémentaire.
   const STRESS_TABLE = 'BI_StressTest';
   // Anciens noms suffixés par un numéro de version, créés par une version antérieure de ce widget
   // avant l'adoption d'un nom fixe ci-dessus — voir `migrateLegacyTableName` : si l'un de ces noms
   // existe encore et que le nom fixe n'existe pas, on le RENOMME (`RenameTable`) plutôt que de
   // laisser une table orpheline en plus dans le document.
-  const LEGACY_DEMO_TABLE_NAMES = ['BI_Demo_Ventes_v4', 'BI_Demo_Ventes_v3', 'BI_Demo_Ventes_v2', 'BI_Demo_Ventes_v1'];
   const LEGACY_STRESS_TABLE_NAMES = ['BI_StressTest_v2', 'BI_StressTest_v1'];
   // Nombre d'actions envoyées par appel à applyUserActions() lors d'une génération/suppression en
   // masse : un seul appel avec des dizaines de milliers d'actions est un pari risqué (timeout,
@@ -75,8 +72,8 @@
   // tableau de tuiles, avant l'ajout des bookmarks), l'intermédiaire (`{tiles, bookmarks}`, avant
   // les pages) et le format courant (`{pages, currentPageId, bookmarks}`), pour ne pas casser la
   // lecture d'une config déjà sauvegardée par une version antérieure du widget - même classe de
-  // problème que le schéma de BI_Demo_Ventes (voir DEMO_TABLE_SCHEMA_VERSION), mais réglée ici en JS
-  // pur puisque ConfigJSON est un blob texte, pas des colonnes Grist typées.
+  // problème que l'évolution de schéma de `BI_StressTest` (voir `ensureColumnsUpToDate` plus bas),
+  // mais réglée ici en JS pur puisque ConfigJSON est un blob texte, pas des colonnes Grist typées.
   function singlePageConfig(tiles, bookmarks) {
     const pageId = (GristBI.state && GristBI.state.DEFAULT_PAGE_ID) || 'page_default';
     return { pages: [{ id: pageId, name: 'Page 1', tiles: tiles || [] }], currentPageId: pageId, bookmarks: bookmarks || [] };
@@ -207,11 +204,11 @@
     await applyActionsInChunks('migrate', actions, onProgress);
   }
 
-  // Se connecte à une table de données de démo/test de charge : la CRÉE et la REMPLIT seulement
-  // si elle n'existe pas encore ; si elle existe déjà, complète seulement les colonnes manquantes
-  // (voir `ensureColumnsUpToDate`) sans jamais renvoyer les lignes déjà présentes ni recréer la
-  // table. Volontairement idempotent — cliquer plusieurs fois sur "Générer" ne doit pas renvoyer des
-  // dizaines de milliers de lignes à Grist à chaque fois une fois que la table existe déjà.
+  // Se connecte à la table de données de test de charge : la CRÉE et la REMPLIT seulement si elle
+  // n'existe pas encore ; si elle existe déjà, complète seulement les colonnes manquantes (voir
+  // `ensureColumnsUpToDate`) sans jamais renvoyer les lignes déjà présentes ni recréer la table.
+  // Volontairement idempotent : un rechargement du widget ne doit pas renvoyer des dizaines de
+  // milliers de lignes à Grist à chaque fois une fois que la table existe déjà.
   async function loadOrCreateTable(tableId, legacyNames, columns, buildRows, deriveMissingColumns, onProgress) {
     await migrateLegacyTableName(tableId, legacyNames);
     const alreadyExists = await tableExists(tableId);
@@ -223,13 +220,6 @@
     }
     const table = await grist.docApi.fetchTable(tableId);
     return { tableId, rows: GristBI.data.tableToRows(table), created: !alreadyExists };
-  }
-
-  function loadOrCreateDemoData(onProgress) {
-    return loadOrCreateTable(
-      DEMO_TABLE, LEGACY_DEMO_TABLE_NAMES, GristBI.demoData.COLUMNS,
-      GristBI.demoData.buildSampleRows, GristBI.demoData.deriveDateColumn, onProgress
-    );
   }
 
   function loadOrCreateStressData(onProgress) {
@@ -262,7 +252,7 @@
   }
 
   GristBI.api = {
-    init, loadConfig, saveConfig, loadOrCreateDemoData, loadOrCreateStressData,
+    init, loadConfig, saveConfig, loadOrCreateStressData,
     listAvailableTables, loadTable
   };
 })(window);

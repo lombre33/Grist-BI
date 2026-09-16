@@ -97,6 +97,11 @@ graphiques vides (ou l'export Excel muet) sans erreur explicite.
   (`AddColumn`) et remplit les lignes déjà là avec de vraies valeurs calculées côté JS —
   jamais une nouvelle table à recréer (voir HYPOTHESES.md pour l'historique : ça a été le mécanisme
   jusqu'à cette évolution, corrigée à la demande de l'utilisateur pour éviter les tables orphelines).
+  **`BI_StressTest` est la SEULE table que ce widget crée** — une ancienne table de démo "rapide"
+  séparée existait plus tôt dans le projet, retirée à la demande explicite de l'utilisateur (voir
+  HYPOTHESES.md). Si le dashboard de cette table se retrouve vide (ex. configuration sauvegardée
+  vide), un bouton "Restaurer les tuiles par défaut" apparaît pour la repeupler en un clic, sans
+  avoir à toucher aux tables internes de Grist.
 
 ## Installation dans Grist
 
@@ -166,7 +171,11 @@ filtres, un **sélecteur de table** (Combobox également) permettant de reconnec
 n'importe quelle table du document — la connexion automatique à `BI_StressTest` reste le
 comportement par défaut au démarrage, mais n'est plus la seule table possible en cours de session —
 et une **autocomplétion des valeurs** dans le filtre "Recherche" (suggestions des valeurs réelles de
-la colonne choisie, texte libre). La Roadmap Tier 1 **et le Tier 1.5** sont désormais **entièrement
+la colonne choisie, texte libre). Puis, sur demande explicite de l'utilisateur : le retrait complet
+de l'ancienne table de démo "rapide" (`BI_Demo_Ventes`, du code mort côté produit depuis la
+connexion automatique unique) — `BI_StressTest` est désormais la SEULE table que ce widget puisse
+créer — et un bouton "Restaurer les tuiles par défaut" en libre-service quand son dashboard se
+retrouve vide. La Roadmap Tier 1 **et le Tier 1.5** sont désormais **entièrement
 terminés** — voir [ROADMAP.md](./ROADMAP.md)
 pour la suite (Tier 2 : moteur DuckDB, mesures façon DAX, tableau croisé dynamique...) priorisée par
 valeur x risque de faisabilité, avec un

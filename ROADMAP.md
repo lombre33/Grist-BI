@@ -113,6 +113,8 @@ Pas dans la roadmap initiale : demande directe de l'utilisateur après la fin du
 | Migrer les sélecteurs de colonne (dimension/mesure/drill-down/filtre) vers Combobox | Haute | Faible | ✅ fait (2026-09-16) |
 | Sélecteur de table (reconnexion à une table Grist au choix, pas seulement BI_StressTest) | Haute | Moyen *(généralise `switchTable`, déjà conçue pour ça)* | ✅ fait (2026-09-16) |
 | Autocomplétion des VALEURS dans la barre de filtres avancés (champ "Recherche", mode texte libre) | Moyenne | Faible | ✅ fait (2026-09-16) — périmètre réduit au champ texte "Recherche" (voir HYPOTHESES.md : min/max/date gardés natifs, meilleure UX que du texte libre pour ces cas) |
+| Retirer la table de démo "rapide" (`BI_Demo_Ventes`) — plus jamais qu'UNE SEULE table créée par le widget | Haute | Faible | ✅ fait (2026-09-16) — demande explicite de l'utilisateur, code mort en dehors des tests |
+| Bouton "Restaurer les tuiles par défaut" (dashboard vide sur `BI_StressTest`) | Moyenne | Faible | ✅ fait (2026-09-16) |
 
 ### Tier 2 — Chantiers structurants, toujours sans backend
 

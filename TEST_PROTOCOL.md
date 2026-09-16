@@ -199,6 +199,14 @@ une feature "testée", vérifier qu'on s'est posé chacune de ces questions :
 - [x] [BUG RÉEL #12 ci-dessous] Revenir sur une table déjà visitée après un changement de table restaure bien ses tuiles (pas une config vide à cause d'une sauvegarde perdue) 🌐
 - [x] [BUG RÉEL #16 ci-dessous] Le sélecteur de table relit bien la liste à CHAQUE ouverture du menu (`beforeOpen`), pas seulement au démarrage/après un changement réussi : une table créée après le chargement du widget reste atteignable sans recharger la page 🌐
 
+### `js/main.js` + `js/demo-data.js` — bouton "Restaurer les tuiles par défaut" (demande explicite de l'utilisateur, Playwright)
+
+- [x] Caché tant que la page courante a déjà des tuiles (au démarrage, `BI_StressTest` a ses 4 tuiles de démo) 🌐
+- [x] Apparaît une fois la page courante vidée, uniquement sur `BI_StressTest` (la seule table dont on connaît des tuiles par défaut) 🌐
+- [x] Cliquer restaure exactement les tuiles de `defaultLargeTiles()` (mêmes id), ajoutées à la page COURANTE (`store.addTile`, pas un reset de tout le dashboard) 🌐
+- [x] JAMAIS visible sur une table quelconque choisie via le sélecteur, même avec un dashboard vide (état normal pour ces tables, pas une anomalie) 🌐
+- [x] La restauration est bien persistée (config sauvegardée), retrouvée en changeant de table puis en y revenant 🌐
+
 ### `js/data.js` + `js/combobox.js` + `js/main.js` — autocomplétion des VALEURS dans la barre de filtres avancés (Roadmap Tier 1.5, Node + Playwright)
 
 - [x] `distinctColumnValues` — ordre de 1re apparition (pas alphabétique), conversion en chaîne, `null`/`undefined`/`''` ignorés, dédupliqué, plafonné (`max`), tableau vide en entrée ✅
@@ -215,19 +223,15 @@ une feature "testée", vérifier qu'on s'est posé chacune de ces questions :
 
 ### `js/demo-data.js` (Node, `dev-tests/test-data.js`)
 
-- [x] `buildSampleRows` — nombre de lignes exact (produit cartésien des dimensions) ✅
-- [x] `buildSampleRows` — toutes colonnes présentes, Quantite/Montant positifs et finis ✅
-- [x] `buildSampleRows` — croissance 2026 > 2025 cohérente malgré l'aléatoire (moyenne, pas ligne à ligne) ✅
-- [x] `defaultTiles` — chaque tuile référence des colonnes qui existent réellement dans `buildSampleRows` ✅
-- [x] `defaultTiles` — au moins une tuile démontre le drill-down à 2 niveaux ✅
-- [x] `defaultTiles` — au moins une tuile démontre la tendance KPI ✅
-- [x] `defaultTiles` — au moins une tuile démontre `drillCrossFilter` ✅
+Table de démo "rapide" (`buildSampleRows`/`defaultTiles`/`COLUMNS`/`ANNEES`/`SEMAINES`) retirée
+(2026-09-16, demande explicite de l'utilisateur — voir HYPOTHESES.md) : `BI_StressTest` reste
+désormais la SEULE table que ce widget crée. Les cas de test ci-dessous ont été retirés AVEC le code
+qu'ils testaient, pas juste désactivés.
+
 - [x] `buildLargeSampleRows` — volume exact (~47 040), colonnes complètes, valeurs positives ✅
 - [x] `buildLargeSampleRows` — perf de génération + 3 agrégations/filtrages combinés (garde-fou généreux, pas un budget de perf précis) ✅
-- [x] `defaultLargeTiles` — mêmes vérifications que `defaultTiles` ✅
-- [x] `deriveDateColumn` — forme "démo" (Semaine, jour = 1 + (semaine-1)×7) ✅
-- [x] `deriveDateColumn` — forme "test de charge" (Jour direct) ✅
-- [x] `deriveDateColumn` — cohérent avec la colonne `Date` générée directement par `buildSampleRows`/`buildLargeSampleRows` (pas deux implémentations divergentes) ✅
+- [x] `defaultLargeTiles` — chaque tuile référence des colonnes qui existent réellement dans `buildLargeSampleRows`, au moins une démontre le drill-down à 2 niveaux/la tendance KPI/`drillCrossFilter` ✅
+- [x] `deriveDateColumn` — cohérent avec la colonne `Date` générée directement par `buildLargeSampleRows` (pas deux implémentations divergentes) ✅
 
 ### `js/grist-api.js` (Playwright contre `dev-tests/grist-stub.js` — mock en mémoire, PAS un vrai `grist.docApi`)
 

@@ -648,70 +648,15 @@ const rows = [
   console.log('OK state.setPages (chargement config + repli currentPageId invalide + garde-fou tableau vide)');
 }
 
-// demo-data: buildSampleRows -> des valeurs cohérentes (Montant/Quantite positifs, colonnes complètes)
-{
-  const sample = demoData.buildSampleRows();
-  const expectedCount = demoData.REGIONS.length * demoData.PRODUITS.length
-    * demoData.ANNEES.length * demoData.MOIS.length * demoData.SEMAINES.length;
-  assert.strictEqual(sample.length, expectedCount);
-  const colIds = demoData.COLUMNS.map((c) => c.id);
-  for (const row of sample) {
-    for (const col of colIds) assert.ok(col in row, `colonne manquante: ${col}`);
-    assert.ok(row.Quantite > 0 && Number.isFinite(row.Quantite));
-    assert.ok(row.Montant > 0 && Number.isFinite(row.Montant));
-    assert.ok(demoData.ANNEES.includes(row.Annee));
-  }
-  // La croissance 2026 > 2025 (voir CROISSANCE_ANNUELLE) doit rester visible malgré l'aléatoire :
-  // vérifié sur la moyenne des Quantite par année plutôt que ligne à ligne.
-  const dataMod = require('../js/data.js');
-  const parAnnee = dataMod.groupByAggregate(sample, 'Annee', 'Quantite', 'avg');
-  const q2025 = parAnnee.find((d) => d.dimension === 2025).value;
-  const q2026 = parAnnee.find((d) => d.dimension === 2026).value;
-  assert.ok(q2026 > q2025, `croissance attendue 2026 (${q2026}) > 2025 (${q2025})`);
-  console.log(`OK demoData.buildSampleRows (${sample.length} lignes, croissance 2025->2026 cohérente)`);
-}
-
-// demo-data: defaultTiles -> compatibles avec le store, et référencent des colonnes qui existent
-// réellement dans buildSampleRows() (regression guard si une colonne est renommée d'un côté sans
-// l'autre).
-{
-  const sample = demoData.buildSampleRows();
-  const availableCols = new Set(Object.keys(sample[0]));
-  const tiles = demoData.defaultTiles();
-  assert.ok(tiles.length >= 3);
-  for (const tile of tiles) {
-    assert.ok(tile.id && tile.type && tile.measure && tile.aggFn);
-    assert.ok(availableCols.has(tile.measure), `mesure inconnue: ${tile.measure}`);
-    if (tile.type !== 'kpi') assert.ok(availableCols.has(tile.dimension), `dimension inconnue: ${tile.dimension}`);
-    for (const lvl of data.tileDrillLevels(tile)) {
-      assert.ok(availableCols.has(lvl), `niveau de drill-down inconnu: ${lvl}`);
-    }
-    if (tile.trendDimension) assert.ok(availableCols.has(tile.trendDimension), `trendDimension inconnue: ${tile.trendDimension}`);
-  }
-  assert.ok(tiles.some((t) => data.tileDrillLevels(t).length >= 2), 'au moins une tuile de démo devrait démontrer le drill-down à 2 niveaux');
-  assert.ok(tiles.some((t) => t.trendDimension), 'au moins une tuile de démo devrait démontrer la tendance KPI');
-  assert.ok(tiles.some((t) => t.drillCrossFilter), 'au moins une tuile de démo devrait démontrer le cross-filtering pendant le drill-down');
-  const store = state.createStore();
-  store.setPages([{ id: 'p1', name: 'Page 1', tiles }], 'p1');
-  assert.strictEqual(store.getState().tiles.length, tiles.length);
-  console.log('OK demoData.defaultTiles (cohérentes avec buildSampleRows + state.js)');
-}
-
 // demo-data: deriveDateColumn — recalcule Date à partir des colonnes déjà présentes sur une ligne
 // EXISTANTE (pas au moment de la génération), pour la migration de schéma d'une table déjà créée
 // (voir grist-api.js:ensureColumnsUpToDate) : AddColumn + remplissage, jamais une nouvelle table.
 {
-  // Forme "démo" (Semaine, pas Jour) : semaine 1 -> jour 1, semaine 3 -> jour 15
-  assert.deepStrictEqual(demoData.deriveDateColumn({ Annee: 2026, Mois: 'Mars', Semaine: 1 }), { Date: '2026-03-01' });
-  assert.deepStrictEqual(demoData.deriveDateColumn({ Annee: 2026, Mois: 'Mars', Semaine: 3 }), { Date: '2026-03-15' });
-  // Forme "test de charge" (Jour direct)
   assert.deepStrictEqual(demoData.deriveDateColumn({ Annee: 2025, Mois: 'Décembre', Jour: 28 }), { Date: '2025-12-28' });
-  // Cohérent avec la colonne Date générée directement par buildSampleRows/buildLargeSampleRows
-  const sampleRow = demoData.buildSampleRows()[0];
-  assert.deepStrictEqual(demoData.deriveDateColumn(sampleRow), { Date: sampleRow.Date });
+  // Cohérent avec la colonne Date générée directement par buildLargeSampleRows
   const largeRow = demoData.buildLargeSampleRows()[0];
   assert.deepStrictEqual(demoData.deriveDateColumn(largeRow), { Date: largeRow.Date });
-  console.log('OK demoData.deriveDateColumn (formes Semaine et Jour, cohérent avec la génération directe)');
+  console.log('OK demoData.deriveDateColumn (cohérent avec la génération directe)');
 }
 
 // demo-data: jeu de données "test de charge" - volume + cohérence + perf d'agrégation côté client
