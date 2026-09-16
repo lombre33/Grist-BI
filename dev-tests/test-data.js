@@ -7,6 +7,7 @@ const data = require('../js/data.js');
 const state = require('../js/state.js');
 const demoData = require('../js/demo-data.js');
 const combobox = require('../js/combobox.js');
+const duckdbEngine = require('../js/duckdb-engine.js');
 
 const rows = [
   { id: 1, Region: 'Nord', Montant: 100 },
@@ -717,4 +718,25 @@ const rows = [
   console.log('OK combobox.highlightMatch (découpe autour de la 1re occurrence, insensible à la casse)');
 }
 
-console.log('\nTous les tests data.js/state.js/demo-data.js/combobox.js sont passés.');
+// duckdbEngine.csvEscape/assertSafeIdentifier : logique pure (le chargement/l'exécution SQL réels
+// exigent un vrai navigateur — Worker + WASM — voir duckdb-engine-test.js, Playwright, dans
+// TEST_PROTOCOL.md).
+{
+  assert.strictEqual(duckdbEngine.csvEscape('Nord'), 'Nord');
+  assert.strictEqual(duckdbEngine.csvEscape(42), '42');
+  assert.strictEqual(duckdbEngine.csvEscape(null), '');
+  assert.strictEqual(duckdbEngine.csvEscape(undefined), '');
+  assert.strictEqual(duckdbEngine.csvEscape('a,b'), '"a,b"');
+  assert.strictEqual(duckdbEngine.csvEscape('a"b'), '"a""b"'); // guillemet interne doublé
+  assert.strictEqual(duckdbEngine.csvEscape('a\nb'), '"a\nb"');
+  console.log('OK duckdbEngine.csvEscape (virgule/guillemet/retour à la ligne échappés, valeurs nulles -> chaîne vide)');
+}
+{
+  assert.strictEqual(duckdbEngine.assertSafeIdentifier('Region'), 'Region');
+  assert.throws(() => duckdbEngine.assertSafeIdentifier('a"b'), /invalide/);
+  assert.throws(() => duckdbEngine.assertSafeIdentifier(''), /invalide/);
+  assert.throws(() => duckdbEngine.assertSafeIdentifier(null), /invalide/);
+  console.log('OK duckdbEngine.assertSafeIdentifier (rejette un nom de colonne contenant un guillemet, vide ou non-chaîne)');
+}
+
+console.log('\nTous les tests data.js/state.js/demo-data.js/combobox.js/duckdb-engine.js sont passés.');

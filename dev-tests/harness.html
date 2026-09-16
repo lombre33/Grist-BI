@@ -8,6 +8,15 @@
 <script src="grist-stub.js"></script>
 <script src="../js/vendor/echarts/echarts.min.js"></script>
 <script src="../js/vendor/xlsx/xlsx.full.min.js"></script>
+<script type="importmap">
+{
+  "imports": {
+    "apache-arrow": "../js/vendor/apache-arrow/Arrow.dom.mjs",
+    "flatbuffers": "../js/vendor/flatbuffers/mjs/flatbuffers.js",
+    "tslib": "../js/vendor/tslib/tslib.es6.mjs"
+  }
+}
+</script>
 <link rel="stylesheet" href="../css/style.css" />
 </head>
 <body>
@@ -187,6 +196,7 @@
   <script src="../js/charts.js"></script>
   <script src="../js/export.js"></script>
   <script src="../js/grist-api.js"></script>
+  <script src="../js/duckdb-engine.js"></script>
   <script src="../js/main.js"></script>
 </body>
 </html>

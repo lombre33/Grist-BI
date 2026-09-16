@@ -856,6 +856,93 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     — une négociation anormalement lente (réseau très dégradé) pourrait en théorie excéder ce délai et
     laisser le faux négatif se reproduire malgré le correctif. Pas de mécanisme de retry illimité par
     prudence (éviter qu'un widget bloqué sur un problème de connexion réessaie indéfiniment).
+- **Fondation moteur SQL DuckDB-WASM** (`js/duckdb-engine.js`, `js/vendor/duckdb/`,
+  `js/vendor/apache-arrow/`, `js/vendor/flatbuffers/`, `js/vendor/tslib/`) — Roadmap Tier 2, décidé
+  avec l'utilisateur (choix explicite parmi les chantiers Tier 2 listés, PR séparée plutôt qu'un
+  push direct sur `main` comme jusqu'ici, sur sa demande).
+  - **Poids réel découvert en récupérant le paquet officiel, PAS anticipé par le simple libellé du
+    ROADMAP** : le binaire `.wasm` de DuckDB fait à lui seul ~34 Mo (un vrai moteur SQL complet —
+    parseur, planificateur, exécuteur — compilé en WASM, pas une petite bibliothèque JS comme
+    ECharts ~1 Mo déjà vendorisé). Confirmé explicitement avec l'utilisateur avant de vendoriser quoi
+    que ce soit (AskUserQuestion) : chargement PARESSEUX retenu plutôt qu'un chargement bloquant au
+    démarrage — rien dans `bootstrap()` (`main.js`) n'appelle `GristBI.duckdbEngine.init()`, seule
+    une future feature qui en a RÉELLEMENT besoin (mesures/pivot/blending) le fera. Puisque les
+    fichiers sont servis depuis la même origine que le reste du widget (GitHub Pages, pas un CDN),
+    aucun octet n'est téléchargé tant qu'aucun code n'appelle explicitement le moteur — confirmé par
+    un test dédié qui intercepte toutes les requêtes réseau et vérifie qu'aucune ne part avant un
+    premier appel explicite.
+  - **Bundle "eh" uniquement** (mono-thread, exceptions WASM) : pas "coi" (multi-thread, exigerait
+    des en-têtes COOP/COEP non réglables sur une page statique GitHub Pages), pas "mvp" (redondant,
+    "eh" est disponible dans tous les navigateurs évergreens visés par ce widget).
+  - **[PIÈGE RÉEL trouvé en développant, pas juste une difficulté de packaging]** Le bundle ESM
+    officiel de DuckDB-WASM (`duckdb-browser.mjs`) importe `"apache-arrow"` par un spécificateur NU,
+    qui n'existe pas nativement dans un navigateur sans bundler — resolu via une `<script
+    type="importmap">` pointant vers une copie d'`apache-arrow` vendorisée localement (son propre
+    arbre `.mjs`, ~1 Mo, imports relatifs uniquement une fois `bin/`/les fichiers spécifiques à Node
+    exclus), qui a elle-même révélé des dépendances transitives à vendoriser en cascade
+    (`flatbuffers` pour le format IPC Arrow, puis `tslib` pour les fonctions utilitaires TypeScript
+    compilées) — jamais un CDN externe (`unpkg`/`jsdelivr`, bloqués par la politique de ce projet ET
+    par le proxy réseau de ce sandbox), cohérent avec ECharts/SheetJS déjà embarqués de la même façon.
+  - **[BUG RÉEL le plus significatif de cette fondation, trouvé en testant réellement une requête,
+    pas en lisant la documentation]** Le plan initial utilisait `read_json_auto`/`read_ndjson_auto`
+    pour charger les lignes (format naturel pour des objets JS) — au premier appel RÉEL, DuckDB-WASM
+    déclenche le TÉLÉCHARGEMENT DYNAMIQUE de l'extension "json" depuis `extensions.duckdb.org`, un
+    VRAI serveur tiers externe, exactement le genre de dépendance à un CDN externe que ce projet
+    évite partout ailleurs (et qu'un réseau restrictif pourrait tout aussi bien bloquer — même
+    famille de risque que le CDN ECharts bloqué documenté plus haut dans ce fichier). Repéré
+    uniquement en observant une vraie requête réseau échouer dans ce sandbox (`net::ERR_TUNNEL_
+    CONNECTION_FAILED` vers `extensions.duckdb.org`), jamais visible en lisant la seule API TypeScript.
+    Corrigé en remplaçant JSON par CSV (`read_csv_auto`, sérialisation maison avec échappement
+    standard des virgules/guillemets/retours à la ligne) : le support CSV fait partie du CŒUR de
+    DuckDB, déjà compilé dans le binaire `.wasm` vendorisé, aucun téléchargement supplémentaire à
+    l'exécution — vérifié explicitement par un test qui intercepte toutes les requêtes et confirme
+    qu'aucune ne sort vers un autre domaine que celui du widget, même après un usage RÉEL du moteur
+    (pas seulement à l'état initial, qui aurait pu masquer un appel déclenché uniquement à l'usage).
+  - **Ordre de regroupement (`GROUP BY`)** : DuckDB ne garantit PAS de préserver l'ordre d'insertion,
+    alors que `js/data.js:groupByAggregate` le garantit explicitement (1re apparition, pas
+    alphabétique — voir ses propres tests). Reproduit en ajoutant une colonne `__row_idx` (position
+    d'origine) à chaque chargement, puis `ORDER BY MIN("__row_idx")` à l'agrégation — un contrat
+    explicite plutôt qu'une dépendance à un comportement d'implémentation non documenté qui pourrait
+    changer entre deux versions de DuckDB-WASM.
+  - **Testé en navigateur réel (Playwright), PAS sous Node** : `import()` dynamique de module ES est
+    bloqué par CORS sur `file://` (origine `"null"`) — contrairement à tous les scripts classiques du
+    reste de ce projet (`<script src="...">`, jamais de module ES ailleurs), qui n'en ont pas besoin
+    et fonctionnent très bien via `file://`. Le test dédié sert donc le dépôt via un petit serveur
+    HTTP local (`http.createServer` de Node, sans dépendance ajoutée) plutôt que `file://`, une
+    première dans ce projet — voir TEST_PROTOCOL.md. `csvEscape`/`assertSafeIdentifier` (logique pure,
+    aucune dépendance à `document`/WASM/Worker) restent testés sous Node comme le reste, même
+    séparation que `js/combobox.js` entre logique pure et câblage DOM/navigateur.
+  - **Équivalence vérifiée avec `js/data.js`, pas juste "ça tourne sans erreur"** : `groupByAggregate`
+    et `aggregateSingle` comparés RÉSULTAT PAR RÉSULTAT à leurs équivalents purs JS, sur les 47 040
+    lignes réelles du jeu de test de charge, pour les 5 agrégateurs (sum/avg/count/min/max) et
+    plusieurs combinaisons dimension/mesure — identiques (aux arrondis de précision flottante près
+    entre `SUM(DOUBLE)` SQL et `reduce` JS, négligeables). **Limite assumée, pas vérifiée** : cette
+    équivalence porte sur les colonnes numériques PROPRES réellement utilisées par ce widget
+    (Montant/Quantite...) ; une colonne à valeurs mixtes texte/nombre pourrait diverger subtilement
+    entre `TRY_CAST(... AS DOUBLE)` (SQL, renvoie NULL sur échec) et `Number(v)` (JS, renvoie NaN sur
+    échec, propagé différemment selon l'agrégateur) — jamais un cas réel dans ce widget à ce jour, pas
+    vérifié pour autant.
+  - **Coût réel mesuré, pas juste supposé rapide parce que "c'est du SQL compilé"** : sur les 47 040
+    lignes réelles, chaque appel `groupByAggregate`/`aggregateSingle` RECHARGE les lignes dans une
+    table temporaire (sérialisation CSV + transfert vers le Worker + `CREATE TABLE` + la requête +
+    `DROP TABLE`) — sensiblement PLUS LENT que l'agrégation JS pure actuelle sur ce même volume
+    (dizaines de centaines de ms par appel ici, contre ~20-30ms pour `Array.reduce` mesuré ailleurs
+    dans ce fichier). Attendu et assumé pour une fondation stateless qui reproduit fidèlement le
+    contrat de `js/data.js` (pas d'état caché entre deux appels) : la valeur de ce moteur n'est pas
+    de battre `Array.reduce` sur une agrégation simple isolée, mais de permettre des requêtes SQL
+    que `Array.reduce` ne peut pas exprimer du tout (fenêtres pour YTD/N-1, pivot, jointures pour le
+    data blending) — les features Tier 2 qui consommeront réellement ce moteur. Une feature qui
+    enchaîne PLUSIEURS requêtes sur les MÊMES lignes (ex. un pivot qui recalcule à chaque interaction)
+    voudra probablement garder une table chargée entre les appels plutôt que la recharger à chaque
+    fois — laissé à cette feature future plutôt que d'ajouter cette gestion d'état ici sans un
+    consommateur réel pour la dimensionner correctement.
+  - Testé : Node (`csvEscape`/`assertSafeIdentifier`, logique pure) + Playwright, servi en HTTP local
+    (chargement paresseux vérifié — aucune requête avant un premier appel explicite ; résultats
+    identiques à `js/data.js` sur 8 combinaisons `groupByAggregate` + 5 `aggregateSingle`, jeu de
+    47 040 lignes réel ; aucune requête réseau externe même après usage réel, régression directe du
+    piège de l'extension JSON ci-dessus ; garde-fou contre l'injection SQL sur un nom de colonne) +
+    régression complète (`dev-tests/test-data.js` + les 13 autres suites Playwright existantes,
+    aucune affectée).
 
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
@@ -978,6 +1065,15 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     `BI_StressTest` existe déjà : le correctif empêche-t-il bien toute duplication de lignes en
     pratique, et 500ms est-il suffisamment généreux même sur une connexion lente (sinon, augmenter ce
     délai — le coût ne se paie qu'une fois par session, voir la doc de `_raceGuardArmed`) ?
+14. **DuckDB-WASM (`js/duckdb-engine.js`) jamais exécuté dans un vrai document Grist ni depuis
+    GitHub Pages** : vérifié uniquement dans ce sandbox (Chromium/Playwright, servi par un petit
+    serveur HTTP local). À vérifier en réel une fois qu'une feature consommera réellement ce moteur :
+    (a) le téléchargement du binaire `.wasm` (~34 Mo) se comporte-t-il correctement depuis GitHub
+    Pages (types MIME corrects pour `.wasm`/`.mjs`, pas de blocage similaire à celui déjà rencontré
+    avec le CDN ECharts) ; (b) le `Worker` créé par `createWorker()` fonctionne-t-il sans restriction
+    particulière à l'intérieur de l'iframe (non-sandboxée, voir ROADMAP.md) d'un widget Grist réel ;
+    (c) le poids du téléchargement (une fois, la première fois qu'une feature l'utilise, mis en cache
+    navigateur ensuite) reste-t-il acceptable en pratique pour un utilisateur sur une connexion lente.
 
 ## Prochaines étapes suggérées
 

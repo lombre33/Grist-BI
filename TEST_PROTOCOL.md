@@ -207,6 +207,22 @@ une feature "testée", vérifier qu'on s'est posé chacune de ces questions :
 - [x] JAMAIS visible sur une table quelconque choisie via le sélecteur, même avec un dashboard vide (état normal pour ces tables, pas une anomalie) 🌐
 - [x] La restauration est bien persistée (config sauvegardée), retrouvée en changeant de table puis en y revenant 🌐
 
+### `js/duckdb-engine.js` — fondation moteur SQL DuckDB-WASM (Roadmap Tier 2, Node pour la logique pure, Playwright pour le chargement/SQL réels)
+
+Servi via un petit serveur HTTP local (`http.createServer`, sans dépendance ajoutée), PAS `file://` :
+`import()` dynamique de module ES (utilisé pour charger `duckdb-browser.mjs`) est bloqué par CORS
+sur une origine `file://` (`"null"`), contrairement aux scripts classiques du reste de ce projet.
+
+- [x] `csvEscape` — virgule/guillemet/retour à la ligne échappés (guillemets internes doublés), `null`/`undefined` -> chaîne vide ✅
+- [x] `assertSafeIdentifier` — rejette un nom de colonne contenant un guillemet, une chaîne vide, ou une valeur non-chaîne ✅
+- [x] Chargement PARESSEUX : `isReady()` reste `false` et AUCUNE requête réseau ne part tant qu'aucun appel explicite (`init`/`groupByAggregate`/`aggregateSingle`) n'a eu lieu — vérifié en interceptant toutes les requêtes de la page 🌐
+- [x] `groupByAggregate` — résultats identiques à `js/data.js:groupByAggregate` sur le jeu de test de charge réel (47 040 lignes), 8 combinaisons dimension/mesure/agrégat couvrant sum/avg/count/min/max 🌐
+- [x] `aggregateSingle` — résultats identiques à `js/data.js:aggregateSingle`, mêmes 5 agrégateurs 🌐
+- [x] [BUG RÉEL, voir HYPOTHESES.md] AUCUNE requête vers un domaine externe (ex. `extensions.duckdb.org`, l'extension JSON de DuckDB) même APRÈS un usage réel du moteur, pas seulement à l'état initial — régression directe du piège JSON→CSV trouvé en développant cette fondation 🌐
+- [x] Garde-fou injection SQL : un nom de colonne contenant un guillemet est rejeté avant construction de la requête, pas inséré tel quel 🌐
+- [ ] **[NON TESTABLE ICI]** Comportement réel depuis GitHub Pages (types MIME `.wasm`/`.mjs`, absence de blocage réseau) et à l'intérieur d'une vraie iframe de widget Grist — voir HYPOTHESES.md, point 14 des validations réelles
+- [ ] Consommation réelle par une feature Tier 2 (mesures/pivot/blending) — aucune feature n'utilise encore ce moteur à ce stade, c'est la fondation seule ⬜
+
 ### `js/data.js` + `js/combobox.js` + `js/main.js` — autocomplétion des VALEURS dans la barre de filtres avancés (Roadmap Tier 1.5, Node + Playwright)
 
 - [x] `distinctColumnValues` — ordre de 1re apparition (pas alphabétique), conversion en chaîne, `null`/`undefined`/`''` ignorés, dédupliqué, plafonné (`max`), tableau vide en entrée ✅

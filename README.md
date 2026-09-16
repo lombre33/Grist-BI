@@ -19,7 +19,12 @@ une table Grist interne cachée (`BI_Dashboard_Config`). ECharts (la bibliothèq
 SheetJS (l'export Excel) sont embarqués directement dans le repo (`js/vendor/echarts/` et
 `js/vendor/xlsx/`, tous deux Apache-2.0) plutôt que chargés depuis un CDN externe — un réseau qui
 filtre `cdnjs.cloudflare.com` (proxy d'entreprise/institution, etc.) laisserait sinon les tuiles
-graphiques vides (ou l'export Excel muet) sans erreur explicite.
+graphiques vides (ou l'export Excel muet) sans erreur explicite. Même principe pour DuckDB-WASM
+(`js/vendor/duckdb/`, MIT — moteur SQL, fondation Tier 2, voir plus bas) et ses dépendances
+transitives Apache-Arrow/flatbuffers/tslib, elles aussi vendorisées localement plutôt que via un
+CDN, avec une différence importante : DuckDB-WASM pèse ~34 Mo (un vrai moteur SQL compilé en WASM),
+donc **chargé PARESSEUX uniquement** — rien n'est téléchargé tant qu'aucune feature ne l'utilise
+réellement (voir HYPOTHESES.md).
 
 ## Fonctionnalités du POC
 
@@ -195,4 +200,9 @@ l'export Excel depuis l'iframe du widget.
 
 MIT pour le code de ce dépôt. `js/vendor/echarts/` contient [Apache ECharts](https://echarts.apache.org/)
 et `js/vendor/xlsx/` contient [SheetJS](https://sheetjs.com/), tous deux embarqués tels quels
-(Apache-2.0, licence incluse dans chaque dossier).
+(Apache-2.0, licence incluse dans chaque dossier). `js/vendor/duckdb/` contient
+[DuckDB-WASM](https://github.com/duckdb/duckdb-wasm) (MIT), `js/vendor/apache-arrow/` contient
+[Apache Arrow](https://arrow.apache.org/) et `js/vendor/flatbuffers/` contient
+[FlatBuffers](https://flatbuffers.dev/) (tous deux Apache-2.0, dépendances transitives de
+DuckDB-WASM), `js/vendor/tslib/` contient [tslib](https://github.com/Microsoft/tslib) (0BSD) —
+mêmes conditions, licence incluse dans chaque dossier.

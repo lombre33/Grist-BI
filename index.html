@@ -13,6 +13,20 @@
 <!-- SheetJS embarqué localement (js/vendor/xlsx/, Apache-2.0) pour l'export Excel du dashboard,
      même raisonnement que ECharts ci-dessus : pas de dépendance à un CDN externe. -->
 <script src="js/vendor/xlsx/xlsx.full.min.js"></script>
+<!-- DuckDB-WASM (js/vendor/duckdb/, MIT) : moteur SQL, fondation Tier 2 (voir ROADMAP.md/
+     HYPOTHESES.md) — chargé PARESSEUX uniquement (js/duckdb-engine.js), jamais au démarrage.
+     duckdb-browser.mjs importe "apache-arrow" (Apache-2.0) et "flatbuffers" (Apache-2.0) via des
+     spécificateurs nus qui n'existent pas nativement dans un navigateur sans bundler ; cette import
+     map les résout vers les copies vendorisées localement, toujours pas de CDN externe. -->
+<script type="importmap">
+{
+  "imports": {
+    "apache-arrow": "js/vendor/apache-arrow/Arrow.dom.mjs",
+    "flatbuffers": "js/vendor/flatbuffers/mjs/flatbuffers.js",
+    "tslib": "js/vendor/tslib/tslib.es6.mjs"
+  }
+}
+</script>
 <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
@@ -192,6 +206,7 @@
   <script src="js/charts.js"></script>
   <script src="js/export.js"></script>
   <script src="js/grist-api.js"></script>
+  <script src="js/duckdb-engine.js"></script>
   <script src="js/main.js"></script>
 </body>
 </html>

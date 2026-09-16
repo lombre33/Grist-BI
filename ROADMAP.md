@@ -120,7 +120,7 @@ Pas dans la roadmap initiale : demande directe de l'utilisateur après la fin du
 
 | Feature | Valeur | Risque | Note |
 |---|---|---|---|
-| Moteur DuckDB-WASM (remplace Array.reduce) | Haute | Moyen | Fondation pour mesures/pivot/blending ensuite |
+| Moteur DuckDB-WASM (remplace Array.reduce) | Haute | Moyen | 🔧 Fondation posée (2026-09-16, `js/duckdb-engine.js`) : `groupByAggregate`/`aggregateSingle` en SQL, résultats vérifiés identiques à `js/data.js` sur les 47 040 lignes réelles, chargement paresseux (aucun coût tant qu'aucune feature ne l'utilise). Reste à faire : aucune feature ne l'utilise encore (mesures/pivot/blending, listés ci-dessous) — voir HYPOTHESES.md pour le détail (poids du binaire WASM ~34 Mo, piège de l'extension JSON de DuckDB qui appelle un CDN externe, contournée) |
 | Mesures façon DAX simplifié (YTD, N-1, cumul) | Haute | Élevé | Un sous-ensemble ciblé, pas un DAX complet |
 | Tableau croisé dynamique (pivot) | Critique | Moyen | 0% de réutilisation ECharts, plus gros volume de code |
 | Data blending multi-tables (même document Grist) | Haute | Élevé | 🔧 Moins risqué que prévu : les colonnes `Ref:`/`RefList:` (via `_grist_Tables_column`) encodent déjà les relations — auto-détection des clés de jointure possible. Contredit toujours le choix récent de désactiver `onRecords`, décision produit à retrancher |
