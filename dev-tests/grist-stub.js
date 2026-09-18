@@ -63,6 +63,21 @@
   // "passait" alors indépendamment de la présence du correctif, donc sans jamais rien vérifier].
   if (typeof window.__gristStubRaceCalls !== 'number') window.__gristStubRaceCalls = 0;
 
+  // Simulation du filet de sécurité indépendant de js/grist-api.js:loadOrCreateTable/
+  // ensureConfigTableExists/migrateLegacyTableName : le vrai moteur Grist ne lève JAMAIS d'erreur sur
+  // un AddTable OU un RenameTable en collision de nom, il suffixe silencieusement l'id réellement
+  // utilisé (`pick_table_ident`, voir HYPOTHESES.md — vérifié pour les deux actions contre le moteur
+  // Grist réel, `sandbox/grist/useractions.py`). Reproduit ici de façon INCONDITIONNELLE dès que le
+  // tableId/newTableId visé existe déjà réellement dans `tables` (typiquement via
+  // __gristStubPreseed) — [trouvé par une revue adversariale du correctif de course, pas par
+  // l'utilisateur] un comportement seulement opt-in aurait laissé n'importe quel AUTRE test futur
+  // créant une table déjà existante passer complètement à côté de ce filet de sécurité, contrairement
+  // au vrai moteur. `window.__gristStubCollideOnAddTable`/`__gristStubCollideOnRenameTable` (un
+  // tableId, ou `true`) restent disponibles pour FORCER une collision artificielle sur un nom qui
+  // n'entrerait sinon pas en collision, via `page.addInitScript()` avant que ce script ne s'exécute.
+  // Consommés une seule fois (mis à `null` après usage) comme `__gristStubRaceCalls`.
+  let nextCollisionSuffix = 2;
+
   window.grist = {
     ready(opts) {
       console.log('[grist-stub] ready()', opts);
@@ -93,10 +108,27 @@
           const tableId = action[1];
           if (kind === 'AddTable') {
             const columns = action[2];
+            let actualTableId = tableId;
+            const forceCollide = window.__gristStubCollideOnAddTable;
+            // Collision RÉELLE (le tableId demandé existe déjà côté "document", typiquement via
+            // __gristStubPreseed) : comportement PAR DÉFAUT désormais, pas seulement sur demande
+            // explicite — [trouvé par une revue adversariale du correctif de course, pas par
+            // l'utilisateur] un comportement opt-in seulement laissait n'importe quel AUTRE test futur
+            // créant une table qui se trouve déjà exister passer à côté de ce filet de sécurité sans
+            // même s'en rendre compte, contrairement au vrai moteur Grist qui suffixe TOUJOURS,
+            // inconditionnellement. `__gristStubCollideOnAddTable` reste disponible pour FORCER une
+            // collision artificielle sur un nom qui n'entrerait sinon pas en collision.
+            if (tables[tableId] || forceCollide === true || forceCollide === tableId) {
+              // Table DÉJÀ existante côté "document" : ne JAMAIS l'écraser — c'est exactement ce que
+              // ce filet de sécurité doit protéger. Le moteur réel suffixe l'id nouvellement créé, pas
+              // l'existant.
+              actualTableId = `${tableId}${nextCollisionSuffix++}`;
+              window.__gristStubCollideOnAddTable = null;
+            }
             const t = { id: [] };
             for (const col of columns) t[col.id] = [];
-            tables[tableId] = t;
-            retValues.push(null);
+            tables[actualTableId] = t;
+            retValues.push({ id: Object.keys(tables).length, table_id: actualTableId, columns: columns.map((c) => c.id) });
           } else if (kind === 'AddRecord') {
             const fields = action[3] || {};
             const t = tables[tableId];
@@ -128,7 +160,18 @@
             retValues.push(null);
           } else if (kind === 'RenameTable') {
             const oldTableId = action[1];
-            const newTableId = action[2];
+            let newTableId = action[2];
+            // Même mécanisme d'unicité que AddTable (vérifié contre le moteur Grist réel — voir
+            // js/grist-api.js:migrateLegacyTableName) : si `newTableId` existe déjà réellement, le
+            // moteur suffixe silencieusement la DESTINATION, jamais l'existant. `RenameTable` ne
+            // renvoie rien côté vrai moteur (`retValues` reste `null` même en cas de collision) —
+            // contrairement à AddTable, ce mock ne peut donc PAS renvoyer l'id réel au code testé, qui
+            // doit s'en apercevoir autrement (voir le contrôle post-renommage dans grist-api.js).
+            const forceCollide = window.__gristStubCollideOnRenameTable;
+            if (tables[newTableId] || forceCollide === true || forceCollide === newTableId) {
+              newTableId = `${newTableId}${nextCollisionSuffix++}`;
+              window.__gristStubCollideOnRenameTable = null;
+            }
             tables[newTableId] = tables[oldTableId];
             delete tables[oldTableId];
             retValues.push(null);

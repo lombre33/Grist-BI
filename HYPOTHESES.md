@@ -856,6 +856,175 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     — une négociation anormalement lente (réseau très dégradé) pourrait en théorie excéder ce délai et
     laisser le faux négatif se reproduire malgré le correctif. Pas de mécanisme de retry illimité par
     prudence (éviter qu'un widget bloqué sur un problème de connexion réessaie indéfiniment).
+  - **[EXACTEMENT CE QUI ÉTAIT REDOUTÉ CI-DESSUS S'EST PRODUIT]** L'utilisateur a remonté le MÊME bug
+    une seconde fois après ce premier correctif, sur GitHub Pages avec un rechargement franc (donc pas
+    un problème de cache navigateur/CDN) : la barre de progression "Création…" s'est de nouveau
+    affichée en entier sur une table qui existait déjà réellement. Voir l'entrée "Correctif v2"
+    ci-dessous.
+- **Correctif v2 de la course au démarrage — budget d'attente renforcé + filet de sécurité indépendant
+  basé sur la collision `AddTable`** (`js/grist-api.js`) [BUG RÉEL remonté DEUX FOIS par
+  l'utilisateur — voir l'entrée précédente pour le premier correctif, insuffisant en conditions
+  réelles].
+  - **Diagnostic** : le délai fixe de 500ms (un seul essai de rattrapage) du premier correctif s'est
+    révélé insuffisant — la vraie négociation d'accès avec l'hôte Grist peut visiblement dépasser
+    500ms selon le réseau/la charge du document réel (jamais mesuré précisément : ce sandbox ne peut
+    reproduire un vrai aller-retour réseau avec l'hôte Grist, seulement le simuler via
+    `window.__gristStubRaceCalls`).
+  - **Recherche de source primaire (avant de corriger)** : plutôt que d'augmenter le délai au hasard,
+    vérifié contre le code source réel de `gristlabs/grist-core` (via `WebFetch`, `support.getgrist.com`
+    étant bloqué par le proxy réseau de ce sandbox) s'il existe un signal EXPOSÉ et fiable de fin de
+    négociation, plutôt qu'une valeur de délai devinée :
+    - `grist-plugin-api.ts` : la promesse interne `_initialization`/`_setInitialized` existe bel et
+      bien, mais elle n'est utilisée QUE par `getSelectedTableId()` (liée à la sélection de table dans
+      la page hôte, sans rapport avec `docApi`) — aucune fonction exportée de `docApi`
+      (`listTables`/`fetchTable`/`applyUserActions`) n'attend cette promesse en interne. Confirmé :
+      il n'existe AUCUNE API exposée qu'un auteur de widget pourrait attendre pour savoir avec
+      certitude que la négociation est terminée — une stratégie à base de délai/retry reste
+      nécessaire, il n'y a pas de meilleure option côté client.
+    - `sandbox/grist/useractions.py` (le moteur de données, PAS le SDK JS) : `AddTable` appelle
+      `identifiers.pick_table_ident(table_id, avoid=self._engine.tables.keys())` — **le moteur Grist
+      ne lève JAMAIS d'erreur quand `table_id` existe déjà : il suffixe silencieusement l'id
+      réellement créé pour éviter la collision** (ex. `BI_StressTest` → `BI_StressTest2`), et
+      `doAddTable` renvoie `{id, table_id, columns}` où `table_id` est cet id RÉEL (potentiellement
+      différent de celui demandé). C'est cette découverte qui a permis le filet de sécurité
+      indépendant ci-dessous — sans cette recherche de source primaire, la seule option restante
+      aurait été d'augmenter encore le délai au hasard, sans jamais être VRAIMENT sûr.
+  - **Correctif, partie 1 — budget d'attente renforcé** : `tableExistsConfirmed` retente maintenant
+    avec un délai CROISSANT (`RACE_GUARD_RETRY_DELAYS_MS = [300, 600, 1200, 2400, 4800]`, ~9,3s au
+    total dans le pire cas) au lieu d'un unique délai fixe de 500ms. Toujours limité au tout premier
+    contrôle d'existence de la session (`_raceGuardArmed`, inchangé). Compromis délibérément prudent :
+    une table réellement neuve ne paie cette rallonge qu'UNE SEULE fois dans toute la vie du document
+    (coût mineur : un peu plus de "Connexion…" affiché), alors qu'un faux négatif coûte potentiellement
+    des dizaines de milliers de lignes dupliquées dans le document réel de l'utilisateur.
+  - **Correctif, partie 2 — filet de sécurité INDÉPENDANT, la vraie nouveauté de ce correctif** :
+    même si le budget d'attente ci-dessus s'avère malgré tout insuffisant (négociation anormalement
+    longue, au-delà de ~9,3s), `loadOrCreateTable` et `ensureConfigTableExists` comparent désormais
+    systématiquement le `table_id` RÉELLEMENT renvoyé par `AddTable` (voir `actualAddTableId`) au
+    `tableId` demandé. S'ils diffèrent, c'est la preuve DÉTERMINISTE (pas une heuristique de timing)
+    qu'un faux négatif a échappé au garde-fou anti-course : le code abandonne IMMÉDIATEMENT tout
+    remplissage de la table nouvellement créée (fantôme, vide, sans rapport avec les vraies données),
+    logue un `console.error` explicite, et retombe sur le chemin "la table existe déjà" — garanti sans
+    duplication, quel que soit le délai que la négociation d'accès a réellement pris. La table fantôme
+    vide reste orpheline dans le document (jamais nettoyée via `RemoveTable`, verbe délibérément jamais
+    utilisé dans ce projet — voir plus haut dans ce fichier — un orphelin visible et inoffensif est
+    préférable à un verbe de suppression jamais éprouvé dans le chemin de code le plus critique du
+    widget côté sécurité des données). Ce filet de sécurité rend le correctif robuste par CONSTRUCTION
+    plutôt que par un choix de délai, aussi généreux soit-il — le budget d'attente réduit juste la
+    fréquence à laquelle ce filet doit intervenir en pratique.
+  - **[3e BUG RÉEL, trouvé en construisant la matrice de tests croisés de ce correctif, pas remonté par
+    l'utilisateur]** `migrateLegacyTableName` (renomme un ancien nom de table versionné vers le nom fixe
+    actuel si besoin) faisait ses propres contrôles d'existence via le `tableExists` simple, SANS AUCUNE
+    protection anti-course, dans EXACTEMENT la même fenêtre de risque, juste AVANT le garde-fou
+    principal. L'ancien raisonnement documenté à côté de cette fonction ("un faux négatif ici mène au
+    pire à une tentative de RENOMMAGE inutile, pas à une duplication de données") ne couvrait que le cas
+    où c'est `tableId` (le nom fixe) qui est faussement vu comme absent. Il manquait le cas inverse : si
+    c'est le NOM LEGACY qui est faussement vu comme absent (alors qu'il existe réellement, avec ses
+    propres dizaines de milliers de lignes) pendant que `tableId` est authentiquement absent, le
+    renommage nécessaire est purement et simplement SAUTÉ — la table legacy reste orpheline sous son
+    ancien nom, et `loadOrCreateTable` (juste après) crée et remplit un `tableId` tout neuf de zéro :
+    deux tables contenant chacune le jeu de données complet. Ce n'est pas une "duplication" au sens
+    strict (pas la MÊME table qui grossit), mais la même conséquence concrète pour l'utilisateur
+    (données dupliquées dans le document, table orpheline à gérer manuellement). Corrigé en réutilisant
+    `tableExistsConfirmed` pour ces deux contrôles aussi (le contrôle du nom fixe devient alors le tout
+    premier de la session, consommant le budget renforcé ; les contrôles suivants — noms legacy, puis
+    le contrôle principal de `loadOrCreateTable` — réutilisent un canal déjà prouvé actif, comme prévu
+    par la conception de `_raceGuardArmed`). `tableExists` (la fonction simple, non protégée) est
+    devenue totalement inutilisée après ce changement et a été supprimée.
+  - **Simulation étendue pour les tests** (`dev-tests/grist-stub.js`) : `AddTable` renvoie maintenant
+    un `retValues[0]` réaliste (`{id, table_id, columns}`, comme le vrai moteur) au lieu de `null`.
+    `window.__gristStubCollideOnAddTable` (un tableId, ou `true`) simule la collision silencieuse
+    décrite ci-dessus : au prochain `AddTable` visant ce tableId, le mock crée la table sous un id
+    suffixé (`${tableId}2`, `${tableId}3`, ...) SANS toucher à la table existante — consommé une seule
+    fois (remis à `null` après usage), comme `__gristStubRaceCalls`.
+  - **Testé** : `table-race-test.js` étendu de 3 à **9 scénarios** croisant systématiquement course
+    (résolue tôt / tardivement / budget entièrement épuisé) × existence réelle de la table (neuve /
+    déjà là) × collision `AddTable` (sur `BI_StressTest` ET isolément sur `BI_Dashboard_Config`) ×
+    renommage legacy sous course × idempotence sur plusieurs rechargements successifs × coût nul du
+    chemin normal. **Vérifié positivement scénario par scénario** : `git stash` isolant temporairement
+    l'ancien `js/grist-api.js`/`grist-stub.js` — 6 des 9 scénarios échouent bien contre l'ancien code
+    (les 3 qui passent aussi bien avant qu'après sont les scénarios qui ne sollicitent pas les
+    mécanismes ajoutés par ce correctif : 1er essai résolu tôt, chemin normal sans course, et la toute
+    première connexion sans rien de préexistant) avant de repasser au vert une fois le correctif
+    restauré — même méthode que le premier correctif, appliquée cette fois à TOUTE la matrice plutôt
+    qu'à un seul scénario. Non-régression complète : `dev-tests/test-data.js` + les 13 autres suites
+    Playwright existantes (dont `duckdb-engine-test.js`), toutes encore vertes après ce changement.
+  - **Reste une limite THÉORIQUE résiduelle, documentée plutôt que corrigée** (jugée acceptable) :
+    `migrateLegacyTableName` peut encore, dans un cas EXTRÊME (négociation d'accès qui ne se termine
+    toujours pas après les ~9,3s de budget déjà généreux), rater un renommage legacy — contrairement au
+    chemin principal `BI_StressTest`/`BI_Dashboard_Config`, ce cas précis n'est pas protégé par le
+    filet de sécurité basé sur la collision `AddTable` (`AddTable('BI_StressTest', ...)` ne rencontre
+    alors aucune collision, puisque ce nom exact n'existe réellement pas — seul le nom legacy existe).
+    Nécessiterait un réseau anormalement dégradé ET la présence d'une table sous un ancien nom versionné
+    (situation déjà rare, seulement pertinente pour une installation antérieure à l'adoption du nom
+    fixe) pour se manifester. Non corrigé plus avant : le coût d'ajouter une troisième couche de
+    protection pour un cas nécessitant DEUX conditions rares simultanées n'a pas semblé justifié face à
+    la complexité ajoutée — mais documenté ici explicitement plutôt que laissé silencieux.
+  - **Revue adversariale du correctif v2 via le Workflow tool** (4 agents en parallèle, chacun avec un
+    angle différent — arithmétique du retry, exhaustivité de la détection de collision, vraie
+    concurrence multi-onglets, réalisme de la matrice de tests — puis vérification adversariale
+    indépendante de chaque signalement, demande explicite de l'utilisateur : "croiser vraiment tous
+    les scénarios avec des vérifications"). 15 signalements, tous confirmés "réels" par la passe de
+    vérification, mais qui se sont avérés recouvrir en pratique un petit nombre de mécanismes
+    distincts une fois regroupés :
+    - **Mécanisme réellement nouveau et corrigé** : `_rawTables` pouvait rester positionné sur le
+      dernier tableau lu (potentiellement encore contaminé par la course) après épuisement du budget
+      de `tableExistsConfirmed`, sans jamais être explicitement vidé — un contrôle suivant (ex. le nom
+      legacy) réutilisait alors ce cache SANS le moindre nouvel appel réseau, ratant une lecture
+      fraîche à laquelle il aurait pourtant droit si la négociation venait tout juste de se terminer.
+      Corrigé (`_rawTables = null` sur épuisement). Referme la fenêtre pour le cas où la négociation se
+      termine PENDANT le contrôle suivant ; ne résout PAS le cas encore plus extrême déjà documenté
+      juste au-dessus (négociation dépassant la totalité du budget) — aucun mécanisme à délai borné ne
+      peut couvrir un délai réseau non borné, ce n'est pas un oubli mais une limite de nature
+      différente. Vérifié via `git stash` ciblé (juste cette ligne) : le scénario 7/10 de
+      `table-race-test.js` (course EXACTEMENT calibrée pour épuiser le budget du 1er contrôle, ni plus
+      ni moins) échoue bien sans cette ligne et passe avec.
+    - **Même mécanisme de collision silencieuse que `AddTable`, mais sur `RenameTable`** : le moteur
+      Grist réel applique la MÊME logique d'unicité (`identifiers.pick_table_ident`, vérifié cette fois
+      contre `sandbox/grist/useractions.py:_updateTableRecords`, le gestionnaire réel de
+      `RenameTable`) à la destination d'un renommage — mais `RenameTable` ne renvoie RIEN
+      d'exploitable (`retValues` vaut `None` côté moteur, contrairement à `{id, table_id, columns}`
+      pour `AddTable`), donc impossible de le détecter aussi déterministement. Ajouté un CONSTAT après
+      coup (nouveau contrôle `tableExistsConfirmed(tableId)` juste après le `RenameTable`, avec
+      `console.error` explicite si le nom attendu n'est toujours pas là) — une détection, pas une
+      prévention : si la collision se produit, les données de la table legacy sont déjà renommées sous
+      un id imprévisible avant qu'on puisse s'en apercevoir. Le déclencheur réel exige qu'un second
+      acteur crée `tableId` entre le contrôle de `migrateLegacyTableName` et son appel `RenameTable` —
+      une VRAIE concurrence à deux acteurs (voir plus bas), structurellement impossible à simuler dans
+      une seule page Playwright séquentielle : le scénario 10/10 force donc directement la collision
+      via un nouveau hook de mock (`__gristStubCollideOnRenameTable`) pour vérifier le MÉCANISME de
+      détection en assumant le déclencheur plutôt qu'en le reproduisant — vérifié qu'il échoue bien
+      sans le nouveau contrôle (`git stash` ciblé) et détecte bien la collision avec.
+    - **Mock `AddTable` rendu réaliste par défaut** : la simulation de collision n'était auparavant
+      déclenchée que sur demande explicite (`__gristStubCollideOnAddTable`) — un signalement a
+      justement noté que cela laissait n'importe quel AUTRE test futur créant une table déjà existante
+      passer complètement à côté de ce filet de sécurité, contrairement au vrai moteur qui suffixe
+      TOUJOURS, inconditionnellement. Le mock détecte désormais la collision dès que le tableId visé
+      existe déjà réellement dans son état interne (typiquement via `__gristStubPreseed`), le hook
+      manuel restant disponible pour FORCER une collision artificielle sur un nom qui n'entrerait
+      sinon pas en collision. A permis de simplifier les scénarios 5/10 et 6/10 (plus besoin de forcer
+      la collision manuellement, elle découle naturellement de l'état préseedé — plus fidèle au
+      comportement réel).
+    - **Signalements jugés RÉELS mais explicitement écartés de ce correctif (scope volontairement
+      limité)**, documentés ici pour ne pas être perdus :
+      - `AddColumn` (`ensureColumnsUpToDate`) est exposé à la même classe de risque de collision que
+        `AddTable`/`RenameTable`, mais la conséquence est un simple ajout de colonne orpheline (dérive
+        de schéma), pas une duplication de lignes — bien moins grave, et nécessite la même précondition
+        de vraie concurrence multi-acteurs que ci-dessus. Non traité ici.
+      - **Vraie concurrence à deux onglets/deux sessions du widget sur le MÊME document réel** (pas la
+        course de négociation au démarrage que ce correctif cible) : `saveConfig` peut créer deux
+        lignes `AddRecord` concurrentes pour le même `tableId` dans `BI_Dashboard_Config` (une
+        config/dashboard silencieusement perdue), et `AddColumn`/`RenameTable` peuvent aussi y être
+        exposés. C'est une classe de problème DIFFÉRENTE et structurellement plus difficile (nécessite
+        une vraie synchronisation multi-session, pas juste un budget d'attente plus généreux) que celle
+        remontée par l'utilisateur (course contre `grist.ready()` dans une SEULE session) — jugée hors
+        du périmètre de ce correctif, mais notée ici comme piste future si des utilisateurs multiples
+        éditent effectivement le même document simultanément avec ce widget ouvert.
+      - `grist.docApi.listTables()`/`fetchTable()`/`applyUserActions()` REJETANT (levant une erreur)
+        plutôt que renvoyant une liste vide pendant la fenêtre de course n'est testé nulle part. Analysé
+        comme déjà "sûr" par construction plutôt que corrigé : une telle rejection remonterait
+        jusqu'au `try/catch` de `bootstrap()` (`main.js`), qui affiche déjà "Échec de la connexion aux
+        données" plutôt que de risquer une duplication silencieuse — un échec visible, pas une
+        corruption invisible, donc pas la même urgence que le bug initialement remonté.
 - **Fondation moteur SQL DuckDB-WASM** (`js/duckdb-engine.js`, `js/vendor/duckdb/`,
   `js/vendor/apache-arrow/`, `js/vendor/flatbuffers/`, `js/vendor/tslib/`) — Roadmap Tier 2, décidé
   avec l'utilisateur (choix explicite parmi les chantiers Tier 2 listés, PR séparée plutôt qu'un
@@ -1057,14 +1226,29 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     ne simule que le strict nécessaire). À vérifier en réel : `AddColumn` sur une table de plusieurs
     dizaines de milliers de lignes se comporte-t-il comme attendu (colonne vide plutôt qu'une erreur
     de volume) ; `RenameTable` préserve-t-il bien les données/lignes existantes.
-13. **[PRIORITÉ HAUTE] Le délai de rattrapage de `tableExistsConfirmed` (500ms, voir plus haut) n'a
-    jamais été calibré contre le vrai timing de la négociation d'accès `grist.ready()`** : choisi par
-    prudence/pragmatisme, jamais mesuré contre un vrai document Grist (ce sandbox ne peut simuler
-    qu'un faux négatif DÉTERMINISTE, pas le vrai délai réseau qui le cause). À vérifier en réel,
+13. **[PRIORITÉ HAUTE, révisé après le correctif v2] Le budget d'attente de `tableExistsConfirmed`
+    (~9,3s au total, voir "Correctif v2" plus haut) n'a toujours pas été calibré contre le vrai timing
+    de la négociation d'accès `grist.ready()`** — la première version de ce point (délai fixe de
+    500ms) s'est avérée insuffisante en pratique (bug remonté une seconde fois par l'utilisateur),
+    d'où le passage à un budget ~18× plus généreux. Reste jamais mesuré contre un vrai document Grist
+    (ce sandbox ne peut simuler qu'un faux négatif DÉTERMINISTE via `__gristStubRaceCalls`, pas le vrai
+    délai réseau qui le cause). Risque résiduel nettement réduit par rapport à la v1 grâce au filet de
+    sécurité indépendant (détection de la collision `AddTable`, voir plus haut) qui garantit l'absence
+    de duplication même si ce budget s'avérait ENCORE insuffisant — mais à vérifier en réel malgré tout,
     idéalement en observant le widget se reconnecter plusieurs fois de suite à un document où
-    `BI_StressTest` existe déjà : le correctif empêche-t-il bien toute duplication de lignes en
-    pratique, et 500ms est-il suffisamment généreux même sur une connexion lente (sinon, augmenter ce
-    délai — le coût ne se paie qu'une fois par session, voir la doc de `_raceGuardArmed`) ?
+    `BI_StressTest` existe déjà : (a) le correctif empêche-t-il bien toute duplication de lignes en
+    pratique ; (b) le `console.error` de collision apparaît-il un jour dans la console de
+    l'utilisateur (signe que même ce budget renforcé a été dépassé — auquel cas l'augmenter encore,
+    le coût ne se payant qu'une fois par session) ; (c) une table fantôme orpheline
+    (`BI_StressTest2`, etc.) apparaît-elle un jour dans son document (signe du même dépassement, à
+    supprimer manuellement).
+13bis. **[Limite résiduelle documentée, pas corrigée — voir "Correctif v2" plus haut]**
+    `migrateLegacyTableName` reste, dans un cas extrême (négociation encore plus longue que le budget
+    de 13. ET présence d'une table sous un ancien nom versionné), non couvert par le filet de sécurité
+    basé sur la collision `AddTable` — contrairement au chemin principal `BI_StressTest`, un renommage
+    legacy manqué ne produit PAS de collision détectable (le nom fixe demandé n'existe alors
+    réellement pas). Nécessite deux conditions rares simultanées pour se manifester ; jugé acceptable
+    tel quel plutôt que d'ajouter une troisième couche de protection.
 14. **DuckDB-WASM (`js/duckdb-engine.js`) jamais exécuté dans un vrai document Grist ni depuis
     GitHub Pages** : vérifié uniquement dans ce sandbox (Chromium/Playwright, servi par un petit
     serveur HTTP local). À vérifier en réel une fois qu'une feature consommera réellement ce moteur :

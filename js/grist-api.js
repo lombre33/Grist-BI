@@ -67,37 +67,85 @@
   // — si cet appel part avant la fin de cette négociation, il peut renvoyer une liste incomplète/vide,
   // faisant croire à tort qu'une table n'existe pas encore. Un faux négatif ici déclenche `AddTable` +
   // le remplissage complet (`fillTable`), dupliquant potentiellement des dizaines de milliers de
-  // lignes dans le document de l'utilisateur À CHAQUE rechargement du widget. Jamais reproduit dans ce
-  // sandbox (le mock `grist-stub.js` est synchrone, sans vraie négociation réseau à rater) — voir
-  // `dev-tests/grist-stub.js` pour la simulation ajoutée spécifiquement pour couvrir ce cas.
+  // lignes dans le document de l'utilisateur À CHAQUE rechargement du widget.
   // Avant de conclure qu'une table n'existe VRAIMENT pas (et donc avant toute action destructrice de
-  // création), on revérifie une seconde fois après un court délai avec une lecture FRAÎCHE (pas le
-  // cache potentiellement pris trop tôt) plutôt que de faire confiance à la toute première réponse.
+  // création), on revérifie plusieurs fois avec une lecture FRAÎCHE (pas le cache potentiellement pris
+  // trop tôt) plutôt que de faire confiance à la toute première réponse.
+  // [CORRECTIF v2, bug remonté À NOUVEAU par l'utilisateur après un premier correctif à délai unique
+  // de 500ms : insuffisant en conditions réelles — la négociation d'accès peut visiblement dépasser
+  // 500ms selon le réseau/la charge du document Grist réel (jamais mesuré précisément ici, voir
+  // HYPOTHESES.md : ce sandbox ne peut pas reproduire un vrai aller-retour réseau avec l'hôte Grist)].
+  // Plusieurs tentatives à délai CROISSANT plutôt qu'un unique essai : le budget total (~9,3s dans le
+  // pire cas, RACE_GUARD_RETRY_DELAYS_MS) est délibérément généreux — une table réellement neuve
+  // n'attend cette rallonge qu'une seule fois dans toute la vie du document (coût mineur : un peu plus
+  // de "Connexion…" affiché), alors qu'un faux négatif coûte potentiellement des dizaines de milliers
+  // de lignes dupliquées. Un second filet de sécurité INDÉPENDANT (voir `loadOrCreateTable` plus bas)
+  // neutralise même le cas où CE budget s'avérerait malgré tout insuffisant.
   // `_raceGuardArmed` : cette revérification ne s'applique qu'au TOUT PREMIER contrôle d'existence de
   // la session (celui de `BI_StressTest`, juste après `grist.ready()` — le seul moment où la
   // négociation d'accès peut réellement être encore en cours) ; tous les contrôles suivants (ex.
   // `BI_Dashboard_Config`, quelques instants plus tard) font confiance à un seul appel : le canal a
   // déjà forcément été prouvé actif par au moins un aller-retour réussi entre-temps. Sans ce
-  // désarmement, chaque contrôle payait 500ms supplémentaires même sans le moindre risque de course.
+  // désarmement, chaque contrôle paierait le budget complet même sans le moindre risque de course.
+  const RACE_GUARD_RETRY_DELAYS_MS = [300, 600, 1200, 2400, 4800];
   let _raceGuardArmed = true;
   async function tableExistsConfirmed(tableId) {
     const guardThisCall = _raceGuardArmed;
     _raceGuardArmed = false;
-    if (await tableExistsIn(await listAllTablesCached(), tableId)) return true;
+    if (tableExistsIn(await listAllTablesCached(), tableId)) return true;
     if (!guardThisCall) return false;
+    for (const delay of RACE_GUARD_RETRY_DELAYS_MS) {
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      _rawTables = null;
+      if (tableExistsIn(await listAllTablesCached(), tableId)) return true;
+    }
+    // [Trouvé par une revue adversariale du correctif ci-dessus, pas par l'utilisateur] Si le budget
+    // s'épuise SANS jamais avoir trouvé `tableId`, `_rawTables` reste ici sur le dernier tableau lu
+    // pendant la boucle — qui peut lui-même être encore contaminé par la course si la négociation
+    // d'accès n'a TOUJOURS pas fini au bout de ce budget déjà généreux (~9,3s). Comme `_raceGuardArmed`
+    // vient d'être définitivement désarmé, tout contrôle suivant de la session (ex. le nom LEGACY dans
+    // `migrateLegacyTableName`) ferait confiance à ce cache SANS le moindre nouvel appel réseau — le
+    // remettre à `null` force au moins UNE lecture fraîche pour ce contrôle suivant plutôt que de
+    // réutiliser un résultat déjà connu comme potentiellement obsolète. Ne résout pas le cas encore
+    // plus extrême où la négociation dépasse la totalité du budget (voir HYPOTHESES.md, point 13bis :
+    // aucun mécanisme à délai borné ne peut couvrir un délai réseau non borné), mais referme la fenêtre
+    // pour le cas, bien plus probable, où la négociation se termine PENDANT ce contrôle suivant.
     _rawTables = null;
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    return tableExistsIn(await listAllTablesCached(), tableId);
+    return false;
+  }
+
+  // Extrait le `table_id` RÉELLEMENT assigné par un `AddTable` depuis son retour
+  // (`applyUserActions` renvoie `{retValues: [{id, table_id, columns}]}` pour cette action précise
+  // — vérifié contre le moteur Grist réel, voir HYPOTHESES.md). Peut différer du `tableId` demandé :
+  // voir `loadOrCreateTable`/`ensureConfigTableExists` plus bas pour pourquoi c'est important.
+  function actualAddTableId(applyResult) {
+    const rv = applyResult && applyResult.retValues && applyResult.retValues[0];
+    return (rv && rv.table_id) || null;
   }
 
   async function ensureConfigTableExists() {
     if (await tableExistsConfirmed(CONFIG_TABLE)) return;
-    await grist.docApi.applyUserActions([
+    const result = await grist.docApi.applyUserActions([
       ['AddTable', CONFIG_TABLE, [
         { id: 'TableId', type: 'Text' },
         { id: 'ConfigJSON', type: 'Text' }
       ]]
     ]);
+    // [Filet de sécurité, voir loadOrCreateTable plus bas pour la version complète/documentée de ce
+    // mécanisme] Si Grist a silencieusement suffixé le nom (collision malgré tableExistsConfirmed),
+    // la table de config réelle préexistante reste "BI_Dashboard_Config" — loadConfig/saveConfig la
+    // relisent toujours directement par ce nom, donc aucune perte de données ; on évite juste de
+    // mettre en cache le mauvais id.
+    const actualTableId = actualAddTableId(result);
+    if (actualTableId && actualTableId !== CONFIG_TABLE) {
+      console.error(
+        `[GristBI] AddTable("${CONFIG_TABLE}") a créé "${actualTableId}" à la place (collision de nom : ` +
+        'la table existait déjà malgré la vérification). Table vide orpheline à supprimer manuellement ' +
+        'dans Grist si besoin — aucune donnée de config perdue ni dupliquée.'
+      );
+      _rawTables = null;
+      return;
+    }
     _rawTables.push(CONFIG_TABLE);
   }
 
@@ -167,23 +215,55 @@
     _configRowIdByTable[tableId] = rowId;
   }
 
-  async function tableExists(tableId) {
-    return tableExistsIn(await listAllTablesCached(), tableId);
-  }
-
   // Si `tableId` (le nom fixe courant) n'existe pas encore mais qu'un ancien nom versionné existe
   // (voir LEGACY_*_TABLE_NAMES), le renomme plutôt que de laisser une table orpheline en plus dans
   // le document. `RenameTable` est un verbe déjà vérifié (voir ROADMAP.md). No-op si `tableId`
   // existe déjà, ou si aucun ancien nom n'est présent (première installation : rien à migrer).
-  // Un faux négatif ici (voir `tableExistsConfirmed`) mène au pire à une tentative de RENOMMAGE
-  // inutile (qui échouerait proprement si `tableId` existe déjà), pas à une duplication de données —
-  // le simple `tableExists` suffit, pas besoin de la revérification.
+  // [BUG TROUVÉ en construisant la matrice de tests croisés du garde-fou anti-course, voir
+  // HYPOTHESES.md] Cette fonction s'exécute AVANT `tableExistsConfirmed` dans `loadOrCreateTable`,
+  // dans exactement la même fenêtre de course que celle documentée plus haut. L'ancien raisonnement
+  // ("un faux négatif ici mène au pire à un RENOMMAGE inutile, pas à une duplication") ne couvrait que
+  // le cas où c'est `tableId` qui est faussement vu comme absent. Il manquait le cas inverse : si
+  // c'est le NOM LEGACY qui est faussement vu comme absent (alors que lui EXISTE réellement, avec ses
+  // propres dizaines de milliers de lignes) pendant que `tableId` est authentiquement absent, le
+  // renommage nécessaire est purement et simplement SAUTÉ — la table legacy reste orpheline sous son
+  // ancien nom, et `loadOrCreateTable` (juste après) crée et remplit un `tableId` tout neuf de zéro :
+  // deux tables contenant chacune le jeu de données complet, sans qu'aucune des deux n'ait été
+  // "doublée" au sens strict, mais avec la même conséquence concrète pour l'utilisateur. D'où
+  // `tableExistsConfirmed` ici aussi (au lieu du simple `tableExists` non protégé) : ce sera alors le
+  // tout premier contrôle d'existence de la session à consommer le budget d'attente généreux (voir sa
+  // documentation) — `loadOrCreateTable` juste après réutilise un canal déjà prouvé actif, comme prévu.
+  // [Trouvé par une revue adversariale du correctif de course ci-dessus, pas par l'utilisateur]
+  // `RenameTable` passe par EXACTEMENT le même mécanisme d'unicité que `AddTable`
+  // (`identifiers.pick_table_ident`, vérifié contre le moteur Grist réel — `sandbox/grist/
+  // useractions.py:_updateTableRecords`) : si `tableId` (la destination) existe déjà réellement au
+  // moment de l'appel, Grist ne lève PAS d'erreur, il suffixe silencieusement le nom réellement
+  // utilisé. Contrairement à `AddTable`, `RenameTable` ne renvoie AUCUNE info exploitable
+  // (`retValues` vaut `None` côté moteur) : impossible de détecter cette collision aussi
+  // déterministement qu'avec `actualAddTableId`. On se contente donc de CONSTATER après coup, avec un
+  // contrôle frais, que `tableId` existe désormais bien sous le nom exact attendu, et de le signaler
+  // bruyamment sinon plutôt que de continuer en silence sur une hypothèse fausse — même philosophie
+  // que le filet de sécurité `AddTable` (un échec visible vaut mieux qu'une corruption silencieuse),
+  // en reconnaissant que cette détection est un CONSTAT, pas une prévention : si la collision se
+  // produit, les données de `legacyName` sont déjà renommées sous un id imprévisible avant qu'on ne
+  // puisse s'en apercevoir. Nécessite un second acteur réellement concurrent créant `tableId` dans la
+  // fenêtre entre le contrôle ci-dessus et cet appel — une classe de course différente (deux onglets
+  // simultanés) de celle que ce correctif cible principalement (délai de négociation à l'ouverture),
+  // volontairement pas traitée plus en profondeur ici (voir HYPOTHESES.md).
   async function migrateLegacyTableName(tableId, legacyNames) {
-    if (await tableExists(tableId)) return;
+    if (await tableExistsConfirmed(tableId)) return;
     for (const legacyName of legacyNames) {
-      if (await tableExists(legacyName)) {
+      if (await tableExistsConfirmed(legacyName)) {
         await grist.docApi.applyUserActions([['RenameTable', legacyName, tableId]]);
         _rawTables = null; // le cache de listTables() doit être relu après un renommage
+        if (!(await tableExistsConfirmed(tableId))) {
+          console.error(
+            `[GristBI] RenameTable("${legacyName}" -> "${tableId}") n'a pas abouti au nom attendu ` +
+            '(collision de nom probable : une autre table utilisait déjà ce nom au moment du ' +
+            `renommage). Les données de "${legacyName}" ont probablement été renommées sous un id ` +
+            'différent et imprévisible — vérifier manuellement les tables du document dans Grist.'
+          );
+        }
         return;
       }
     }
@@ -238,18 +318,45 @@
   // `ensureColumnsUpToDate`) sans jamais renvoyer les lignes déjà présentes ni recréer la table.
   // Volontairement idempotent : un rechargement du widget ne doit pas renvoyer des dizaines de
   // milliers de lignes à Grist à chaque fois une fois que la table existe déjà. `alreadyExists` est
-  // calculé UNE SEULE fois via `tableExistsConfirmed` (voir sa documentation) et réutilisé pour LES
-  // DEUX décisions (créer la table ET la remplir) — deux vérifications séparées à des instants
-  // différents pourraient en théorie se contredire l'une l'autre selon l'état de la négociation
-  // d'accès avec Grist, ce qui a été la source du bug initial.
+  // calculé UNE SEULE fois via `tableExistsConfirmed` (voir sa documentation, budget d'attente
+  // renforcé) et réutilisé pour LES DEUX décisions (créer la table ET la remplir) — deux vérifications
+  // séparées à des instants différents pourraient en théorie se contredire l'une l'autre selon l'état
+  // de la négociation d'accès avec Grist, ce qui a été la source du bug initial.
+  //
+  // [Filet de sécurité INDÉPENDANT du garde-fou anti-course ci-dessus, ajouté après que le bug a été
+  // remonté À NOUVEAU malgré un premier correctif : même si `tableExistsConfirmed` se trompe malgré
+  // son budget d'attente généreux, `AddTable` sur un `tableId` qui existe DÉJÀ réellement ne lève
+  // JAMAIS d'erreur côté moteur Grist — il suffixe silencieusement l'id réellement créé
+  // (`pick_table_ident`, vérifié contre le moteur Grist réel, voir HYPOTHESES.md) pour éviter la
+  // collision. `applyUserActions` renvoie ce `table_id` réel dans sa réponse : on le compare
+  // systématiquement au `tableId` demandé. S'ils diffèrent, la preuve est faite qu'un faux négatif a
+  // échappé au garde-fou anti-course — on abandonne IMMÉDIATEMENT tout remplissage (la table
+  // nouvellement créée est fantôme, vide, sans rapport avec les vraies données) et on retombe sur le
+  // chemin "la table existe déjà", garanti sans duplication. La table fantôme vide reste orpheline
+  // dans le document (jamais nettoyée via un `RemoveTable` : verbe délibérément jamais utilisé dans ce
+  // projet, voir HYPOTHESES.md — un orphelin visible et inoffensif est préférable à un verbe de
+  // suppression jamais éprouvé dans le chemin de code le plus critique du widget côté sécurité des
+  // données).
   async function loadOrCreateTable(tableId, legacyNames, columns, buildRows, deriveMissingColumns, onProgress) {
     await migrateLegacyTableName(tableId, legacyNames);
-    const alreadyExists = await tableExistsConfirmed(tableId);
+    let alreadyExists = await tableExistsConfirmed(tableId);
     if (!alreadyExists) {
-      await grist.docApi.applyUserActions([['AddTable', tableId, columns]]);
-      _rawTables.push(tableId);
-      await fillTable(tableId, buildRows(), columns, onProgress);
-    } else {
+      const result = await grist.docApi.applyUserActions([['AddTable', tableId, columns]]);
+      const actualTableId = actualAddTableId(result);
+      if (actualTableId && actualTableId !== tableId) {
+        console.error(
+          `[GristBI] AddTable("${tableId}") a créé "${actualTableId}" à la place (collision de nom : ` +
+          'la table existait déjà malgré la vérification). Table vide orpheline à supprimer ' +
+          `manuellement dans Grist si besoin — les données de "${tableId}" n'ont PAS été dupliquées.`
+        );
+        _rawTables = null;
+        alreadyExists = true;
+      } else {
+        _rawTables.push(tableId);
+        await fillTable(tableId, buildRows(), columns, onProgress);
+      }
+    }
+    if (alreadyExists) {
       await ensureColumnsUpToDate(tableId, columns, deriveMissingColumns, onProgress);
     }
     const table = await grist.docApi.fetchTable(tableId);
