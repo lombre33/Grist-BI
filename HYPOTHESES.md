@@ -1113,6 +1113,78 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     régression complète (`dev-tests/test-data.js` + les 13 autres suites Playwright existantes,
     aucune affectée).
 
+- **Tableau croisé dynamique (pivot)** (`js/data.js:pivotTable`, `js/charts.js:renderPivot`,
+  `js/main.js`, Roadmap Tier 2, demande d'Antoine — priorité "critique" de la roadmap) :
+  - **Rendu en table HTML plutôt qu'en série ECharts** (comme prévu dans ROADMAP.md, "0% de
+    réutilisation ECharts") : `renderPivot` construit directement le `innerHTML` de `.tile-chart`
+    (réutilisé tel quel — `overflow: auto` ajouté à cette règle CSS pour qu'une grille plus grande
+    que la tuile défile plutôt que de déborder visuellement, contrairement à un canvas ECharts qui
+    se redimensionne toujours pile à son conteneur). Aucune instance à mettre en cache dans
+    `chartInstances` : toute la table est reconstruite à chaque rendu, comme le reste du DOM des
+    tuiles (voir `main.js:render()`), donc pas de risque de closure figée sur un ancien état
+    (contrairement au gestionnaire de clic ECharts, voir plus haut) — les gestionnaires de clic
+    posés à chaque rendu lisent `tile`/`state` du passage COURANT.
+  - **PAS de dépendance au moteur DuckDB-WASM** (`js/duckdb-engine.js`, voir plus haut) malgré sa
+    fondation posée précisément pour "mesures/pivot/blending" : `pivotTable` reste un simple
+    `Array`/`Map` en JS, cohérent avec `groupByAggregate` (même volume testé, ~47 040 lignes, sans
+    signe de ralentissement — voir "Délibérément hors scope" ci-dessous sur ce choix pour
+    `groupByAggregate`). Le moteur SQL reste donc TOUJOURS sans consommateur réel à ce stade.
+  - **Deux dimensions indépendantes** (lignes + colonnes, nouveau champ `tile.columnDimension` dans
+    le formulaire, visible seulement pour ce type) plutôt qu'un système de hiérarchie : chaque
+    intersection (ligne, colonne) est agrégée en appliquant `aggFn` aux lignes qui matchent LES
+    DEUX clés. **Piège explicitement évité** : les totaux de ligne/colonne/général ne sont PAS
+    recalculés en recombinant les valeurs déjà agrégées des cellules affichées (ça fonctionnerait
+    pour "somme" mais serait FAUX pour "moyenne"/"min"/"max" dès que les colonnes n'ont pas le même
+    nombre de lignes — la moyenne des moyennes n'est pas la moyenne globale) : chaque total est
+    calculé en ré-agrégeant DIRECTEMENT l'ensemble des lignes concernées, en ignorant l'autre
+    dimension. Vérifié explicitement sous Node avec un cas où moyenne-des-cellules et vraie moyenne
+    divergent (voir `dev-tests/test-data.js`).
+  - **Cellule sans donnée = `null`, jamais `0`** : une intersection (ligne, colonne) sans aucune
+    ligne correspondante (cas réaliste dès que les deux dimensions ne sont pas un produit cartésien
+    complet, contrairement au jeu de test de charge qui l'est) renvoie `null` côté `pivotTable`,
+    affiché "–" côté rendu et exporté en chaîne vide (pas `0`) côté Excel — distinction importante
+    pour "moyenne"/"min"/"max", où 0 serait une vraie valeur alors que `null` veut dire "aucune
+    donnée". Ces cellules ne sont délibérément PAS cliquables (`.pivot-cell-empty`, aucun
+    gestionnaire de clic posé) : rien à filtrer sur une intersection qui n'existe pas.
+  - **Cross-filtering réutilisant `toggleFilter` tel quel, sans toucher à `state.js`** : un clic sur
+    une CELLULE de donnée pose/retire DEUX filtres indépendants (un sur la dimension ligne, un sur
+    la colonne — deux appels successifs à `store.toggleFilter`, déjà cumulatifs par colonne) ; un
+    clic sur un EN-TÊTE de ligne/colonne ne pose/retire que le filtre de CETTE dimension seule. La
+    tuile source du filtre reste elle-même non filtrée sur son propre clic (`rowsForTile`
+    générique, comme bar/pie/treemap — aucun code spécifique au pivot nécessaire ici). Les totaux
+    (ligne/colonne/général) ne sont jamais cliquables : ce sont des agrégats, pas un point de
+    donnée. Choix délibéré de faire deux appels `toggleFilter` (donc deux rendus) plutôt qu'un
+    mécanisme de pose atomique à deux colonnes : plus simple, cohérent avec le modèle de filtre
+    existant, coût de double-rendu négligeable en pratique.
+  - **Pas de drill-down** (`supportsDrillDown(type)` dans `main.js` exclut désormais explicitement
+    `pivot`, en plus de kpi/gauge) : les deux dimensions du pivot sont déjà affichées
+    SIMULTANÉMENT dans la grille, contrairement à bar/pie/treemap/scatter qui n'en ont qu'une —
+    "détailler" n'a pas le même sens ici. Garde-fou ajouté au passage : les champs de niveaux de
+    drill restant dans le DOM (juste masqués) auraient sinon pu injecter un `drillDimensions`
+    fantôme sur une tuile pivot si le formulaire avait gardé un ancien type sélectionné juste avant
+    — `drillDimensions` est maintenant calculé via `supportsDrillDown(type)`, pas le `hasDimension`
+    plus large déjà utilisé pour la validation du champ dimension.
+  - **Garde-fou dimension lignes = dimension colonnes** : refusé explicitement (`alert`, tuile non
+    créée) plutôt que silencieusement accepté — un pivot d'une colonne contre elle-même n'a pas de
+    sens (chaque ligne n'aurait qu'une seule cellule non vide, la diagonale).
+  - Testé : Node (`dev-tests/test-data.js` — `pivotTable` : ordre de 1re apparition pour les DEUX
+    dimensions comme `groupByAggregate`/pas alphabétique, cellule sans donnée -> `null`, totaux
+    corrects pour "somme" ET "moyenne" avec un cas où moyenne-des-cellules diverge de la vraie
+    moyenne, jeu de données vide -> structure vide sans planter ; `tileExportSheet`/
+    `buildWorkbookSheets` pour le type pivot, grille + ligne/colonne "Total", cellule vide exportée
+    en chaîne vide) + validation Playwright ad-hoc contre `dev-tests/harness.html` (non committée,
+    voir `dev-tests/README.md` sur la convention de ce projet pour les scripts Playwright créés
+    pendant le développement) : bascule des champs du formulaire pour le type pivot (visibilité
+    RÉELLE via `isHidden`, pas juste l'état JS), garde-fou lignes=colonnes refusé sans créer de
+    tuile, rendu réel de la grille avec ligne/colonne Total, clic sur une cellule -> exactement 2
+    filtres actifs, reclic -> les 2 retirés (idempotence), clic sur un en-tête de ligne cross-filtre
+    bien une AUTRE tuile (KPI vérifié changer de valeur), la tuile pivot reste non filtrée sur son
+    propre clic, édition de tuile pré-remplit les deux champs de dimension, export Excel ne plante
+    pas avec une tuile pivot dans le dashboard, hauteur de la tuile stable sur 6 mesures successives
+    (pas de boucle resize↔layout, voir la checklist méthodologique de TEST_PROTOCOL.md). Aucun bug
+    produit trouvé pendant cette validation — contrairement à plusieurs features précédentes de ce
+    fichier, aucune anomalie de rendu/visibilité/stabilité n'est apparue ici.
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence** (YTD, comparaison N-1...) : juste `sum/avg/count/min/max`

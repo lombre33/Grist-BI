@@ -427,7 +427,47 @@ button:focus-visible, select:focus-visible, input:focus-visible {
    sous la carte (jusqu'à ~22px sur une tuile avec drill-down, mesuré), sans la moindre erreur JS.
    Repéré en mesurant `canvas.getBoundingClientRect().bottom` contre `.tile.getBoundingClientRect().bottom`,
    pas juste "ça a l'air correct" sur une capture d'écran statique. */
-.tile-chart { flex: 1; }
+.tile-chart { flex: 1; overflow: auto; }
+
+/* Tableau croisé dynamique (pivot) : rendu en table HTML plutôt qu'en graphique ECharts (voir
+   ROADMAP.md/js/charts.js:renderPivot) — `.tile-chart` reçoit `overflow: auto` ci-dessus pour cette
+   raison (une grille lignes × colonnes plus grande que la tuile défile plutôt que de déborder,
+   contrairement à un canvas ECharts qui se redimensionne toujours pile à son conteneur). */
+.pivot-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+.pivot-table th, .pivot-table td {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  white-space: nowrap;
+  text-align: right;
+}
+.pivot-table thead th { position: sticky; top: 0; background: var(--surface); z-index: 1; }
+.pivot-corner { background: var(--surface); }
+.pivot-row-header, .pivot-col-header {
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.12s var(--ease), color 0.12s var(--ease);
+}
+.pivot-col-header { text-align: right; }
+.pivot-row-header:hover, .pivot-col-header:hover { background: var(--surface-sunken); color: var(--text); }
+.pivot-cell { color: var(--text); }
+td.pivot-cell:not(.pivot-cell-empty):not(.pivot-total-cell) { cursor: pointer; transition: background 0.12s var(--ease); }
+td.pivot-cell:not(.pivot-cell-empty):not(.pivot-total-cell):hover { background: var(--surface-sunken); }
+.pivot-cell-empty { color: var(--muted); cursor: default; }
+.pivot-active { background: var(--accent-wash-strong); color: var(--accent); }
+.pivot-dimmed { opacity: 0.45; }
+.pivot-total-row, .pivot-total-label, .pivot-total-cell {
+  font-weight: 700;
+  background: var(--surface-sunken);
+}
+.pivot-grand-total { color: var(--accent); }
+.pivot-empty { color: var(--muted); text-align: center; margin: 0; padding: 16px 0; }
 
 .tile-kpi {
   flex: 1;

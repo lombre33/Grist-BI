@@ -170,6 +170,56 @@ const rows = [
   console.log('OK aggregateSingle');
 }
 
+// pivotTable (tableau croisé dynamique, Roadmap Tier 2) : regroupe par DEUX dimensions à la fois
+{
+  const pivotRows = [
+    { Region: 'Nord', Produit: 'B', Montant: 10 },
+    { Region: 'Nord', Produit: 'A', Montant: 20 },
+    { Region: 'Nord', Produit: 'A', Montant: 5 },
+    { Region: 'Sud', Produit: 'A', Montant: 30 }
+    // Pas de ligne Sud/B : intersection volontairement absente (voir cellule `null` ci-dessous).
+  ];
+  const p = data.pivotTable(pivotRows, 'Region', 'Produit', 'Montant', 'sum');
+  // Ordre de 1re apparition (Produit "B" vu avant "A" dans les données) — pas alphabétique, comme
+  // groupByAggregate/distinctColumnValues : un tri alphabétique aurait donné ['A', 'B'].
+  assert.deepStrictEqual(p.rowKeys, ['Nord', 'Sud']);
+  assert.deepStrictEqual(p.colKeys, ['B', 'A']);
+  assert.deepStrictEqual(p.cells, [[10, 25], [null, 30]]); // Sud/B : aucune ligne -> null, PAS 0
+  assert.deepStrictEqual(p.rowTotals, [35, 30]);
+  assert.deepStrictEqual(p.colTotals, [10, 55]);
+  assert.strictEqual(p.grandTotal, 65);
+  console.log('OK pivotTable (sum : ordre de 1re apparition, cellule sans donnée -> null, totaux)');
+}
+
+// pivotTable — avg : les totaux ligne/colonne/général doivent être calculés en agrégeant les lignes
+// DIRECTEMENT (ignorant l'autre dimension), pas en recombinant les valeurs déjà agrégées des
+// cellules affichées — recombiner fonctionnerait pour "somme" mais serait FAUX pour "moyenne" dès
+// que les colonnes n'ont pas le même nombre de lignes (moyenne des moyennes != moyenne globale).
+{
+  const avgRows = [
+    { Region: 'Nord', Produit: 'A', Montant: 10 },
+    { Region: 'Nord', Produit: 'A', Montant: 20 }, // Nord/A : moyenne 15 (2 lignes)
+    { Region: 'Nord', Produit: 'B', Montant: 100 }, // Nord/B : moyenne 100 (1 ligne)
+    { Region: 'Sud', Produit: 'A', Montant: 6 }
+  ];
+  const p = data.pivotTable(avgRows, 'Region', 'Produit', 'Montant', 'avg');
+  assert.deepStrictEqual(p.cells, [[15, 100], [6, null]]);
+  // Moyenne des cellules de Nord ((15+100)/2 = 57.5) serait FAUSSE : la vraie moyenne des 3 lignes
+  // Nord (10, 20, 100) est (10+20+100)/3 = 43.33...
+  assert.ok(Math.abs(p.rowTotals[0] - 130 / 3) < 1e-9);
+  assert.strictEqual(p.colTotals[0], 12); // colonne "A" : (10+20+6)/3 = 12
+  assert.strictEqual(p.colTotals[1], 100); // colonne "B" : une seule ligne
+  assert.ok(Math.abs(p.grandTotal - 136 / 4) < 1e-9); // moyenne des 4 lignes, pas des 4 cellules
+  console.log('OK pivotTable (avg : totaux calculés sur les lignes réelles, pas en recombinant les cellules)');
+}
+
+// pivotTable — jeu de données vide : aucune erreur, structure vide plutôt qu'un plantage
+{
+  const p = data.pivotTable([], 'Region', 'Produit', 'Montant', 'sum');
+  assert.deepStrictEqual(p, { rowKeys: [], colKeys: [], cells: [], rowTotals: [], colTotals: [], grandTotal: 0 });
+  console.log('OK pivotTable (jeu de données vide -> structure vide, grandTotal=0 comme aggregateSingle)');
+}
+
 // distinctColumnValues (suggestions de valeurs, barre de filtres avancés)
 {
   assert.deepStrictEqual(data.distinctColumnValues(rows, 'Region'), ['Nord', 'Sud']); // ordre de 1re apparition, pas alphabétique — Sud avant Nord donnerait un ordre différent si trié
@@ -260,6 +310,19 @@ const rows = [
   const scatterSheet = data.tileExportSheet(scatterTile, baseState);
   assert.deepStrictEqual(scatterSheet.header, ['Produit', 'Quantite', 'Montant']);
   assert.deepStrictEqual(scatterSheet.rows, [['Casque audio', 5, 250], ['Clavier', 1, 90]]);
+
+  // pivot : une ligne "Total" et une colonne "Total" en plus de la grille, cellule sans donnée
+  // (Sud/Clavier, absente des lignes) exportée en chaîne vide plutôt que 0 (cohérent avec le "–"
+  // affiché par le rendu, voir js/charts.js:renderPivot)
+  const pivotTile = { id: 't4', type: 'pivot', title: 'Montant par Région et Produit', dimension: 'Region', columnDimension: 'Produit', measure: 'Montant', aggFn: 'sum' };
+  const pivotSheet = data.tileExportSheet(pivotTile, baseState);
+  assert.deepStrictEqual(pivotSheet.header, ['Region', 'Casque audio', 'Clavier', 'Total']);
+  assert.deepStrictEqual(pivotSheet.rows, [
+    ['Nord', 100, 90, 190],
+    ['Sud', 150, '', 150],
+    ['Total', 250, 90, 340]
+  ]);
+  console.log('OK tileExportSheet (pivot : grille + ligne/colonne Total, cellule sans donnée -> chaîne vide)');
 
   // Tuile filtrée jusqu'à zéro ligne -> en-têtes présents, aucune ligne (pas planté, pas d'en-tête absent)
   const emptyState = Object.assign({}, baseState, { activeFilters: [{ column: 'Region', value: 'Ouest', sourceTileId: 'autre' }] });
