@@ -184,6 +184,37 @@
     };
   }
 
+  // Libellé d'axe pour une période 'AAAA-MM-JJ' renvoyée par
+  // GristBI.duckdbEngine.timeSeriesMeasures (toujours le 1er du mois, voir sa doc) : 'AAAA-MM'
+  // seulement, format non ambigu/triable, sans dépendre d'une table de noms de mois localisés.
+  function periodLabel(period) {
+    return typeof period === 'string' ? period.slice(0, 7) : String(period);
+  }
+
+  // Transforme le résultat de GristBI.duckdbEngine.timeSeriesMeasures en catégories/séries
+  // affichables, selon le mode choisi pour la tuile ('cumulative'/'ytd'/'yoy'). Pure (aucune
+  // dépendance ECharts) pour rester testable sous Node comme le reste de ce module — charts.js ne
+  // fait plus que mapper `series` sur des séries ECharts. 'yoy' (comparaison N-1) est la seule à
+  // produire 2 séries ; `previousYear` peut contenir des `null` (pas de données l'année précédente
+  // pour ce mois, voir timeSeriesMeasures) — laissés tels quels, ECharts affiche un trou plutôt
+  // qu'un zéro trompeur.
+  function measureSeriesForTile(measureMode, timeSeries) {
+    const categories = timeSeries.map((r) => periodLabel(r.period));
+    if (measureMode === 'ytd') {
+      return { categories, series: [{ label: 'Cumul annuel (YTD)', data: timeSeries.map((r) => r.ytd) }] };
+    }
+    if (measureMode === 'yoy') {
+      return {
+        categories,
+        series: [
+          { label: 'Valeur', data: timeSeries.map((r) => r.value) },
+          { label: 'N-1', data: timeSeries.map((r) => r.previousYear) }
+        ]
+      };
+    }
+    return { categories, series: [{ label: 'Cumul', data: timeSeries.map((r) => r.cumulative) }] }; // 'cumulative' par défaut
+  }
+
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, (c) => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -233,6 +264,16 @@
     const title = tile.title || `${tile.aggFn}(${tile.measure})`;
     if (tile.type === 'kpi' || tile.type === 'gauge') {
       return { name: title, header: ['Mesure', 'Valeur'], rows: [[`${tile.aggFn}(${tile.measure})`, aggregateSingle(rows, tile.measure, tile.aggFn)]] };
+    }
+    // Mode de calcul temporel (voir GristBI.duckdbEngine.timeSeriesMeasures) : ce calcul est
+    // ASYNCHRONE (une vraie requête SQL DuckDB-WASM), alors que tileExportSheet/buildWorkbookSheets
+    // sont volontairement PURES/synchrones (testables sous Node, voir plus haut) — l'inclure ici
+    // demanderait de rendre tout l'export async pour une seule feature. Sous-ensemble ciblé assumé
+    // (comme le reste de cette feature, voir ROADMAP.md) : un texte explicite plutôt qu'un export
+    // silencieusement incohérent (sans cette branche, `dimension` serait vide et produirait une
+    // seule ligne "undefined" trompeuse au lieu des vraies valeurs cumul/YTD/N-1 affichées à l'écran).
+    if (tile.type === 'bar' && tile.measureMode && tile.measureMode !== 'brut') {
+      return { name: title, header: ['Info'], rows: [['Export non disponible pour les tuiles avec un mode de calcul temporel (Cumul/YTD/N-1) — voir HYPOTHESES.md.']] };
     }
     const drillPath = (state.drillIns && state.drillIns[tile.id]) || [];
     const dimension = currentDimension(tile, drillPath);
@@ -288,7 +329,7 @@
   return {
     tableToRows, applyFilters, matchesFilter, sameValue, parseDateValue, relativeDateRange,
     RELATIVE_DATE_PRESETS, groupByAggregate, aggregateSingle, distinctColumnValues, computeTrend,
-    escapeHtml, tileDrillLevels, currentDimension, rowsForTile, tileExportSheet,
-    sanitizeSheetName, buildWorkbookSheets, AGGREGATORS
+    periodLabel, measureSeriesForTile, escapeHtml, tileDrillLevels, currentDimension, rowsForTile,
+    tileExportSheet, sanitizeSheetName, buildWorkbookSheets, AGGREGATORS
   };
 });

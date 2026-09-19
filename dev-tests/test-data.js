@@ -267,6 +267,17 @@ const rows = [
   assert.deepStrictEqual(emptySheet.header, ['Region', 'Montant']);
   assert.deepStrictEqual(emptySheet.rows, []);
   console.log('OK tileExportSheet (bar/kpi/scatter + tuile vide après filtrage)');
+
+  // Tuile Barres en mode de calcul temporel (Cumul/YTD/N-1, voir ROADMAP.md "Mesures façon DAX
+  // simplifié") : le calcul réel passe par GristBI.duckdbEngine.timeSeriesMeasures, ASYNCHRONE (une
+  // vraie requête SQL), incompatible avec cette fonction volontairement pure/synchrone — un texte
+  // explicite plutôt qu'une feuille silencieusement incohérente (sans ce cas particulier,
+  // `dimension` vide produirait une seule ligne "undefined" trompeuse, voir data.js).
+  const measureTile = { id: 't4', type: 'bar', title: 'YTD : sum(Montant)', dimension: '', measure: 'Montant', aggFn: 'sum', measureMode: 'ytd', dateColumn: 'Date' };
+  const measureSheet = data.tileExportSheet(measureTile, baseState);
+  assert.deepStrictEqual(measureSheet.header, ['Info']);
+  assert.strictEqual(measureSheet.rows.length, 1);
+  console.log('OK tileExportSheet — tuile en mode de calcul temporel : message explicite plutôt qu\'un export incohérent');
 }
 
 // sanitizeSheetName : caractères interdits Excel, troncature à 31, unicité dans le classeur
@@ -737,6 +748,57 @@ const rows = [
   assert.throws(() => duckdbEngine.assertSafeIdentifier(''), /invalide/);
   assert.throws(() => duckdbEngine.assertSafeIdentifier(null), /invalide/);
   console.log('OK duckdbEngine.assertSafeIdentifier (rejette un nom de colonne contenant un guillemet, vide ou non-chaîne)');
+}
+
+// data.periodLabel/measureSeriesForTile : transforment le résultat de
+// duckdbEngine.timeSeriesMeasures (Roadmap Tier 2, "Mesures façon DAX simplifié" — YTD/N-1/cumul)
+// en catégories/séries affichables. Logique pure (aucune dépendance ECharts/DuckDB), testée ici sur
+// un résultat synthétique plutôt que le calcul SQL réel lui-même (voir duckdb-engine-test.js,
+// Playwright, TEST_PROTOCOL.md, pour la vérification de la requête SQL contre un vrai navigateur).
+{
+  assert.strictEqual(data.periodLabel('2025-01-01'), '2025-01');
+  assert.strictEqual(data.periodLabel('2026-12-01'), '2026-12');
+  assert.strictEqual(data.periodLabel(null), 'null'); // valeur inattendue -> String(), pas une exception
+  console.log('OK data.periodLabel (AAAA-MM-JJ -> AAAA-MM)');
+}
+
+// Résultat synthétique délibérément NON trivial (valeurs volontairement pas dans un ordre qui
+// masquerait un bug de correspondance par index) : 3 mois, dont le 1er (janvier) sans donnée
+// l'année précédente (previousYear: null, voir timeSeriesMeasures — 1re année de la série).
+const SAMPLE_TIME_SERIES = [
+  { period: '2026-01-01', value: 100, cumulative: 100, ytd: 100, previousYear: null },
+  { period: '2026-02-01', value: 50, cumulative: 150, ytd: 150, previousYear: 80 },
+  { period: '2026-03-01', value: -20, cumulative: 130, ytd: 130, previousYear: 40 }
+];
+
+{
+  const { categories, series } = data.measureSeriesForTile('cumulative', SAMPLE_TIME_SERIES);
+  assert.deepStrictEqual(categories, ['2026-01', '2026-02', '2026-03']);
+  assert.strictEqual(series.length, 1);
+  assert.deepStrictEqual(series[0].data, [100, 150, 130]);
+  console.log('OK data.measureSeriesForTile("cumulative") — 1 seule série, valeurs cumulatives');
+}
+
+{
+  const { series } = data.measureSeriesForTile('ytd', SAMPLE_TIME_SERIES);
+  assert.strictEqual(series.length, 1);
+  assert.deepStrictEqual(series[0].data, [100, 150, 130]);
+  console.log('OK data.measureSeriesForTile("ytd") — 1 seule série, valeurs YTD');
+}
+
+{
+  const { series } = data.measureSeriesForTile('yoy', SAMPLE_TIME_SERIES);
+  assert.strictEqual(series.length, 2);
+  assert.deepStrictEqual(series[0].data, [100, 50, -20]); // "Valeur"
+  assert.deepStrictEqual(series[1].data, [null, 80, 40]); // "N-1" — null conservé (pas de donnée en janvier N-1)
+  console.log('OK data.measureSeriesForTile("yoy") — 2 séries (Valeur/N-1), null préservé plutôt que 0');
+}
+
+{
+  const { categories, series } = data.measureSeriesForTile('cumulative', []);
+  assert.deepStrictEqual(categories, []);
+  assert.deepStrictEqual(series[0].data, []);
+  console.log('OK data.measureSeriesForTile — série temporelle vide -> catégories/données vides, pas d\'exception');
 }
 
 console.log('\nTous les tests data.js/state.js/demo-data.js/combobox.js/duckdb-engine.js sont passés.');
