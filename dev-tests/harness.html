@@ -116,12 +116,20 @@
         <option value="scatter">Nuage de points</option>
         <option value="kpi">Carte KPI</option>
         <option value="gauge">Jauge</option>
+        <option value="pivot">Tableau croisé</option>
       </select>
     </div>
     <div class="field" id="tile-dimension-field">
-      <label for="tile-dimension">Dimension</label>
+      <label for="tile-dimension" id="tile-dimension-label">Dimension</label>
       <div class="combobox">
         <input type="text" id="tile-dimension" class="combobox-input" />
+        <ul class="combobox-list" hidden></ul>
+      </div>
+    </div>
+    <div class="field" id="tile-column-dimension-field" hidden>
+      <label for="tile-column-dimension">Dimension (colonnes)</label>
+      <div class="combobox">
+        <input type="text" id="tile-column-dimension" class="combobox-input" />
         <ul class="combobox-list" hidden></ul>
       </div>
     </div>

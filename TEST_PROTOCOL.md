@@ -87,6 +87,10 @@ une feature "testée", vérifier qu'on s'est posé chacune de ces questions :
 - [x] `escapeHtml` — `<script>&"'` échappé ✅
 - [x] `aggregateSingle` — sum/max ✅
 - [ ] `aggregateSingle` — avg/count/min ⬜
+- [x] `pivotTable` — sum : ordre de 1re apparition (lignes ET colonnes, pas alphabétique), cellule sans donnée à une intersection → `null` (pas `0`), totaux ligne/colonne/général corrects ✅
+- [x] `pivotTable` — avg : totaux calculés en ré-agrégeant les lignes réelles, PAS en recombinant les cellules déjà agrégées (cas construit où moyenne-des-cellules ≠ vraie moyenne) ✅
+- [x] `pivotTable` — jeu de données vide → structure vide (`rowKeys`/`colKeys`/`cells` à `[]`, `grandTotal: 0`), pas de plantage ✅
+- [ ] `pivotTable` — min/max (mêmes agrégateurs que `aggregateSingle`/`groupByAggregate`, mêmes chemins de code, pas de cas dédié) ⬜
 - [x] `tableToRows` — format colonnaire → lignes ✅
 - [x] `tileDrillLevels` — nouveau format tableau ✅
 - [x] `tileDrillLevels` — ancien format chaîne unique (compat) ✅
@@ -107,6 +111,7 @@ une feature "testée", vérifier qu'on s'est posé chacune de ces questions :
 - [x] `tileExportSheet` — kpi (repli du nom de feuille sur `aggFn(measure)` si `tile.title` absent) ✅
 - [x] `tileExportSheet` — scatter (2 mesures alignées par nom de dimension, pas par index) ✅
 - [x] `tileExportSheet` — tuile entièrement filtrée (0 ligne) → en-têtes présents, `rows: []` (pas planté, pas d'en-tête absent) ✅
+- [x] `tileExportSheet` — pivot (grille + ligne/colonne "Total", cellule sans donnée exportée en chaîne vide plutôt que `0`) ✅
 - [ ] `tileExportSheet` — gauge, treemap ⬜ (mêmes chemins de code que kpi/bar respectivement, pas de cas Playwright/Node dédié)
 - [x] `sanitizeSheetName` — caractères interdits Excel (`: \ / ? * [ ]`) remplacés par des espaces ✅
 - [x] `sanitizeSheetName` — troncature à 31 caractères ✅
@@ -381,6 +386,21 @@ davantage de scénarios — voir HYPOTHESES.md) :
 - [x] Scatter : cliquer un point cross-filtre les autres tuiles ET pose le bon badge (`Produit = ...`) 🌐
 - [ ] Jauge/treemap/scatter dans une tuile éditée (préremplissage du formulaire) ⬜ (préremplissage générique déjà couvert pour dimension/mesure/agrégat communs à tous les types ; pas de cas dédié pour measureY/gaugeMin/gaugeMax en édition)
 - [ ] Treemap/scatter avec drill-down configuré (le mécanisme est générique, jamais testé explicitement sur ces 2 nouveaux types) ⬜
+
+### `js/charts.js` + `js/main.js` — tableau croisé dynamique (pivot) (Roadmap Tier 2, Playwright)
+
+- [x] Sélectionner le type "Tableau croisé" → libellé "Dimension (lignes)", champ "Dimension (colonnes)" visible, drill-down/tendance/mesure Y cachés (visibilité RÉELLE via `isHidden()`, pas juste l'état JS — voir la classe de bug `.field[hidden]`) 🌐
+- [x] Garde-fou : dimension lignes = dimension colonnes → `alert`, AUCUNE tuile créée (nombre de tuiles inchangé après la tentative) 🌐
+- [x] Création réelle d'une tuile pivot → une table HTML (`.pivot-table`) apparaît dans la tuile, avec une ligne et une colonne "Total" 🌐
+- [x] Clic sur une cellule de donnée → exactement 2 filtres actifs (ligne + colonne, badges vérifiés) ; reclic sur la MÊME cellule → les 2 retirés (idempotence, comme bar/pie) 🌐
+- [x] Clic sur un en-tête de ligne cross-filtre bien une AUTRE tuile (valeur du KPI vérifiée changer) 🌐
+- [x] La tuile pivot source d'un filtre reste elle-même non filtrée sur son propre clic (toutes ses lignes/colonnes restent affichées, reste cliquable partout) — `rowsForTile` générique, aucun code dédié 🌐
+- [x] Édition d'une tuile pivot → les deux champs de dimension (lignes/colonnes) se pré-remplissent correctement, le champ colonnes reste visible 🌐
+- [x] Export Excel ne plante pas avec une tuile pivot dans le dashboard (déclenchement du téléchargement vérifié) 🌐
+- [x] Stabilité dans le temps (voir la checklist méthodologique plus haut) : hauteur de la tuile pivot mesurée sur 6 échantillons successifs, aucune dérive (contrairement au bug réel #10 sur les tuiles ECharts) 🌐
+- [ ] Cellule sans donnée (`.pivot-cell-empty`, "–" affiché) : vérifié uniquement sous Node (`pivotTable` → `null`) — pas encore rejoué en Playwright avec un jeu de données réellement lacunaire (le jeu de test de charge est un produit cartésien complet Region×Produit, donc aucune cellule vide n'apparaît avec les dimensions utilisées dans la validation manuelle) ⬜
+- [ ] Deux tuiles pivot simultanées avec des filtres croisés qui se chevauchent (une pivot cross-filtre une autre pivot) ⬜ — comportement attendu par construction (mêmes primitives `toggleFilter`/`rowsForTile` que tout le reste), pas de cas dédié
+- [ ] Script Playwright de cette validation non committé (voir `dev-tests/README.md` — convention de ce projet : seule `dev-tests/test-data.js` est un test de régression permanent, les scripts Playwright créés pendant le développement restent en scratch, comme pour `js/duckdb-engine.js`) ⬜
 
 ### `js/main.js` + `js/state.js` — dashboards multi-pages (Roadmap Tier 1, Playwright)
 

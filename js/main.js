@@ -35,7 +35,10 @@
   const addTileForm = document.getElementById('add-tile-form');
   const tileTypeSelect = document.getElementById('tile-type');
   const dimensionField = document.getElementById('tile-dimension-field');
+  const dimensionLabel = document.getElementById('tile-dimension-label');
   const dimensionSelect = document.getElementById('tile-dimension');
+  const columnDimensionField = document.getElementById('tile-column-dimension-field');
+  const columnDimensionSelect = document.getElementById('tile-column-dimension');
   const drillField = document.getElementById('tile-drill-field');
   const drillLevelsContainer = document.getElementById('tile-drill-levels');
   const addDrillLevelBtn = document.getElementById('tile-drill-add-level');
@@ -90,7 +93,7 @@
   // (demande explicite de l'utilisateur, voir js/combobox.js) — en mode strict : la valeur doit
   // rester l'une des colonnes réellement chargées, comme un <select>. `.nextElementSibling` est le
   // <ul class="combobox-list"> voisin dans le même wrapper `.combobox` (voir index.html/harness.html).
-  [dimensionSelect, measureSelect, measureYSelect, trendDimensionSelect, dateColumnSelect, filterColumnSelect].forEach((input) => {
+  [dimensionSelect, columnDimensionSelect, measureSelect, measureYSelect, trendDimensionSelect, dateColumnSelect, filterColumnSelect].forEach((input) => {
     GristBI.combobox.attach(input, input.nextElementSibling, { strict: true });
   });
 
@@ -135,6 +138,7 @@
   function refreshColumnSelects(rows) {
     const cols = availableColumns(rows);
     fillCombobox(dimensionSelect, cols);
+    fillCombobox(columnDimensionSelect, cols);
     fillCombobox(measureSelect, cols);
     fillCombobox(measureYSelect, cols);
     drillLevelSelects.forEach((select) => fillCombobox(select, cols, { blankLabel: '(aucun)' }));
@@ -208,6 +212,11 @@
       || (tileTypeSelect.value === 'bar' && measureModeSelect.value && measureModeSelect.value !== 'brut');
   }
 
+  // Le pivot a DEUX dimensions (lignes + colonnes, voir tile-column-dimension-field) déjà
+  // affichées simultanément dans la grille : pas de notion de "détailler" une dimension au clic
+  // comme pour bar/pie/treemap/scatter (qui n'en ont qu'une), donc pas de drill-down pour ce type.
+  function supportsDrillDown(type) { return !typeHasNoDimension(type) && type !== 'pivot'; }
+
   // Drill-down à N niveaux : un combobox par niveau, créé dynamiquement ("+ Niveau") plutôt que des
   // champs figés dans le HTML — data.js/state.js/charts.js gèrent déjà un tableau drillDimensions
   // de longueur quelconque, seul le formulaire limitait ça à 2 champs statiques auparavant. Retourne
@@ -249,10 +258,10 @@
   // séquentielle, comme l'ancien niveau 2 qui n'apparaissait qu'une fois le niveau 1 choisi) et que
   // le plafond n'est pas atteint ; recalcule aussi la visibilité de la case cross-filter.
   function updateDrillLevelsUI() {
-    const noDimension = formHasNoDimension();
+    const noDrill = formHasNoDimension() || tileTypeSelect.value === 'pivot';
     const lastSelect = drillLevelSelects[drillLevelSelects.length - 1];
-    addDrillLevelBtn.hidden = noDimension || !lastSelect || !lastSelect.value || drillLevelSelects.length >= MAX_DRILL_LEVELS;
-    drillCrossFilterField.hidden = noDimension || !drillLevelSelects[0] || !drillLevelSelects[0].value;
+    addDrillLevelBtn.hidden = noDrill || !lastSelect || !lastSelect.value || drillLevelSelects.length >= MAX_DRILL_LEVELS;
+    drillCrossFilterField.hidden = noDrill || !drillLevelSelects[0] || !drillLevelSelects[0].value;
   }
 
   addDrillLevelBtn.addEventListener('click', () => {
@@ -500,13 +509,17 @@
     const isScatter = type === 'scatter';
     const isBar = type === 'bar';
     const hasMeasureMode = isBar && measureModeSelect.value && measureModeSelect.value !== 'brut';
+    const isPivot = type === 'pivot';
     // KPI/jauge/tuile "Barres" en mode de calcul temporel : pas de dimension de regroupement ni de
     // drill-down, juste un agrégat sur toute la sélection (le KPI peut en plus le comparer à une
     // période via "Tendance vs", la jauge le positionne sur un cadran Min/Max, la tuile Barres en
     // mode mesure affiche l'évolution mensuelle de `tile-date-column`). Le nuage de points ajoute
-    // une 2e mesure (axe Y).
+    // une 2e mesure (axe Y). Le pivot ajoute une 2e dimension (colonnes) et n'a pas de drill-down
+    // (voir supportsDrillDown).
     dimensionField.hidden = formHasNoDimension();
-    drillField.hidden = formHasNoDimension();
+    dimensionLabel.textContent = isPivot ? 'Dimension (lignes)' : 'Dimension';
+    columnDimensionField.hidden = !isPivot;
+    drillField.hidden = formHasNoDimension() || isPivot;
     trendField.hidden = !isKpi;
     gaugeMinField.hidden = !isGauge;
     gaugeMaxField.hidden = !isGauge;
@@ -534,6 +547,7 @@
       drillLevelSelects[i].value = lvl;
     });
     drillCrossFilterCheckbox.checked = !!tile.drillCrossFilter;
+    columnDimensionSelect.value = tile.columnDimension || '';
     measureYSelect.value = tile.measureY || '';
     gaugeMinInput.value = Number.isFinite(tile.gaugeMin) ? tile.gaugeMin : 0;
     gaugeMaxInput.value = Number.isFinite(tile.gaugeMax) ? tile.gaugeMax : 100;
@@ -568,13 +582,20 @@
     const isBar = type === 'bar';
     const measureMode = (isBar && measureModeSelect.value && measureModeSelect.value !== 'brut') ? measureModeSelect.value : undefined;
     const dateColumn = measureMode ? dateColumnSelect.value : '';
+    const isPivot = type === 'pivot';
     const hasDimension = !formHasNoDimension();
     const dimension = dimensionSelect.value;
+    const columnDimension = columnDimensionSelect.value;
     const measure = measureSelect.value;
     const aggFn = aggSelect.value;
     if (!measure || (hasDimension && !dimension)) return;
     if (isScatter && !measureYSelect.value) return; // 2e mesure obligatoire pour un nuage de points
     if (measureMode && !dateColumn) { alert('Choisissez une colonne date pour ce mode de calcul.'); return; }
+    if (isPivot && !columnDimension) return; // 2e dimension obligatoire pour un tableau croisé
+    if (isPivot && columnDimension === dimension) {
+      alert('Les dimensions lignes et colonnes du tableau croisé doivent être différentes.');
+      return;
+    }
     let gaugeMin, gaugeMax;
     if (isGauge) {
       gaugeMin = parseFloat(gaugeMinInput.value);
@@ -584,7 +605,7 @@
         return;
       }
     }
-    const drillDimensions = hasDimension ? drillLevelSelects.map((s) => s.value).filter(Boolean) : [];
+    const drillDimensions = supportsDrillDown(type) ? drillLevelSelects.map((s) => s.value).filter(Boolean) : [];
     // Garde-fou : une même colonne ne peut pas apparaître deux fois dans le chemin de drill (ni
     // reprendre la dimension racine) — un cas non gardé auparavant, repéré en généralisant à N
     // niveaux (voir ROADMAP.md, cluster "Hiérarchies & drill-down").
@@ -593,7 +614,8 @@
       alert('Une même colonne ne peut pas apparaître deux fois dans le drill-down, ni reprendre la dimension racine.');
       return;
     }
-    const title = hasDimension ? `${measure} par ${dimension}`
+    const title = isPivot ? `${measure} par ${dimension} × ${columnDimension}`
+      : hasDimension ? `${measure} par ${dimension}`
       : measureMode ? `${MEASURE_MODE_TITLES[measureMode]} : ${aggFn}(${measure})`
       : `${aggFn}(${measure})`;
     const tileData = { type, dimension, measure, aggFn, title };
@@ -610,6 +632,7 @@
     tileData.gaugeMax = isGauge ? gaugeMax : undefined;
     tileData.measureMode = measureMode;
     tileData.dateColumn = measureMode ? dateColumn : undefined;
+    tileData.columnDimension = isPivot ? columnDimension : undefined;
     if (editingTileId) {
       store.updateTile(editingTileId, tileData);
       stopEditTile();

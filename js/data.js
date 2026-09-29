@@ -141,6 +141,52 @@
     return aggregator(rows.map((r) => r[measureCol]));
   }
 
+  // Tableau croisé dynamique : regroupe `rows` par DEUX dimensions (`rowDim` en lignes, `colDim` en
+  // colonnes) plutôt qu'une seule (voir groupByAggregate) et agrège `measureCol` à chaque
+  // intersection. `rowKeys`/`colKeys` dans l'ordre de première apparition (même convention que
+  // groupByAggregate/distinctColumnValues, pas alphabétique). `cells[i][j]` vaut `null` (pas un 0)
+  // quand aucune ligne ne correspond à cette intersection précise — distinction importante pour un
+  // agrégat comme "moyenne" ou "min", où 0 serait une vraie valeur alors que `null` veut dire
+  // "aucune donnée". Les totaux de ligne/colonne/général sont calculés en agrégeant DIRECTEMENT
+  // l'ensemble des lignes concernées (ignorant l'autre dimension), PAS en recombinant les valeurs
+  // déjà agrégées des cellules affichées : recombiner fonctionnerait pour "somme" mais serait FAUX
+  // pour "moyenne"/"min"/"max" (la moyenne des moyennes par colonne n'est pas la moyenne globale de
+  // la ligne dès que les colonnes n'ont pas le même nombre de lignes).
+  function pivotTable(rows, rowDim, colDim, measureCol, aggFn) {
+    const aggregator = AGGREGATORS[aggFn] || AGGREGATORS.sum;
+    const rowKeys = [];
+    const rowKeysSeen = new Set();
+    const colKeys = [];
+    const colKeysSeen = new Set();
+    const cellValues = new Map(); // `${rowKey}\u0000${colKey}` -> [measureValue, ...]
+    const rowValues = new Map(); // rowKey -> [measureValue, ...] (toutes colonnes confondues)
+    const colValues = new Map(); // colKey -> [measureValue, ...] (toutes lignes confondues)
+    const allValues = [];
+    for (const row of rows) {
+      const rk = row[rowDim];
+      const ck = row[colDim];
+      const v = row[measureCol];
+      if (!rowKeysSeen.has(rk)) { rowKeysSeen.add(rk); rowKeys.push(rk); }
+      if (!colKeysSeen.has(ck)) { colKeysSeen.add(ck); colKeys.push(ck); }
+      const cellKey = rk + '\u0000' + ck;
+      if (!cellValues.has(cellKey)) cellValues.set(cellKey, []);
+      cellValues.get(cellKey).push(v);
+      if (!rowValues.has(rk)) rowValues.set(rk, []);
+      rowValues.get(rk).push(v);
+      if (!colValues.has(ck)) colValues.set(ck, []);
+      colValues.get(ck).push(v);
+      allValues.push(v);
+    }
+    const cells = rowKeys.map((rk) => colKeys.map((ck) => {
+      const values = cellValues.get(rk + '\u0000' + ck);
+      return values ? aggregator(values) : null;
+    }));
+    const rowTotals = rowKeys.map((rk) => aggregator(rowValues.get(rk)));
+    const colTotals = colKeys.map((ck) => aggregator(colValues.get(ck)));
+    const grandTotal = aggregator(allValues);
+    return { rowKeys, colKeys, cells, rowTotals, colTotals, grandTotal };
+  }
+
   // Valeurs distinctes (converties en chaîne) présentes dans `column`, dans l'ordre de première
   // apparition (même convention que groupByAggregate — pas de tri alphabétique, qui casserait un
   // ordre chronologique comme les mois). Sert à SUGGÉRER des valeurs dans la barre de filtres
@@ -265,6 +311,18 @@
     if (tile.type === 'kpi' || tile.type === 'gauge') {
       return { name: title, header: ['Mesure', 'Valeur'], rows: [[`${tile.aggFn}(${tile.measure})`, aggregateSingle(rows, tile.measure, tile.aggFn)]] };
     }
+    if (tile.type === 'pivot') {
+      // Même grille que le rendu (js/charts.js:renderPivot) : une ligne "Total" et une colonne
+      // "Total" ajoutées à la fin, cellule vide (pas 0) quand pivotTable renvoie `null` (aucune
+      // ligne à cette intersection) — cohérent avec l'affichage "–" du rendu.
+      const pivot = pivotTable(rows, tile.dimension, tile.columnDimension, tile.measure, tile.aggFn);
+      const header = [tile.dimension].concat(pivot.colKeys.map(String), ['Total']);
+      const bodyRows = pivot.rowKeys.map((rk, i) => [rk]
+        .concat(pivot.cells[i].map((v) => (v == null ? '' : v)))
+        .concat([pivot.rowTotals[i]]));
+      bodyRows.push(['Total'].concat(pivot.colTotals, [pivot.grandTotal]));
+      return { name: title, header, rows: bodyRows };
+    }
     // Mode de calcul temporel (voir GristBI.duckdbEngine.timeSeriesMeasures) : ce calcul est
     // ASYNCHRONE (une vraie requête SQL DuckDB-WASM), alors que tileExportSheet/buildWorkbookSheets
     // sont volontairement PURES/synchrones (testables sous Node, voir plus haut) — l'inclure ici
@@ -328,8 +386,8 @@
 
   return {
     tableToRows, applyFilters, matchesFilter, sameValue, parseDateValue, relativeDateRange,
-    RELATIVE_DATE_PRESETS, groupByAggregate, aggregateSingle, distinctColumnValues, computeTrend,
-    periodLabel, measureSeriesForTile, escapeHtml, tileDrillLevels, currentDimension, rowsForTile,
-    tileExportSheet, sanitizeSheetName, buildWorkbookSheets, AGGREGATORS
+    RELATIVE_DATE_PRESETS, groupByAggregate, aggregateSingle, pivotTable, distinctColumnValues,
+    computeTrend, periodLabel, measureSeriesForTile, escapeHtml, tileDrillLevels, currentDimension,
+    rowsForTile, tileExportSheet, sanitizeSheetName, buildWorkbookSheets, AGGREGATORS
   };
 });
