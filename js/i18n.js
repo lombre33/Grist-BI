@@ -65,8 +65,22 @@
     'bookmarks.save': { fr: 'Sauvegarder la vue actuelle', en: 'Save current view' },
     'bookmarks.save.prompt': { fr: 'Nom de la vue à sauvegarder :', en: 'Name of the view to save:' },
     'bookmarks.exportExcel': { fr: 'Exporter en Excel', en: 'Export to Excel' },
+    'bookmarks.exportPdf': { fr: 'Exporter en PDF', en: 'Export to PDF' },
     'export.none': { fr: 'Aucune tuile à exporter.', en: 'No tile to export.' },
     'export.failed': { fr: "Échec de l'export Excel — voir la console (F12).", en: 'Excel export failed — see the console (F12).' },
+
+    // --- Panneau Réglages (logo/Crédits/licence GPL v3, PR #7) ---
+    'settings.button': { fr: 'Réglages', en: 'Settings' },
+    'settings.close': { fr: 'Fermer', en: 'Close' },
+    'settings.credits.title': { fr: 'Crédits', en: 'Credits' },
+    'settings.credits.author': { fr: 'Auteur', en: 'Author' },
+    'settings.credits.website': { fr: 'Site', en: 'Website' },
+    'settings.credits.license': { fr: 'Licence', en: 'License' },
+    'settings.credits.bio': { fr: 'Bio', en: 'Bio' },
+    'settings.credits.bioText': {
+      fr: 'Grist Factory conçoit des widgets libres pour Grist. Dashboard BI en est un : croiser vos données Grist dans des tableaux de bord multi-tuiles avec cross-filtering et drill-down, directement dans Grist.',
+      en: 'Grist Factory builds free and open-source widgets for Grist. Dashboard BI is one of them: cross-reference your Grist data in multi-tile dashboards with cross-filtering and drill-down, directly inside Grist.',
+    },
 
     // --- Filtres avancés ---
     'filters.advanced.label': { fr: 'Filtre avancé', en: 'Advanced filter' },

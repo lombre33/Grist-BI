@@ -338,6 +338,17 @@ const rows = [
   ]);
   console.log('OK tileExportSheet (pivot : grille + ligne/colonne Total, cellule sans donnée -> chaîne vide)');
 
+  // tileExportKind (voir js/pdf-export.js) : pivot/kpi -> 'table' (déjà rendus sans graphique),
+  // tout le reste (y compris bar en mode mesure DAX) -> 'image' (capturée depuis l'instance ECharts
+  // déjà rendue, voir GristBI.charts.getInstance).
+  assert.strictEqual(data.tileExportKind(pivotTile), 'table');
+  assert.strictEqual(data.tileExportKind({ type: 'kpi' }), 'table');
+  assert.strictEqual(data.tileExportKind({ type: 'gauge' }), 'image');
+  assert.strictEqual(data.tileExportKind({ type: 'scatter' }), 'image');
+  assert.strictEqual(data.tileExportKind({ type: 'bar' }), 'image');
+  assert.strictEqual(data.tileExportKind({ type: 'bar', measureMode: 'ytd' }), 'image');
+  console.log('OK tileExportKind (pivot/kpi -> table, tout le reste -> image)');
+
   // Tuile filtrée jusqu'à zéro ligne -> en-têtes présents, aucune ligne (pas planté, pas d'en-tête absent)
   const emptyState = Object.assign({}, baseState, { activeFilters: [{ column: 'Region', value: 'Ouest', sourceTileId: 'autre' }] });
   const emptySheet = data.tileExportSheet(barTile, emptyState);

@@ -1287,12 +1287,108 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     croisés, ce bouton s'affichait avec le style par défaut du navigateur. Invisible tant qu'aucun
     filtre avancé n'avait été posé lors d'une revue visuelle. Corrigé en partageant les styles de
     `.filter-chip-remove`.
-  - **Volontairement laissé de côté** (nécessite un arbitrage ou un asset d'Antoine, pas une
-    "correction" au sens de ce lot) : logo/panneau Crédits/licence GPL v3 (rattachement à
+  - **Volontairement laissé de côté à ce stade** (nécessite un arbitrage ou un asset d'Antoine, pas
+    une "correction" au sens de ce lot) : logo/panneau Crédits/licence GPL v3 (rattachement à
     l'organisation GitHub `grist-factory` non tranché, asset du logo à obtenir), police Manrope
     (nouvelle dépendance tierce, même vendorisée, hors du périmètre "corrections + sobriété" sans
     accord explicite), et le bilingue fr/en systématique (`data-i18n`) — chantier à part entière vu
-    son volume, pas une correction ponctuelle.
+    son volume, pas une correction ponctuelle. **Tranché le même jour** (voir l'entrée dédiée plus
+    bas) : logo/Crédits/GPL implémentés, Manrope refusé, bilingue déplacé vers un fil dédié.
+
+- **Export PDF du dashboard** (`js/pdf-export.js`, 2026-09-29, Tier 2 ROADMAP.md) : un premier
+  export visuel, limité à la page actuellement affichée. Choix de conception délibéré, différent de
+  l'export Excel (`js/export.js`) : plutôt que recalculer chaque tuile en pur JS
+  (`GristBI.data.tileExportSheet`), ce qui butait sur un mur pour les tuiles en mode mesure DAX
+  (calcul ASYNCHRONE via DuckDB-WASM, incompatible avec la contrainte "synchrone, testable sous
+  Node" de l'export Excel — voir plus haut, message d'excuse au lieu des valeurs), cet export
+  **capture l'image de chaque graphique déjà rendu à l'écran**
+  (`GristBI.charts.getInstance(tile.id).getDataURL()`) : comme la valeur est déjà calculée au moment
+  du clic, ça marche uniformément pour TOUS les types de tuile, y compris Cumul/YTD/N-1 — aucun
+  message d'excuse nécessaire pour cet export-là. Le pivot (table HTML) et le KPI (texte) n'ont pas
+  de graphique ECharts à capturer ; ils réutilisent directement `tileExportSheet` (déjà testé) sous
+  forme de tableau natif pdfmake. Nouvelle fonction pure `GristBI.data.tileExportKind(tile)` (image
+  vs table selon le type), testée sous Node (`dev-tests/test-data.js`).
+  - **Dérogation actée par Antoine (2026-09-29)** à la règle "tout vendorisé" du projet : pdfmake
+    (et PptxGenJS, pour le PPTX à venir dans une PR séparée) sont chargés depuis
+    `cdnjs.cloudflare.com` à la demande (au premier clic sur "Exporter en PDF", pas au chargement de
+    la page), pas vendorisés dans `js/vendor/` — voir CLAUDE.md §8. Même bibliothèque, même CDN,
+    mêmes version/hash SRI que le widget frère `publipostageGrist` (son `js/pdf-export.js`, vérifié
+    en le lisant directement), pour rester cohérent entre les deux projets plutôt que d'inventer un
+    second motif de chargement.
+  - **Testé** : `tileExportKind` sous Node (les 47+ tests de `test-data.js`, tous verts). Le
+    branchement du bouton (visible, clic déclenche bien une tentative de chargement du script CDN,
+    échec réseau traité par un message CLAIR à l'utilisateur plutôt qu'une page cassée ou un échec
+    silencieux — exigence explicite de la dérogation ci-dessus) vérifié par Playwright contre
+    `dev-tests/harness.html` : le CDN `cdnjs.cloudflare.com` est bloqué par la politique réseau de
+    CE sandbox (`ERR_TUNNEL_CONNECTION_FAILED`, même catégorie que le blocage Docker Hub documenté
+    dans la mémoire du projet), ce qui a permis de vérifier RÉELLEMENT ce chemin d'échec plutôt que
+    de le supposer correct. L'export Excel reste fonctionnel après cet échec (pas de corruption
+    d'état partagé).
+  - **Chemin de succès vérifié localement (2026-09-29)**, en contournant UNIQUEMENT le blocage réseau
+    du sandbox, jamais le code livré : `cdnjs.cloudflare.com` reste injoignable ici, mais
+    `registry.npmjs.org` (hors de la politique réseau qui bloque cdnjs) l'est — le paquet npm
+    `pdfmake@0.2.7` en a été téléchargé, et `build/pdfmake.min.js` qu'il contient a un hash SHA-384
+    **identique** à celui codé en dur dans `js/pdf-export.js` (donc, très probablement, le même
+    fichier que sert cdnjs pour cette version). Une copie de ce fichier a servi à un test Playwright
+    contre `dev-tests/harness.html` (requêtes vers cdnjs interceptées et redirigées vers cette copie
+    locale, jamais vers le vrai `js/pdf-export.js` livré, qui garde son URL cdnjs inchangée) : de
+    vraies tuiles (bar, KPI, tableau croisé, mesures YTD et N-1) sur des données réalistes (2688
+    lignes, dates réelles sur 2 ans) ont produit un vrai PDF de 3 pages, inspecté avec `pdfjs-dist` —
+    6 images de graphique correctement dimensionnées (544×~300px, ni vides ni dégénérées), le tableau
+    croisé et le KPI affichant les mêmes totaux agrégés (582882, cohérents entre eux), pagination
+    automatique correcte. `vfs_fonts.js` du paquet npm n'est pas minifié (hash différent de la
+    version cdnjs, mêmes données de police) : le test a désactivé l'attribut `integrity` du
+    `<script>` injecté, UNIQUEMENT pour ce test, jamais dans `js/pdf-export.js`.
+  - **Ce qui reste réellement non vérifié depuis ce projet** : le chargement RÉSEAU réel depuis
+    `cdnjs.cloudflare.com` (ce sandbox le bloque toujours, `ERR_TUNNEL_CONNECTION_FAILED`) et le hash
+    SRI de `vfs_fonts.min.js` codé dans `js/pdf-export.js` (non recalculable ici, cdnjs ne servant
+    qu'une version minifiée introuvable sur npm) — risque jugé faible vu la correspondance exacte déjà
+    confirmée pour `pdfmake.min.js`, mais un premier essai bouton "Exporter en PDF" dans un vrai
+    navigateur reste la seule vérification qui couvre aussi ce dernier point.
+  - **Hors scope de ce premier export** (documenté, pas oublié) : les autres pages du dashboard
+    (seulement la page affichée), le PPTX (PptxGenJS, PR séparée à venir).
+
+- **Logo Grist Factory + panneau Crédits + licence GPL v3.0 (2026-09-29)** : les 3 points d'identité
+  laissés de côté par le lot précédent (voir juste au-dessus), tranchés par Antoine via 3 cartes de
+  décision séparées dans le fil « Audit UI/UX » — Manrope refusé (chrome inchangé, police système),
+  bilingue fr/en accepté mais déplacé vers un fil dédié (chantier séparé, pas traité ici), logo +
+  Crédits + GPL accepté et implémenté :
+  - **Logo** : Antoine a fourni le fichier (avatar `Grist Factory`, JPEG 1024×1024) directement dans
+    le fil. Redimensionné/compressé en local (Pillow, `LANCZOS`) à 60×60, ~1,3 Ko — même gabarit que
+    l'asset `img/grist-factory-logo.jpg` du widget frère `publipostageGrist` (60×60 fichier, 20×20
+    affiché, cercle `border-radius:50%`, `opacity:.85`). Affiché à 18×18 dans `.topbar-info`, juste
+    à droite du bouton Réglages, en dernier dans le flux (non-régression : ne déplace aucun contrôle
+    existant).
+  - **Panneau Crédits** : ce widget n'a pas de panneau Réglages multi-onglets comme
+    `publipostageGrist` (langue/thème/marges) — juste le strict nécessaire demandé : un bouton
+    Réglages (`#open-settings`) ouvre directement le panneau Crédits (`#settings-modal`), sans
+    onglets puisque c'est son seul contenu. Même convention d'ouverture/fermeture que
+    `publipostageGrist` (`hidden` natif, pas de fermeture au clic sur le fond — vérifié dans
+    `js/settings.js` de ce dépôt frère avant de la reproduire). `[hidden]` redéclaré explicitement
+    sur `.settings-modal` (piège n°10 de CLAUDE.md §7 : une règle d'auteur `display:flex` bat
+    toujours `[hidden]{display:none}` à spécificité égale). Libellés (Auteur/Site/Licence/Bio)
+    regroupés dans un seul bloc `<dl>` plutôt qu'éparpillés, à la demande du coordinateur, pour
+    rester faciles à brancher sur le futur mécanisme `data-i18n` du fil « Bilingue fr/en » sans
+    avoir à les retrouver dans tout le DOM.
+    - Bio réécrite spécifiquement pour ce widget (pas copiée telle quelle depuis
+      `publipostageGrist`, dont le cadrage dit explicitement que ce texte est un brouillon de Claude
+      "à reformuler par Antoine, ne pas dupliquer sur un autre widget sans le lui faire valider") —
+      à faire valider par Antoine comme sur le widget frère.
+    - Lien Licence pointé vers `github.com/lombre33/Grist-BI/blob/main/LICENSE` (dépôt personnel
+      actuel), PAS vers une organisation `grist-factory` qui n'existe pas encore pour ce dépôt — le
+      rattachement à cette organisation reste non tranché (voir §1 de CLAUDE.md) ; à corriger le
+      jour où ce rattachement est décidé.
+  - **Licence GPL v3.0** : `LICENSE` remplacé par le texte GPLv3 officiel complet, copié tel quel
+    depuis `publipostageGrist/LICENSE` (verbatim FSF, appendice "how to apply" non rempli — même
+    choix que le widget frère, qui ne le remplit pas non plus). `README.md` et `CLAUDE.md` mis à
+    jour (MIT → GPL v3.0, avec la date du changement).
+  - **Testé** : `node dev-tests/test-data.js` toujours vert (aucune fonction pure touchée par ce
+    lot). Panneau Crédits + logo + ouverture/fermeture du bouton Réglages vérifiés visuellement par
+    Playwright contre `dev-tests/harness.html`, thème clair et sombre (les tokens CSS existants
+    suffisent, aucune règle dédiée au thème sombre nécessaire).
+  - **Jamais vérifié en conditions réelles Grist** : rendu du panneau dans l'iframe réelle du widget,
+    respect du logo/asset par la politique de contenu de Grist (aucune raison de penser que non,
+    mais pas confirmé).
 
 - **Bilingue fr/en (`data-i18n`) — fondation (2026-09-29)** : chantier laissé de côté par le lot
   ci-dessus, repris séparément suite au cadrage d'identité `Grist Factory` (« Chaque chaîne

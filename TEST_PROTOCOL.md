@@ -608,6 +608,29 @@ zéro dépendance tierce, rien à vendoriser.
   boutons change) — vérifié en rejouant `node dev-tests/test-data.js` (aucune assertion ne dépend du
   contenu de ces boutons) ✅
 
+### Panneau Réglages / Crédits / logo / licence GPL v3 (2026-09-29)
+
+Bouton « Réglages » (`#open-settings`) + logo Grist Factory dans `.topbar-info`, ouvrant un panneau
+« Crédits » (`#settings-modal`, Auteur/Site/Licence/Bio) — voir HYPOTHESES.md pour le détail des 3
+décisions d'Antoine (logo/Crédits/GPL accepté, Manrope refusé, bilingue déplacé vers un fil dédié).
+
+- [x] Logo et bouton Réglages visibles, en dernier dans `.topbar-info` (aucun contrôle existant
+  déplacé) 🌐
+- [x] Clic sur Réglages ouvre le panneau (`hidden` retiré, `display:flex` effectif) 🌐
+- [x] Clic sur Fermer masque le panneau (`hidden` réappliqué) 🌐
+- [x] Clic sur le fond de l'overlay NE ferme PAS le panneau (même convention que
+  `publipostageGrist`, vérifié explicitement plutôt que supposé) 🌐
+- [x] Lien Licence pointe vers `github.com/lombre33/Grist-BI/blob/main/LICENSE` et affiche
+  « GNU GPL v3.0 » 🌐
+- [x] Couleurs correctes en thème sombre (`prefers-color-scheme: dark`) — vérifié par lecture des
+  styles calculés ET échantillonnage de pixels sur la capture d'écran (fond de carte `#1a1a19`,
+  texte quasi blanc `rgb(222,222,222)`), pas seulement à l'œil sur la vignette : une première lecture
+  visuelle de la capture avait semblé montrer une carte claire, contredite par les valeurs réelles —
+  piège méthodologique à garder en tête (juger une image sombre par un aperçu compressé peut tromper
+  l'œil, revérifier par les pixels/valeurs calculées en cas de doute) 🌐
+- [x] `node dev-tests/test-data.js` toujours vert après ce lot (aucune fonction pure touchée) ✅
+- [ ] Rendu dans une vraie iframe Grist ⬜ **[NON TESTABLE ICI]**
+
 ## Cas explicitement NON testables depuis ce sandbox (voir `HYPOTHESES.md`)
 
 - Round-trip réseau réel `applyUserActions`/`fetchTable` contre un vrai `grist.docApi` (latence, taille de payload, limites de débit).

@@ -45,13 +45,13 @@ mécanisme comme un pilier acquis de l'architecture.
 Pas de `package.json`, pas d'étape de build : `index.html` charge directement chaque script via
 `<script src="...">`, dans un ordre précis (voir la fin du `<body>` d'`index.html`) :
 `i18n.js → data.js → combobox.js → demo-data.js → state.js → charts.js → export.js →
-grist-api.js → duckdb-engine.js → main.js`. `i18n.js` est chargé en tout premier (depuis le
-29/09/2026, bilingue fr/en — voir le tableau ci-dessous) pour que tous les scripts suivants
-lisent `GristBI.i18n.t()` comme un global déjà prêt.
+pdf-export.js → grist-api.js → duckdb-engine.js → main.js`. `i18n.js` est chargé en tout premier
+(depuis le 29/09/2026, bilingue fr/en — voir le tableau ci-dessous) pour que tous les scripts
+suivants lisent `GristBI.i18n.t()` comme un global déjà prêt.
 
 | Fichier | Rôle |
 |---|---|
-| `index.html` | Page unique du widget : tout le DOM (barre de tuiles, formulaire d'ajout/édition, barre de filtres avancés, sélecteur de table, onglets de pages, bookmarks), le chargement d'ECharts/SheetJS vendorisés localement, l'`importmap` qui résout les imports nus de DuckDB-WASM vers les copies vendorisées, et l'ordre de chargement des scripts JS. |
+| `index.html` | Page unique du widget : tout le DOM (barre de tuiles, formulaire d'ajout/édition, barre de filtres avancés, sélecteur de table, onglets de pages, bookmarks, panneau Réglages/Crédits), le chargement d'ECharts/SheetJS vendorisés localement, l'`importmap` qui résout les imports nus de DuckDB-WASM vers les copies vendorisées, et l'ordre de chargement des scripts JS. |
 | `css/style.css` | Layout des tuiles (grille CSS `repeat(auto-fill, minmax(270px,1fr))`), design tokens (palette catégorielle colorblind-safe validée via la skill *dataviz* du projet). Contient plusieurs correctifs CSS documentés (voir §7). |
 | `js/i18n.js` | Bilingue fr/en (depuis le 29/09/2026) : dictionnaire `STRINGS` fr/en, `t(key, vars)` (variables + pluriel via `Intl.PluralRules`), attributs `data-i18n`/`data-i18n-html`/`data-i18n-title`/`data-i18n-aria`/`data-i18n-placeholder` résolus par `applyTranslations()`. **Chargé en tout premier**, langue persistée en `localStorage` (`gristbi_lang`). Ne couvre QUE la chrome de l'interface — le contenu généré à partir de noms de colonnes (titres de tuile, en-têtes d'export Excel dans `js/data.js`) reste hors périmètre, voir HYPOTHESES.md. |
 | `js/data.js` | Cœur **pur JS, testable sous Node**, sans DOM ni Grist : conversion du format colonnaire Grist en lignes, filtrage (`matchesFilter`/`applyFilters`, types `eq`/`range`/`dateRange`/`relativeDate`/`contains`), agrégation (`groupByAggregate`, `aggregateSingle`, agrégateurs sum/avg/count/min/max), tendance KPI (`computeTrend`), échappement HTML, et toute la logique d'export Excel (`rowsForTile`, `tileExportSheet`, `buildWorkbookSheets`, `sanitizeSheetName`) partagée avec le rendu à l'écran. |
@@ -62,13 +62,15 @@ lisent `GristBI.i18n.t()` comme un global déjà prêt.
 | `js/charts.js` | Rendu ECharts pour les 6 types de tuiles (bar/pie/treemap/scatter/kpi/gauge), une instance ECharts par tuile mise en cache, gestionnaire de clic générique (drill-down vs cross-filter) qui relit l'état du store en direct à chaque clic plutôt que de capturer des variables au moment du rendu. |
 | `js/combobox.js` | Composant d'autocomplétion réutilisable, DOM-agnostique pour sa logique de filtrage (`filterOptions`, `highlightMatch`) + câblage DOM (`attach`). Modes `strict` (doit correspondre à une option, comme un `<select>`) et non-strict (texte libre, suggestions seulement). |
 | `js/export.js` | Construit le classeur `.xlsx` (une feuille par tuile, toutes pages confondues) via SheetJS vendorisé (`window.XLSX`) et déclenche le téléchargement. |
+| `js/pdf-export.js` | Export PDF (page actuellement affichée uniquement) via pdfmake, chargé depuis un CDN externe et non vendorisé (exception, voir §8) — capture l'image de chaque graphique déjà rendu (`GristBI.charts.getInstance`) plutôt que de recalculer, ce qui évite le mur asynchrone des tuiles en mode mesure DAX rencontré par l'export Excel. |
 | `js/vendor/echarts/`, `js/vendor/xlsx/`, `js/vendor/duckdb/`, `js/vendor/apache-arrow/`, `js/vendor/flatbuffers/`, `js/vendor/tslib/` | Bibliothèques tierces **vendorisées localement, jamais chargées depuis un CDN externe** — voir §7 pour la raison (bug réel rencontré). |
 | `dev-tests/` | Harnais de test hors Grist — voir §5. |
 | `README.md` | Vue d'ensemble produit, fonctionnalités, installation dans Grist, historique condensé des bugs réels corrigés. |
 | `ROADMAP.md` | **Source unique des priorités** — voir §6. |
 | `HYPOTHESES.md` | **Journal détaillé** de ce qui est implémenté/testé et de ce qui reste à valider en conditions réelles — voir §6. |
 | `TEST_PROTOCOL.md` | Protocole de test qui grandit à chaque feature — voir §5. |
-| `LICENSE` | MIT pour le code de ce dépôt. Chaque dossier `js/vendor/*` contient sa propre licence (Apache-2.0 pour ECharts/SheetJS/Apache Arrow/FlatBuffers, MIT pour DuckDB-WASM, 0BSD pour tslib). |
+| `LICENSE` | **GNU GPL v3.0** pour le code de ce dépôt (passé de MIT le 2026-09-29, identité Grist Factory — voir §8). Chaque dossier `js/vendor/*` contient sa propre licence (Apache-2.0 pour ECharts/SheetJS/Apache Arrow/FlatBuffers, MIT pour DuckDB-WASM, 0BSD pour tslib). |
+| `img/grist-factory-logo.jpg` | Avatar Grist Factory fourni par Antoine (2026-09-29), redimensionné/compressé en local (60×60, ~1,3 Ko) — jamais un asset à recréer ou deviner. Affiché dans le bandeau du haut, juste à droite du bouton Réglages (`index.html`). |
 
 Il n'y a **aucune issue GitHub ouverte, aucun TODO dans le code, et aucune configuration CI**
 (pas de dossier `.github/workflows` au moment de la rédaction) — vérifié par recherche dans tout le
@@ -303,6 +305,24 @@ Cette liste condense les bugs réels les plus instructifs (détail complet dans 
 
 - **Zéro dépendance de build, JS vanilla.** Toute bibliothèque tierce est vendorisée localement
   dans `js/vendor/`, jamais chargée depuis un CDN externe (voir piège n°4/5 ci-dessus).
+  **Exception actée par Antoine le 2026-09-29** : pdfmake et PptxGenJS (export PDF/PPT, voir
+  ROADMAP.md Tier 2) sont chargés depuis `cdnjs.cloudflare.com` à la demande, PAS vendorisés — décision
+  explicite après discussion, pour rester cohérent avec le widget frère `publipostageGrist` qui fait
+  déjà de même. Cette dérogation ne s'étend PAS aux autres bibliothèques : elle ne vaut que pour
+  ces deux-là. Conséquences à respecter dans tout code qui en dépend : version figée dans l'URL du
+  CDN (jamais `@latest`), hash SRI (`integrity`/`crossOrigin="anonymous"`), et un échec de
+  chargement réseau doit toujours produire un message clair à l'utilisateur (voir
+  `js/pdf-export.js`), jamais une page cassée ou un échec silencieux — c'est le prix de ne pas
+  vendoriser.
+- **Identité Grist Factory (logo + Crédits + licence), actée par Antoine le 2026-09-29** : bouton
+  « Réglages » dans le bandeau du haut (`#open-settings`, `index.html`) ouvrant un panneau
+  « Crédits » (Auteur / Site / Licence / Bio, `.settings-credits-list`) — pas de gestion de
+  langue/thème dans ce panneau, ce widget n'en a pas encore. Logo Grist Factory juste à droite du
+  bouton (`img/grist-factory-logo.jpg`). Repris du même cadrage/de la même convention d'ouverture que
+  le widget frère `publipostageGrist` (`js/settings.js` de ce dépôt). Les libellés du panneau
+  Crédits sont regroupés dans ce seul bloc HTML (pas éparpillés ailleurs dans le DOM) pour rester
+  faciles à brancher sur le futur mécanisme `data-i18n` du chantier bilingue fr/en. Antoine a refusé
+  Manrope le même jour (le chrome garde la police système) — ne pas la reproposer sans nouvel avis.
 - **Aucun langage de formule Grist n'est utilisé** — tout calcul de colonne dérivée se fait
   côté JS (`deriveDateColumn`, etc.), par choix explicite et cohérent du projet.
 - **Jamais de nouvelle table créée pour faire évoluer un schéma** — `AddColumn` + backfill JS sur la

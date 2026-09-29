@@ -21,7 +21,8 @@
     edit: '<path d="M12.9 2.1a2 2 0 0 1 2.8 2.8L5.6 15 2 16l1-3.6L12.9 2.1Z"/><path d="M10.6 4.4l2.8 2.8"/>',
     chevronLeft: '<path d="M10 3l-5 5 5 5"/>',
     chevronRight: '<path d="M6 3l5 5-5 5"/>',
-    warning: '<path d="M8 2.2l6.5 11.6H1.5L8 2.2Z"/><path d="M8 6.6v3.2"/><path d="M8 11.9v.01"/>'
+    warning: '<path d="M8 2.2l6.5 11.6H1.5L8 2.2Z"/><path d="M8 6.6v3.2"/><path d="M8 11.9v.01"/>',
+    settings: '<circle cx="8" cy="8" r="2.3"/><path d="M8 2v1.6M8 12.4V14M14 8h-1.6M3.6 8H2M12.24 3.76l-1.13 1.13M4.89 11.11l-1.13 1.13M12.24 12.24l-1.13-1.13M4.89 4.89L3.76 3.76"/>'
   };
   function icon(name) {
     return `<svg class="icon icon-${name}" viewBox="0 0 16 16" aria-hidden="true" focusable="false">${ICON_PATHS[name]}</svg>`;
@@ -85,6 +86,7 @@
   const deleteBookmarkBtn = document.getElementById('delete-bookmark');
   const saveBookmarkBtn = document.getElementById('save-bookmark');
   const exportExcelBtn = document.getElementById('export-excel');
+  const exportPdfBtn = document.getElementById('export-pdf');
   const tableSelectInput = document.getElementById('table-select');
   const pageTabsEl = document.getElementById('page-tabs');
   const addPageBtn = document.getElementById('add-page');
@@ -105,6 +107,9 @@
   const advancedFilterBadgesEl = document.getElementById('advanced-filter-badges');
   const renderTimeEl = document.getElementById('render-time');
   const echartsWarning = document.getElementById('echarts-warning');
+  const settingsBtn = document.getElementById('open-settings');
+  const settingsModal = document.getElementById('settings-modal');
+  const settingsCloseBtn = document.getElementById('settings-close');
 
   // Tous les champs qui référencent une COLONNE deviennent des comboboxes avec autocomplétion
   // (demande explicite de l'utilisateur, voir js/combobox.js) — en mode strict : la valeur doit
@@ -755,12 +760,35 @@
     }
   });
 
+  // Seulement la page actuellement affichée (voir js/pdf-export.js), pas toutes les pages comme
+  // l'export Excel — chaque graphique capturé est celui déjà rendu de CETTE page. pdfmake est
+  // chargé depuis un CDN externe (dérogation d'Antoine, voir CLAUDE.md) : un échec réseau doit être
+  // clairement dit à l'utilisateur plutôt que de rester silencieux ou de casser la page.
+  exportPdfBtn.addEventListener('click', async () => {
+    try {
+      const exported = await GristBI.exportPdf.exportDashboardToPdf(store.getState());
+      if (!exported) alert(t('export.none'));
+    } catch (e) {
+      console.error('[GristBI] échec de l\'export PDF', e);
+      alert(GristBI.exportPdf.STRINGS.networkError);
+    }
+  });
+
   addPageBtn.addEventListener('click', () => {
     const name = (prompt(t('pages.new.prompt'), `Page ${store.getState().pages.length + 1}`) || '').trim();
     if (name) store.addPage(name);
   });
 
   clearFilterBtn.addEventListener('click', () => store.clearFilter());
+
+  // Même convention d'ouverture/fermeture que Publipostage+ (js/settings.js de ce widget frère) :
+  // `hidden` natif, pas de fermeture au clic sur le fond — un clic accidentel sur l'overlay pendant
+  // la lecture des Crédits ne doit pas fermer le panneau.
+  if (settingsBtn && settingsModal && settingsCloseBtn) {
+    settingsBtn.addEventListener('click', () => { settingsModal.hidden = false; });
+    settingsCloseBtn.addEventListener('click', () => { settingsModal.hidden = true; });
+  }
+
   window.addEventListener('resize', () => GristBI.charts.resizeAll());
 
   // `window`.resize ne se déclenche pas forcément de façon fiable quand c'est le panneau Grist
