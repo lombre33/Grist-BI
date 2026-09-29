@@ -44,8 +44,8 @@ mécanisme comme un pilier acquis de l'architecture.
 
 Pas de `package.json`, pas d'étape de build : `index.html` charge directement chaque script via
 `<script src="...">`, dans un ordre précis (voir `index.html:202-210`) :
-`data.js → combobox.js → demo-data.js → state.js → charts.js → export.js → grist-api.js →
-duckdb-engine.js → main.js`.
+`data.js → combobox.js → demo-data.js → state.js → charts.js → export.js → pdf-export.js →
+grist-api.js → duckdb-engine.js → main.js`.
 
 | Fichier | Rôle |
 |---|---|
@@ -59,6 +59,7 @@ duckdb-engine.js → main.js`.
 | `js/charts.js` | Rendu ECharts pour les 6 types de tuiles (bar/pie/treemap/scatter/kpi/gauge), une instance ECharts par tuile mise en cache, gestionnaire de clic générique (drill-down vs cross-filter) qui relit l'état du store en direct à chaque clic plutôt que de capturer des variables au moment du rendu. |
 | `js/combobox.js` | Composant d'autocomplétion réutilisable, DOM-agnostique pour sa logique de filtrage (`filterOptions`, `highlightMatch`) + câblage DOM (`attach`). Modes `strict` (doit correspondre à une option, comme un `<select>`) et non-strict (texte libre, suggestions seulement). |
 | `js/export.js` | Construit le classeur `.xlsx` (une feuille par tuile, toutes pages confondues) via SheetJS vendorisé (`window.XLSX`) et déclenche le téléchargement. |
+| `js/pdf-export.js` | Export PDF (page actuellement affichée uniquement) via pdfmake, chargé depuis un CDN externe et non vendorisé (exception, voir §8) — capture l'image de chaque graphique déjà rendu (`GristBI.charts.getInstance`) plutôt que de recalculer, ce qui évite le mur asynchrone des tuiles en mode mesure DAX rencontré par l'export Excel. |
 | `js/vendor/echarts/`, `js/vendor/xlsx/`, `js/vendor/duckdb/`, `js/vendor/apache-arrow/`, `js/vendor/flatbuffers/`, `js/vendor/tslib/` | Bibliothèques tierces **vendorisées localement, jamais chargées depuis un CDN externe** — voir §7 pour la raison (bug réel rencontré). |
 | `dev-tests/` | Harnais de test hors Grist — voir §5. |
 | `README.md` | Vue d'ensemble produit, fonctionnalités, installation dans Grist, historique condensé des bugs réels corrigés. |
@@ -298,6 +299,15 @@ Cette liste condense les bugs réels les plus instructifs (détail complet dans 
 
 - **Zéro dépendance de build, JS vanilla.** Toute bibliothèque tierce est vendorisée localement
   dans `js/vendor/`, jamais chargée depuis un CDN externe (voir piège n°4/5 ci-dessus).
+  **Exception actée par Antoine le 2026-09-29** : pdfmake et PptxGenJS (export PDF/PPT, voir
+  ROADMAP.md Tier 2) sont chargés depuis `cdnjs.cloudflare.com` à la demande, PAS vendorisés — décision
+  explicite après discussion, pour rester cohérent avec le widget frère `publipostageGrist` qui fait
+  déjà de même. Cette dérogation ne s'étend PAS aux autres bibliothèques : elle ne vaut que pour
+  ces deux-là. Conséquences à respecter dans tout code qui en dépend : version figée dans l'URL du
+  CDN (jamais `@latest`), hash SRI (`integrity`/`crossOrigin="anonymous"`), et un échec de
+  chargement réseau doit toujours produire un message clair à l'utilisateur (voir
+  `js/pdf-export.js`), jamais une page cassée ou un échec silencieux — c'est le prix de ne pas
+  vendoriser.
 - **Aucun langage de formule Grist n'est utilisé** — tout calcul de colonne dérivée se fait
   côté JS (`deriveDateColumn`, etc.), par choix explicite et cohérent du projet.
 - **Jamais de nouvelle table créée pour faire évoluer un schéma** — `AddColumn` + backfill JS sur la

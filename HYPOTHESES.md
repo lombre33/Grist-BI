@@ -1294,6 +1294,45 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     accord explicite), et le bilingue fr/en systématique (`data-i18n`) — chantier à part entière vu
     son volume, pas une correction ponctuelle.
 
+- **Export PDF du dashboard** (`js/pdf-export.js`, 2026-09-29, Tier 2 ROADMAP.md) : un premier
+  export visuel, limité à la page actuellement affichée. Choix de conception délibéré, différent de
+  l'export Excel (`js/export.js`) : plutôt que recalculer chaque tuile en pur JS
+  (`GristBI.data.tileExportSheet`), ce qui butait sur un mur pour les tuiles en mode mesure DAX
+  (calcul ASYNCHRONE via DuckDB-WASM, incompatible avec la contrainte "synchrone, testable sous
+  Node" de l'export Excel — voir plus haut, message d'excuse au lieu des valeurs), cet export
+  **capture l'image de chaque graphique déjà rendu à l'écran**
+  (`GristBI.charts.getInstance(tile.id).getDataURL()`) : comme la valeur est déjà calculée au moment
+  du clic, ça marche uniformément pour TOUS les types de tuile, y compris Cumul/YTD/N-1 — aucun
+  message d'excuse nécessaire pour cet export-là. Le pivot (table HTML) et le KPI (texte) n'ont pas
+  de graphique ECharts à capturer ; ils réutilisent directement `tileExportSheet` (déjà testé) sous
+  forme de tableau natif pdfmake. Nouvelle fonction pure `GristBI.data.tileExportKind(tile)` (image
+  vs table selon le type), testée sous Node (`dev-tests/test-data.js`).
+  - **Dérogation actée par Antoine (2026-09-29)** à la règle "tout vendorisé" du projet : pdfmake
+    (et PptxGenJS, pour le PPTX à venir dans une PR séparée) sont chargés depuis
+    `cdnjs.cloudflare.com` à la demande (au premier clic sur "Exporter en PDF", pas au chargement de
+    la page), pas vendorisés dans `js/vendor/` — voir CLAUDE.md §8. Même bibliothèque, même CDN,
+    mêmes version/hash SRI que le widget frère `publipostageGrist` (son `js/pdf-export.js`, vérifié
+    en le lisant directement), pour rester cohérent entre les deux projets plutôt que d'inventer un
+    second motif de chargement.
+  - **Testé** : `tileExportKind` sous Node (les 47+ tests de `test-data.js`, tous verts). Le
+    branchement du bouton (visible, clic déclenche bien une tentative de chargement du script CDN,
+    échec réseau traité par un message CLAIR à l'utilisateur plutôt qu'une page cassée ou un échec
+    silencieux — exigence explicite de la dérogation ci-dessus) vérifié par Playwright contre
+    `dev-tests/harness.html` : le CDN `cdnjs.cloudflare.com` est bloqué par la politique réseau de
+    CE sandbox (`ERR_TUNNEL_CONNECTION_FAILED`, même catégorie que le blocage Docker Hub documenté
+    dans la mémoire du projet), ce qui a permis de vérifier RÉELLEMENT ce chemin d'échec plutôt que
+    de le supposer correct. L'export Excel reste fonctionnel après cet échec (pas de corruption
+    d'état partagé).
+  - **Jamais vérifié en conditions réelles depuis ce projet** (même limite structurelle que le point
+    3 ci-dessous pour ECharts, avant qu'il soit vendorisé — sauf que pdfmake ne le sera pas, par
+    choix d'Antoine) : le chemin de SUCCÈS n'a jamais pu être exécuté ici — chargement réel de
+    pdfmake/vfs_fonts depuis cdnjs, `getDataURL()` sur une vraie instance ECharts en conditions
+    réelles Grist, rendu effectif du PDF téléchargé (mise en page, lisibilité des images, tableaux
+    pivot/KPI). À faire au prochain accès à un vrai navigateur/document Grist non bloqué par cette
+    politique réseau précise.
+  - **Hors scope de ce premier export** (documenté, pas oublié) : les autres pages du dashboard
+    (seulement la page affichée), le PPTX (PptxGenJS, PR séparée à venir).
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée
