@@ -1399,11 +1399,14 @@ dans une seule instance de widget, avec ses propres tuiles internes.
   `applyTranslations()`), chargé en tout premier (`index.html`/`harness.html`). Bouton de bascule
   fr/en dans le bandeau du haut (`#lang-toggle`), langue persistée en `localStorage`
   (`gristbi_lang`).
-  - **106 clés** couvrant la chrome statique de `index.html`/`harness.html` (bandeau, sélecteur de
+  - **115 clés** couvrant la chrome statique de `index.html`/`harness.html` (bandeau, sélecteur de
     table, pages, vues sauvegardées, filtres avancés, formulaire d'ajout/édition de tuile, état
-    vide) et les chaînes générées côté JS (`js/main.js` : alertes/confirmations/invites, badges de
-    filtre, onglets de page, boutons d'action de tuile ; `js/charts.js` : bandeau ECharts
-    indisponible, jauge de calcul, en-têtes « Total » du tableau croisé, indice de fil d'Ariane).
+    vide, panneau Réglages/Crédits) et les chaînes générées côté JS (`js/main.js` :
+    alertes/confirmations/invites, badges de filtre, onglets de page, boutons d'action de tuile ;
+    `js/charts.js` : bandeau ECharts indisponible, jauge de calcul, en-têtes « Total » du tableau
+    croisé, indice de fil d'Ariane). Complétée à 115 lors de la fusion de `main` du 29/09/2026
+    (panneau Réglages/Crédits + bouton « Exporter en PDF » ajoutés entre-temps par les fils
+    « Audit UI/UX » et « Ce qui reste à faire »).
   - **Piège trouvé en testant** : les boutons d'action d'une tuile (déplacer/modifier/supprimer,
     `js/main.js:buildTileElement`) sont mis en cache et jamais reconstruits tant que la tuile
     existe (voir `render()`) — un changement de langue seul ne les aurait donc jamais retraduits.

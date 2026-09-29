@@ -449,7 +449,7 @@ Même mécanisme que `publipostageGrist/js/i18n.js`. Voir HYPOTHESES.md pour le 
 pièges trouvés (boutons de tuile mis en cache, `blankLabel` de combobox non relu) et du périmètre
 délibérément laissé de côté (contenu généré par `js/data.js`/`js/demo-data.js`).
 
-- [x] Chaque clé de `STRINGS` porte une traduction fr ET en non vide (106 clés) ✅
+- [x] Chaque clé de `STRINGS` porte une traduction fr ET en non vide (115 clés) ✅
 - [x] `t(key, vars)` — substitution de `{var}`, pluriel `{n|singulier|pluriel}` conforme à `Intl.PluralRules` en fr (0 et 1 au singulier) ET en (seul 1 au singulier) ✅
 - [x] `t()`/`getLang()`/`setLang()` fonctionnent sous Node sans DOM ni `localStorage` (repli silencieux, pas d'exception) ✅
 - [x] Clé inconnue → avertit en console ET renvoie la clé elle-même (pas de plantage, pas de chaîne vide silencieuse) ✅
