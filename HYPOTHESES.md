@@ -1514,6 +1514,32 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     sélecteur de table principal), jamais par `grist.onRecords()` (qui concerne uniquement la table
     liée à la page hôte, un mécanisme différent et délibérément abandonné, voir §3 de CLAUDE.md).
     Corrigé dans ROADMAP.md.
+  - **`id` proposable comme clé de jointure (correctif du même jour, remonté par le coordinateur du
+    projet)** : `availableColumns()` (`js/main.js`) exclut `id` de tous les sélecteurs de colonne
+    (identifiant interne Grist, jamais une vraie colonne à afficher) — mais c'est justement la clé
+    qu'il faut pouvoir choisir côté table SECONDAIRE pour joindre sur une vraie colonne de référence
+    Grist (`Ref:`) : ce POC ne lisant pas les vrais types de colonnes (§6 de CLAUDE.md), une colonne
+    `Ref:Villes` n'est vue par ce widget que comme une colonne numérique contenant l'id de ligne de
+    la table référencée — sans `id` disponible côté secondaire, une jointure via une vraie relation
+    Grist aurait été impossible depuis l'UI (bien que `blendRows` lui-même l'ait toujours supporté,
+    puisqu'il ne fait aucune hypothèse sur le nom de la colonne de clé). Corrigé par
+    `blendJoinColumns()` (`['id'].concat(availableColumns(rows))`), utilisé UNIQUEMENT par les deux
+    comboboxes de clé de jointure — jamais par les autres sélecteurs de colonne (dimension/mesure/
+    filtre), où afficher l'id interne n'aurait toujours aucun sens. Proposé aussi côté table
+    PRINCIPALE par symétrie (une référence peut pointer dans l'autre sens). **Ce qui reste
+    non-vérifiable depuis ce sandbox** : si une vraie colonne `Ref:` de Grist renvoie l'id brut de la
+    ligne référencée ou son texte résolu dépend du contexte (piège déjà noté pour ce projet, jamais
+    élucidé faute d'un vrai document Grist) — mais peu importe laquelle des deux formes Grist choisit
+    réellement, le sélecteur de clé couvre maintenant les deux cas : `id` pour un id brut, n'importe
+    quelle colonne texte ordinaire pour une valeur déjà résolue.
+  - **Testé sous Playwright (ajout au script ad hoc existant)** : une troisième table mock
+    (`Commandes`, avec une colonne `VilleId` simulant une vraie colonne de référence — des id de
+    ligne bruts, pas des noms de région lisibles) jointe contre `Villes` via `VilleId` ↔ `id` :
+    confirme que `id` apparaît bien dans la liste déroulante de la clé secondaire et que la jointure
+    produit les bonnes valeurs de population pour chaque client, y compris avec deux clients
+    référençant la même ville (id dupliqué côté table PRINCIPALE, ce qui est un cas normal, à ne pas
+    confondre avec la limite du n°1-n décrite plus haut qui concerne une clé dupliquée côté
+    SECONDAIRE).
   - **Forme de ligne toujours identique, matché ou pas** : une ligne principale sans correspondance
     reçoit les colonnes secondaires à `null`, jamais absentes — `availableColumns()` (`js/main.js`)
     ne lit que `rows[0]` pour peupler les sélecteurs de colonne du formulaire de tuile ; une forme de
