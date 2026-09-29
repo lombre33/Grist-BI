@@ -127,6 +127,12 @@
             }
             const t = { id: [] };
             for (const col of columns) t[col.id] = [];
+            // Grist ajoute lui-même `manualSort` à TOUTE table créée (position flottante pour le
+            // glisser-déposer manuel des lignes) — jamais demandée dans `columns` ci-dessus, mais bien
+            // présente dans le `fetchTable()` réel. [BUG RÉEL, voir TEST_PROTOCOL.md #19] Absente de ce
+            // mock jusqu'ici, donc aucun test ne pouvait exercer le filtre de `GristBI.data.tableToRows`
+            // qui l'exclut des sélecteurs de colonne.
+            t.manualSort = [];
             tables[actualTableId] = t;
             retValues.push({ id: Object.keys(tables).length, table_id: actualTableId, columns: columns.map((c) => c.id) });
           } else if (kind === 'AddRecord') {
@@ -139,6 +145,10 @@
               if (!t[key]) t[key] = [];
               t[key][idx] = fields[key];
             }
+            // Le moteur réel assigne lui-même une position `manualSort` à chaque ligne ajoutée, que le
+            // widget la fournisse ou non dans `fields` (jamais le cas ici) — voir la note sur `AddTable`
+            // ci-dessus.
+            if (t.manualSort && fields.manualSort === undefined) t.manualSort[idx] = idx + 1;
             retValues.push(newId);
           } else if (kind === 'UpdateRecord') {
             const rowId = action[2];

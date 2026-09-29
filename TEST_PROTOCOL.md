@@ -92,6 +92,7 @@ une feature "testée", vérifier qu'on s'est posé chacune de ces questions :
 - [x] `pivotTable` — jeu de données vide → structure vide (`rowKeys`/`colKeys`/`cells` à `[]`, `grandTotal: 0`), pas de plantage ✅
 - [ ] `pivotTable` — min/max (mêmes agrégateurs que `aggregateSingle`/`groupByAggregate`, mêmes chemins de code, pas de cas dédié) ⬜
 - [x] `tableToRows` — format colonnaire → lignes ✅
+- [x] `tableToRows` — exclut les colonnes techniques ajoutées par Grist lui-même (`manualSort`) [BUG RÉEL #19 ci-dessous] ✅
 - [x] `tileDrillLevels` — nouveau format tableau ✅
 - [x] `tileDrillLevels` — ancien format chaîne unique (compat) ✅
 - [x] `tileDrillLevels` — tuile sans drill-down → `[]` ✅
@@ -438,6 +439,27 @@ davantage de scénarios — voir HYPOTHESES.md) :
 16. **[Le plus significatif de cette feature, pas spécifique à elle] Entrée sur une saisie combobox STRICTE sans AUCUNE correspondance laissait fuiter l'évènement `change` NATIF du navigateur avec le texte brut non validé** — la branche "rien à faire" du `keydown` Entrée (mode strict, aucune option ne matche) ne faisait qu'un simple retour sans jamais appeler `e.preventDefault()`, contrairement à la branche `commit()`. Le navigateur, constatant que la valeur a changé depuis le focus et qu'Entrée a été pressée, déclenche alors LUI-MÊME un évènement `change` natif portant la valeur brute/invalide — qui remonte et atteint tout listener `change` externe exactement comme une vraie sélection validée, contournant complètement `commit()`/toute la validation stricte. Trouvé en tapant le nom d'une table inexistante dans le sélecteur de table puis Entrée : ça déclenchait quand même une tentative de connexion à cette table (`switchTable` appelé avec 0 ligne). Corrigé en ajoutant `e.preventDefault()` dans ce cas aussi. **Conséquence directe, révélée par ce fix** : `table-picker-test.js` (déjà committé pour la Task #9) s'est mis à échouer — sa capacité à switcher vers une table fraîchement créée ne fonctionnait EN RÉALITÉ que grâce à cette fuite d'évènement, `refreshTablePicker()` ne se relançant qu'au démarrage/après un changement réussi, jamais à l'ouverture du menu. Une table créée après le démarrage du widget était donc VRAIMENT inatteignable via le sélecteur sans recharger la page — un vrai défaut produit, pas un détail de test. Corrigé proprement par un hook `beforeOpen` sur `Combobox.attach()` (attendu avant l'ouverture passive), câblé sur `#table-select` avec `refreshTablePicker`. Leçon : corriger un bug de validation peut légitimement révéler qu'une autre feature, déjà "verte", ne fonctionnait que PARCE QUE ce bug existait — la reconfirmer entièrement après le fix n'est pas optionnel.
 17. **Les éléments graphiques débordaient sous les cartes** [BUG RÉEL remonté par l'utilisateur en réel] — `.tile-chart { flex: 1; min-height: 180px; }` : ce `min-height` datait d'avant le passage de `.tile` à une hauteur FIXE (224px, voir bug #10) et n'avait jamais été retiré. Une fois `.tile` fixée, l'espace RÉELLEMENT disponible pour `.tile-chart` (224px moins padding/en-tête/fil d'Ariane) pouvait descendre sous 180px — le `min-height` forçait alors `.tile-chart` (et le canvas ECharts dedans) à dépasser le bas de la carte, jusqu'à ~22px de débordement mesuré sur une tuile drillée (fil d'Ariane à 2 niveaux, moins d'espace vertical restant). Invisible sur les captures d'écran précédentes du design system (débordement discret, ~6px sur les tuiles non drillées) mais bien réel. Repéré en mesurant `canvas.getBoundingClientRect().bottom` contre `tile.getBoundingClientRect().bottom` plutôt qu'en jugeant "ça a l'air correct" visuellement. Corrigé en retirant simplement le `min-height` : `flex: 1` seul suffit à occuper tout l'espace restant dans un conteneur flex à hauteur FIXE, sans jamais déborder (flex-shrink par défaut). Même famille de leçon que le bug #10 : un réglage de layout qui datait d'avant un changement structurel (ici le passage à une hauteur fixe) doit être ré-audité à ce moment-là, pas seulement testé isolément.
 18. **[Le plus grave trouvé à ce jour, risque de perte/duplication de données réelles] Une table pouvait être recréée/remplie une 2e fois à chaque réouverture du widget, alors qu'elle existait déjà dans le document réel** [BUG RÉEL remonté par l'utilisateur : "le widget regénère encore une table"] — `grist.ready()` ne renvoie PAS de promesse ; la vraie négociation d'accès avec l'hôte Grist se termine de façon ASYNCHRONE, après que `ready()` a déjà rendu la main à l'appelant (confirmé contre le code source de `grist-plugin-api.ts`). `bootstrap()` (`main.js`) enchaînait pourtant IMMÉDIATEMENT sur `grist.docApi.listTables()` sans le moindre délai — un appel parti avant la fin de cette négociation pouvait renvoyer une liste incomplète/vide, faisant croire à tort qu'une table n'existait pas encore. Un faux négatif ici déclenchait `AddTable` + le remplissage complet (`fillTable`) sur une table DÉJÀ existante. Jamais reproduit dans ce sandbox avant ce fix (le mock `grist-stub.js` est synchrone, sans vraie négociation réseau à rater — la seule raison pour laquelle ce bug n'avait jamais été détecté par les tests précédents malgré une couverture Playwright déjà large). Corrigé par `tableExistsConfirmed()` (`js/grist-api.js`) : avant de conclure qu'une table n'existe VRAIMENT pas, on revérifie une seconde fois après un court délai (500ms) avec une lecture fraîche — mais seulement pour le TOUT PREMIER contrôle d'existence de la session (`_raceGuardArmed`), pas à chaque appel, sinon chaque réouverture du widget payait inutilement ~1000ms de plus (2 contrôles : `BI_StressTest` puis `BI_Dashboard_Config`) même hors de toute course réelle — un 1er coût de mise au point : une version antérieure de ce correctif appliquait la revérification à CHAQUE contrôle et cassait plusieurs tests à cause du délai cumulé (voir la note "fragilité de test" plus bas si ça se reproduit). Simulé de façon déterministe via `window.__gristStubRaceCalls`/`window.__gristStubPreseed` (`dev-tests/grist-stub.js`, ajoutés spécifiquement pour ce bug) plutôt qu'un vrai timing réseau à rater dans les tests (source de flakiness). **Leçon indépendante trouvée en même temps** : `grist.docApi.listTables()` renvoie en réalité un tableau de CHAÎNES (`string[]`, vérifié contre le code source réel), pas des objets `{id}` — le mock renvoyait des objets depuis le début du projet, donc AUCUN test précédent n'a jamais exercé la branche `typeof t === 'string'` du code défensif qui gère les deux formes ; corrigé dans le mock pour refléter la vraie forme.
+19. **`manualSort` (colonne technique Grist) fuitait dans les sélecteurs Dimension/Mesure/Filtre du
+    formulaire d'ajout de tuile** [BUG RÉEL remonté en conditions réelles Grist, absent de ce
+    sandbox jusqu'ici] — Grist ajoute lui-même une colonne `manualSort` (position flottante pour le
+    glisser-déposer manuel des lignes) à TOUTE table, sans qu'elle soit jamais demandée via
+    `AddColumn` côté widget ; `grist.docApi.fetchTable()` la renvoie mêlée aux vraies colonnes du
+    document. `GristBI.data.tableToRows()` (utilisée pour charger la table de travail) n'excluait
+    que `id`, pas cette colonne technique, qui se retrouvait donc listée — et même pré-sélectionnée
+    par défaut (1re colonne) — dans les sélecteurs Dimension/Mesure/Filtre avancé du formulaire.
+    Invisible dans ce sandbox car `dev-tests/grist-stub.js` ne simulait pas cette colonne. Corrigé
+    par un filtre explicite (`GRIST_TECHNICAL_COLUMNS`) dans `tableToRows()`, et le mock étendu pour
+    simuler `manualSort` sur `AddTable`/`AddRecord` afin que le correctif soit réellement exercé par
+    les tests (`node dev-tests/test-data.js`). Même famille de leçon que le bug #15 (forme réelle de
+    l'API mal reflétée par le mock) : une colonne/un format que Grist ajoute lui-même, jamais demandé
+    explicitement par ce widget, ne peut être découvert qu'en conditions réelles tant que le mock ne
+    le simule pas.
+20. **`.advanced-filter-chip-remove` (bouton de suppression d'un badge de filtre avancé) n'avait
+    AUCUNE règle CSS propre** [BUG RÉEL, trouvé en passant en revue le formulaire de filtres pour la
+    passe de sobriété/intuitivité] — contrairement à `.filter-chip-remove` (filtres croisés), ce
+    bouton s'affichait avec le style par défaut du navigateur à l'intérieur d'un `.filter-chip`
+    sinon entièrement stylé. Invisible tant qu'aucun filtre avancé n'avait jamais été posé lors d'une
+    revue visuelle. Corrigé en partageant les styles de `.filter-chip-remove`.
 
 ## Fragilité de test connue (PAS un bug produit — investiguée en profondeur, à ne pas re-diagnostiquer)
 
@@ -490,6 +512,22 @@ vérification visuelle à refaire à chaque évolution notable du CSS ou d'un no
   après la refonte (0 régression) 🌐
 - [ ] Redimensionnement réel du panneau Grist avec le nouveau CSS ⬜ **[NON TESTABLE ICI]**, même
   limite que pour `ResizeObserver` plus haut.
+
+### Icônes SVG (passe sobriété/intuitivité, 2026-09-29)
+
+Remplacement des glyphes texte/emoji (◂ ▸ ✎ ✓ &times; ⚠️) par des icônes SVG en trait dessinées à la
+main (`js/main.js:ICON_PATHS`, `stroke="currentColor"`) — mêmes contraintes que le reste du projet :
+zéro dépendance tierce, rien à vendoriser.
+
+- [x] Icônes visibles et correctement centrées en thème clair ET sombre (captures d'écran Playwright
+  contre `dev-tests/harness.html`) 🌐
+- [x] La couleur dynamique existante (survol, tuile en cours d'édition) continue de s'appliquer sans
+  changement JS — `currentColor` hérite automatiquement de la couleur du bouton parent 🌐
+- [x] `manualSort` absent des listes Dimension/Mesure/Filtre avancé après le correctif du bug #19,
+  vérifié en ouvrant réellement chaque combobox (pas seulement le test Node) 🌐
+- [x] Aucun sélecteur fonctionnel renommé (mêmes id/classes qu'avant, seul le contenu HTML des
+  boutons change) — vérifié en rejouant `node dev-tests/test-data.js` (aucune assertion ne dépend du
+  contenu de ces boutons) ✅
 
 ## Cas explicitement NON testables depuis ce sandbox (voir `HYPOTHESES.md`)
 
