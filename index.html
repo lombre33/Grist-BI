@@ -17,13 +17,20 @@
      HYPOTHESES.md) — chargé PARESSEUX uniquement (js/duckdb-engine.js), jamais au démarrage.
      duckdb-browser.mjs importe "apache-arrow" (Apache-2.0) et "flatbuffers" (Apache-2.0) via des
      spécificateurs nus qui n'existent pas nativement dans un navigateur sans bundler ; cette import
-     map les résout vers les copies vendorisées localement, toujours pas de CDN externe. -->
+     map les résout vers les copies vendorisées localement, toujours pas de CDN externe. Le préfixe
+     "./" est OBLIGATOIRE ici : la spec Import Maps n'accepte comme adresse "url-like" qu'une valeur
+     commençant par "/", "./" ou "../" (ou une URL absolue) — "js/vendor/..." sans préfixe est classé
+     comme un spécificateur nu invalide et TOUTE l'entrée est silencieusement remplacée par null
+     ("blocked by a null value"), jamais une erreur au chargement de la page. Bug réel trouvé le
+     29/09/2026 contre un vrai Grist (jamais détecté avant : dev-tests/harness.html vit dans un
+     sous-dossier, donc son import map utilise déjà "../js/vendor/..." qui satisfait la spec par
+     accident — voir HYPOTHESES.md). -->
 <script type="importmap">
 {
   "imports": {
-    "apache-arrow": "js/vendor/apache-arrow/Arrow.dom.mjs",
-    "flatbuffers": "js/vendor/flatbuffers/mjs/flatbuffers.js",
-    "tslib": "js/vendor/tslib/tslib.es6.mjs"
+    "apache-arrow": "./js/vendor/apache-arrow/Arrow.dom.mjs",
+    "flatbuffers": "./js/vendor/flatbuffers/mjs/flatbuffers.js",
+    "tslib": "./js/vendor/tslib/tslib.es6.mjs"
   }
 }
 </script>
