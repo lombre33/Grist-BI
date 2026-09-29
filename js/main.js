@@ -10,6 +10,22 @@
   const store = (GristBI.store = GristBI.state.createStore());
   const { escapeHtml, tileDrillLevels } = GristBI.data;
 
+  // Icônes du chrome : traits monochromes dessinés à la main (`stroke="currentColor"`, `fill="none"`)
+  // plutôt que des glyphes texte/emoji (◂ ▸ ✎ ✓ &times;) — mêmes contraintes que le reste du projet :
+  // zéro dépendance tierce, rien à vendoriser, un seul jeu de tracés partagé par tous les boutons
+  // icône-seule. `currentColor` fait hériter la couleur du bouton (texte/accent/danger selon l'état
+  // survolé — voir css/style.css) sans le moindre asset séparé par thème clair/sombre.
+  const ICON_PATHS = {
+    close: '<path d="M4 4l8 8M12 4l-8 8"/>',
+    edit: '<path d="M12.9 2.1a2 2 0 0 1 2.8 2.8L5.6 15 2 16l1-3.6L12.9 2.1Z"/><path d="M10.6 4.4l2.8 2.8"/>',
+    chevronLeft: '<path d="M10 3l-5 5 5 5"/>',
+    chevronRight: '<path d="M6 3l5 5-5 5"/>',
+    warning: '<path d="M8 2.2l6.5 11.6H1.5L8 2.2Z"/><path d="M8 6.6v3.2"/><path d="M8 11.9v.01"/>'
+  };
+  function icon(name) {
+    return `<svg class="icon icon-${name}" viewBox="0 0 16 16" aria-hidden="true" focusable="false">${ICON_PATHS[name]}</svg>`;
+  }
+
   let currentTableId = null;
   // Id réel de LA table de travail par défaut (BI_StressTest), capturé au bootstrap plutôt que
   // codé en dur ici — c'est la SEULE table pour laquelle ce widget connaît des tuiles par défaut
@@ -362,13 +378,13 @@
   // Une page ne se supprime jamais toute seule (state.js:removePage refuse de vider la dernière),
   // donc pas besoin de gérer un état "aucune page" ici. Double-clic = renommer (pattern déjà utilisé
   // nulle part ailleurs dans ce fichier mais discoverable, comme un onglet de tableur) ; le bouton
-  // ✕ n'apparaît que sur l'onglet actif pour ne pas encombrer les onglets inactifs, et seulement
-  // s'il y a plus d'une page (sinon il ne ferait jamais rien).
+  // de suppression (icône `close`) n'apparaît que sur l'onglet actif pour ne pas encombrer les
+  // onglets inactifs, et seulement s'il y a plus d'une page (sinon il ne ferait jamais rien).
   function renderPageTabs(pages, currentPageId) {
     pageTabsEl.innerHTML = pages.map((p) => {
       const active = p.id === currentPageId;
       const removeBtn = active && pages.length > 1
-        ? `<span class="page-tab-remove" data-page-id="${escapeHtml(p.id)}" title="Supprimer cette page">&times;</span>`
+        ? `<span class="page-tab-remove" data-page-id="${escapeHtml(p.id)}" title="Supprimer cette page">${icon('close')}</span>`
         : '';
       return `<button type="button" class="page-tab${active ? ' active' : ''}" data-page-id="${escapeHtml(p.id)}">
         ${escapeHtml(p.name)}${removeBtn}
@@ -405,7 +421,7 @@
     filterBadgesEl.innerHTML = activeFilters.map((f) => `
       <span class="filter-chip">
         ${escapeHtml(f.column)} = ${escapeHtml(String(f.value))}
-        <button type="button" class="filter-chip-remove" data-column="${escapeHtml(f.column)}" aria-label="Retirer ce filtre">&times;</button>
+        <button type="button" class="filter-chip-remove" data-column="${escapeHtml(f.column)}" aria-label="Retirer ce filtre">${icon('close')}</button>
       </span>
     `).join('');
     for (const btn of filterBadgesEl.querySelectorAll('.filter-chip-remove')) {
@@ -452,7 +468,7 @@
     advancedFilterBadgesEl.innerHTML = advancedFilters.map((f) => `
       <span class="filter-chip">
         ${escapeHtml(describeAdvancedFilter(f))}
-        <button type="button" class="advanced-filter-chip-remove" data-column="${escapeHtml(f.column)}" aria-label="Retirer ce filtre">&times;</button>
+        <button type="button" class="advanced-filter-chip-remove" data-column="${escapeHtml(f.column)}" aria-label="Retirer ce filtre">${icon('close')}</button>
       </span>
     `).join('');
     for (const btn of advancedFilterBadgesEl.querySelectorAll('.advanced-filter-chip-remove')) {
@@ -477,10 +493,10 @@
     el.dataset.tileId = tile.id;
     const header = `<div class="tile-header"><span>${escapeHtml(tile.title)}</span>
         <span class="tile-actions">
-          <button class="tile-move-left" type="button" aria-label="Déplacer vers la gauche">◂</button>
-          <button class="tile-move-right" type="button" aria-label="Déplacer vers la droite">▸</button>
-          <button class="tile-edit" type="button" aria-label="Modifier">✎</button>
-          <button class="tile-remove" type="button" aria-label="Supprimer">&times;</button>
+          <button class="tile-move-left" type="button" aria-label="Déplacer vers la gauche" title="Déplacer vers la gauche">${icon('chevronLeft')}</button>
+          <button class="tile-move-right" type="button" aria-label="Déplacer vers la droite" title="Déplacer vers la droite">${icon('chevronRight')}</button>
+          <button class="tile-edit" type="button" aria-label="Modifier" title="Modifier la tuile">${icon('edit')}</button>
+          <button class="tile-remove" type="button" aria-label="Supprimer" title="Supprimer la tuile">${icon('close')}</button>
         </span></div>`;
     el.innerHTML = tile.type === 'kpi'
       ? `${header}
@@ -559,7 +575,7 @@
     measureSelect.value = tile.measure;
     aggSelect.value = tile.aggFn;
     trendDimensionSelect.value = tile.trendDimension || '';
-    submitTileBtn.textContent = '✓ Modifier la tuile';
+    submitTileBtn.textContent = 'Modifier la tuile';
     cancelEditBtn.hidden = false;
     addTileForm.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }

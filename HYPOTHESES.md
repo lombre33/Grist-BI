@@ -1261,6 +1261,39 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     produit trouvé pendant cette validation — contrairement à plusieurs features précédentes de ce
     fichier, aucune anomalie de rendu/visibilité/stabilité n'est apparue ici.
 
+- **Colonne technique Grist `manualSort` filtrée des sélecteurs + icônes SVG (2026-09-29)** :
+  suite à l'audit UI/UX du projet (comparaison au cadrage d'identité visuelle `Grist Factory` de
+  `publipostageGrist`) et à un test en conditions réelles Grist qui avait remonté ce défaut :
+  - **`manualSort` fuitait dans les sélecteurs Dimension/Mesure/Filtre du formulaire d'ajout de
+    tuile** [BUG RÉEL, voir TEST_PROTOCOL.md #19]. Grist ajoute cette colonne (position flottante,
+    glisser-déposer manuel des lignes) à TOUTE table qu'il crée, sans qu'elle soit jamais demandée
+    via `AddColumn` côté widget — `fetchTable()` la renvoie mêlée aux vraies colonnes du document.
+    `GristBI.data.tableToRows()` n'excluait que `id`. Invisible dans ce sandbox car
+    `dev-tests/grist-stub.js` ne simulait pas cette colonne (ni sur `AddTable`, ni sur `AddRecord`) —
+    corrigé des deux côtés : un filtre explicite (`GRIST_TECHNICAL_COLUMNS`) dans `tableToRows()`,
+    et le mock étendu pour que le correctif soit réellement exercé par `node dev-tests/test-data.js`
+    plutôt que de rester une hypothèse jamais vérifiée par les tests.
+  - **Icônes de chrome** : les glyphes texte/emoji (chevrons, crayon, coche, `&times;`, ⚠️) utilisés
+    pour les actions de tuile (déplacer/modifier/supprimer), la fermeture d'onglet/de badge de
+    filtre et le bandeau d'avertissement ECharts remplacés par des SVG en trait dessinés à la main
+    (`js/main.js:ICON_PATHS`/`icon()`), `stroke="currentColor"` — cohérent avec la règle « icônes en
+    contour, jamais d'emoji/police d'icônes » du cadrage d'identité `Grist Factory`, sans ajouter la
+    moindre dépendance tierce ni asset à vendoriser. Testé visuellement (captures d'écran Playwright
+    contre `dev-tests/harness.html`) en thème clair, sombre, et en mode édition de tuile : la couleur
+    dynamique déjà en place (survol, tuile en cours d'édition) continue de s'appliquer sans le
+    moindre changement JS grâce à `currentColor`.
+  - **`.advanced-filter-chip-remove` n'avait aucune règle CSS propre** [BUG RÉEL, voir
+    TEST_PROTOCOL.md #20] — contrairement à son équivalent `.filter-chip-remove` des filtres
+    croisés, ce bouton s'affichait avec le style par défaut du navigateur. Invisible tant qu'aucun
+    filtre avancé n'avait été posé lors d'une revue visuelle. Corrigé en partageant les styles de
+    `.filter-chip-remove`.
+  - **Volontairement laissé de côté** (nécessite un arbitrage ou un asset d'Antoine, pas une
+    "correction" au sens de ce lot) : logo/panneau Crédits/licence GPL v3 (rattachement à
+    l'organisation GitHub `grist-factory` non tranché, asset du logo à obtenir), police Manrope
+    (nouvelle dépendance tierce, même vendorisée, hors du périmètre "corrections + sobriété" sans
+    accord explicite), et le bilingue fr/en systématique (`data-i18n`) — chantier à part entière vu
+    son volume, pas une correction ponctuelle.
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée

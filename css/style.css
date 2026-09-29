@@ -97,19 +97,25 @@ body {
   white-space: nowrap;
 }
 
-.filter-chip-remove {
+/* `.advanced-filter-chip-remove` (barre de filtres avancés) n'avait ICI AUCUNE règle propre avant
+   ce correctif [BUG RÉEL] : un `<button>` nu au look du navigateur dans un `.filter-chip` sinon
+   entièrement stylé — invisible tant que la barre de filtres avancés n'avait jamais de filtre actif
+   à afficher. Partage désormais ces styles avec `.filter-chip-remove`, même composant visuel. */
+.filter-chip-remove, .advanced-filter-chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: none;
   border: none;
   color: inherit;
   cursor: pointer;
-  font-size: 13px;
-  line-height: 1;
   padding: 2px;
   border-radius: 50%;
   opacity: 0.65;
   transition: opacity 0.12s var(--ease), background 0.12s var(--ease);
 }
-.filter-chip-remove:hover { opacity: 1; background: rgba(42, 120, 214, 0.16); }
+.filter-chip-remove:hover, .advanced-filter-chip-remove:hover { opacity: 1; background: rgba(42, 120, 214, 0.16); }
+.filter-chip-remove .icon, .advanced-filter-chip-remove .icon { width: 11px; height: 11px; }
 
 .btn-primary, .btn-secondary {
   border-radius: var(--radius-sm);
@@ -206,12 +212,16 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   box-shadow: var(--shadow-xs);
 }
 .page-tab-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 50%;
   opacity: 0.6;
-  line-height: 1;
-  padding: 1px 3px;
+  padding: 3px;
+  transition: opacity 0.12s var(--ease), background 0.12s var(--ease);
 }
 .page-tab-remove:hover { opacity: 1; background: rgba(42, 120, 214, 0.16); }
+.page-tab-remove .icon { width: 10px; height: 10px; }
 
 .bookmarks-bar {
   display: flex;
@@ -376,11 +386,12 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 .tile-actions { display: flex; align-items: center; gap: 1px; flex-shrink: 0; }
 
 .tile-move-left, .tile-move-right, .tile-edit, .tile-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: none;
   border: none;
   color: var(--muted);
-  font-size: 13px;
-  line-height: 1;
   cursor: pointer;
   padding: 4px 5px;
   border-radius: var(--radius-sm);
@@ -390,9 +401,22 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 .tile-edit:hover, .tile-remove:hover { background: var(--surface-sunken); }
 .tile-move-left:disabled, .tile-move-right:disabled { opacity: 0.3; cursor: default; }
 .tile-move-left:hover:not(:disabled), .tile-move-right:hover:not(:disabled) { color: var(--accent); }
-.tile-remove { font-size: 15px; }
 .tile-edit:hover { color: var(--accent); }
 .tile-remove:hover { color: var(--critical); }
+
+/* Icônes de chrome : traits monochromes dessinés à la main (js/main.js:ICON_PATHS), jamais des
+   glyphes texte/emoji — `stroke="currentColor"` hérite la couleur du bouton parent (survol/actif/
+   thème clair-sombre inclus) sans le moindre asset séparé à maintenir. */
+.icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 
 .tile-breadcrumb {
   font-size: 11px;

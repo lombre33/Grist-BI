@@ -12,11 +12,20 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
+  // Colonnes que Grist ajoute lui-même à toute table (jamais demandées via AddColumn côté widget) et
+  // que `fetchTable()` renvoie donc mêlées aux vraies colonnes du document : `manualSort` (position
+  // flottante utilisée pour le glisser-déposer manuel des lignes) est de celles-là. [BUG RÉEL,
+  // confirmé en conditions réelles Grist — voir TEST_PROTOCOL.md #19] Sans ce filtre, `manualSort`
+  // apparaissait dans les sélecteurs Dimension/Mesure/Filtre du formulaire d'ajout de tuile, et s'y
+  // retrouvait même pré-sélectionnée par défaut (1re colonne de la liste). Le mock `grist-stub.js` ne
+  // la simulait pas, donc aucun test ne l'exerçait avant.
+  const GRIST_TECHNICAL_COLUMNS = new Set(['manualSort']);
+
   // grist.docApi.fetchTable() renvoie un format colonnaire ({id:[...], ColA:[...], ...}) ;
   // grist.onRecords() renvoie déjà des objets-lignes. On garde ce convertisseur pour le premier cas
-  // (utilisé par grist-api.js pour lire la table de config interne).
+  // (utilisé par grist-api.js pour lire la table de config interne et la table de travail).
   function tableToRows(table) {
-    const keys = Object.keys(table || {}).filter((k) => k !== 'id');
+    const keys = Object.keys(table || {}).filter((k) => k !== 'id' && !GRIST_TECHNICAL_COLUMNS.has(k));
     const n = (table && table.id ? table.id.length : 0);
     const rows = [];
     for (let i = 0; i < n; i++) {
