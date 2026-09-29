@@ -1797,6 +1797,83 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     `fetchTable`/`onRecords` les renvoie, sans lecture des vrais types Grist `_grist_Tables_column`,
     voir la correction technique du 2026-09-15 dans ROADMAP.md) : le format exact renvoyé pour une
     colonne `Date` Grist réelle (chaîne ISO ? timestamp Unix ? autre ?) n'est pas confirmé ici.
+    **Le format lui-même est désormais pris en charge — voir le point 15 ci-dessous** : pour la
+    table de travail (`BI_StressTest`), un nombre (secondes epoch UTC) est reconverti en chaîne ISO
+    à la lecture, donc `TRY_CAST(... AS DATE)`/`parseDateValue` reçoivent bien le format attendu.
+    Reste non couvert : une table arbitraire choisie via le sélecteur de table (le point (d)
+    d'origine, ci-dessus, garde donc sa validité pour CE cas précis).
+15. **Vérification du format réel de l'API Grist pour trois points précis, demandée le 29/09/2026
+    après la livraison du drill-down et des commentaires collaboratifs** (la campagne réelle du
+    19/09/2026, §"Validé en conditions réelles" plus haut dans ce document, avait testé le volume,
+    l'idempotence, l'export et le redimensionnement, mais jamais le format des valeurs Date/Reference
+    ni la collision `AddTable` sur une table créée depuis) :
+    - **Colonnes `Date`/`DateTime` en nombre (secondes epoch UTC), pas en chaîne ISO** — voir CLAUDE.md
+      §7 piège n°16 pour le diagnostic complet. Directement pertinent : la colonne `Date` de
+      `BI_StressTest` (`js/demo-data.js:COLUMNS_LARGE`) est réellement typée `Date` côté Grist.
+      **Corrigé** : `GristBI.data.tableToRows(table, dateColumnIds)` (nouveau 2e paramètre optionnel,
+      `js/data.js`) reconvertit en 'AAAA-MM-JJ' toute valeur numérique d'une colonne listée dans
+      `dateColumnIds` — jamais une conversion aveugle par valeur (une vraie mesure numérique qui
+      tomberait par coïncidence dans une plage plausible d'epoch n'est jamais touchée, seul l'id de
+      colonne compte). Appelé depuis `js/grist-api.js` (`dateColumnIdsFrom(columns)`, calculé à
+      partir du schéma JS connu de ce widget) dans `loadOrCreateTable`/`ensureColumnsUpToDate` — donc
+      pour `BI_StressTest` ET `BI_Dashboard_Comments`, les deux seules tables dont ce widget connaît
+      le schéma à l'avance. **Non corrigé, par construction, et documenté comme tel** : `loadTable()`
+      (sélecteur de table, data blending) n'a aucune métadonnée de type pour une table arbitraire —
+      une vraie colonne Date y resterait mal classée par `inferColumnKind`. Une heuristique sur la
+      seule valeur (plage plausible d'epoch) a été jugée trop fragile pour ce premier correctif
+      (risque de faux positif sur une vraie mesure numérique) : laissé comme point ouvert plutôt que
+      traité par un correctif hâtif.
+      - **Testé sous Node** (`dev-tests/test-data.js`) : `tableToRows`/`epochSecondsToIsoDate`, y
+        compris le cas adversarial d'une mesure numérique dont la valeur coïncide avec un epoch
+        plausible sur une colonne NON listée dans `dateColumnIds` (doit rester un nombre, jamais
+        convertie).
+      - **Fidélité du mock améliorée** (`dev-tests/grist-stub.js`) : une colonne déclarée `Date` (via
+        `AddTable`/`AddColumn`) est désormais sérialisée en nombre par `AddRecord`/`UpdateRecord`,
+        comme le ferait réellement Grist — avant ce correctif, le mock renvoyait fidèlement la chaîne
+        ISO écrite par le widget, donc AUCUN test de ce dépôt n'aurait pu détecter cette régression.
+        Ce point rejoint la même leçon méthodologique que le bug `manualSort` (piège n°4 de
+        TEST_PROTOCOL.md) : un mock qui ne reproduit pas un comportement réel du moteur masque
+        silencieusement toute régression sur ce point.
+      - **Testé sous Playwright** (bout en bout, mock fidèle) : `grist.docApi.fetchTable` renvoie bien
+        un nombre pour `Date` ; les lignes reconstituées en mémoire (`GristBI.store.getState().rows`)
+        ont bien `Date` en chaîne ISO ; le bouton de suggestion de hiérarchie de drill-down (PR #14,
+        n'apparaît QUE pour une colonne classée "date" par `inferColumnKind`) réapparaît correctement
+        pour la colonne `Date` malgré son format brut numérique — preuve bout en bout que le correctif
+        couvre bien le chemin réellement utilisé par le widget, pas seulement la fonction isolée.
+      - **Non vérifié depuis cette session** : le format exact affirmé ici (secondes depuis l'epoch
+        UTC pour `Date`) vient de la documentation/du comportement connu du moteur Grist, pas d'un
+        nouvel aller-retour contre un vrai document Grist ouvert pendant cette investigation (la
+        campagne du 19/09/2026 ne l'avait pas testé non plus, voir plus haut). Une vérification à la
+        console d'un vrai widget (`JSON.stringify(await grist.docApi.fetchTable('BI_StressTest'))`)
+        reste le seul point de confirmation manquant. `DateTime` n'a délibérément pas été traité
+        (aucune colonne de ce projet n'utilise ce type, et `parseDateValue` ne sait de toute façon pas
+        parser une composante horaire — un futur ajout devra traiter les deux ensemble).
+    - **Colonnes `Ref:` (référence) renvoyées en id brut** — déjà couvert, sans changement de code
+      nécessaire : voir l'entrée du 2026-09-15 sur `blendJoinColumns()`/l'ajout de `id` comme clé de
+      jointure sélectionnable (§ data blending, plus haut dans ce document). Le mécanisme retenu à
+      l'époque est délibérément agnostique de la forme réelle que Grist choisit de renvoyer (id brut
+      ou texte résolu) : `id` couvre le premier cas, n'importe quelle colonne texte ordinaire couvre
+      le second — donc peu importe laquelle des deux formes le moteur Grist réel utilise
+      effectivement, déjà documenté comme "non-vérifiable depuis ce sandbox" à l'époque et toujours
+      dans cet état, sans que cela bloque la fonctionnalité.
+    - **Collision `AddTable` sur `BI_Dashboard_Comments` (table de la #15, jamais exercée avant ce
+      jour)** : `loadOrCreateTable` (le mécanisme idempotent + son filet de sécurité anti-collision,
+      voir CLAUDE.md §3/§7 piège n°1) est PARTAGÉ, verbatim, sans aucune branche spécifique à une
+      table — déjà utilisé et vérifié pour `BI_StressTest`/`BI_Dashboard_Config`. **Testé sous
+      Playwright** : reconnexion à un document où `BI_Dashboard_Comments` contient déjà un commentaire
+      d'une session précédente (`__gristStubPreseed`) — le commentaire est relu sans perte ni
+      duplication, aucune table `BI_Dashboard_Comments2` orpheline n'apparaît, aucun crash JS pendant
+      tout le bootstrap. **Le filet de sécurité anti-collision `AddTable` lui-même (le cas où
+      `tableExistsConfirmed` se trompe malgré son budget d'attente) n'a volontairement pas été
+      rejoué spécifiquement pour les commentaires** : le forcer artificiellement via
+      `__gristStubCollideOnAddTable` sans données réelles préexistantes sous ce nom fait planter
+      `ensureColumnsUpToDate`/`AddColumn` du mock (`t` vaut alors `undefined`) — un vrai moteur Grist
+      ne collisionnerait jamais sans données réelles déjà présentes sous ce nom, donc ce scénario
+      artificiel ne correspond à aucun cas réel possible ; le reproduire fidèlement demanderait de
+      fausser `listTables()` (`__gristStubRaceCalls`) au moment précis du contrôle des commentaires
+      SANS fausser celui de `BI_StressTest` (contrôlé juste avant, dans le même budget de garde) —
+      jugé disproportionné pour un mécanisme déjà prouvé correct par le partage de code avec les deux
+      autres tables, plutôt qu'une lacune réelle laissée sans réponse.
 
 ## Prochaines étapes suggérées
 

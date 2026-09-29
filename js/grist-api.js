@@ -301,13 +301,22 @@
   // qui a aussi demandé à ne plus jamais recréer de table pour un changement de schéma : ce
   // mécanisme d'ajout de colonne en place remplace définitivement la logique de versionnage de nom
   // de table utilisée avant). No-op si aucune colonne ne manque.
+  // Id des colonnes déclarées `Date` dans un schéma connu de ce widget (voir COLUMNS_LARGE/
+  // COMMENTS_COLUMNS) — la seule situation où l'on connaît le type réel d'une colonne sans lire
+  // `_grist_Tables_column` (voir GristBI.data.tableToRows/epochSecondsToIsoDate pour pourquoi c'est
+  // nécessaire). `DateTime` n'est délibérément pas couvert ici : aucune colonne de ce projet n'utilise
+  // ce type, et parseDateValue (js/data.js) ne sait de toute façon pas parser une composante horaire.
+  function dateColumnIdsFrom(columns) {
+    return columns.filter((c) => c.type === 'Date').map((c) => c.id);
+  }
+
   async function ensureColumnsUpToDate(tableId, columns, deriveMissingColumns, onProgress) {
     const table = await grist.docApi.fetchTable(tableId);
     const existingIds = new Set(Object.keys(table).filter((k) => k !== 'id'));
     const missingColumns = columns.filter((c) => !existingIds.has(c.id));
     if (!missingColumns.length) return;
     await grist.docApi.applyUserActions(missingColumns.map((c) => ['AddColumn', tableId, c.id, { type: c.type }]));
-    const rows = GristBI.data.tableToRows(table);
+    const rows = GristBI.data.tableToRows(table, dateColumnIdsFrom(columns));
     const actions = rows.map((row, i) => {
       const derived = deriveMissingColumns(row);
       const fields = {};
@@ -364,7 +373,7 @@
       await ensureColumnsUpToDate(tableId, columns, deriveMissingColumns, onProgress);
     }
     const table = await grist.docApi.fetchTable(tableId);
-    return { tableId, rows: GristBI.data.tableToRows(table), created: !alreadyExists };
+    return { tableId, rows: GristBI.data.tableToRows(table, dateColumnIdsFrom(columns)), created: !alreadyExists };
   }
 
   function loadOrCreateStressData(onProgress) {
