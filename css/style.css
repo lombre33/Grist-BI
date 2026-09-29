@@ -135,6 +135,15 @@ body {
 .settings-credits-list dd { margin: 0; color: var(--text); line-height: 1.5; }
 .settings-credits-list a { color: var(--accent); }
 
+/* Sections du panneau Réglages (Langue, Crédits) : une langue choisie une fois est mémorisée
+   (localStorage), pas besoin d'une place permanente dans le bandeau — voir #settings-lang-fr/en,
+   même placement de référence que Publipostage+ (js/settings.js). */
+.settings-section + .settings-section { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+.settings-section h4 { margin: 0 0 8px; font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.02em; }
+.settings-radio-row { display: flex; gap: 16px; }
+.settings-radio-row label { display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--text); cursor: pointer; }
+.settings-radio-row input[type="radio"] { cursor: pointer; }
+
 .filter-badges { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 
 .filter-chip {

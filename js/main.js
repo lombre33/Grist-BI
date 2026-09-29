@@ -939,22 +939,25 @@
     }
   }
 
-  // Sélecteur de langue (bandeau du haut) : bascule fr/en, persistée par GristBI.i18n (localStorage).
-  // Le libellé du bouton affiche la langue CIBLE (celle sur laquelle il bascule), convention
-  // courante pour ce genre de bouton compact — pas besoin de traduction, ce sont des codes de
-  // langue. onChange (voir js/i18n.js) couvre tout ce qu'aucun attribut data-i18n-* ne peut porter
-  // parce que ça dépend d'un autre état que la langue : le libellé Dimension/Mesure selon le type
-  // de tuile choisi (updateFormFieldsForType) et le texte du bouton Ajouter/Modifier selon le mode
-  // édition (submitTileBtn) — puis un render() complet pour tout le reste (tuiles, badges, pages).
-  const langToggleBtn = document.getElementById('lang-toggle');
-  function refreshLangToggleLabel() {
-    langToggleBtn.textContent = GristBI.i18n.getLang() === 'fr' ? 'EN' : 'FR';
+  // Sélecteur de langue (panneau Réglages, radio-boutons fr/en) : persisté par GristBI.i18n
+  // (localStorage). Même placement de référence que Publipostage+ (js/settings.js de ce widget
+  // frère) — une langue choisie une fois n'a pas besoin d'une place permanente dans le bandeau, qui
+  // porte déjà les exports, Réglages et le logo (demande du coordinateur du 29/09/2026, après un
+  // premier jet en bouton de bandeau). onChange (voir js/i18n.js) couvre tout ce qu'aucun attribut
+  // data-i18n-* ne peut porter parce que ça dépend d'un autre état que la langue : le libellé
+  // Dimension/Mesure selon le type de tuile choisi (updateFormFieldsForType) et le texte du bouton
+  // Ajouter/Modifier selon le mode édition (submitTileBtn) — puis un render() complet pour tout le
+  // reste (tuiles, badges, pages).
+  const langRadios = Array.from(document.querySelectorAll('input[name="settings-lang"]'));
+  function refreshLangRadios() {
+    const lang = GristBI.i18n.getLang();
+    langRadios.forEach((r) => { r.checked = (r.value === lang); });
   }
-  langToggleBtn.addEventListener('click', () => {
-    GristBI.i18n.setLang(GristBI.i18n.getLang() === 'fr' ? 'en' : 'fr');
+  langRadios.forEach((radio) => {
+    radio.addEventListener('change', () => { if (radio.checked) GristBI.i18n.setLang(radio.value); });
   });
   GristBI.i18n.onChange(() => {
-    refreshLangToggleLabel();
+    refreshLangRadios();
     // Rafraîchit aussi le blankLabel "(aucun)"/"(none)" des comboboxes optionnelles (drill-down,
     // Tendance vs) : c'est `Combobox.setOptions` (js/combobox.js) qui l'écrit dans `.placeholder`
     // au moment de l'appel, jamais relu automatiquement — sans ce rappel, le placeholder resterait
@@ -966,7 +969,7 @@
     submitTileBtn.textContent = t(editingTileId ? 'tileForm.submit.edit' : 'tileForm.submit.add');
     render(store.getState());
   });
-  refreshLangToggleLabel();
+  refreshLangRadios();
 
   bootstrap();
 })();

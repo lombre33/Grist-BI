@@ -39,7 +39,6 @@
     'topbar.clearFilters': { fr: 'Effacer les filtres', en: 'Clear filters' },
     'status.rowCount': { fr: '{n} {n|ligne|lignes}', en: '{n} {n|row|rows}' },
     'status.renderTime': { fr: 'rendu : {ms} ms', en: 'rendered: {ms} ms' },
-    'lang.toggle.aria': { fr: "Changer la langue de l'interface", en: 'Switch interface language' },
 
     // --- Sélecteur de table ---
     'table.label': { fr: 'Table de travail', en: 'Working table' },
@@ -69,9 +68,13 @@
     'export.none': { fr: 'Aucune tuile à exporter.', en: 'No tile to export.' },
     'export.failed': { fr: "Échec de l'export Excel — voir la console (F12).", en: 'Excel export failed — see the console (F12).' },
 
-    // --- Panneau Réglages (logo/Crédits/licence GPL v3, PR #7) ---
+    // --- Panneau Réglages (logo/Crédits/licence GPL v3, PR #7 ; langue, remplace le bouton de
+    // bandeau #lang-toggle depuis le 29/09/2026 — placement de référence Publipostage+) ---
     'settings.button': { fr: 'Réglages', en: 'Settings' },
     'settings.close': { fr: 'Fermer', en: 'Close' },
+    'settings.language.title': { fr: 'Langue', en: 'Language' },
+    'settings.language.fr': { fr: 'Français', en: 'French' },
+    'settings.language.en': { fr: 'Anglais', en: 'English' },
     'settings.credits.title': { fr: 'Crédits', en: 'Credits' },
     'settings.credits.author': { fr: 'Auteur', en: 'Author' },
     'settings.credits.website': { fr: 'Site', en: 'Website' },
