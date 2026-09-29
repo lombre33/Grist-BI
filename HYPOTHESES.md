@@ -1579,6 +1579,63 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     `BI_StressTest` : la jointure et les 3 comboboxes sont restaurées à l'identique depuis
     `BI_Dashboard_Config`). **Jamais testé dans un vrai document Grist** (voir §8 de CLAUDE.md).
 
+- **Drill-down hiérarchique automatique** (`js/data.js:deriveDateHierarchyColumns`, `js/main.js`,
+  2026-09-29, Tier 2 ROADMAP.md) : périmètre volontairement limité aux hiérarchies TEMPORELLES,
+  comme prévu par la note de ROADMAP.md qui exclut explicitement les hiérarchies non temporelles
+  (Pays > Région > Ville) d'une "config silencieuse".
+  - **Deux mécanismes distincts, à ne pas confondre** : (1) la DÉRIVATION des colonnes
+    `<col>.Annee`/`<col>.Trimestre`/`<col>.Mois` est automatique et sans confirmation — appliquée à
+    CHAQUE colonne classée "date" par `inferColumnKind`, via `withDateHierarchies` (`js/main.js`),
+    appelée depuis `applyBlend` juste avant `refreshColumnSelects`/`store.setRows` (même choke point
+    que le data blending, réutilisé tel quel). (2) le CHOIX d'utiliser cette hiérarchie pour une
+    tuile donnée reste une suggestion à confirmer d'un clic (bouton "Détailler par
+    Année/Trimestre/Mois/Jour", `#tile-suggest-date-hierarchy`) — jamais appliqué automatiquement à
+    une tuile existante ni à une nouvelle tuile sans ce clic explicite.
+  - **Pas une lecture du vrai type Grist** (`_grist_Tables_column`), malgré une note antérieure de
+    ROADMAP.md qui le supposait — corrigée dans ROADMAP.md, même type de correction que celle déjà
+    faite pour le data blending. `inferColumnKind` reste l'heuristique existante (échantillonne une
+    valeur réelle, teste `GristBI.data.parseDateValue`), ce POC ne lit toujours pas
+    `_grist_Tables_column`.
+  - **Jour n'est pas dérivé** : la colonne de date d'origine (ex. `Date`, format AAAA-MM-JJ) sert de
+    dernier niveau de drill — dériver un 4e niveau identique à la donnée source n'aurait aucune
+    valeur. `deriveDateHierarchyColumns` ne produit donc que 3 clés, jamais 4.
+  - **Trimestre/Mois volontairement SANS préfixe d'année** (`"T1".."T4"`, `"01".."12"`, jamais
+    `"2026-T1"`) : lu dans `js/data.js:rowsForTile`, qui applique TOUS les niveaux de drill déjà
+    choisis comme filtres AND avant d'agréger le niveau courant — une fois entré dans une Année
+    donnée, le niveau Trimestre ne voit plus que les lignes de cette année, donc "T1" y est déjà sans
+    ambiguïté. Un préfixe aurait été un travail inutile.
+  - **Toujours les 3 clés, jamais conditionnelles** : une valeur de date non parseable produit les 3
+    clés à `null` plutôt que de les omettre — même raison que pour `blendRows`
+    (`availableColumns()` ne lit que `rows[0]`, une forme de ligne qui varie casserait les
+    sélecteurs de colonne dès que la première ligne serait invalide).
+  - **Visibilité du bouton** (`updateSuggestDateHierarchyVisibility`, `js/main.js`) : caché si
+    aucune dimension choisie, si la dimension n'est pas classée "date" par `inferColumnKind`, ou si
+    le type de tuile n'a pas de notion de drill-down (KPI/jauge/mode mesure temporel via
+    `formHasNoDimension`, pivot). Recalculée à trois endroits : au changement de dimension (nouveau
+    listener), à la fin de `refreshColumnSelects` (changement de table), et dans
+    `updateFormFieldsForType` (changement de type de tuile) — même redondance déjà en place pour
+    `updateDrillLevelsUI`.
+  - **`setDrillLevels(levels)` extrait** de la boucle qui préremplissait les niveaux de drill en
+    édition de tuile (`startEditTile`) — réutilisé par le clic du bouton de suggestion pour remplir
+    les niveaux 2 et 3 (Trimestre/Mois) sans que l'utilisateur clique "+ Niveau" à la main. Le clic
+    bascule aussi `dimensionSelect.value` sur `<col>.Annee` : ne soumet pas le formulaire, laisse
+    l'utilisateur ajuster avant de valider comme pour tout autre choix.
+  - **Testé sous Node** (`dev-tests/test-data.js`) : cas nominal (3 dates réparties sur les 4
+    trimestres, colonnes dérivées vérifiées valeur par valeur), valeur non parseable (colonnes
+    dérivées à `null`, jamais absentes), tableau vide (identité).
+  - **Testé en Playwright** contre `dev-tests/harness.html` (script ad hoc, non committé, voir §5 de
+    CLAUDE.md), servi en HTTP local (pas `file://`, voir §4 de CLAUDE.md) : bouton caché avant tout
+    choix de dimension et pour une dimension texte (`Region`), visible pour une dimension classée
+    date (`Date`) ; clic → dimension basculée sur `Date.Annee`, niveaux de drill préremplis
+    `["Date.Trimestre", "Date.Mois", "Date"]`, bouton re-caché après (`Date.Annee` n'est plus classé
+    "date") ; tuile ajoutée et rendue sans erreur JS. **Drill réel confirmé de bout en bout** en
+    cliquant successivement sur la 1re barre du graphique (pixel calculé via
+    `chart.convertToPixel`, pas une position devinée à l'écran) : `Date.Annee ▸ 2020` →
+    `Date.Trimestre ▸ T1` → `Date.Mois ▸ 01` → prêt à drill sur `Date` (le fil d'Ariane affiche
+    correctement la chaîne complète à chaque étape, avec des sous-ensembles de catégories de plus en
+    plus restreints — 4 trimestres puis seulement 3 mois affichés, cohérent avec le filtrage en
+    cascade). **Jamais testé dans un vrai document Grist** (voir §8 de CLAUDE.md).
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée
@@ -1600,6 +1657,11 @@ dans une seule instance de widget, avec ses propres tuiles internes.
 - **Bookmarks partagés entre tuiles/pages, navigation multi-pages** : les vues sauvegardées
   (voir plus haut) sont un mécanisme volontairement simple (filtres + drill-down d'UN dashboard),
   pas un système de navigation entre plusieurs pages/dashboards.
+- **Hiérarchies non temporelles suggérées automatiquement** (ex. Pays > Région > Ville) : le
+  drill-down hiérarchique automatique (voir l'entrée dédiée plus haut) ne couvre QUE les colonnes
+  classées "date" par `inferColumnKind` — non tenté pour le reste, comme prévu explicitement par
+  ROADMAP.md ("une suggestion à confirmer, jamais une config silencieuse"), faute d'un signal fiable
+  (pas de lecture du vrai type Grist, pas de métadonnées de relation entre colonnes dans ce POC).
 
 ## Points à valider en conditions réelles (pas testables depuis ce sandbox)
 
