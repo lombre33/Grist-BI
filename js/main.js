@@ -34,10 +34,19 @@
   // (GristBI.demoData.defaultLargeTiles), donc la seule sur laquelle proposer de les restaurer.
   let defaultTableId = null;
   let saveTimer = null;
-  let pendingSave = null; // { tableId, pages, currentPageId, bookmarks } en attente d'écriture, voir flushPendingSave()
+  let pendingSave = null; // { tableId, pages, currentPageId, bookmarks, blend } en attente d'écriture, voir flushPendingSave()
   let lastRenderedPages = null; // référence, pour ne pas re-sauvegarder la config à chaque rafraîchissement de données
   let lastRenderedCurrentPageId = null; // idem, côté page active (changer de page se sauvegarde aussi)
   let lastRenderedBookmarks = null; // idem, côté bookmarks
+  let lastRenderedBlend = null; // idem, côté jointure de data blending (voir applyBlend/commitBlendFromForm)
+  // Lignes BRUTES (non jointes) de la table de travail PRINCIPALE, tenues à jour par switchTable —
+  // c'est TOUJOURS depuis celles-ci que la jointure de data blending est recalculée (voir
+  // applyBlend), jamais depuis store.getState().rows qui peut déjà porter les colonnes préfixées
+  // d'une jointure précédente : rejoindre des lignes déjà jointes les préfixerait une seconde fois.
+  let currentPrimaryRows = [];
+  // { secondaryTableId, primaryColumn, secondaryColumn } de la table de travail courante, ou null
+  // (aucune jointure) — miroir de currentTableId, tenu à jour par switchTable/commitBlendFromForm.
+  let currentBlend = null;
   let editingTileId = null; // id de la tuile en cours d'édition via le formulaire, ou null (mode ajout)
   // <select> de niveaux de drill-down actuellement affichés dans le formulaire, un par niveau
   // AU-DELÀ de la dimension racine (index 0 = niveau 1, etc.) — voir gestion plus bas.
@@ -89,6 +98,9 @@
   const exportPdfBtn = document.getElementById('export-pdf');
   const exportPptxBtn = document.getElementById('export-pptx');
   const tableSelectInput = document.getElementById('table-select');
+  const blendSecondaryTableInput = document.getElementById('blend-secondary-table');
+  const blendPrimaryColumnInput = document.getElementById('blend-primary-column');
+  const blendSecondaryColumnInput = document.getElementById('blend-secondary-column');
   const pageTabsEl = document.getElementById('page-tabs');
   const addPageBtn = document.getElementById('add-page');
   const advancedFilterForm = document.getElementById('advanced-filter-form');
@@ -134,6 +146,27 @@
   // dans Grist après le chargement du widget doit rester atteignable sans recharger la page
   // [BUG RÉEL, voir HYPOTHESES.md].
   GristBI.combobox.attach(tableSelectInput, tableSelectInput.nextElementSibling, { strict: true, beforeOpen: refreshTablePicker });
+
+  // Data blending multi-tables (ROADMAP.md Tier 2) : trois comboboxes de plus, même composant/même
+  // raisonnement que le sélecteur de table ci-dessus. Les 3 ont un `blankLabel` "(aucune)" — pas
+  // seulement la table secondaire : un blend est TOUT ou RIEN (voir commitBlendFromForm), donc les
+  // 3 champs doivent pouvoir représenter "pas encore choisi"/"jointure retirée" de façon valide,
+  // même convention que les champs de drill-down/Tendance optionnels (blankLabel "(aucun)"/
+  // "(aucune)"). Attention : `fillCombobox` réinitialise le blankLabel à CHAQUE appel (voir sa
+  // définition plus bas) — tout rafraîchissement de ces 2 derniers champs doit donc toujours
+  // repasser `{ blankLabel: t('blend.none') }`, jamais l'omettre. `beforeOpen` relit toujours à la
+  // demande, jamais un instantané : une table créée dans Grist entre-temps doit rester atteignable,
+  // comme pour le sélecteur de table principal.
+  GristBI.combobox.attach(blendSecondaryTableInput, blendSecondaryTableInput.nextElementSibling, {
+    strict: true, blankLabel: t('blend.none'), beforeOpen: refreshSecondaryTablePicker
+  });
+  GristBI.combobox.attach(blendPrimaryColumnInput, blendPrimaryColumnInput.nextElementSibling, {
+    strict: true, blankLabel: t('blend.none'),
+    beforeOpen: () => fillCombobox(blendPrimaryColumnInput, availableColumns(currentPrimaryRows), { blankLabel: t('blend.none') })
+  });
+  GristBI.combobox.attach(blendSecondaryColumnInput, blendSecondaryColumnInput.nextElementSibling, {
+    strict: true, blankLabel: t('blend.none'), beforeOpen: refreshBlendSecondaryColumnPicker
+  });
 
   // Si le <script> ECharts (js/vendor/echarts/, voir index.html) n'a pas pu se charger, les tuiles
   // barres/camembert resteraient vides SANS AUCUNE erreur visible — seules les cartes KPI
@@ -385,11 +418,12 @@
     // chaque édition externe). Changer de page ne modifie QUE currentPageId (référence de `pages`
     // inchangée) mais mérite quand même d'être sauvegardé, comme la page active dans Power BI.
     if (state.pages !== lastRenderedPages || state.currentPageId !== lastRenderedCurrentPageId ||
-        state.bookmarks !== lastRenderedBookmarks) {
+        state.bookmarks !== lastRenderedBookmarks || state.blend !== lastRenderedBlend) {
       lastRenderedPages = state.pages;
       lastRenderedCurrentPageId = state.currentPageId;
       lastRenderedBookmarks = state.bookmarks;
-      scheduleSave(state.pages, state.currentPageId, state.bookmarks);
+      lastRenderedBlend = state.blend;
+      scheduleSave(state.pages, state.currentPageId, state.bookmarks, state.blend);
     }
   }
 
@@ -824,15 +858,15 @@
   // `tableId` capturé À L'APPEL (pas relu dans le setTimeout) : sans ça, changer de table pendant
   // les 600ms de debounce fait s'exécuter la sauvegarde sous le tableId de la table SUIVANTE (bug
   // réel trouvé en testant le sélecteur de table — voir flushPendingSave()/HYPOTHESES.md).
-  function scheduleSave(pages, currentPageId, bookmarks) {
+  function scheduleSave(pages, currentPageId, bookmarks, blend) {
     if (!currentTableId) return;
     clearTimeout(saveTimer);
-    pendingSave = { tableId: currentTableId, pages, currentPageId, bookmarks };
+    pendingSave = { tableId: currentTableId, pages, currentPageId, bookmarks, blend };
     saveTimer = setTimeout(() => {
       saveTimer = null;
       const p = pendingSave;
       pendingSave = null;
-      GristBI.api.saveConfig(p.tableId, p.pages, p.currentPageId, p.bookmarks).catch((e) => {
+      GristBI.api.saveConfig(p.tableId, p.pages, p.currentPageId, p.bookmarks, p.blend).catch((e) => {
         console.error('[GristBI] échec de sauvegarde de la config', e);
       });
     }, 600);
@@ -850,19 +884,49 @@
     saveTimer = null;
     const p = pendingSave;
     pendingSave = null;
-    return GristBI.api.saveConfig(p.tableId, p.pages, p.currentPageId, p.bookmarks).catch((e) => {
+    return GristBI.api.saveConfig(p.tableId, p.pages, p.currentPageId, p.bookmarks, p.blend).catch((e) => {
       console.error('[GristBI] échec de sauvegarde de la config', e);
     });
   }
 
+  // Rejoint `currentPrimaryRows` (TOUJOURS les lignes brutes de la table principale, jamais des
+  // lignes déjà jointes, voir la déclaration de `currentPrimaryRows` plus haut) avec la table
+  // secondaire de `blend`, si elle est complètement configurée (les 3 champs remplis — un blend
+  // partiel équivaut à "aucune jointure", plus simple et plus sûr qu'un état intermédiaire à moitié
+  // appliqué). Pousse toujours le résultat dans le store, y compris `blend == null` (repasse alors
+  // simplement sur les lignes brutes) : c'est l'unique point d'entrée qui alimente
+  // `refreshColumnSelects`/`store.setRows` après le chargement initial, pour que ces deux appels
+  // ne soient jamais dupliqués/oubliés à un site d'appel.
+  async function applyBlend(blend) {
+    if (!blend || !blend.secondaryTableId || !blend.primaryColumn || !blend.secondaryColumn) {
+      refreshColumnSelects(currentPrimaryRows);
+      store.setRows(currentPrimaryRows);
+      return;
+    }
+    try {
+      const { rows: secondaryRows } = await GristBI.api.loadTable(blend.secondaryTableId);
+      const merged = GristBI.data.blendRows(currentPrimaryRows, secondaryRows, blend.primaryColumn, blend.secondaryColumn, blend.secondaryTableId);
+      refreshColumnSelects(merged);
+      store.setRows(merged);
+    } catch (e) {
+      console.error('[GristBI] échec de la jointure avec la table secondaire', e);
+      alert(t('blend.failed', { table: blend.secondaryTableId }));
+      refreshColumnSelects(currentPrimaryRows);
+      store.setRows(currentPrimaryRows);
+    }
+  }
+
   // Bascule l'affichage sur `tableId`/`rows`. `seedTiles()` ne sert que si aucune config n'a
-  // jamais été sauvegardée pour cette table.
+  // jamais été sauvegardée pour cette table. Met TOUJOURS à jour `currentPrimaryRows` (même hors
+  // changement de table : un futur rafraîchissement de la même table doit rejoindre les lignes
+  // FRAÎCHES, pas rejouer la jointure sur un instantané périmé) puis délègue à `applyBlend` le
+  // rafraîchissement des sélecteurs de colonne et `store.setRows` — jamais fait ici directement,
+  // pour ne pas contourner la jointure en cours.
   async function switchTable(tableId, rows, { seedTiles } = {}) {
     await flushPendingSave();
     const isNewTable = tableId !== currentTableId;
     currentTableId = tableId;
-    refreshColumnSelects(rows);
-    store.setRows(rows);
+    currentPrimaryRows = rows;
     if (isNewTable) {
       store.clearFilter();
       store.clearAdvancedFilter();
@@ -875,7 +939,11 @@
         store.setPages(saved.pages, saved.currentPageId);
       }
       store.setBookmarks(saved.bookmarks);
+      currentBlend = saved.blend;
+      store.setBlend(currentBlend);
+      refreshBlendPicker();
     }
+    await applyBlend(currentBlend);
   }
 
   store.subscribe(render);
@@ -893,6 +961,71 @@
       console.error('[GristBI] échec du chargement de la liste des tables', e);
     }
   }
+
+  // Table secondaire du data blending : mêmes tables que le sélecteur principal ci-dessus, MOINS la
+  // table de travail courante elle-même (se joindre à soi-même n'a pas de sens dans ce premier jet).
+  async function refreshSecondaryTablePicker() {
+    try {
+      const tables = (await GristBI.api.listAvailableTables()).filter((id) => id !== currentTableId);
+      fillCombobox(blendSecondaryTableInput, tables, { blankLabel: t('blend.none') });
+    } catch (e) {
+      console.error('[GristBI] échec du chargement de la liste des tables (blending)', e);
+    }
+  }
+
+  // Colonnes de la table secondaire ACTUELLEMENT choisie dans le combobox (pas celle de `currentBlend`
+  // — l'utilisateur a pu changer la table secondaire sans encore valider les clés) : relue à chaque
+  // ouverture du combobox de clé secondaire, jamais mise en cache, même raison que
+  // `refreshTablePicker`/`refreshSecondaryTablePicker`.
+  async function refreshBlendSecondaryColumnPicker() {
+    const secondaryTableId = blendSecondaryTableInput.value;
+    if (!secondaryTableId) { fillCombobox(blendSecondaryColumnInput, [], { blankLabel: t('blend.none') }); return; }
+    try {
+      const { rows: secondaryRows } = await GristBI.api.loadTable(secondaryTableId);
+      fillCombobox(blendSecondaryColumnInput, availableColumns(secondaryRows), { blankLabel: t('blend.none') });
+    } catch (e) {
+      console.error('[GristBI] échec du chargement des colonnes de la table secondaire', e);
+      fillCombobox(blendSecondaryColumnInput, [], { blankLabel: t('blend.none') });
+    }
+  }
+
+  // Remet les 3 comboboxes de blending sur `currentBlend` (après un changement de table, voir
+  // switchTable) — même idiome que `refreshTablePicker` (`fillCombobox` puis affectation directe de
+  // `.value`, PAS via `setOptions`, voir js/combobox.js) : la valeur choisie faisant partie des
+  // options qui viennent d'être posées, `isValid()` la reconnaîtra dès la première interaction.
+  function refreshBlendPicker() {
+    blendSecondaryTableInput.value = (currentBlend && currentBlend.secondaryTableId) || '';
+    fillCombobox(blendPrimaryColumnInput, availableColumns(currentPrimaryRows), { blankLabel: t('blend.none') });
+    blendPrimaryColumnInput.value = (currentBlend && currentBlend.primaryColumn) || '';
+    refreshBlendSecondaryColumnPicker().then(() => {
+      blendSecondaryColumnInput.value = (currentBlend && currentBlend.secondaryColumn) || '';
+    });
+  }
+
+  // Relit les 3 comboboxes de blending et applique/persiste le résultat — appelé par les 3
+  // écouteurs 'change' ci-dessous. Un blend INCOMPLET (au moins un des 3 champs encore vide) équivaut
+  // à "aucune jointure" (voir applyBlend) : plus simple à raisonner qu'un état à moitié configuré, et
+  // ça laisse l'utilisateur choisir les 3 champs dans n'importe quel ordre sans jamais déclencher une
+  // jointure invalide entre-temps.
+  function commitBlendFromForm() {
+    const secondaryTableId = blendSecondaryTableInput.value;
+    const primaryColumn = blendPrimaryColumnInput.value;
+    const secondaryColumn = blendSecondaryColumnInput.value;
+    currentBlend = (secondaryTableId && primaryColumn && secondaryColumn)
+      ? { secondaryTableId, primaryColumn, secondaryColumn }
+      : null;
+    store.setBlend(currentBlend);
+    applyBlend(currentBlend);
+  }
+
+  blendSecondaryTableInput.addEventListener('change', () => {
+    // Changer de table secondaire invalide les clés déjà choisies (colonnes d'une autre table) :
+    // on ne garde QUE la clé côté table principale, jamais la clé secondaire de l'ancien choix.
+    blendSecondaryColumnInput.value = '';
+    refreshBlendSecondaryColumnPicker().then(commitBlendFromForm);
+  });
+  blendPrimaryColumnInput.addEventListener('change', commitBlendFromForm);
+  blendSecondaryColumnInput.addEventListener('change', commitBlendFromForm);
 
   // Se sortir seul d'un dashboard vide sur la table par défaut (ex. une config sauvegardée vide),
   // sans avoir à reconstruire les tuiles à la main ni à aller manipuler la table de config interne
@@ -977,6 +1110,10 @@
     // `setOptions` en mode strict garde la valeur déjà choisie si elle reste valide (voir
     // combobox.js), donc sans effet de bord sur une tuile en cours d'édition.
     refreshColumnSelects(store.getState().rows);
+    // Même raison, pour le blankLabel "(aucune)"/"(none)" des 3 comboboxes de data blending — sans
+    // toucher au reste : refreshBlendPicker() ne fait que reposer les options/valeurs déjà connues
+    // (currentBlend/currentPrimaryRows inchangés), ne relance aucune jointure.
+    refreshBlendPicker();
     updateFormFieldsForType();
     submitTileBtn.textContent = t(editingTileId ? 'tileForm.submit.edit' : 'tileForm.submit.add');
     render(store.getState());

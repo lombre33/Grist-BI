@@ -409,6 +409,82 @@ const rows = [
   console.log('OK buildWorkbookSheets (préfixe de page conditionnel + une feuille par tuile toutes pages confondues)');
 }
 
+// blendRows : data blending multi-tables (ROADMAP.md Tier 2) — LEFT JOIN en JS pur, colonnes
+// secondaires préfixées `<secondaryTableId>.<colonne>`. Cas nominal : chaque ligne principale
+// trouve sa correspondance secondaire.
+{
+  const primary = [
+    { id: 1, Region: 'Nord', Montant: 100 },
+    { id: 2, Region: 'Sud', Montant: 30 }
+  ];
+  const secondary = [
+    { id: 10, Region: 'Nord', Population: 500 },
+    { id: 11, Region: 'Sud', Population: 200 }
+  ];
+  const merged = data.blendRows(primary, secondary, 'Region', 'Region', 'Villes');
+  // 'id' n'est jamais reporté côté secondaire (identifiant interne Grist, pas une vraie colonne —
+  // même exclusion que availableColumns() dans js/main.js).
+  assert.deepStrictEqual(merged, [
+    { id: 1, Region: 'Nord', Montant: 100, 'Villes.Region': 'Nord', 'Villes.Population': 500 },
+    { id: 2, Region: 'Sud', Montant: 30, 'Villes.Region': 'Sud', 'Villes.Population': 200 }
+  ]);
+  console.log('OK blendRows (cas nominal : LEFT JOIN, colonnes secondaires préfixées, id secondaire exclu)');
+}
+
+// blendRows : ligne principale sans correspondance -> colonnes secondaires à `null`, PAS absentes —
+// availableColumns() (js/main.js) ne lit que rows[0] pour peupler les sélecteurs de colonne, donc
+// une forme de ligne qui varierait selon le match rendrait les colonnes secondaires invisibles dès
+// que la toute première ligne ne matche pas.
+{
+  const primary = [
+    { id: 1, Region: 'Nord' },
+    { id: 2, Region: 'Ouest' } // aucune correspondance côté secondaire
+  ];
+  const secondary = [{ id: 10, Region: 'Nord', Population: 500 }];
+  const merged = data.blendRows(primary, secondary, 'Region', 'Region', 'Villes');
+  assert.deepStrictEqual(Object.keys(merged[0]), Object.keys(merged[1])); // même forme, matché ou pas
+  assert.strictEqual(merged[1]['Villes.Population'], null);
+  assert.strictEqual(merged[0]['Villes.Population'], 500);
+  console.log('OK blendRows (ligne sans correspondance : colonnes secondaires à null, jamais absentes)');
+}
+
+// blendRows : table secondaire vide -> identité (aucune colonne ajoutée, mêmes lignes principales)
+{
+  const primary = [{ id: 1, Region: 'Nord' }];
+  assert.deepStrictEqual(data.blendRows(primary, [], 'Region', 'Region', 'Villes'), [{ id: 1, Region: 'Nord' }]);
+  console.log('OK blendRows (table secondaire vide : identité)');
+}
+
+// blendRows : table principale vide -> tableau vide, sans exception même avec une table secondaire
+// non vide
+{
+  assert.deepStrictEqual(data.blendRows([], [{ id: 1, Region: 'Nord' }], 'Region', 'Region', 'Villes'), []);
+  console.log('OK blendRows (table principale vide : tableau vide)');
+}
+
+// blendRows : clé de jointure numérique d'un côté, chaîne de l'autre (même souci que la comparaison
+// d'un clic ECharts, voir sameValue) -> doit matcher malgré le type différent
+{
+  const primary = [{ id: 1, RegionId: 1 }];
+  const secondary = [{ id: 10, Id: '1', Population: 500 }];
+  const merged = data.blendRows(primary, secondary, 'RegionId', 'Id', 'Villes');
+  assert.strictEqual(merged[0]['Villes.Population'], 500);
+  console.log('OK blendRows (comparaison de clé insensible au type, comme sameValue)');
+}
+
+// blendRows : clé secondaire dupliquée -> dernière ligne gagne (limite connue, documentée dans
+// HYPOTHESES.md — pas un vrai LEFT JOIN 1-n)
+{
+  const primary = [{ id: 1, Region: 'Nord' }];
+  const secondary = [
+    { id: 10, Region: 'Nord', Population: 500 },
+    { id: 11, Region: 'Nord', Population: 999 }
+  ];
+  const merged = data.blendRows(primary, secondary, 'Region', 'Region', 'Villes');
+  assert.strictEqual(merged[0]['Villes.Population'], 999);
+  console.log('OK blendRows (clé secondaire dupliquée : dernière ligne gagne, limite documentée)');
+}
+
 // state: toggle de filtre croisé - un seul filtre par colonne (activation/toggle-off/remplacement)
 {
   const store = state.createStore();
@@ -666,6 +742,21 @@ const rows = [
   store.applyBookmark('bmOld');
   assert.deepStrictEqual(store.getState().advancedFilters, [], 'un bookmark sans advancedFilters restaure une liste vide, pas undefined');
   console.log('OK state.saveBookmark/applyBookmark capturent advancedFilters (+ compat ascendante bookmark sans ce champ)');
+}
+
+// state: setBlend (data blending multi-tables) — propre à la table de travail courante, comme
+// bookmarks/pages (voir js/grist-api.js/js/main.js), pas capturé par les bookmarks eux-mêmes.
+{
+  const store = state.createStore();
+  assert.strictEqual(store.getState().blend, null, 'aucune jointure par défaut');
+  const blend = { secondaryTableId: 'Villes', primaryColumn: 'Region', secondaryColumn: 'Region' };
+  store.setBlend(blend);
+  assert.deepStrictEqual(store.getState().blend, blend);
+  store.setBlend(null); // retirer la jointure
+  assert.strictEqual(store.getState().blend, null);
+  store.setBlend(undefined); // comme setBookmarks(undefined) -> [] : repli sur la valeur par défaut
+  assert.strictEqual(store.getState().blend, null);
+  console.log('OK state.setBlend (jointure propre à la table courante, repli sur null)');
 }
 
 // state: dashboards multi-pages — nominal (addTile/removeTile/updateTile/moveTile n'agissent QUE

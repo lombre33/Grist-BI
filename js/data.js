@@ -404,10 +404,46 @@
     return sheets;
   }
 
+  // Data blending multi-tables (ROADMAP.md Tier 2) : LEFT JOIN en JS pur entre `primaryRows` (table
+  // de travail courante) et `secondaryRows` (table secondaire choisie via le sélecteur, voir
+  // js/main.js), sur `primaryJoinCol`/`secondaryJoinCol`. Chaque colonne de la table secondaire est
+  // reportée préfixée `${secondaryTableId}.` pour ne jamais entrer en collision avec une colonne de
+  // la table principale (même homonyme). En JS pur plutôt que via DuckDB-WASM
+  // (js/duckdb-engine.js) : un enrichissement de lignes avant tout calcul n'est pas une agrégation —
+  // pas de coût de chargement WASM à payer pour ça, et ça reste testable sous Node comme le reste de
+  // ce fichier (voir dev-tests/test-data.js).
+  //
+  // Comparaison de clé via `sameValue` (String(a) === String(b), voir plus haut) : même
+  // justification que pour un clic ECharts — une clé de jointure numérique côté Grist (ex. un
+  // identifiant) peut arriver en nombre d'un côté et en chaîne de l'autre.
+  //
+  // Toute ligne principale garde EXACTEMENT le même jeu de colonnes secondaires que les autres,
+  // qu'une correspondance ait été trouvée ou non (valeurs à `null` sinon) : `availableColumns()`
+  // (js/main.js) ne lit que `rows[0]` pour peupler les sélecteurs de colonne, donc une forme de
+  // ligne qui varierait selon le résultat du match rendrait les colonnes secondaires invisibles dès
+  // que la toute première ligne ne matche pas.
+  function blendRows(primaryRows, secondaryRows, primaryJoinCol, secondaryJoinCol, secondaryTableId) {
+    const secondaryCols = (secondaryRows && secondaryRows.length)
+      ? Object.keys(secondaryRows[0]).filter((k) => k !== 'id')
+      : [];
+    const bySecondaryKey = new Map();
+    // Dernière ligne gagne en cas de clé dupliquée côté secondaire (LEFT JOIN 1-n non géré ici :
+    // limite connue documentée dans HYPOTHESES.md — un vrai blending 1-n demanderait d'agréger la
+    // table secondaire au préalable, hors périmètre de ce premier jet).
+    (secondaryRows || []).forEach((row) => { bySecondaryKey.set(String(row[secondaryJoinCol]), row); });
+    return (primaryRows || []).map((row) => {
+      const match = bySecondaryKey.get(String(row[primaryJoinCol]));
+      const merged = Object.assign({}, row);
+      secondaryCols.forEach((col) => { merged[`${secondaryTableId}.${col}`] = match ? match[col] : null; });
+      return merged;
+    });
+  }
+
   return {
     tableToRows, applyFilters, matchesFilter, sameValue, parseDateValue, relativeDateRange,
     RELATIVE_DATE_PRESETS, groupByAggregate, aggregateSingle, pivotTable, distinctColumnValues,
     computeTrend, periodLabel, measureSeriesForTile, escapeHtml, tileDrillLevels, currentDimension,
-    rowsForTile, tileExportSheet, tileExportKind, sanitizeSheetName, buildWorkbookSheets, AGGREGATORS
+    rowsForTile, tileExportSheet, tileExportKind, sanitizeSheetName, buildWorkbookSheets, blendRows,
+    AGGREGATORS
   };
 });

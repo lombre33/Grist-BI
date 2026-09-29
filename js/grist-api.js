@@ -155,21 +155,25 @@
   // lecture d'une config déjà sauvegardée par une version antérieure du widget - même classe de
   // problème que l'évolution de schéma de `BI_StressTest` (voir `ensureColumnsUpToDate` plus bas),
   // mais réglée ici en JS pur puisque ConfigJSON est un blob texte, pas des colonnes Grist typées.
-  function singlePageConfig(tiles, bookmarks) {
+  // `blend` (data blending multi-tables, voir GristBI.data.blendRows/js/main.js) suit exactement la
+  // même convention de compatibilité ascendante que `bookmarks` : absent des 3 formats historiques
+  // (antérieurs à cette feature), donc toujours `null` ("aucune jointure") tant que l'utilisateur
+  // n'en a pas configuré une pour cette table.
+  function singlePageConfig(tiles, bookmarks, blend) {
     const pageId = (GristBI.state && GristBI.state.DEFAULT_PAGE_ID) || 'page_default';
-    return { pages: [{ id: pageId, name: 'Page 1', tiles: tiles || [] }], currentPageId: pageId, bookmarks: bookmarks || [] };
+    return { pages: [{ id: pageId, name: 'Page 1', tiles: tiles || [] }], currentPageId: pageId, bookmarks: bookmarks || [], blend: blend || null };
   }
 
   function normalizeConfig(raw) {
-    if (Array.isArray(raw)) return singlePageConfig(raw, []);
+    if (Array.isArray(raw)) return singlePageConfig(raw, [], null);
     if (raw && typeof raw === 'object') {
       if (Array.isArray(raw.pages) && raw.pages.length) {
         const currentPageId = raw.pages.some((p) => p.id === raw.currentPageId) ? raw.currentPageId : raw.pages[0].id;
-        return { pages: raw.pages, currentPageId, bookmarks: raw.bookmarks || [] };
+        return { pages: raw.pages, currentPageId, bookmarks: raw.bookmarks || [], blend: raw.blend || null };
       }
-      return singlePageConfig(raw.tiles, raw.bookmarks);
+      return singlePageConfig(raw.tiles, raw.bookmarks, raw.blend);
     }
-    return singlePageConfig([], []);
+    return singlePageConfig([], [], null);
   }
 
   async function loadConfig(tableId) {
@@ -181,19 +185,19 @@
         if (data.TableId[i] === tableId) {
           _configRowIdByTable[tableId] = ids[i];
           try { return normalizeConfig(JSON.parse(data.ConfigJSON[i] || '[]')); }
-          catch (e) { return singlePageConfig([], []); }
+          catch (e) { return singlePageConfig([], [], null); }
         }
       }
     } catch (e) {
       console.warn('[GristBI] loadConfig: lecture impossible', e);
     }
-    return singlePageConfig([], []);
+    return singlePageConfig([], [], null);
   }
 
-  async function saveConfig(tableId, pages, currentPageId, bookmarks) {
+  async function saveConfig(tableId, pages, currentPageId, bookmarks, blend) {
     if (!tableId) return;
     await ensureConfigTableExists();
-    const json = JSON.stringify({ pages, currentPageId, bookmarks: bookmarks || [] });
+    const json = JSON.stringify({ pages, currentPageId, bookmarks: bookmarks || [], blend: blend || null });
     let rowId = _configRowIdByTable[tableId];
     if (!rowId) {
       // Config jamais sauvegardée depuis le chargement du widget : revérifie qu'une ligne
