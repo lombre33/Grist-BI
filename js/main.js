@@ -69,6 +69,10 @@
   const gaugeMinInput = document.getElementById('tile-gauge-min');
   const gaugeMaxField = document.getElementById('tile-gauge-max-field');
   const gaugeMaxInput = document.getElementById('tile-gauge-max');
+  const measureModeField = document.getElementById('tile-measure-mode-field');
+  const measureModeSelect = document.getElementById('tile-measure-mode');
+  const dateColumnField = document.getElementById('tile-date-column-field');
+  const dateColumnSelect = document.getElementById('tile-date-column');
   const trendField = document.getElementById('tile-trend-field');
   const trendDimensionSelect = document.getElementById('tile-trend-dimension');
   const submitTileBtn = document.getElementById('submit-tile');
@@ -105,7 +109,7 @@
   // (demande explicite de l'utilisateur, voir js/combobox.js) — en mode strict : la valeur doit
   // rester l'une des colonnes réellement chargées, comme un <select>. `.nextElementSibling` est le
   // <ul class="combobox-list"> voisin dans le même wrapper `.combobox` (voir index.html/harness.html).
-  [dimensionSelect, columnDimensionSelect, measureSelect, measureYSelect, trendDimensionSelect, filterColumnSelect].forEach((input) => {
+  [dimensionSelect, columnDimensionSelect, measureSelect, measureYSelect, trendDimensionSelect, dateColumnSelect, filterColumnSelect].forEach((input) => {
     GristBI.combobox.attach(input, input.nextElementSibling, { strict: true });
   });
 
@@ -155,6 +159,7 @@
     fillCombobox(measureYSelect, cols);
     drillLevelSelects.forEach((select) => fillCombobox(select, cols, { blankLabel: '(aucun)' }));
     fillCombobox(trendDimensionSelect, cols, { blankLabel: '(aucune)' });
+    fillCombobox(dateColumnSelect, cols);
     fillCombobox(filterColumnSelect, cols);
     updateAdvancedFilterFieldsForColumn(rows);
   }
@@ -212,6 +217,17 @@
   // KPI et jauge : une seule valeur agrégée, pas de dimension de regroupement ni de drill-down.
   function typeHasNoDimension(type) { return type === 'kpi' || type === 'gauge'; }
 
+  const MEASURE_MODE_TITLES = { cumulative: 'Cumul', ytd: 'YTD', yoy: 'Comparaison N-1' };
+
+  // Idem pour une tuile "Barres" avec un mode de calcul temporel actif ('cumulative'/'ytd'/'yoy',
+  // voir ROADMAP.md "Mesures façon DAX simplifié") : l'axe est TOUJOURS le mois calculé depuis
+  // `tile-date-column` (voir js/duckdb-engine.js:timeSeriesMeasures), la dimension/le drill-down du
+  // formulaire n'ont donc pas de sens dans ce mode — même traitement que KPI/jauge.
+  function formHasNoDimension() {
+    return typeHasNoDimension(tileTypeSelect.value)
+      || (tileTypeSelect.value === 'bar' && measureModeSelect.value && measureModeSelect.value !== 'brut');
+  }
+
   // Le pivot a DEUX dimensions (lignes + colonnes, voir tile-column-dimension-field) déjà
   // affichées simultanément dans la grille : pas de notion de "détailler" une dimension au clic
   // comme pour bar/pie/treemap/scatter (qui n'en ont qu'une), donc pas de drill-down pour ce type.
@@ -258,7 +274,7 @@
   // séquentielle, comme l'ancien niveau 2 qui n'apparaissait qu'une fois le niveau 1 choisi) et que
   // le plafond n'est pas atteint ; recalcule aussi la visibilité de la case cross-filter.
   function updateDrillLevelsUI() {
-    const noDrill = !supportsDrillDown(tileTypeSelect.value);
+    const noDrill = formHasNoDimension() || tileTypeSelect.value === 'pivot';
     const lastSelect = drillLevelSelects[drillLevelSelects.length - 1];
     addDrillLevelBtn.hidden = noDrill || !lastSelect || !lastSelect.value || drillLevelSelects.length >= MAX_DRILL_LEVELS;
     drillCrossFilterField.hidden = noDrill || !drillLevelSelects[0] || !drillLevelSelects[0].value;
@@ -507,18 +523,24 @@
     const isKpi = type === 'kpi';
     const isGauge = type === 'gauge';
     const isScatter = type === 'scatter';
+    const isBar = type === 'bar';
+    const hasMeasureMode = isBar && measureModeSelect.value && measureModeSelect.value !== 'brut';
     const isPivot = type === 'pivot';
-    // KPI/jauge : pas de dimension de regroupement ni de drill-down, juste un agrégat sur toute la
-    // sélection (le KPI peut en plus le comparer à une période via "Tendance vs", la jauge le
-    // positionne sur un cadran Min/Max). Le nuage de points ajoute une 2e mesure (axe Y). Le pivot
-    // ajoute une 2e dimension (colonnes) et n'a pas de drill-down (voir supportsDrillDown).
-    dimensionField.hidden = typeHasNoDimension(type);
+    // KPI/jauge/tuile "Barres" en mode de calcul temporel : pas de dimension de regroupement ni de
+    // drill-down, juste un agrégat sur toute la sélection (le KPI peut en plus le comparer à une
+    // période via "Tendance vs", la jauge le positionne sur un cadran Min/Max, la tuile Barres en
+    // mode mesure affiche l'évolution mensuelle de `tile-date-column`). Le nuage de points ajoute
+    // une 2e mesure (axe Y). Le pivot ajoute une 2e dimension (colonnes) et n'a pas de drill-down
+    // (voir supportsDrillDown).
+    dimensionField.hidden = formHasNoDimension();
     dimensionLabel.textContent = isPivot ? 'Dimension (lignes)' : 'Dimension';
     columnDimensionField.hidden = !isPivot;
-    drillField.hidden = !supportsDrillDown(type);
+    drillField.hidden = formHasNoDimension() || isPivot;
     trendField.hidden = !isKpi;
     gaugeMinField.hidden = !isGauge;
     gaugeMaxField.hidden = !isGauge;
+    measureModeField.hidden = !isBar;
+    dateColumnField.hidden = !hasMeasureMode;
     measureYField.hidden = !isScatter;
     measureLabel.textContent = isScatter ? 'Mesure X' : 'Mesure';
     updateDrillLevelsUI();
@@ -545,6 +567,10 @@
     measureYSelect.value = tile.measureY || '';
     gaugeMinInput.value = Number.isFinite(tile.gaugeMin) ? tile.gaugeMin : 0;
     gaugeMaxInput.value = Number.isFinite(tile.gaugeMax) ? tile.gaugeMax : 100;
+    // Avant updateFormFieldsForType() : elle lit measureModeSelect.value pour décider de la
+    // visibilité de dimensionField/drillField/dateColumnField (voir formHasNoDimension).
+    measureModeSelect.value = tile.measureMode || 'brut';
+    dateColumnSelect.value = tile.dateColumn || '';
     updateFormFieldsForType();
     measureSelect.value = tile.measure;
     aggSelect.value = tile.aggFn;
@@ -561,6 +587,7 @@
   }
 
   tileTypeSelect.addEventListener('change', updateFormFieldsForType);
+  measureModeSelect.addEventListener('change', updateFormFieldsForType);
 
   addTileForm.addEventListener('submit', (evt) => {
     evt.preventDefault();
@@ -568,14 +595,18 @@
     const isKpi = type === 'kpi';
     const isGauge = type === 'gauge';
     const isScatter = type === 'scatter';
+    const isBar = type === 'bar';
+    const measureMode = (isBar && measureModeSelect.value && measureModeSelect.value !== 'brut') ? measureModeSelect.value : undefined;
+    const dateColumn = measureMode ? dateColumnSelect.value : '';
     const isPivot = type === 'pivot';
-    const hasDimension = !typeHasNoDimension(type);
+    const hasDimension = !formHasNoDimension();
     const dimension = dimensionSelect.value;
     const columnDimension = columnDimensionSelect.value;
     const measure = measureSelect.value;
     const aggFn = aggSelect.value;
     if (!measure || (hasDimension && !dimension)) return;
     if (isScatter && !measureYSelect.value) return; // 2e mesure obligatoire pour un nuage de points
+    if (measureMode && !dateColumn) { alert('Choisissez une colonne date pour ce mode de calcul.'); return; }
     if (isPivot && !columnDimension) return; // 2e dimension obligatoire pour un tableau croisé
     if (isPivot && columnDimension === dimension) {
       alert('Les dimensions lignes et colonnes du tableau croisé doivent être différentes.');
@@ -600,7 +631,9 @@
       return;
     }
     const title = isPivot ? `${measure} par ${dimension} × ${columnDimension}`
-      : hasDimension ? `${measure} par ${dimension}` : `${aggFn}(${measure})`;
+      : hasDimension ? `${measure} par ${dimension}`
+      : measureMode ? `${MEASURE_MODE_TITLES[measureMode]} : ${aggFn}(${measure})`
+      : `${aggFn}(${measure})`;
     const tileData = { type, dimension, measure, aggFn, title };
     // Champs spécifiques à un type explicitement mis à `undefined` quand non pertinents (plutôt que
     // simplement omis) : `store.updateTile` fusionne le patch via Object.assign, qui ne fait QUE
@@ -613,6 +646,8 @@
     tileData.measureY = isScatter ? measureYSelect.value : undefined;
     tileData.gaugeMin = isGauge ? gaugeMin : undefined;
     tileData.gaugeMax = isGauge ? gaugeMax : undefined;
+    tileData.measureMode = measureMode;
+    tileData.dateColumn = measureMode ? dateColumn : undefined;
     tileData.columnDimension = isPivot ? columnDimension : undefined;
     if (editingTileId) {
       store.updateTile(editingTileId, tileData);

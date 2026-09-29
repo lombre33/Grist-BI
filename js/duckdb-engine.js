@@ -174,5 +174,64 @@
     return _db !== null;
   }
 
-  return { init, groupByAggregate, aggregateSingle, isReady, csvEscape, assertSafeIdentifier };
+  // Première feature Tier 2 à consommer réellement ce moteur (voir ROADMAP.md : "Mesures façon DAX
+  // simplifié — YTD, N-1, cumul"). Bucket MENSUEL (pas configurable en v1, sous-ensemble ciblé
+  // comme le reste de cette feature — voir ROADMAP.md) sur une vraie colonne Date, puis calcule en
+  // UNE requête SQL les 3 variantes demandées via des fonctions fenêtrées :
+  //   - cumulative : somme courante depuis le début de la série (ROWS UNBOUNDED PRECEDING).
+  //   - ytd        : même somme courante mais qui repart de zéro à chaque nouvelle année
+  //     (PARTITION BY l'année du mois) — équivalent simplifié de TOTALYTD/DATESYTD en DAX.
+  //   - previousYear : valeur du MÊME mois l'année précédente, via une AUTO-JOINTURE sur le mois
+  //     décalé d'un an plutôt qu'un LAG(12) à distance fixe — robuste à un mois manquant après un
+  //     filtre (LAG(12) décalerait alors silencieusement toute la comparaison, même raisonnement
+  //     que data.js:computeTrend qui compare des CLÉS de période, pas une distance de lignes fixe).
+  // C'est précisément la valeur ajoutée de ce moteur par rapport à js/data.js (Array.reduce pur) :
+  // une somme fenêtrée SQL exprime "recalculer une mesure selon un contexte de filtre temporel" en
+  // une requête déclarative (voir ROADMAP.md, tableau "C'est quoi un vrai moteur BI ?"), plutôt que
+  // de reconstruire ce contexte à la main en JS.
+  async function timeSeriesMeasures(rows, dateCol, measureCol, aggFn) {
+    assertSafeIdentifier(dateCol);
+    assertSafeIdentifier(measureCol);
+    if (!rows.length) return [];
+    const agg = AGG_SQL[aggFn] || AGG_SQL.sum;
+    const conn = await init();
+    const tableName = await loadRowsAsTempTable(conn, rows);
+    try {
+      const result = await conn.query(
+        `WITH valid AS (
+           SELECT TRY_CAST("${dateCol}" AS DATE) AS __period_date, "${measureCol}" AS __measure
+           FROM "${tableName}"
+         ),
+         periods AS (
+           SELECT CAST(DATE_TRUNC('month', __period_date) AS DATE) AS period, ${agg('__measure')} AS value
+           FROM valid
+           WHERE __period_date IS NOT NULL
+           GROUP BY 1
+         )
+         SELECT
+           CAST(p.period AS VARCHAR) AS period,
+           p.value AS value,
+           SUM(p.value) OVER (ORDER BY p.period ROWS UNBOUNDED PRECEDING) AS cumulative,
+           SUM(p.value) OVER (PARTITION BY EXTRACT(YEAR FROM p.period) ORDER BY p.period ROWS UNBOUNDED PRECEDING) AS ytd,
+           prev.value AS previous_year
+         FROM periods p
+         LEFT JOIN periods prev ON prev.period = CAST(p.period - INTERVAL '1 year' AS DATE)
+         ORDER BY p.period`
+      );
+      return arrowTableToObjects(result).map((r) => ({
+        period: r.period,
+        value: Number(r.value) || 0,
+        cumulative: Number(r.cumulative) || 0,
+        ytd: Number(r.ytd) || 0,
+        previousYear: r.previous_year == null ? null : Number(r.previous_year)
+      }));
+    } finally {
+      await conn.query(`DROP TABLE IF EXISTS "${tableName}"`);
+    }
+  }
+
+  return {
+    init, groupByAggregate, aggregateSingle, timeSeriesMeasures, isReady, csvEscape,
+    assertSafeIdentifier
+  };
 });

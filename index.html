@@ -187,6 +187,22 @@
       <label for="tile-gauge-max">Max</label>
       <input type="number" id="tile-gauge-max" value="100" />
     </div>
+    <div class="field" id="tile-measure-mode-field">
+      <label for="tile-measure-mode">Mode</label>
+      <select id="tile-measure-mode">
+        <option value="brut">Brut</option>
+        <option value="cumulative">Cumul</option>
+        <option value="ytd">Cumul annuel (YTD)</option>
+        <option value="yoy">Comparaison N-1</option>
+      </select>
+    </div>
+    <div class="field" id="tile-date-column-field" hidden>
+      <label for="tile-date-column">Colonne date</label>
+      <div class="combobox">
+        <input type="text" id="tile-date-column" class="combobox-input" />
+        <ul class="combobox-list" hidden></ul>
+      </div>
+    </div>
     <div class="field" id="tile-trend-field" hidden>
       <label for="tile-trend-dimension">Tendance vs</label>
       <div class="combobox">
