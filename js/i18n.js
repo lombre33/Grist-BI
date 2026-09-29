@@ -39,7 +39,6 @@
     'topbar.clearFilters': { fr: 'Effacer les filtres', en: 'Clear filters' },
     'status.rowCount': { fr: '{n} {n|ligne|lignes}', en: '{n} {n|row|rows}' },
     'status.renderTime': { fr: 'rendu : {ms} ms', en: 'rendered: {ms} ms' },
-    'lang.toggle.aria': { fr: "Changer la langue de l'interface", en: 'Switch interface language' },
 
     // --- Sélecteur de table ---
     'table.label': { fr: 'Table de travail', en: 'Working table' },
@@ -80,9 +79,13 @@
       en: 'PPTX export failed — PptxGenJS is loaded from cdnjs.cloudflare.com (not vendored in this repo, see CLAUDE.md): check your connection. Details in the console (F12).',
     },
 
-    // --- Panneau Réglages (logo/Crédits/licence GPL v3, PR #7) ---
+    // --- Panneau Réglages (logo/Crédits/licence GPL v3, PR #7 ; langue, remplace le bouton de
+    // bandeau #lang-toggle depuis le 29/09/2026 — placement de référence Publipostage+) ---
     'settings.button': { fr: 'Réglages', en: 'Settings' },
     'settings.close': { fr: 'Fermer', en: 'Close' },
+    'settings.language.title': { fr: 'Langue', en: 'Language' },
+    'settings.language.fr': { fr: 'Français', en: 'French' },
+    'settings.language.en': { fr: 'Anglais', en: 'English' },
     'settings.credits.title': { fr: 'Crédits', en: 'Credits' },
     'settings.credits.author': { fr: 'Auteur', en: 'Author' },
     'settings.credits.website': { fr: 'Site', en: 'Website' },

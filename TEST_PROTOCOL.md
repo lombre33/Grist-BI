@@ -449,11 +449,12 @@ Même mécanisme que `publipostageGrist/js/i18n.js`. Voir HYPOTHESES.md pour le 
 pièges trouvés (boutons de tuile mis en cache, `blankLabel` de combobox non relu) et du périmètre
 délibérément laissé de côté (contenu généré par `js/data.js`/`js/demo-data.js`).
 
-- [x] Chaque clé de `STRINGS` porte une traduction fr ET en non vide (115 clés) ✅
+- [x] Chaque clé de `STRINGS` porte une traduction fr ET en non vide (117 clés) ✅
 - [x] `t(key, vars)` — substitution de `{var}`, pluriel `{n|singulier|pluriel}` conforme à `Intl.PluralRules` en fr (0 et 1 au singulier) ET en (seul 1 au singulier) ✅
 - [x] `t()`/`getLang()`/`setLang()` fonctionnent sous Node sans DOM ni `localStorage` (repli silencieux, pas d'exception) ✅
 - [x] Clé inconnue → avertit en console ET renvoie la clé elle-même (pas de plantage, pas de chaîne vide silencieuse) ✅
-- [x] Bascule fr/en via `#lang-toggle` retraduit tout le formulaire statique (labels, options, placeholders) 🌐
+- [x] Bascule fr/en via les radio-boutons du panneau Réglages (`input[name="settings-lang"]`) retraduit tout le formulaire statique (labels, options, placeholders) 🌐
+- [x] Les radio-boutons Langue reflètent la langue courante à l'ouverture du panneau (celle persistée en `localStorage`, pas un état figé au chargement de la page) 🌐
 - [x] [BUG RÉEL, voir HYPOTHESES.md] Les boutons d'action d'une tuile déjà affichée (déplacer/modifier/supprimer) se retraduisent SANS reconstruction de la tuile (mise en cache par `render()`) grâce à `data-i18n-aria`/`data-i18n-title` + `applyTranslations()` rappelé à chaque rendu 🌐
 - [x] [BUG RÉEL, voir HYPOTHESES.md] Le `blankLabel` "(aucun)"/"(none)" des comboboxes optionnelles (drill-down, Tendance vs) se retraduit à la bascule de langue (`refreshColumnSelects` rappelé dans l'abonné `onChange`) 🌐
 - [x] Une valeur déjà choisie dans un combobox (ex. Dimension = Region) survit à la bascule de langue, pas réinitialisée 🌐

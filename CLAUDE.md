@@ -316,14 +316,17 @@ Cette liste condense les bugs réels les plus instructifs (détail complet dans 
   `js/pdf-export.js`/`js/pptx-export.js`), jamais une page cassée ou un échec silencieux — c'est le
   prix de ne pas vendoriser.
 - **Identité Grist Factory (logo + Crédits + licence), actée par Antoine le 2026-09-29** : bouton
-  « Réglages » dans le bandeau du haut (`#open-settings`, `index.html`) ouvrant un panneau
-  « Crédits » (Auteur / Site / Licence / Bio, `.settings-credits-list`) — pas de gestion de
-  langue/thème dans ce panneau, ce widget n'en a pas encore. Logo Grist Factory juste à droite du
+  « Réglages » dans le bandeau du haut (`#open-settings`, `index.html`) ouvrant un panneau à deux
+  sections — **Langue** (deux radio-boutons fr/en, `input[name="settings-lang"]`) puis **Crédits**
+  (Auteur / Site / Licence / Bio, `.settings-credits-list`). Logo Grist Factory juste à droite du
   bouton (`img/grist-factory-logo.jpg`). Repris du même cadrage/de la même convention d'ouverture que
-  le widget frère `publipostageGrist` (`js/settings.js` de ce dépôt). Les libellés du panneau
-  Crédits sont regroupés dans ce seul bloc HTML (pas éparpillés ailleurs dans le DOM) pour rester
-  faciles à brancher sur le futur mécanisme `data-i18n` du chantier bilingue fr/en. Antoine a refusé
-  Manrope le même jour (le chrome garde la police système) — ne pas la reproposer sans nouvel avis.
+  le widget frère `publipostageGrist` (`js/settings.js` de ce dépôt) — y compris le placement de la
+  langue en radio-boutons dans les Réglages plutôt qu'en bouton de bandeau séparé : une langue
+  choisie une fois est mémorisée (`localStorage`), pas besoin d'une place permanente dans un bandeau
+  qui porte déjà les exports, Réglages et le logo. Ce placement a remplacé un premier jet en bouton
+  de bandeau (`#lang-toggle`) une fois le panneau Réglages disponible, à la demande du coordinateur
+  du projet le 29/09/2026 — voir HYPOTHESES.md pour le détail. Antoine a refusé Manrope le même jour
+  (le chrome garde la police système) — ne pas la reproposer sans nouvel avis.
 - **Aucun langage de formule Grist n'est utilisé** — tout calcul de colonne dérivée se fait
   côté JS (`deriveDateColumn`, etc.), par choix explicite et cohérent du projet.
 - **Jamais de nouvelle table créée pour faire évoluer un schéma** — `AddColumn` + backfill JS sur la

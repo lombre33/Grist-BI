@@ -1441,17 +1441,23 @@ dans une seule instance de widget, avec ses propres tuiles internes.
   mécanisme que `publipostageGrist/js/i18n.js` (dictionnaire `STRINGS` fr/en, `t(key, vars)` avec
   substitution de variables et pluriel via `Intl.PluralRules`, attributs `data-i18n`/
   `data-i18n-html`/`data-i18n-title`/`data-i18n-aria`/`data-i18n-placeholder` résolus par
-  `applyTranslations()`), chargé en tout premier (`index.html`/`harness.html`). Bouton de bascule
-  fr/en dans le bandeau du haut (`#lang-toggle`), langue persistée en `localStorage`
-  (`gristbi_lang`).
-  - **115 clés** couvrant la chrome statique de `index.html`/`harness.html` (bandeau, sélecteur de
+  `applyTranslations()`), chargé en tout premier (`index.html`/`harness.html`). Langue choisie via
+  deux radio-boutons dans le panneau Réglages (`input[name="settings-lang"]`), persistée en
+  `localStorage` (`gristbi_lang`). Premier jet en bouton de bandeau (`#lang-toggle`) — déplacé le
+  29/09/2026, une fois le panneau Réglages disponible (PR #7), pour s'aligner sur le placement de
+  référence de `publipostageGrist/js/settings.js` : la langue s'y choisit une fois puis reste
+  mémorisée, pas besoin d'une place permanente dans un bandeau qui porte déjà les exports, Réglages
+  et le logo (demande explicite du coordinateur, relayant le cadrage d'identité).
+  - **117 clés** couvrant la chrome statique de `index.html`/`harness.html` (bandeau, sélecteur de
     table, pages, vues sauvegardées, filtres avancés, formulaire d'ajout/édition de tuile, état
-    vide, panneau Réglages/Crédits) et les chaînes générées côté JS (`js/main.js` :
+    vide, panneau Réglages/Langue/Crédits) et les chaînes générées côté JS (`js/main.js` :
     alertes/confirmations/invites, badges de filtre, onglets de page, boutons d'action de tuile ;
     `js/charts.js` : bandeau ECharts indisponible, jauge de calcul, en-têtes « Total » du tableau
-    croisé, indice de fil d'Ariane). Complétée à 115 lors de la fusion de `main` du 29/09/2026
-    (panneau Réglages/Crédits + bouton « Exporter en PDF » ajoutés entre-temps par les fils
-    « Audit UI/UX » et « Ce qui reste à faire »).
+    croisé, indice de fil d'Ariane). D'abord complétée à 115 lors de la fusion de `main` du
+    29/09/2026 (panneau Réglages/Crédits + bouton « Exporter en PDF » ajoutés entre-temps par les
+    fils « Audit UI/UX » et « Ce qui reste à faire »), puis à 117 le même jour en déplaçant la
+    langue du bandeau vers les Réglages (`lang.toggle.aria` retirée, `settings.language.title/fr/en`
+    ajoutées).
   - **Piège trouvé en testant** : les boutons d'action d'une tuile (déplacer/modifier/supprimer,
     `js/main.js:buildTileElement`) sont mis en cache et jamais reconstruits tant que la tuile
     existe (voir `render()`) — un changement de langue seul ne les aurait donc jamais retraduits.
