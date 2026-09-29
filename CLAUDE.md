@@ -49,7 +49,7 @@ grist-api.js → duckdb-engine.js → main.js`.
 
 | Fichier | Rôle |
 |---|---|
-| `index.html` | Page unique du widget : tout le DOM (barre de tuiles, formulaire d'ajout/édition, barre de filtres avancés, sélecteur de table, onglets de pages, bookmarks), le chargement d'ECharts/SheetJS vendorisés localement, l'`importmap` qui résout les imports nus de DuckDB-WASM vers les copies vendorisées, et l'ordre de chargement des scripts JS. |
+| `index.html` | Page unique du widget : tout le DOM (barre de tuiles, formulaire d'ajout/édition, barre de filtres avancés, sélecteur de table, onglets de pages, bookmarks, panneau Réglages/Crédits), le chargement d'ECharts/SheetJS vendorisés localement, l'`importmap` qui résout les imports nus de DuckDB-WASM vers les copies vendorisées, et l'ordre de chargement des scripts JS. |
 | `css/style.css` | Layout des tuiles (grille CSS `repeat(auto-fill, minmax(270px,1fr))`), design tokens (palette catégorielle colorblind-safe validée via la skill *dataviz* du projet). Contient plusieurs correctifs CSS documentés (voir §7). |
 | `js/data.js` | Cœur **pur JS, testable sous Node**, sans DOM ni Grist : conversion du format colonnaire Grist en lignes, filtrage (`matchesFilter`/`applyFilters`, types `eq`/`range`/`dateRange`/`relativeDate`/`contains`), agrégation (`groupByAggregate`, `aggregateSingle`, agrégateurs sum/avg/count/min/max), tendance KPI (`computeTrend`), échappement HTML, et toute la logique d'export Excel (`rowsForTile`, `tileExportSheet`, `buildWorkbookSheets`, `sanitizeSheetName`) partagée avec le rendu à l'écran. |
 | `js/state.js` | Store pub/sub **pur JS, testable sous Node** (`createStore()`) : pages (chacune avec son propre tableau de tuiles), filtres croisés et filtres avancés (globaux entre pages, volontairement), chemins de drill-down par tuile (`drillIns`), bookmarks. Expose `getState`/`subscribe` + mutateurs (`addTile`, `updateTile`, `toggleFilter`, `drillInto`/`drillUp`, `saveBookmark`, etc.). |
@@ -66,7 +66,8 @@ grist-api.js → duckdb-engine.js → main.js`.
 | `ROADMAP.md` | **Source unique des priorités** — voir §6. |
 | `HYPOTHESES.md` | **Journal détaillé** de ce qui est implémenté/testé et de ce qui reste à valider en conditions réelles — voir §6. |
 | `TEST_PROTOCOL.md` | Protocole de test qui grandit à chaque feature — voir §5. |
-| `LICENSE` | MIT pour le code de ce dépôt. Chaque dossier `js/vendor/*` contient sa propre licence (Apache-2.0 pour ECharts/SheetJS/Apache Arrow/FlatBuffers, MIT pour DuckDB-WASM, 0BSD pour tslib). |
+| `LICENSE` | **GNU GPL v3.0** pour le code de ce dépôt (passé de MIT le 2026-09-29, identité Grist Factory — voir §8). Chaque dossier `js/vendor/*` contient sa propre licence (Apache-2.0 pour ECharts/SheetJS/Apache Arrow/FlatBuffers, MIT pour DuckDB-WASM, 0BSD pour tslib). |
+| `img/grist-factory-logo.jpg` | Avatar Grist Factory fourni par Antoine (2026-09-29), redimensionné/compressé en local (60×60, ~1,3 Ko) — jamais un asset à recréer ou deviner. Affiché dans le bandeau du haut, juste à droite du bouton Réglages (`index.html`). |
 
 Il n'y a **aucune issue GitHub ouverte, aucun TODO dans le code, et aucune configuration CI**
 (pas de dossier `.github/workflows` au moment de la rédaction) — vérifié par recherche dans tout le
@@ -308,6 +309,15 @@ Cette liste condense les bugs réels les plus instructifs (détail complet dans 
   chargement réseau doit toujours produire un message clair à l'utilisateur (voir
   `js/pdf-export.js`), jamais une page cassée ou un échec silencieux — c'est le prix de ne pas
   vendoriser.
+- **Identité Grist Factory (logo + Crédits + licence), actée par Antoine le 2026-09-29** : bouton
+  « Réglages » dans le bandeau du haut (`#open-settings`, `index.html`) ouvrant un panneau
+  « Crédits » (Auteur / Site / Licence / Bio, `.settings-credits-list`) — pas de gestion de
+  langue/thème dans ce panneau, ce widget n'en a pas encore. Logo Grist Factory juste à droite du
+  bouton (`img/grist-factory-logo.jpg`). Repris du même cadrage/de la même convention d'ouverture que
+  le widget frère `publipostageGrist` (`js/settings.js` de ce dépôt). Les libellés du panneau
+  Crédits sont regroupés dans ce seul bloc HTML (pas éparpillés ailleurs dans le DOM) pour rester
+  faciles à brancher sur le futur mécanisme `data-i18n` du chantier bilingue fr/en. Antoine a refusé
+  Manrope le même jour (le chrome garde la police système) — ne pas la reproposer sans nouvel avis.
 - **Aucun langage de formule Grist n'est utilisé** — tout calcul de colonne dérivée se fait
   côté JS (`deriveDateColumn`, etc.), par choix explicite et cohérent du projet.
 - **Jamais de nouvelle table créée pour faire évoluer un schéma** — `AddColumn` + backfill JS sur la

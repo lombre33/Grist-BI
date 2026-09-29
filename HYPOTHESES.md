@@ -1287,12 +1287,13 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     croisés, ce bouton s'affichait avec le style par défaut du navigateur. Invisible tant qu'aucun
     filtre avancé n'avait été posé lors d'une revue visuelle. Corrigé en partageant les styles de
     `.filter-chip-remove`.
-  - **Volontairement laissé de côté** (nécessite un arbitrage ou un asset d'Antoine, pas une
-    "correction" au sens de ce lot) : logo/panneau Crédits/licence GPL v3 (rattachement à
+  - **Volontairement laissé de côté à ce stade** (nécessite un arbitrage ou un asset d'Antoine, pas
+    une "correction" au sens de ce lot) : logo/panneau Crédits/licence GPL v3 (rattachement à
     l'organisation GitHub `grist-factory` non tranché, asset du logo à obtenir), police Manrope
     (nouvelle dépendance tierce, même vendorisée, hors du périmètre "corrections + sobriété" sans
     accord explicite), et le bilingue fr/en systématique (`data-i18n`) — chantier à part entière vu
-    son volume, pas une correction ponctuelle.
+    son volume, pas une correction ponctuelle. **Tranché le même jour** (voir l'entrée dédiée plus
+    bas) : logo/Crédits/GPL implémentés, Manrope refusé, bilingue déplacé vers un fil dédié.
 
 - **Export PDF du dashboard** (`js/pdf-export.js`, 2026-09-29, Tier 2 ROADMAP.md) : un premier
   export visuel, limité à la page actuellement affichée. Choix de conception délibéré, différent de
@@ -1332,6 +1333,48 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     politique réseau précise.
   - **Hors scope de ce premier export** (documenté, pas oublié) : les autres pages du dashboard
     (seulement la page affichée), le PPTX (PptxGenJS, PR séparée à venir).
+
+- **Logo Grist Factory + panneau Crédits + licence GPL v3.0 (2026-09-29)** : les 3 points d'identité
+  laissés de côté par le lot précédent (voir juste au-dessus), tranchés par Antoine via 3 cartes de
+  décision séparées dans le fil « Audit UI/UX » — Manrope refusé (chrome inchangé, police système),
+  bilingue fr/en accepté mais déplacé vers un fil dédié (chantier séparé, pas traité ici), logo +
+  Crédits + GPL accepté et implémenté :
+  - **Logo** : Antoine a fourni le fichier (avatar `Grist Factory`, JPEG 1024×1024) directement dans
+    le fil. Redimensionné/compressé en local (Pillow, `LANCZOS`) à 60×60, ~1,3 Ko — même gabarit que
+    l'asset `img/grist-factory-logo.jpg` du widget frère `publipostageGrist` (60×60 fichier, 20×20
+    affiché, cercle `border-radius:50%`, `opacity:.85`). Affiché à 18×18 dans `.topbar-info`, juste
+    à droite du bouton Réglages, en dernier dans le flux (non-régression : ne déplace aucun contrôle
+    existant).
+  - **Panneau Crédits** : ce widget n'a pas de panneau Réglages multi-onglets comme
+    `publipostageGrist` (langue/thème/marges) — juste le strict nécessaire demandé : un bouton
+    Réglages (`#open-settings`) ouvre directement le panneau Crédits (`#settings-modal`), sans
+    onglets puisque c'est son seul contenu. Même convention d'ouverture/fermeture que
+    `publipostageGrist` (`hidden` natif, pas de fermeture au clic sur le fond — vérifié dans
+    `js/settings.js` de ce dépôt frère avant de la reproduire). `[hidden]` redéclaré explicitement
+    sur `.settings-modal` (piège n°10 de CLAUDE.md §7 : une règle d'auteur `display:flex` bat
+    toujours `[hidden]{display:none}` à spécificité égale). Libellés (Auteur/Site/Licence/Bio)
+    regroupés dans un seul bloc `<dl>` plutôt qu'éparpillés, à la demande du coordinateur, pour
+    rester faciles à brancher sur le futur mécanisme `data-i18n` du fil « Bilingue fr/en » sans
+    avoir à les retrouver dans tout le DOM.
+    - Bio réécrite spécifiquement pour ce widget (pas copiée telle quelle depuis
+      `publipostageGrist`, dont le cadrage dit explicitement que ce texte est un brouillon de Claude
+      "à reformuler par Antoine, ne pas dupliquer sur un autre widget sans le lui faire valider") —
+      à faire valider par Antoine comme sur le widget frère.
+    - Lien Licence pointé vers `github.com/lombre33/Grist-BI/blob/main/LICENSE` (dépôt personnel
+      actuel), PAS vers une organisation `grist-factory` qui n'existe pas encore pour ce dépôt — le
+      rattachement à cette organisation reste non tranché (voir §1 de CLAUDE.md) ; à corriger le
+      jour où ce rattachement est décidé.
+  - **Licence GPL v3.0** : `LICENSE` remplacé par le texte GPLv3 officiel complet, copié tel quel
+    depuis `publipostageGrist/LICENSE` (verbatim FSF, appendice "how to apply" non rempli — même
+    choix que le widget frère, qui ne le remplit pas non plus). `README.md` et `CLAUDE.md` mis à
+    jour (MIT → GPL v3.0, avec la date du changement).
+  - **Testé** : `node dev-tests/test-data.js` toujours vert (aucune fonction pure touchée par ce
+    lot). Panneau Crédits + logo + ouverture/fermeture du bouton Réglages vérifiés visuellement par
+    Playwright contre `dev-tests/harness.html`, thème clair et sombre (les tokens CSS existants
+    suffisent, aucune règle dédiée au thème sombre nécessaire).
+  - **Jamais vérifié en conditions réelles Grist** : rendu du panneau dans l'iframe réelle du widget,
+    respect du logo/asset par la politique de contenu de Grist (aucune raison de penser que non,
+    mais pas confirmé).
 
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 

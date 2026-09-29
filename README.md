@@ -118,6 +118,10 @@ réellement (voir HYPOTHESES.md).
   HYPOTHESES.md). Si le dashboard de cette table se retrouve vide (ex. configuration sauvegardée
   vide), un bouton "Restaurer les tuiles par défaut" apparaît pour la repeupler en un clic, sans
   avoir à toucher aux tables internes de Grist.
+- **Identité Grist Factory** : logo discret dans le bandeau du haut (juste à droite de « Réglages »)
+  et panneau « Crédits » (Auteur / Site / Licence / Bio) accessible depuis ce même bouton — cadrage
+  repris de [Publipostage+](https://github.com/lombre33/publipostagegrist), même éditeur pour tous
+  les widgets Grist Factory. Voir aussi la section Licence plus bas.
 
 ## Installation dans Grist
 
@@ -212,7 +216,8 @@ l'export Excel depuis l'iframe du widget.
 
 ## Licence
 
-MIT pour le code de ce dépôt. `js/vendor/echarts/` contient [Apache ECharts](https://echarts.apache.org/)
+**GNU GPL v3.0** pour le code de ce dépôt (texte complet dans [LICENSE](./LICENSE), identité Grist
+Factory — passé de MIT le 2026-09-29, à la demande d'Antoine). `js/vendor/echarts/` contient [Apache ECharts](https://echarts.apache.org/)
 et `js/vendor/xlsx/` contient [SheetJS](https://sheetjs.com/), tous deux embarqués tels quels
 (Apache-2.0, licence incluse dans chaque dossier). `js/vendor/duckdb/` contient
 [DuckDB-WASM](https://github.com/duckdb/duckdb-wasm) (MIT), `js/vendor/apache-arrow/` contient
