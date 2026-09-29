@@ -43,14 +43,17 @@ mécanisme comme un pilier acquis de l'architecture.
 ## 2. Structure du dépôt et rôle de chaque fichier
 
 Pas de `package.json`, pas d'étape de build : `index.html` charge directement chaque script via
-`<script src="...">`, dans un ordre précis (voir `index.html:202-210`) :
-`data.js → combobox.js → demo-data.js → state.js → charts.js → export.js → pdf-export.js →
-grist-api.js → duckdb-engine.js → main.js`.
+`<script src="...">`, dans un ordre précis (voir la fin du `<body>` d'`index.html`) :
+`i18n.js → data.js → combobox.js → demo-data.js → state.js → charts.js → export.js →
+pdf-export.js → grist-api.js → duckdb-engine.js → main.js`. `i18n.js` est chargé en tout premier
+(depuis le 29/09/2026, bilingue fr/en — voir le tableau ci-dessous) pour que tous les scripts
+suivants lisent `GristBI.i18n.t()` comme un global déjà prêt.
 
 | Fichier | Rôle |
 |---|---|
 | `index.html` | Page unique du widget : tout le DOM (barre de tuiles, formulaire d'ajout/édition, barre de filtres avancés, sélecteur de table, onglets de pages, bookmarks, panneau Réglages/Crédits), le chargement d'ECharts/SheetJS vendorisés localement, l'`importmap` qui résout les imports nus de DuckDB-WASM vers les copies vendorisées, et l'ordre de chargement des scripts JS. |
 | `css/style.css` | Layout des tuiles (grille CSS `repeat(auto-fill, minmax(270px,1fr))`), design tokens (palette catégorielle colorblind-safe validée via la skill *dataviz* du projet). Contient plusieurs correctifs CSS documentés (voir §7). |
+| `js/i18n.js` | Bilingue fr/en (depuis le 29/09/2026) : dictionnaire `STRINGS` fr/en, `t(key, vars)` (variables + pluriel via `Intl.PluralRules`), attributs `data-i18n`/`data-i18n-html`/`data-i18n-title`/`data-i18n-aria`/`data-i18n-placeholder` résolus par `applyTranslations()`. **Chargé en tout premier**, langue persistée en `localStorage` (`gristbi_lang`). Ne couvre QUE la chrome de l'interface — le contenu généré à partir de noms de colonnes (titres de tuile, en-têtes d'export Excel dans `js/data.js`) reste hors périmètre, voir HYPOTHESES.md. |
 | `js/data.js` | Cœur **pur JS, testable sous Node**, sans DOM ni Grist : conversion du format colonnaire Grist en lignes, filtrage (`matchesFilter`/`applyFilters`, types `eq`/`range`/`dateRange`/`relativeDate`/`contains`), agrégation (`groupByAggregate`, `aggregateSingle`, agrégateurs sum/avg/count/min/max), tendance KPI (`computeTrend`), échappement HTML, et toute la logique d'export Excel (`rowsForTile`, `tileExportSheet`, `buildWorkbookSheets`, `sanitizeSheetName`) partagée avec le rendu à l'écran. |
 | `js/state.js` | Store pub/sub **pur JS, testable sous Node** (`createStore()`) : pages (chacune avec son propre tableau de tuiles), filtres croisés et filtres avancés (globaux entre pages, volontairement), chemins de drill-down par tuile (`drillIns`), bookmarks. Expose `getState`/`subscribe` + mutateurs (`addTile`, `updateTile`, `toggleFilter`, `drillInto`/`drillUp`, `saveBookmark`, etc.). |
 | `js/grist-api.js` | **Seul pont** entre le widget et l'hôte Grist. Voir §3. |
@@ -152,9 +155,11 @@ dépôt. Les tests se lancent manuellement (voir §5).
 - **`node dev-tests/test-data.js`** — logique pure, sans navigateur ni Grist. Exerce `js/data.js`
   (agrégation, filtrage, tendance, échappement HTML, export), `js/state.js` (store complet),
   `js/demo-data.js` (génération/cohérence du jeu de données), `js/combobox.js` (filtrage/surlignage
-  seulement — le câblage DOM est laissé à des tests navigateur) et `js/duckdb-engine.js`
+  seulement — le câblage DOM est laissé à des tests navigateur), `js/duckdb-engine.js`
   (**seulement** `csvEscape`/`assertSafeIdentifier` : le chargement réel et l'exécution SQL
-  nécessitent un vrai navigateur).
+  nécessitent un vrai navigateur) et `js/i18n.js` (complétude du dictionnaire fr/en, `t()`/
+  `getLang()`/`setLang()`, substitution de variables/pluriel — l'application des attributs
+  `data-i18n-*` au DOM est laissée à des tests navigateur).
 - **`dev-tests/harness.html`** — rendu visuel dans un navigateur avec un faux `window.grist`, sans
   document Grist réel (voir §4).
 - **Point important à savoir avant de chercher des fichiers de test** : `HYPOTHESES.md` et

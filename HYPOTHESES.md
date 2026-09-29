@@ -1390,6 +1390,59 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     respect du logo/asset par la politique de contenu de Grist (aucune raison de penser que non,
     mais pas confirmé).
 
+- **Bilingue fr/en (`data-i18n`) — fondation (2026-09-29)** : chantier laissé de côté par le lot
+  ci-dessus, repris séparément suite au cadrage d'identité `Grist Factory` (« Chaque chaîne
+  d'interface visible passe par un attribut data-i18n... »). Nouveau module `js/i18n.js`, même
+  mécanisme que `publipostageGrist/js/i18n.js` (dictionnaire `STRINGS` fr/en, `t(key, vars)` avec
+  substitution de variables et pluriel via `Intl.PluralRules`, attributs `data-i18n`/
+  `data-i18n-html`/`data-i18n-title`/`data-i18n-aria`/`data-i18n-placeholder` résolus par
+  `applyTranslations()`), chargé en tout premier (`index.html`/`harness.html`). Bouton de bascule
+  fr/en dans le bandeau du haut (`#lang-toggle`), langue persistée en `localStorage`
+  (`gristbi_lang`).
+  - **115 clés** couvrant la chrome statique de `index.html`/`harness.html` (bandeau, sélecteur de
+    table, pages, vues sauvegardées, filtres avancés, formulaire d'ajout/édition de tuile, état
+    vide, panneau Réglages/Crédits) et les chaînes générées côté JS (`js/main.js` :
+    alertes/confirmations/invites, badges de filtre, onglets de page, boutons d'action de tuile ;
+    `js/charts.js` : bandeau ECharts indisponible, jauge de calcul, en-têtes « Total » du tableau
+    croisé, indice de fil d'Ariane). Complétée à 115 lors de la fusion de `main` du 29/09/2026
+    (panneau Réglages/Crédits + bouton « Exporter en PDF » ajoutés entre-temps par les fils
+    « Audit UI/UX » et « Ce qui reste à faire »).
+  - **Piège trouvé en testant** : les boutons d'action d'une tuile (déplacer/modifier/supprimer,
+    `js/main.js:buildTileElement`) sont mis en cache et jamais reconstruits tant que la tuile
+    existe (voir `render()`) — un changement de langue seul ne les aurait donc jamais retraduits.
+    Corrigé en leur donnant AUSSI les attributs `data-i18n-aria`/`data-i18n-title` (en plus du texte
+    déjà traduit à la création) et en appelant `GristBI.i18n.applyTranslations()` à chaque
+    `render()`, qui les retrouve et les corrige sans reconstruction — vérifié en Playwright contre
+    `dev-tests/harness.html` (titre `title`/`aria-label` d'un bouton de tuile déjà affiché change
+    bien après bascule de langue, sans recharger la page).
+  - **Deuxième piège du même genre** : le `blankLabel` "(aucun)"/"(none)" des comboboxes
+    optionnelles (drill-down, Tendance vs) est écrit dans `.placeholder` par `Combobox.setOptions`
+    (`js/combobox.js`) au moment de l'appel, jamais relu automatiquement — restait figé dans
+    l'ancienne langue après un changement tant que `refreshColumnSelects()` n'était pas rappelé.
+    Corrigé en le rappelant dans l'abonné `GristBI.i18n.onChange` de `js/main.js` ; `setOptions` en
+    mode strict garde la valeur déjà choisie si elle reste valide, donc sans effet de bord sur une
+    tuile en cours d'édition (vérifié en Playwright : une dimension déjà choisie survit à la
+    bascule de langue).
+  - **Case à cocher imbriquée dans un `<label>`** (« Filtrer aussi les autres cartes en
+    détaillant ») : `data-i18n` directement sur le `<label>` aurait écrasé le `<input
+    type="checkbox">` imbriqué via `el.textContent = ...` (`applyTranslations` remplace tout le
+    contenu texte de l'élément ciblé) — évité en mettant l'attribut sur un `<span>` enveloppant
+    seulement le texte, vérifié en Playwright (la case à cocher reste présente et fonctionnelle
+    après plusieurs bascules de langue).
+  - **Périmètre délibérément laissé de côté** (documenté en tête de `js/i18n.js`) : le CONTENU
+    généré à partir de noms de colonnes reste tel quel — titres de tuile auto-composés (ex.
+    « Montant par Région », `js/main.js`, `js/demo-data.js`), en-têtes de feuille Excel et libellés
+    de série temporelle (« Cumul », « Valeur », « N-1 », `js/data.js`). `js/data.js` reste
+    volontairement sans dépendance au DOM ni à `js/i18n.js` pour rester pur et testable sous Node
+    (voir §3 de CLAUDE.md) ; l'étendre à l'i18n serait un chantier à part, pas cette fondation.
+  - **Testé** : complétude du dictionnaire (chaque clé a fr ET en, non vides), `t()`/`getLang()`/
+    `setLang()` sans DOM ni `localStorage`, substitution de variables et pluriel fr/en — sous Node
+    (`node dev-tests/test-data.js`). Bascule de langue, persistance après rechargement, préservation
+    du `<code>` imbriqué dans le bandeau ECharts, traduction d'une alerte, tableau croisé — en
+    Playwright contre `dev-tests/harness.html` (script ad hoc, non committé, voir §5 de CLAUDE.md).
+    **Jamais testé dans un vrai document Grist** (voir §8 de CLAUDE.md sur cette distinction
+    permanente).
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée

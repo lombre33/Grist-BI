@@ -31,13 +31,14 @@
 </head>
 <body>
   <header class="topbar">
-    <h1>Dashboard BI <span class="badge-poc">POC</span></h1>
+    <h1><span data-i18n="topbar.title">Dashboard BI</span> <span class="badge-poc" data-i18n="topbar.badgePoc">POC</span></h1>
     <div class="topbar-info">
       <span id="row-count" class="row-count">0 ligne(s)</span>
       <span id="render-time" class="render-time"></span>
       <span id="filter-badges" class="filter-badges"></span>
-      <button id="clear-filter" type="button" class="btn-secondary" hidden>Effacer les filtres</button>
-      <button id="open-settings" type="button" class="settings-btn" title="Réglages" aria-label="Réglages">
+      <button id="clear-filter" type="button" class="btn-secondary" data-i18n="topbar.clearFilters" hidden>Effacer les filtres</button>
+      <button id="lang-toggle" type="button" class="btn-tiny" data-i18n-aria="lang.toggle.aria" aria-label="Changer la langue de l'interface">EN</button>
+      <button id="open-settings" type="button" class="settings-btn" data-i18n-title="settings.button" data-i18n-aria="settings.button" title="Réglages" aria-label="Réglages">
         <svg class="icon icon-settings" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><circle cx="8" cy="8" r="2.3"/><path d="M8 2v1.6M8 12.4V14M14 8h-1.6M3.6 8H2M12.24 3.76l-1.13 1.13M4.89 11.11l-1.13 1.13M12.24 12.24l-1.13-1.13M4.89 4.89L3.76 3.76"/></svg>
       </button>
       <!-- Logo Grist Factory : avatar fourni par Antoine (2026-09-29), redimensionné/compressé en local
@@ -49,28 +50,27 @@
   </header>
 
   <!-- Panneau Réglages : pour l'instant seulement les Crédits (Auteur/Site/Licence/Bio, cadrage
-       identité §1) — pas de gestion de langue/thème ici, ce widget n'en a pas encore. Libellés
-       regroupés dans ce seul bloc plutôt qu'écrits ailleurs, pour rester faciles à brancher sur le
-       futur mécanisme data-i18n (fil « Bilingue fr/en ») sans avoir à les retrouver dans tout le DOM.
-       Même convention d'ouverture/fermeture que Publipostage+ : hidden natif, pas de fermeture au clic
+       identité §1) — pas de gestion de langue/thème ici (la bascule de langue vit dans le bandeau du
+       haut, voir #lang-toggle). Libellés passés par data-i18n (fil « Bilingue fr/en »), même
+       convention d'ouverture/fermeture que Publipostage+ : hidden natif, pas de fermeture au clic
        sur le fond. -->
   <div id="settings-modal" class="settings-modal" hidden>
     <div class="settings-modal-content">
       <div class="settings-modal-header">
-        <h3>Crédits</h3>
-        <button id="settings-close" type="button" class="settings-close" title="Fermer" aria-label="Fermer">
+        <h3 data-i18n="settings.credits.title">Crédits</h3>
+        <button id="settings-close" type="button" class="settings-close" data-i18n-title="settings.close" data-i18n-aria="settings.close" title="Fermer" aria-label="Fermer">
           <svg class="icon icon-close" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M4 4l8 8M12 4l-8 8"/></svg>
         </button>
       </div>
       <dl class="settings-credits-list">
-        <dt>Auteur</dt>
+        <dt data-i18n="settings.credits.author">Auteur</dt>
         <dd>Grist Factory</dd>
-        <dt>Site</dt>
+        <dt data-i18n="settings.credits.website">Site</dt>
         <dd><a href="https://grist-factory.fr" target="_blank" rel="noopener noreferrer">grist-factory.fr</a></dd>
-        <dt>Licence</dt>
+        <dt data-i18n="settings.credits.license">Licence</dt>
         <dd><a href="https://github.com/lombre33/Grist-BI/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">GNU GPL v3.0</a></dd>
-        <dt>Bio</dt>
-        <dd>Grist Factory conçoit des widgets libres pour Grist. Dashboard BI en est un : croiser vos
+        <dt data-i18n="settings.credits.bio">Bio</dt>
+        <dd data-i18n="settings.credits.bioText">Grist Factory conçoit des widgets libres pour Grist. Dashboard BI en est un : croiser vos
           données Grist dans des tableaux de bord multi-tuiles avec cross-filtering et drill-down,
           directement dans Grist.</dd>
       </dl>
@@ -78,7 +78,7 @@
   </div>
 
   <div class="table-bar">
-    <label for="table-select">Table de travail</label>
+    <label for="table-select" data-i18n="table.label">Table de travail</label>
     <div class="combobox">
       <input type="text" id="table-select" class="combobox-input" />
       <ul class="combobox-list" hidden></ul>
@@ -87,181 +87,182 @@
 
   <div class="pages-bar">
     <div id="page-tabs" class="page-tabs"></div>
-    <button id="add-page" type="button" class="btn-tiny" title="Ajouter une page">+ Page</button>
+    <button id="add-page" type="button" class="btn-tiny" data-i18n="pages.addPage" data-i18n-title="pages.addPage.title" title="Ajouter une page">+ Page</button>
   </div>
 
   <div class="bookmarks-bar">
-    <select id="bookmark-select"><option value="">Vues sauvegardées…</option></select>
-    <button id="delete-bookmark" type="button" class="btn-secondary" disabled>Supprimer la vue</button>
-    <button id="save-bookmark" type="button" class="btn-secondary">Sauvegarder la vue actuelle</button>
-    <button id="export-excel" type="button" class="btn-secondary">Exporter en Excel</button>
-    <button id="export-pdf" type="button" class="btn-secondary">Exporter en PDF</button>
+    <select id="bookmark-select"><option value="" data-i18n="bookmarks.placeholder">Vues sauvegardées…</option></select>
+    <button id="delete-bookmark" type="button" class="btn-secondary" data-i18n="bookmarks.delete" disabled>Supprimer la vue</button>
+    <button id="save-bookmark" type="button" class="btn-secondary" data-i18n="bookmarks.save">Sauvegarder la vue actuelle</button>
+    <button id="export-excel" type="button" class="btn-secondary" data-i18n="bookmarks.exportExcel">Exporter en Excel</button>
+    <button id="export-pdf" type="button" class="btn-secondary" data-i18n="bookmarks.exportPdf">Exporter en PDF</button>
   </div>
 
   <form id="advanced-filter-form" class="advanced-filters-bar">
     <div class="field">
-      <label for="filter-column">Filtre avancé</label>
+      <label for="filter-column" data-i18n="filters.advanced.label">Filtre avancé</label>
       <div class="combobox">
         <input type="text" id="filter-column" class="combobox-input" />
         <ul class="combobox-list" hidden></ul>
       </div>
     </div>
     <div class="field" id="filter-number-field">
-      <label for="filter-min">Plage</label>
+      <label for="filter-min" data-i18n="filters.range.label">Plage</label>
       <span class="range-inputs">
-        <input type="number" id="filter-min" placeholder="Min" />
-        <input type="number" id="filter-max" placeholder="Max" />
+        <input type="number" id="filter-min" data-i18n-placeholder="filters.min.placeholder" placeholder="Min" />
+        <input type="number" id="filter-max" data-i18n-placeholder="filters.max.placeholder" placeholder="Max" />
       </span>
     </div>
     <div class="field" id="filter-date-mode-field" hidden>
-      <label for="filter-date-mode">Mode</label>
+      <label for="filter-date-mode" data-i18n="filters.mode.label">Mode</label>
       <select id="filter-date-mode">
-        <option value="dateRange">Plage de dates</option>
-        <option value="relativeDate">Période relative</option>
+        <option value="dateRange" data-i18n="filters.mode.dateRange">Plage de dates</option>
+        <option value="relativeDate" data-i18n="filters.mode.relativeDate">Période relative</option>
       </select>
     </div>
     <div class="field" id="filter-date-range-field" hidden>
-      <label for="filter-date-start">Du / au</label>
+      <label for="filter-date-start" data-i18n="filters.dateRange.label">Du / au</label>
       <span class="range-inputs">
         <input type="date" id="filter-date-start" />
         <input type="date" id="filter-date-end" />
       </span>
     </div>
     <div class="field" id="filter-relative-date-field" hidden>
-      <label for="filter-relative-preset">Période</label>
+      <label for="filter-relative-preset" data-i18n="filters.relative.label">Période</label>
       <select id="filter-relative-preset">
-        <option value="last7d">7 derniers jours</option>
-        <option value="last30d">30 derniers jours</option>
-        <option value="thisMonth">Ce mois-ci</option>
-        <option value="thisYear">Cette année</option>
-        <option value="last12m">12 derniers mois</option>
+        <option value="last7d" data-i18n="filters.relative.last7d">7 derniers jours</option>
+        <option value="last30d" data-i18n="filters.relative.last30d">30 derniers jours</option>
+        <option value="thisMonth" data-i18n="filters.relative.thisMonth">Ce mois-ci</option>
+        <option value="thisYear" data-i18n="filters.relative.thisYear">Cette année</option>
+        <option value="last12m" data-i18n="filters.relative.last12m">12 derniers mois</option>
       </select>
     </div>
     <div class="field" id="filter-text-field" hidden>
-      <label for="filter-text">Recherche</label>
+      <label for="filter-text" data-i18n="filters.text.label">Recherche</label>
       <div class="combobox">
-        <input type="text" id="filter-text" class="combobox-input" placeholder="contient…" />
+        <input type="text" id="filter-text" class="combobox-input" data-i18n-placeholder="filters.text.placeholder" placeholder="contient…" />
         <ul class="combobox-list" hidden></ul>
       </div>
     </div>
-    <button id="apply-advanced-filter" type="submit" class="btn-secondary">+ Filtre</button>
+    <button id="apply-advanced-filter" type="submit" class="btn-secondary" data-i18n="filters.apply">+ Filtre</button>
   </form>
   <div id="advanced-filter-badges" class="filter-badges"></div>
 
   <p id="echarts-warning" class="warning-banner" hidden>
     <svg class="icon icon-warning" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 2.2l6.5 11.6H1.5L8 2.2Z"/><path d="M8 6.6v3.2"/><path d="M8 11.9v.01"/></svg>
-    La bibliothèque de graphiques (ECharts, <code>js/vendor/echarts/echarts.min.js</code>) n'a
+    <span data-i18n-html="warning.echarts">La bibliothèque de graphiques (ECharts, <code>js/vendor/echarts/echarts.min.js</code>) n'a
     pas pu être chargée : les cartes KPI fonctionnent, mais les tuiles barres/camembert resteront
-    vides. Ouvrez la console du navigateur (F12 → Console / Réseau) pour voir pourquoi.
+    vides. Ouvrez la console du navigateur (F12 → Console / Réseau) pour voir pourquoi.</span>
   </p>
 
   <form id="add-tile-form" class="add-tile-form">
     <div class="field">
-      <label for="tile-type">Type</label>
+      <label for="tile-type" data-i18n="tileForm.type.label">Type</label>
       <select id="tile-type">
-        <option value="bar">Barres</option>
-        <option value="pie">Camembert</option>
-        <option value="treemap">Treemap</option>
-        <option value="scatter">Nuage de points</option>
-        <option value="kpi">Carte KPI</option>
-        <option value="gauge">Jauge</option>
-        <option value="pivot">Tableau croisé</option>
+        <option value="bar" data-i18n="tileForm.type.bar">Barres</option>
+        <option value="pie" data-i18n="tileForm.type.pie">Camembert</option>
+        <option value="treemap" data-i18n="tileForm.type.treemap">Treemap</option>
+        <option value="scatter" data-i18n="tileForm.type.scatter">Nuage de points</option>
+        <option value="kpi" data-i18n="tileForm.type.kpi">Carte KPI</option>
+        <option value="gauge" data-i18n="tileForm.type.gauge">Jauge</option>
+        <option value="pivot" data-i18n="tileForm.type.pivot">Tableau croisé</option>
       </select>
     </div>
     <div class="field" id="tile-dimension-field">
-      <label for="tile-dimension" id="tile-dimension-label">Dimension</label>
+      <label for="tile-dimension" id="tile-dimension-label" data-i18n="tileForm.dimension.label">Dimension</label>
       <div class="combobox">
         <input type="text" id="tile-dimension" class="combobox-input" />
         <ul class="combobox-list" hidden></ul>
       </div>
     </div>
     <div class="field" id="tile-column-dimension-field" hidden>
-      <label for="tile-column-dimension">Dimension (colonnes)</label>
+      <label for="tile-column-dimension" data-i18n="tileForm.columnDimension.label">Dimension (colonnes)</label>
       <div class="combobox">
         <input type="text" id="tile-column-dimension" class="combobox-input" />
         <ul class="combobox-list" hidden></ul>
       </div>
     </div>
     <div class="field" id="tile-drill-field">
-      <label for="tile-drill-dimension-1">Drill-down</label>
+      <label for="tile-drill-dimension-1" data-i18n="tileForm.drill.label">Drill-down</label>
       <div id="tile-drill-levels" class="drill-levels"></div>
-      <button type="button" id="tile-drill-add-level" class="btn-secondary btn-tiny" hidden>+ Niveau</button>
+      <button type="button" id="tile-drill-add-level" class="btn-secondary btn-tiny" data-i18n="tileForm.drill.addLevel" hidden>+ Niveau</button>
     </div>
     <div class="field field-checkbox" id="tile-drill-crossfilter-field" hidden>
       <label for="tile-drill-crossfilter">
         <input type="checkbox" id="tile-drill-crossfilter" />
-        Filtrer aussi les autres cartes en détaillant
+        <span data-i18n="tileForm.drill.crossFilter">Filtrer aussi les autres cartes en détaillant</span>
       </label>
     </div>
     <div class="field">
-      <label for="tile-measure" id="tile-measure-label">Mesure</label>
+      <label for="tile-measure" id="tile-measure-label" data-i18n="tileForm.measure.label">Mesure</label>
       <div class="combobox">
         <input type="text" id="tile-measure" class="combobox-input" />
         <ul class="combobox-list" hidden></ul>
       </div>
     </div>
     <div class="field" id="tile-measure-y-field" hidden>
-      <label for="tile-measure-y">Mesure Y</label>
+      <label for="tile-measure-y" data-i18n="tileForm.measureY.label">Mesure Y</label>
       <div class="combobox">
         <input type="text" id="tile-measure-y" class="combobox-input" />
         <ul class="combobox-list" hidden></ul>
       </div>
     </div>
     <div class="field">
-      <label for="tile-agg">Agrégat</label>
+      <label for="tile-agg" data-i18n="tileForm.agg.label">Agrégat</label>
       <select id="tile-agg">
-        <option value="sum">Somme</option>
-        <option value="avg">Moyenne</option>
-        <option value="count">Comptage</option>
-        <option value="min">Min</option>
-        <option value="max">Max</option>
+        <option value="sum" data-i18n="tileForm.agg.sum">Somme</option>
+        <option value="avg" data-i18n="tileForm.agg.avg">Moyenne</option>
+        <option value="count" data-i18n="tileForm.agg.count">Comptage</option>
+        <option value="min" data-i18n="tileForm.agg.min">Min</option>
+        <option value="max" data-i18n="tileForm.agg.max">Max</option>
       </select>
     </div>
     <div class="field" id="tile-gauge-min-field" hidden>
-      <label for="tile-gauge-min">Min</label>
+      <label for="tile-gauge-min" data-i18n="tileForm.gaugeMin.label">Min</label>
       <input type="number" id="tile-gauge-min" value="0" />
     </div>
     <div class="field" id="tile-gauge-max-field" hidden>
-      <label for="tile-gauge-max">Max</label>
+      <label for="tile-gauge-max" data-i18n="tileForm.gaugeMax.label">Max</label>
       <input type="number" id="tile-gauge-max" value="100" />
     </div>
     <div class="field" id="tile-measure-mode-field">
-      <label for="tile-measure-mode">Mode</label>
+      <label for="tile-measure-mode" data-i18n="tileForm.measureMode.label">Mode</label>
       <select id="tile-measure-mode">
-        <option value="brut">Brut</option>
-        <option value="cumulative">Cumul</option>
-        <option value="ytd">Cumul annuel (YTD)</option>
-        <option value="yoy">Comparaison N-1</option>
+        <option value="brut" data-i18n="tileForm.measureMode.brut">Brut</option>
+        <option value="cumulative" data-i18n="tileForm.measureMode.cumulative">Cumul</option>
+        <option value="ytd" data-i18n="tileForm.measureMode.ytd">Cumul annuel (YTD)</option>
+        <option value="yoy" data-i18n="tileForm.measureMode.yoy">Comparaison N-1</option>
       </select>
     </div>
     <div class="field" id="tile-date-column-field" hidden>
-      <label for="tile-date-column">Colonne date</label>
+      <label for="tile-date-column" data-i18n="tileForm.dateColumn.label">Colonne date</label>
       <div class="combobox">
         <input type="text" id="tile-date-column" class="combobox-input" />
         <ul class="combobox-list" hidden></ul>
       </div>
     </div>
     <div class="field" id="tile-trend-field" hidden>
-      <label for="tile-trend-dimension">Tendance vs</label>
+      <label for="tile-trend-dimension" data-i18n="tileForm.trend.label">Tendance vs</label>
       <div class="combobox">
         <input type="text" id="tile-trend-dimension" class="combobox-input" />
         <ul class="combobox-list" hidden></ul>
       </div>
     </div>
-    <button id="submit-tile" type="submit" class="btn-primary">+ Ajouter la tuile</button>
-    <button id="cancel-edit" type="button" class="btn-secondary" hidden>Annuler</button>
+    <button id="submit-tile" type="submit" class="btn-primary" data-i18n="tileForm.submit.add">+ Ajouter la tuile</button>
+    <button id="cancel-edit" type="button" class="btn-secondary" data-i18n="tileForm.cancel" hidden>Annuler</button>
   </form>
 
   <main id="tiles" class="tiles"></main>
   <p id="empty-state" class="empty-state">
-    Aucune tuile pour l'instant. Ajoutez-en une ci-dessus. Cliquer sur une barre/part filtre les
+    <span data-i18n-html="emptyState.hint">Aucune tuile pour l'instant. Ajoutez-en une ci-dessus. Cliquer sur une barre/part filtre les
     autres tuiles (cumulable entre colonnes différentes ; recliquer retire le filtre). Une tuile
     avec un « Drill-down » se détaille au clic ; une carte KPI avec une « Tendance vs » affiche
-    l'évolution par rapport à la période précédente.
+    l'évolution par rapport à la période précédente.</span>
     <br />
-    <button id="restore-default-tiles" type="button" class="btn-secondary" hidden>Restaurer les tuiles par défaut</button>
+    <button id="restore-default-tiles" type="button" class="btn-secondary" data-i18n="emptyState.restoreDefaults" hidden>Restaurer les tuiles par défaut</button>
   </p>
 
+  <script src="js/i18n.js"></script>
   <script src="js/data.js"></script>
   <script src="js/combobox.js"></script>
   <script src="js/demo-data.js"></script>
