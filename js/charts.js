@@ -6,11 +6,16 @@
 (function (global) {
   const GristBI = global.GristBI || (global.GristBI = {});
   const {
-    groupByAggregate, sameValue, aggregateSingle, pivotTable, computeTrend, escapeHtml,
-    tileDrillLevels, currentDimension, rowsForTile
+    groupByAggregate, sameValue, aggregateSingle, pivotTable, computeTrend, measureSeriesForTile,
+    escapeHtml, tileDrillLevels, currentDimension, rowsForTile
   } = GristBI.data;
 
   const chartInstances = new Map();
+  // Numéro de rendu en cours par tuile en mode mesure temporelle (voir renderMeasureChart) : le
+  // calcul SQL DuckDB est asynchrone, un nouveau rendu (filtre, édition, suppression) peut démarrer
+  // avant qu'un précédent n'ait fini — seul le résultat du DERNIER appel lancé pour une tuile donnée
+  // doit s'appliquer, les autres sont silencieusement abandonnés à leur retour.
+  const measureRenderSeq = new Map();
 
   // Palette catégorielle validée colorblind-safe (skill dataviz de ce projet,
   // references/palette.md — worst adjacent CVD ΔE 9.1 clair, OKLab, cible ≥8 — ordre figé, jamais
@@ -20,6 +25,13 @@
   const CATEGORICAL_PALETTE = [
     '#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948'
   ];
+
+  // `containLabel: true` : sans ça, ECharts réserve une marge estimée AVANT de savoir combien de
+  // place le formatter compact va réellement prendre (variable selon la valeur : "0" vs "2,7 M")
+  // — l'estimation était trop courte, dessinant une partie du texte hors du canvas (silencieusement
+  // coupé, pas d'erreur, voir HYPOTHESES.md). Partagé par tout axe numérique (bar, scatter, mesures
+  // temporelles) — pas seulement le cas où le bug a été trouvé la première fois.
+  const numericGrid = { containLabel: true, left: 8, right: 16, top: 24, bottom: 8 };
 
   function renderTile(tile, state, container) {
     // Filtrage délégué à GristBI.data.rowsForTile (source de vérité partagée avec l'export Excel,
@@ -36,6 +48,8 @@
       renderGauge(tile, rows, container);
     } else if (tile.type === 'pivot') {
       renderPivot(tile, rows, state, container);
+    } else if (tile.type === 'bar' && tile.measureMode && tile.measureMode !== 'brut') {
+      renderMeasureChart(tile, rows, container);
     } else {
       renderChart(tile, rows, state, container, drillPath);
     }
@@ -99,6 +113,39 @@
         data: [{ value }]
       }]
     }, true);
+  }
+
+  // Instance ECharts partagée par renderChart/renderMeasureChart pour une même tuile : une tuile
+  // peut passer de l'un à l'autre au fil des éditions (mode mesure activé/désactivé), il ne faut
+  // donc PAS que le gestionnaire de clic ne soit attaché que par un seul des deux chemins de rendu
+  // — sinon une tuile d'abord créée en mode mesure, puis éditée pour repasser en "Brut", garderait
+  // une instance déjà en cache sans aucun clic câblé (le `if (!instance...)` de création ne se
+  // redéclencherait jamais). Ne PAS capturer `tile` du rendu courant dans cette closure : elle n'est
+  // créée qu'une fois (instance mise en cache), donc resterait périmée après une édition de tuile
+  // (cf. HYPOTHESES.md) ou un drill-down — on relit l'état vivant à chaque clic à la place, en ne
+  // fixant que l'id de la tuile (stable, lui, tout au long de sa vie).
+  function getOrCreateChartInstance(tileId, el) {
+    let instance = chartInstances.get(tileId);
+    if (instance && !instance.isDisposed()) return instance;
+    instance = echarts.init(el);
+    chartInstances.set(tileId, instance);
+    instance.on('click', (params) => {
+      const liveState = GristBI.store.getState();
+      const currentTile = liveState.tiles.find((t) => t.id === tileId);
+      if (!currentTile) return; // tuile supprimée entre-temps
+      // Mode mesure temporelle (voir renderMeasureChart) : un point est un mois CALCULÉ (bucket
+      // DuckDB), pas une vraie valeur de la dimension d'origine — rien de cohérent à filtrer/driller.
+      if (currentTile.type === 'bar' && currentTile.measureMode && currentTile.measureMode !== 'brut') return;
+      const livePath = (liveState.drillIns && liveState.drillIns[currentTile.id]) || [];
+      const dim = currentDimension(currentTile, livePath);
+      const levels = tileDrillLevels(currentTile);
+      if (livePath.length < levels.length) {
+        GristBI.store.drillInto(currentTile.id, dim, params.name);
+      } else {
+        GristBI.store.toggleFilter(dim, params.name, currentTile.id);
+      }
+    });
+    return instance;
   }
 
   // Tableau croisé dynamique : rendu en table HTML plutôt qu'en graphique ECharts (aucune série
@@ -191,29 +238,7 @@
     }
 
     const dimension = currentDimension(tile, drillPath);
-
-    let instance = chartInstances.get(tile.id);
-    if (!instance || instance.isDisposed()) {
-      instance = echarts.init(el);
-      chartInstances.set(tile.id, instance);
-      // Ne PAS capturer `tile`/`dimension`/`drillPath` du rendu courant dans cette closure : elle
-      // n'est créée qu'une fois (instance mise en cache), donc resterait périmée après une édition
-      // de tuile (cf. HYPOTHESES.md) ou un drill-down. On relit l'état vivant à chaque clic à la
-      // place, en ne fixant que l'id de la tuile (stable, lui, tout au long de sa vie).
-      instance.on('click', (params) => {
-        const liveState = GristBI.store.getState();
-        const currentTile = liveState.tiles.find((t) => t.id === tile.id);
-        if (!currentTile) return; // tuile supprimée entre-temps
-        const livePath = (liveState.drillIns && liveState.drillIns[currentTile.id]) || [];
-        const dim = currentDimension(currentTile, livePath);
-        const levels = tileDrillLevels(currentTile);
-        if (livePath.length < levels.length) {
-          GristBI.store.drillInto(currentTile.id, dim, params.name);
-        } else {
-          GristBI.store.toggleFilter(dim, params.name, currentTile.id);
-        }
-      });
-    }
+    const instance = getOrCreateChartInstance(tile.id, el);
 
     const agg = groupByAggregate(rows, dimension, tile.measure, tile.aggFn);
     const activeOnThisDimension = state.activeFilters.find((f) => f.column === dimension);
@@ -222,13 +247,6 @@
     const dim = (d) => (activeOnThisDimension && !sameValue(activeOnThisDimension.value, d)
       ? { opacity: 0.3 }
       : undefined);
-    // `containLabel: true` : sans ça, ECharts réserve une marge estimée AVANT de savoir combien de
-    // place le formatter compact va réellement prendre (variable selon la valeur : "0" vs "2,7 M")
-    // — l'estimation était trop courte, dessinant une partie du texte hors du canvas (silencieusement
-    // coupé, pas d'erreur, voir HYPOTHESES.md). `containLabel` recalcule la marge à partir du texte
-    // réellement rendu. Réutilisé pour tout axe numérique (bar, scatter), pas seulement le cas où le
-    // bug a été trouvé la première fois.
-    const numericGrid = { containLabel: true, left: 8, right: 16, top: 24, bottom: 8 };
 
     let option;
     if (tile.type === 'pie') {
@@ -307,6 +325,58 @@
     instance.setOption(option, true);
   }
 
+  // Tuile bar avec un mode de calcul temporel ('cumulative'/'ytd'/'yoy', voir ROADMAP.md "Mesures
+  // façon DAX simplifié") : contrairement à toutes les autres tuiles, ce chemin de rendu est
+  // ASYNCHRONE (le calcul passe par GristBI.duckdbEngine.timeSeriesMeasures, une vraie requête SQL
+  // DuckDB-WASM) — la seule tuile de ce widget dont le rendu ne se termine pas de façon synchrone
+  // dans le même tick que l'appel à renderTile. Pas de dimension/drill-down ici : l'axe est TOUJOURS
+  // le mois calculé depuis `tile.dateColumn` (voir data.js:measureSeriesForTile), donc le fil
+  // d'Ariane est masqué comme pour KPI/gauge.
+  async function renderMeasureChart(tile, rows, container) {
+    const breadcrumbEl = container.querySelector(`[data-tile-id="${tile.id}"] .tile-breadcrumb`);
+    if (breadcrumbEl) breadcrumbEl.hidden = true;
+    const el = container.querySelector(`[data-tile-id="${tile.id}"] .tile-chart`);
+    if (!el) return;
+    if (typeof echarts === 'undefined') {
+      el.textContent = 'ECharts indisponible — voir le bandeau en haut de page.';
+      return;
+    }
+    const instance = getOrCreateChartInstance(tile.id, el);
+
+    // Capturé AVANT l'attente asynchrone : seul le dernier appel lancé pour CETTE tuile doit
+    // appliquer son résultat (voir la doc de measureRenderSeq plus haut) — un filtre posé, une
+    // tuile éditée/supprimée pendant le calcul SQL ne doivent pas faire apparaître un résultat périmé.
+    const seq = (measureRenderSeq.get(tile.id) || 0) + 1;
+    measureRenderSeq.set(tile.id, seq);
+    instance.showLoading('default', { text: 'Calcul…', color: CATEGORICAL_PALETTE[0], maskColor: 'rgba(255, 255, 255, 0.6)' });
+
+    let timeSeries;
+    try {
+      timeSeries = await GristBI.duckdbEngine.timeSeriesMeasures(rows, tile.dateColumn, tile.measure, tile.aggFn);
+    } catch (e) {
+      console.error('[GristBI] échec du calcul de la mesure temporelle (DuckDB)', e);
+      if (measureRenderSeq.get(tile.id) !== seq || instance.isDisposed()) return; // périmé/tuile supprimée entre-temps
+      instance.hideLoading();
+      const freshEl = container.querySelector(`[data-tile-id="${tile.id}"] .tile-chart`);
+      if (freshEl) freshEl.textContent = 'Échec du calcul de la mesure — voir la console (F12).';
+      return;
+    }
+    if (measureRenderSeq.get(tile.id) !== seq || instance.isDisposed()) return; // périmé/tuile supprimée entre-temps
+    instance.hideLoading();
+
+    const { categories, series } = measureSeriesForTile(tile.measureMode, timeSeries);
+    const option = {
+      color: CATEGORICAL_PALETTE,
+      grid: { ...numericGrid, top: series.length > 1 ? 40 : numericGrid.top },
+      legend: series.length > 1 ? { top: 0 } : undefined,
+      tooltip: { trigger: 'axis' },
+      xAxis: { type: 'category', data: categories },
+      yAxis: { type: 'value', axisLabel: { formatter: formatCompactNumber } },
+      series: series.map((s) => ({ type: 'bar', name: s.label, data: s.data }))
+    };
+    instance.setOption(option, true);
+  }
+
   // Fil d'Ariane : la dimension racine (cliquable dès qu'on a drillé, pour tout remonter) puis un
   // segment par niveau franchi (chacun cliquable pour remonter jusqu'à CE niveau, sauf le dernier).
   function renderBreadcrumb(tile, drillPath, container) {
@@ -355,6 +425,7 @@
   function disposeTile(tileId) {
     const inst = chartInstances.get(tileId);
     if (inst) { inst.dispose(); chartInstances.delete(tileId); }
+    measureRenderSeq.delete(tileId);
   }
 
   // Exposé uniquement pour dev-tests/ (calcul de coordonnées pixel précises dans le test Playwright

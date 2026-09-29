@@ -34,7 +34,9 @@ réellement (voir HYPOTHESES.md).
   X/Y), pas ligne-à-ligne. La jauge compare une valeur agrégée à un Min/Max défini dans son
   formulaire.
 - Constructeur de tuile simple : dimension + mesure + agrégat (somme/moyenne/comptage/min/max) —
-  volontairement **pas** un langage de mesures façon DAX (voir HYPOTHESES.md, point 1).
+  volontairement **pas** un langage de mesures façon DAX complet (voir HYPOTHESES.md). Une tuile
+  barres peut cependant activer un sous-ensemble ciblé (« Mode » : Cumul / YTD / Comparaison N-1,
+  voir plus bas).
 - **Filtres croisés cumulables** : cliquer sur un segment filtre les autres tuiles ; cliquer sur une
   colonne différente cumule (ET) ; recliquer ou fermer un badge retire juste ce filtre-là.
 - **Tendance sur les cartes KPI** : une tuile KPI peut comparer sa valeur à la période précédente
@@ -68,7 +70,16 @@ réellement (voir HYPOTHESES.md).
   (toutes pages confondues), agrégées exactement comme à l'écran — mêmes filtres croisés, filtres
   avancés et niveau de drill-down par tuile appliqués. Basé sur [SheetJS](https://sheetjs.com/)
   embarqué localement ; le déclenchement du téléchargement depuis l'iframe du widget n'est pas
-  encore vérifié en conditions réelles Grist (voir HYPOTHESES.md).
+  encore vérifié en conditions réelles Grist (voir HYPOTHESES.md). Une tuile en mode mesure (voir
+  ci-dessous) exporte un texte explicite plutôt que ses valeurs (limite assumée, voir HYPOTHESES.md).
+- **Mesures façon DAX simplifié (Cumul / YTD / Comparaison N-1)** : sur une tuile barres, le champ
+  « Mode » remplace Dimension/Drill-down par « Colonne date » — l'axe devient le MOIS calculé depuis
+  cette colonne. « Cumul » = somme courante depuis le début de la série ; « Cumul annuel (YTD) » =
+  la même somme mais qui repart à zéro à chaque nouvelle année ; « Comparaison N-1 » = 2 séries
+  (valeur courante + valeur du même mois l'année précédente). Calculé via une vraie requête SQL
+  DuckDB-WASM (fonctions fenêtrées), la première feature de ce POC à consommer ce moteur — voir
+  ROADMAP.md/HYPOTHESES.md pour le détail technique et le périmètre volontairement réduit
+  (granularité mensuelle fixe, non configurable).
 - **Autocomplétion partout où l'on choisit une colonne** : dimension, mesure, mesure Y, tendance
   KPI, chaque niveau de drill-down et la colonne du filtre avancé sont des champs avec
   autocomplétion (composant maison, `js/combobox.js`) plutôt que des menus déroulants bruts — on

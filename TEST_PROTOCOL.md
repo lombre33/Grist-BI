@@ -226,7 +226,39 @@ sur une origine `file://` (`"null"`), contrairement aux scripts classiques du re
 - [x] [BUG RÉEL, voir HYPOTHESES.md] AUCUNE requête vers un domaine externe (ex. `extensions.duckdb.org`, l'extension JSON de DuckDB) même APRÈS un usage réel du moteur, pas seulement à l'état initial — régression directe du piège JSON→CSV trouvé en développant cette fondation 🌐
 - [x] Garde-fou injection SQL : un nom de colonne contenant un guillemet est rejeté avant construction de la requête, pas inséré tel quel 🌐
 - [ ] **[NON TESTABLE ICI]** Comportement réel depuis GitHub Pages (types MIME `.wasm`/`.mjs`, absence de blocage réseau) et à l'intérieur d'une vraie iframe de widget Grist — voir HYPOTHESES.md, point 14 des validations réelles
-- [ ] Consommation réelle par une feature Tier 2 (mesures/pivot/blending) — aucune feature n'utilise encore ce moteur à ce stade, c'est la fondation seule ⬜
+- [x] Consommation réelle par une feature Tier 2 : mesures façon DAX (Cumul/YTD/N-1), voir la sous-section dédiée ci-dessous — le pivot/le data blending ne l'utilisent pas encore
+
+### `js/duckdb-engine.js` + `js/data.js` + `js/charts.js` + `js/main.js` — mesures façon DAX simplifié : Cumul/YTD/Comparaison N-1 (Roadmap Tier 2, Node pour la logique pure, Playwright pour le SQL/le formulaire/le rendu réels)
+
+1re feature à consommer réellement le moteur DuckDB-WASM (voir HYPOTHESES.md). Même contrainte de
+service HTTP local que la section précédente (`import()` dynamique bloqué par CORS sur `file://`).
+
+- [x] `duckdbEngine.timeSeriesMeasures` — bucket mensuel correct (2 lignes du même mois agrégées) 🌐
+- [x] `duckdbEngine.timeSeriesMeasures` — `cumulative` : somme courante correcte, y compris avec une valeur NÉGATIVE (redescend, pas de plancher à 0) 🌐
+- [x] `duckdbEngine.timeSeriesMeasures` — `ytd` : repart de zéro à chaque nouvelle année, `cumulative` lui continue de monter sur la même ligne 🌐
+- [x] `duckdbEngine.timeSeriesMeasures` — `previousYear` : `null` pour la 1re année de la série (pas de comparaison possible) ✅ (vérifié aussi sous Node via `measureSeriesForTile`, voir plus bas)
+- [x] [garde-fou vérifié, pas un bug réel] `duckdbEngine.timeSeriesMeasures` — `previousYear` retrouve le bon mois via une auto-jointure sur la période même avec un MOIS MANQUANT dans la série (contrairement à un `LAG` à distance de ligne fixe, qui déraperait silencieusement) 🌐
+- [x] `duckdbEngine.timeSeriesMeasures` — une ligne dont la colonne date ne parse pas (`TRY_CAST` échoue) est ignorée silencieusement, pas une exception ni une ligne "Invalid Date" 🌐
+- [x] `duckdbEngine.timeSeriesMeasures` — tableau `rows` vide -> `[]`, aucun appel SQL déclenché (même contrat que `groupByAggregate`/`aggregateSingle`) ✅
+- [x] `duckdbEngine.timeSeriesMeasures` — aucune requête réseau externe pendant l'exécution (même garde que `groupByAggregate`/`aggregateSingle`) 🌐
+- [x] `data.periodLabel` — `'AAAA-MM-JJ'` -> `'AAAA-MM'`, valeur inattendue -> `String(valeur)` plutôt qu'une exception ✅
+- [x] `data.measureSeriesForTile` — mode `'cumulative'`/`'ytd'` : 1 série avec le bon champ sélectionné ✅
+- [x] `data.measureSeriesForTile` — mode `'yoy'` : 2 séries ("Valeur"/"N-1"), les `null` de `previousYear` sont préservés (pas convertis en 0, qui laisserait croire à une vraie valeur nulle) ✅
+- [x] `data.measureSeriesForTile` — résultat vide -> catégories/séries vides, pas d'exception ✅
+- [x] `data.tileExportSheet` — tuile Barres en mode mesure -> texte explicite ("Export non disponible…") plutôt qu'une ligne "undefined" trompeuse (calcul asynchrone incompatible avec cette fonction volontairement pure/synchrone, voir HYPOTHESES.md) ✅
+- [x] Formulaire : champ "Mode" visible uniquement pour le type "Barres" (masqué en changeant vers KPI), champ "Colonne date" visible uniquement quand le mode n'est pas "Brut" 🌐
+- [x] Formulaire : passer le mode à un mode non-Brut masque Dimension/Drill-down (`formHasNoDimension`, même traitement que KPI/jauge) 🌐
+- [x] Formulaire : soumission bloquée avec une alerte si un mode non-Brut est choisi sans "Colonne date" ✅ (vérifié par relecture du code, garde symétrique à `isScatter && !measureYSelect.value`, pas de cas Playwright dédié)
+- [x] Création réelle d'une tuile Cumul via le formulaire (combobox "Colonne date" = `Date`, mesure = `Montant`, agrégat = somme) contre les 47 040 lignes réelles de `BI_StressTest` : 84 points (7 ans × 12 mois), série strictement croissante (`Montant` toujours positif dans ce jeu de test), dernier point = somme totale (`aggregateSingle`) 🌐
+- [x] Édition de cette même tuile Cumul -> YTD : les données affichées changent bien (pas un flash de l'ancien résultat cumulatif pendant le calcul asynchrone), repart nettement plus bas au changement d'année 🌐
+- [x] Édition YTD -> Comparaison N-1 : 2 séries avec légende, `previousYear` au 13e point égale exactement la valeur brute du 1er point (décalage d'un an vérifié sur le vrai jeu de données, pas seulement le jeu synthétique) 🌐
+- [x] Clic sur une tuile en mode mesure : aucun filtre croisé posé (un point est un mois calculé, pas une vraie valeur de dimension) 🌐
+- [x] [BUG POTENTIEL évité, repéré en écrivant ce test AVANT qu'un utilisateur ne le remonte] Édition de cette MÊME tuile de Comparaison N-1 vers "Brut" : redevient cliquable et pose bien un cross-filter — vérifie que l'instance ECharts partagée entre les deux chemins de rendu (`getOrCreateChartInstance`) n'est pas restée bloquée avec un gestionnaire de clic jamais câblé 🌐
+- [x] Régression : une tuile Barres normale (jamais passée par le mode mesure) fonctionne toujours à l'identique après la factorisation de la création d'instance ECharts/le déplacement de `numericGrid` en portée module 🌐
+- [x] Round-trip de persistance : `measureMode`/`dateColumn` survivent à `saveConfig`/`loadConfig` ; une tuile Barres SANS ces champs (format d'avant cette feature) reste lue correctement (compat ascendante) 🌐
+- [x] `buildWorkbookSheets` + génération XLSX réelle (SheetJS) ne plantent pas avec une tuile en mode mesure dans le classeur 🌐
+- [ ] **[NON TESTABLE ICI]** `tile.dateColumn` contre une vraie colonne Grist de type `Date`/`DateTime` natif (format réellement renvoyé par `fetchTable` jamais confirmé ici, voir HYPOTHESES.md point 14d) — ce POC ne teste que le format ISO `AAAA-MM-JJ` de son propre jeu de données
+- [ ] Granularité jour/trimestre/année configurable, fenêtre glissante (ex. "12 derniers mois") — délibérément HORS PÉRIMÈTRE, granularité mensuelle fixée en v1 (voir HYPOTHESES.md/ROADMAP.md) ⬜
 
 ### `js/data.js` + `js/combobox.js` + `js/main.js` — autocomplétion des VALEURS dans la barre de filtres avancés (Roadmap Tier 1.5, Node + Playwright)
 

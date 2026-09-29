@@ -1112,6 +1112,82 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     piège de l'extension JSON ci-dessus ; garde-fou contre l'injection SQL sur un nom de colonne) +
     régression complète (`dev-tests/test-data.js` + les 13 autres suites Playwright existantes,
     aucune affectée).
+- **Mesures façon DAX simplifié — Cumul / YTD / Comparaison N-1** (`js/duckdb-engine.js`,
+  `js/data.js`, `js/charts.js`, `js/main.js`, Roadmap Tier 2, demande explicite de l'utilisateur :
+  "les mesures simplifiées façon DAX... c'est-à-dire YTD, N-1 et cumul") — **1re feature à consommer
+  réellement le moteur DuckDB-WASM** (posé le 2026-09-16, inutilisé jusqu'ici) :
+  - **`GristBI.duckdbEngine.timeSeriesMeasures(rows, dateCol, measureCol, aggFn)`** : bucket MENSUEL
+    fixe (pas configurable en v1, sous-ensemble ciblé assumé — voir ROADMAP.md) sur une vraie colonne
+    Date choisie explicitement par l'utilisateur (`TRY_CAST(... AS DATE)`, pas de détection
+    automatique du type comme `inferColumnKind` ailleurs dans ce projet), puis calcule en UNE requête
+    SQL les 3 variantes via des fonctions FENÊTRÉES : `cumulative` = `SUM() OVER (ORDER BY période
+    ROWS UNBOUNDED PRECEDING)` ; `ytd` = la même somme mais `PARTITION BY` l'année (repart à zéro à
+    chaque nouvelle année, équivalent simplifié de `TOTALYTD`/`DATESYTD`) ; `previousYear` = une
+    AUTO-JOINTURE sur le mois décalé d'exactement un an (`period - INTERVAL '1 year'`), PAS un
+    `LAG(12)` à distance de ligne fixe — un `LAG` déraperait silencieusement sur un mois manquant
+    (ex. après un filtre), l'auto-jointure retrouve le bon mois même avec un trou (même raisonnement
+    que `data.js:computeTrend`, qui compare des CLÉS de période, jamais une distance de lignes).
+    C'est précisément la valeur ajoutée de consommer ce moteur plutôt que `js/data.js` : une somme
+    fenêtrée SQL exprime "recalculer une mesure selon un contexte de filtre temporel" en une requête
+    déclarative (voir ROADMAP.md, tableau "C'est quoi un vrai moteur BI ?"), ce qu'`Array.reduce` ne
+    fait pas nativement.
+  - **`GristBI.data.measureSeriesForTile(measureMode, timeSeries)`** : transforme pure (testable sous
+    Node) le résultat SQL en catégories/séries affichables selon le mode ('cumulative'/'ytd' → 1
+    série, 'yoy' → 2 séries "Valeur"/"N-1") — charts.js ne fait plus que mapper `series` sur des
+    séries ECharts, la logique de sélection de champ reste testée sans navigateur.
+  - **Intégration UI** : nouveau champ "Mode" (Brut/Cumul/YTD/Comparaison N-1) sur une tuile "Barres"
+    uniquement — pie/treemap/scatter/kpi/gauge ne sont pas concernés (pas de notion d'axe temporel
+    ordonné pour un camembert/treemap, KPI/gauge n'ont qu'une seule valeur). Un mode non-Brut masque
+    Dimension/Drill-down (comme KPI/jauge, voir `formHasNoDimension`) et affiche à la place "Colonne
+    date" (combobox comme tous les autres champs de colonne de ce projet) : l'axe X est TOUJOURS le
+    mois calculé depuis cette colonne, jamais la dimension choisie ailleurs.
+  - **Rendu ASYNCHRONE, une première dans ce widget** : contrairement à TOUTES les autres tuiles
+    (rendu synchrone, `Array.reduce` ou SQL non fenêtré), `renderMeasureChart` attend une vraie
+    requête SQL DuckDB-WASM avant d'appeler `setOption`. Deux garde-fous ajoutés pour cette
+    nouveauté :
+    1. **Course entre rendus** (`measureRenderSeq`, un compteur par tuile) : un nouveau rendu (filtre
+       posé, tuile éditée/supprimée) peut démarrer avant qu'un calcul SQL précédent n'ait fini — seul
+       le résultat du DERNIER appel lancé pour une tuile s'applique, un résultat périmé qui revient
+       après est silencieusement abandonné (vérifié en repassant Cumul → YTD → Comparaison N-1 en
+       édition rapide, jamais de flash de l'ancien résultat).
+    2. **Instance ECharts partagée entre les deux chemins de rendu** (`getOrCreateChartInstance`,
+       factorisée hors de `renderChart`) : une tuile peut passer de Brut à un mode mesure (et
+       inversement) au fil des éditions ; sans cette factorisation, le gestionnaire de clic n'aurait
+       été attaché QUE par le chemin ayant créé l'instance en premier — repéré en écrivant le test
+       Playwright de bascule aller-retour (voir plus bas), pas remonté par l'utilisateur.
+  - **Pas de clic exploitable sur une tuile en mode mesure** : un point de la série est un mois
+    CALCULÉ par DuckDB (bucket), pas une vraie valeur de la dimension d'origine — le gestionnaire de
+    clic partagé se relit à l'état vivant de la tuile (même pattern que le reste de ce fichier) et
+    ne fait rien pour ce cas plutôt que de poser un cross-filter/drill-down incohérent.
+  - **Export Excel** : `tileExportSheet`/`buildWorkbookSheets` (`js/data.js`) sont volontairement
+    PURES/synchrones (testées sous Node) — les rendre asynchrones pour cette seule feature aurait
+    changé la signature de toute la chaîne d'export pour un unique consommateur. Une tuile en mode
+    mesure exporte donc un texte explicite ("Export non disponible...") plutôt qu'une ligne
+    "undefined" trompeuse (sans ce cas particulier, `dimension` vide aurait produit un seul groupe
+    non significatif) — limite assumée et documentée, pas silencieuse.
+  - Testé : Node (`data.periodLabel`/`data.measureSeriesForTile` sur un résultat synthétique
+    volontairement non trivial — valeurs négatives, `previousYear: null` pour la 1re année, ordre non
+    trivial ; `tileExportSheet` sur une tuile en mode mesure) + Playwright, servi en HTTP local comme
+    le reste de ce qui touche DuckDB : (a) arithmétique SQL vérifiée à la main sur un jeu déterministe
+    avec un mois manquant en 2026 (vérifie l'auto-jointure plutôt qu'un LAG) et une ligne de date
+    invalide (ignorée) ; (b) aucune requête réseau externe pendant `timeSeriesMeasures` (même garde
+    que `groupByAggregate`/`aggregateSingle`) ; (c) contre le VRAI formulaire (`dev-tests/harness.html`,
+    47 040 lignes réelles de `BI_StressTest`) : visibilité des champs selon le type/mode, création
+    d'une tuile Cumul (84 points = 7 ans × 12 mois, strictement croissante car `Montant` est toujours
+    positif dans ce jeu de test, dernier point = somme totale via `aggregateSingle`), clic sans effet
+    en mode mesure, édition Cumul → YTD (repart bien à zéro à chaque année) → Comparaison N-1 (2
+    séries, décalage d'exactement un an vérifié contre la valeur brute), puis retour à Brut sur la
+    MÊME tuile (redevient cliquable, prouve l'absence de handler figé) ; (d) régression : une tuile
+    Barres normale (jamais passée par le mode mesure) fonctionne toujours à l'identique ; (e)
+    round-trip `saveConfig`/`loadConfig` (measureMode/dateColumn survivent, une tuile Barres SANS ces
+    champs — format existant — reste correcte) ; (f) `buildWorkbookSheets` + génération XLSX réelle
+    (SheetJS) ne plantent pas avec une tuile en mode mesure. Aucun bug produit trouvé sur le calcul
+    SQL lui-même (juste 2 erreurs dans le script de test ad hoc, corrigées avant validation finale) ;
+    le bug réel de handler de clic figé (point 2 des garde-fous ci-dessus) a été anticipé et corrigé
+    AVANT le test, pas découvert par lui — noté ici pour la même raison que les autres bugs de ce
+    fichier : la classe de bug ("closure figée sur une instance mise en cache", déjà documentée
+    ailleurs dans ce fichier pour le gestionnaire de clic d'origine) est directement réutilisable pour
+    la prochaine feature qui ajoute un 2e chemin de rendu vers une même instance ECharts.
 
 - **Tableau croisé dynamique (pivot)** (`js/data.js:pivotTable`, `js/charts.js:renderPivot`,
   `js/main.js`, Roadmap Tier 2, demande d'Antoine — priorité "critique" de la roadmap) :
@@ -1187,9 +1263,12 @@ dans une seule instance de widget, avec ses propres tuiles internes.
 
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
-- **Mesures façon DAX / time intelligence** (YTD, comparaison N-1...) : juste `sum/avg/count/min/max`
-  + une tendance simple à 2 groupes (voir `computeTrend`) ici. Un vrai langage de mesures est un
-  projet à part entière — voir la discussion d'origine.
+- **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée
+  plus haut pour ce qui EST fait : Cumul/YTD/Comparaison N-1, granularité mensuelle fixe, sur une
+  tuile Barres) : pas de granularité jour/trimestre/année configurable, pas de fenêtre glissante
+  (ex. "12 derniers mois"), pas de mesures composables entre elles (un vrai DAX permet d'enchaîner
+  des transformations de contexte de filtre) — un vrai langage de mesures reste un projet à part
+  entière.
 - **Mise en forme conditionnelle avancée** (data bars, échelle de couleurs sur les tuiles
   barres/camembert, pas seulement sur les cartes KPI) : non tentée.
 - **Q&A langage naturel / IA** : non tenté, hors de portée d'un POC.
@@ -1323,13 +1402,21 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     tel quel plutôt que d'ajouter une troisième couche de protection.
 14. **DuckDB-WASM (`js/duckdb-engine.js`) jamais exécuté dans un vrai document Grist ni depuis
     GitHub Pages** : vérifié uniquement dans ce sandbox (Chromium/Playwright, servi par un petit
-    serveur HTTP local). À vérifier en réel une fois qu'une feature consommera réellement ce moteur :
+    serveur HTTP local). Une feature réelle le consomme désormais (mesures façon DAX, voir plus
+    haut), donc ce point devient concrètement pertinent, pas seulement théorique. À vérifier en réel :
     (a) le téléchargement du binaire `.wasm` (~34 Mo) se comporte-t-il correctement depuis GitHub
     Pages (types MIME corrects pour `.wasm`/`.mjs`, pas de blocage similaire à celui déjà rencontré
     avec le CDN ECharts) ; (b) le `Worker` créé par `createWorker()` fonctionne-t-il sans restriction
     particulière à l'intérieur de l'iframe (non-sandboxée, voir ROADMAP.md) d'un widget Grist réel ;
     (c) le poids du téléchargement (une fois, la première fois qu'une feature l'utilise, mis en cache
-    navigateur ensuite) reste-t-il acceptable en pratique pour un utilisateur sur une connexion lente.
+    navigateur ensuite) reste-t-il acceptable en pratique pour un utilisateur sur une connexion lente ;
+    (d) **spécifique aux mesures YTD/N-1/cumul** : `tile.dateColumn` doit être une vraie colonne Date
+    au sens de ce POC (format ISO `AAAA-MM-JJ`, seul format reconnu par `TRY_CAST(... AS DATE)` côté
+    DuckDB comme par `parseDateValue` côté JS) — jamais vérifié contre une colonne Grist de type
+    `Date`/`DateTime` natif dans un vrai document (ce POC lit les valeurs telles que
+    `fetchTable`/`onRecords` les renvoie, sans lecture des vrais types Grist `_grist_Tables_column`,
+    voir la correction technique du 2026-09-15 dans ROADMAP.md) : le format exact renvoyé pour une
+    colonne `Date` Grist réelle (chaîne ISO ? timestamp Unix ? autre ?) n'est pas confirmé ici.
 
 ## Prochaines étapes suggérées
 
