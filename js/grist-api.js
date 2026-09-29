@@ -301,13 +301,66 @@
   // qui a aussi demandé à ne plus jamais recréer de table pour un changement de schéma : ce
   // mécanisme d'ajout de colonne en place remplace définitivement la logique de versionnage de nom
   // de table utilisée avant). No-op si aucune colonne ne manque.
-  // Id des colonnes déclarées `Date` dans un schéma connu de ce widget (voir COLUMNS_LARGE/
-  // COMMENTS_COLUMNS) — la seule situation où l'on connaît le type réel d'une colonne sans lire
-  // `_grist_Tables_column` (voir GristBI.data.tableToRows/epochSecondsToIsoDate pour pourquoi c'est
-  // nécessaire). `DateTime` n'est délibérément pas couvert ici : aucune colonne de ce projet n'utilise
-  // ce type, et parseDateValue (js/data.js) ne sait de toute façon pas parser une composante horaire.
+  // Id des colonnes déclarées `Date` dans le schéma JS STATIQUE connu de ce widget (voir
+  // COLUMNS_LARGE/COMMENTS_COLUMNS) — utilisable sans le moindre appel réseau supplémentaire, mais
+  // limité aux deux seules tables que ce widget crée lui-même. Voir `realDateColumnIds` plus bas
+  // pour la version générale (n'importe quelle table du document, via les tables système Grist),
+  // dont le résultat est fusionné avec celui-ci partout où `tableToRows` est appelé.
   function dateColumnIdsFrom(columns) {
     return columns.filter((c) => c.type === 'Date').map((c) => c.id);
+  }
+
+  // Lit le VRAI type de chaque colonne de `tableId` via les tables système Grist
+  // (`_grist_Tables`/`_grist_Tables_column`) — contrairement à `dateColumnIdsFrom` ci-dessus (limité
+  // au schéma JS statique de BI_StressTest/BI_Dashboard_Comments), fonctionne pour N'IMPORTE QUELLE
+  // table du document, y compris une table arbitraire choisie via le sélecteur (voir `loadTable`
+  // plus bas) : LE point aveugle réel relevé le 29/09/2026 (voir HYPOTHESES.md point 15/16 et
+  // CLAUDE.md §7 piège n°16) — Antoine choisira ses propres tables, avec ses propres colonnes Date,
+  // jamais couvertes par le schéma statique de ce widget. `_grist_Tables_column.parentId` relie
+  // chaque ligne à la ligne de `_grist_Tables` dont l'`id` (l'id de ligne interne, PAS `tableId`)
+  // correspond à la table visée — accessible avec l'accès `full` déjà demandé par ce widget (voir
+  // §3 de CLAUDE.md), sans lecture supplémentaire à négocier ; simplement jamais tenté avant
+  // aujourd'hui (voir la correction technique du 2026-09-15 dans ROADMAP.md, qui l'avait déjà
+  // identifié comme possible). Un type `DateTime:<fuseau>` est traité comme `Date` (même
+  // conversion en 'AAAA-MM-JJ', composante horaire perdue) : `parseDateValue` (js/data.js) ne sait
+  // de toute façon gérer qu'une précision journalière, donc aucune perte de capacité réelle par
+  // rapport à ce que le reste du widget sait déjà exploiter — traiter les deux séparément
+  // n'apporterait rien tant que cette précision journalière reste la seule supportée. Repli sur un
+  // tableau vide en cas d'échec (droits restreints, tables système absentes/renommées dans une
+  // version de Grist future) plutôt que de faire planter tout le chargement du dashboard pour cette
+  // lecture annexe — dans ce cas, seul le schéma JS statique (dateColumnIdsFrom) continue de
+  // s'appliquer, exactement comme avant cette extension.
+  async function realDateColumnIds(tableId) {
+    try {
+      const tablesMeta = await grist.docApi.fetchTable('_grist_Tables');
+      const columnsMeta = await grist.docApi.fetchTable('_grist_Tables_column');
+      const rowIdx = (tablesMeta.tableId || []).indexOf(tableId);
+      if (rowIdx < 0) return [];
+      const parentRowId = tablesMeta.id[rowIdx];
+      const result = [];
+      const n = (columnsMeta.id || []).length;
+      for (let i = 0; i < n; i++) {
+        const type = columnsMeta.type[i] || '';
+        if (columnsMeta.parentId[i] === parentRowId && (type === 'Date' || type.startsWith('DateTime'))) {
+          result.push(columnsMeta.colId[i]);
+        }
+      }
+      return result;
+    } catch (e) {
+      console.warn(
+        '[GristBI] lecture des vrais types de colonnes (_grist_Tables_column) impossible pour ' +
+        `"${tableId}" — repli sur le schéma JS statique de ce widget uniquement pour la détection ` +
+        'des colonnes Date', e
+      );
+      return [];
+    }
+  }
+
+  // Fusionne les deux sources de détection de colonnes Date (schéma JS statique + lecture réelle
+  // des tables système, voir les deux fonctions ci-dessus) — un `Set` élimine les doublons pour
+  // BI_StressTest/BI_Dashboard_Comments, où les deux sources désignent normalement la même colonne.
+  async function mergedDateColumnIds(tableId, columns) {
+    return Array.from(new Set(dateColumnIdsFrom(columns).concat(await realDateColumnIds(tableId))));
   }
 
   async function ensureColumnsUpToDate(tableId, columns, deriveMissingColumns, onProgress) {
@@ -316,7 +369,7 @@
     const missingColumns = columns.filter((c) => !existingIds.has(c.id));
     if (!missingColumns.length) return;
     await grist.docApi.applyUserActions(missingColumns.map((c) => ['AddColumn', tableId, c.id, { type: c.type }]));
-    const rows = GristBI.data.tableToRows(table, dateColumnIdsFrom(columns));
+    const rows = GristBI.data.tableToRows(table, await mergedDateColumnIds(tableId, columns));
     const actions = rows.map((row, i) => {
       const derived = deriveMissingColumns(row);
       const fields = {};
@@ -373,7 +426,7 @@
       await ensureColumnsUpToDate(tableId, columns, deriveMissingColumns, onProgress);
     }
     const table = await grist.docApi.fetchTable(tableId);
-    return { tableId, rows: GristBI.data.tableToRows(table, dateColumnIdsFrom(columns)), created: !alreadyExists };
+    return { tableId, rows: GristBI.data.tableToRows(table, await mergedDateColumnIds(tableId, columns)), created: !alreadyExists };
   }
 
   function loadOrCreateStressData(onProgress) {
@@ -399,10 +452,16 @@
 
   // Lit une table déjà existante (choisie via le sélecteur de table, voir main.js) — contrairement
   // à `loadOrCreateTable`, ne crée ni ne remplit jamais rien : la table doit déjà exister (elle vient
-  // de `listAvailableTables`), sinon `fetchTable` renverrait une table vide silencieusement.
+  // de `listAvailableTables`), sinon `fetchTable` renverrait une table vide silencieusement. AUCUN
+  // schéma JS statique connu pour une table arbitraire (contrairement à BI_StressTest/
+  // BI_Dashboard_Comments) : `realDateColumnIds` (voir plus haut) est ici la SEULE source possible
+  // de détection des colonnes Date — c'était, avant cette fonction, le point aveugle réel relevé le
+  // 29/09/2026 (voir HYPOTHESES.md point 15/16) : une vraie colonne Date de la table choisie par
+  // l'utilisateur restait mal classée par `inferColumnKind` (js/main.js), cassant silencieusement le
+  // drill-down et les mesures façon DAX pour toute table hors BI_StressTest.
   async function loadTable(tableId) {
     const table = await grist.docApi.fetchTable(tableId);
-    return { tableId, rows: GristBI.data.tableToRows(table) };
+    return { tableId, rows: GristBI.data.tableToRows(table, await realDateColumnIds(tableId)) };
   }
 
   GristBI.api = {
