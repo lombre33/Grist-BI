@@ -162,7 +162,7 @@
   });
   GristBI.combobox.attach(blendPrimaryColumnInput, blendPrimaryColumnInput.nextElementSibling, {
     strict: true, blankLabel: t('blend.none'),
-    beforeOpen: () => fillCombobox(blendPrimaryColumnInput, availableColumns(currentPrimaryRows), { blankLabel: t('blend.none') })
+    beforeOpen: () => fillCombobox(blendPrimaryColumnInput, blendJoinColumns(currentPrimaryRows), { blankLabel: t('blend.none') })
   });
   GristBI.combobox.attach(blendSecondaryColumnInput, blendSecondaryColumnInput.nextElementSibling, {
     strict: true, blankLabel: t('blend.none'), beforeOpen: refreshBlendSecondaryColumnPicker
@@ -181,6 +181,21 @@
   function availableColumns(rows) {
     if (!rows.length) return [];
     return Object.keys(rows[0]).filter((k) => k !== 'id');
+  }
+
+  // Colonnes proposables comme CLÉ DE JOINTURE pour le data blending (voir applyBlend/
+  // commitBlendFromForm plus bas) : `availableColumns` ci-dessus EXCLUT `id` (identifiant interne
+  // Grist, jamais une vraie colonne à afficher dans un graphique) — mais c'est justement la clé
+  // qu'il faut pouvoir choisir CÔTÉ TABLE SECONDAIRE pour joindre sur une colonne de référence
+  // Grist (`Ref:`) : côté widget, une telle colonne n'est qu'une colonne numérique contenant l'id
+  // de ligne de la table référencée (ce POC ne lit pas les vrais types Grist, voir §6 de
+  // CLAUDE.md), donc rejoindre dessus nécessite de pouvoir cibler `id` sur l'autre table. Proposé
+  // aussi côté table PRINCIPALE par symétrie (une référence peut pointer dans l'autre sens). Piège
+  // remonté par le coordinateur du projet : le filtre ajouté pour `manualSort`
+  // (GRIST_TECHNICAL_COLUMNS, js/data.js) n'a pas cette conséquence — il ne retire jamais `id` — la
+  // seule exclusion en cause est celle d'`availableColumns` ci-dessus.
+  function blendJoinColumns(rows) {
+    return ['id'].concat(availableColumns(rows));
   }
 
   // Fin délégué à Combobox.setOptions (voir js/combobox.js) : tous les champs qui référencent une
@@ -982,7 +997,7 @@
     if (!secondaryTableId) { fillCombobox(blendSecondaryColumnInput, [], { blankLabel: t('blend.none') }); return; }
     try {
       const { rows: secondaryRows } = await GristBI.api.loadTable(secondaryTableId);
-      fillCombobox(blendSecondaryColumnInput, availableColumns(secondaryRows), { blankLabel: t('blend.none') });
+      fillCombobox(blendSecondaryColumnInput, blendJoinColumns(secondaryRows), { blankLabel: t('blend.none') });
     } catch (e) {
       console.error('[GristBI] échec du chargement des colonnes de la table secondaire', e);
       fillCombobox(blendSecondaryColumnInput, [], { blankLabel: t('blend.none') });
@@ -995,7 +1010,7 @@
   // options qui viennent d'être posées, `isValid()` la reconnaîtra dès la première interaction.
   function refreshBlendPicker() {
     blendSecondaryTableInput.value = (currentBlend && currentBlend.secondaryTableId) || '';
-    fillCombobox(blendPrimaryColumnInput, availableColumns(currentPrimaryRows), { blankLabel: t('blend.none') });
+    fillCombobox(blendPrimaryColumnInput, blendJoinColumns(currentPrimaryRows), { blankLabel: t('blend.none') });
     blendPrimaryColumnInput.value = (currentBlend && currentBlend.primaryColumn) || '';
     refreshBlendSecondaryColumnPicker().then(() => {
       blendSecondaryColumnInput.value = (currentBlend && currentBlend.secondaryColumn) || '';
