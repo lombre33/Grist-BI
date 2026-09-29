@@ -6,8 +6,8 @@
 (function (global) {
   const GristBI = global.GristBI || (global.GristBI = {});
   const {
-    groupByAggregate, sameValue, aggregateSingle, computeTrend, escapeHtml, tileDrillLevels,
-    currentDimension, rowsForTile
+    groupByAggregate, sameValue, aggregateSingle, pivotTable, computeTrend, escapeHtml,
+    tileDrillLevels, currentDimension, rowsForTile
   } = GristBI.data;
 
   const chartInstances = new Map();
@@ -34,6 +34,8 @@
       renderKpi(tile, rows, container);
     } else if (tile.type === 'gauge') {
       renderGauge(tile, rows, container);
+    } else if (tile.type === 'pivot') {
+      renderPivot(tile, rows, state, container);
     } else {
       renderChart(tile, rows, state, container, drillPath);
     }
@@ -97,6 +99,84 @@
         data: [{ value }]
       }]
     }, true);
+  }
+
+  // Tableau croisé dynamique : rendu en table HTML plutôt qu'en graphique ECharts (aucune série
+  // ECharts adaptée à une grille lignes × colonnes, voir ROADMAP.md). Pas de gestion d'instance
+  // ECharts à mettre en cache ici : l'intégralité de la table est reconstruite à chaque rendu
+  // (comme buildTileElement/render() le fait déjà pour tout le DOM des tuiles), donc pas de risque
+  // de closure figée sur un ancien état (voir la remarque sur renderChart plus haut) — les
+  // gestionnaires de clic posés ci-dessous lisent `tile`/`state` du rendu COURANT à chaque fois.
+  //
+  // Cross-filtering à deux dimensions indépendantes plutôt qu'un mécanisme dédié : un clic sur une
+  // cellule de donnée pose/retire un filtre sur la dimension LIGNE et un filtre sur la dimension
+  // COLONNE (deux appels à `toggleFilter`, déjà cumulatifs par colonne — voir state.js), un clic sur
+  // un en-tête de ligne/colonne ne pose/retire que le filtre correspondant à CETTE dimension. Reclic
+  // sur la même cellule retire les deux (toggleFilter est déjà idempotent par colonne). Les totaux
+  // (ligne/colonne/général) ne sont jamais cliquables : ce sont des agrégats, pas un point de donnée.
+  function renderPivot(tile, rows, state, container) {
+    const el = container.querySelector(`[data-tile-id="${tile.id}"] .tile-chart`);
+    if (!el) return;
+    const pivot = pivotTable(rows, tile.dimension, tile.columnDimension, tile.measure, tile.aggFn);
+    if (!pivot.rowKeys.length || !pivot.colKeys.length) {
+      el.innerHTML = '<p class="pivot-empty">Aucune donnée à afficher.</p>';
+      return;
+    }
+    const rowFilter = state.activeFilters.find((f) => f.column === tile.dimension);
+    const colFilter = state.activeFilters.find((f) => f.column === tile.columnDimension);
+    const fmt = (v) => (v == null ? '–' : formatNumber(v));
+
+    const headCells = pivot.colKeys.map((ck) => {
+      const active = colFilter && sameValue(colFilter.value, ck);
+      const dimmed = colFilter && !active;
+      const cls = `pivot-col-header${active ? ' pivot-active' : ''}${dimmed ? ' pivot-dimmed' : ''}`;
+      return `<th class="${cls}" data-axis="col" data-value="${escapeHtml(String(ck))}">${escapeHtml(String(ck))}</th>`;
+    }).join('');
+
+    const bodyRows = pivot.rowKeys.map((rk, ri) => {
+      const rowActive = rowFilter && sameValue(rowFilter.value, rk);
+      const rowDimmed = rowFilter && !rowActive;
+      const rowHeaderCls = `pivot-row-header${rowActive ? ' pivot-active' : ''}${rowDimmed ? ' pivot-dimmed' : ''}`;
+      const cells = pivot.cells[ri].map((v, ci) => {
+        const ck = pivot.colKeys[ci];
+        const colActive = colFilter && sameValue(colFilter.value, ck);
+        const colDimmed = colFilter && !colActive;
+        const cellActive = rowActive && colActive;
+        const cellDimmed = !cellActive && (rowDimmed || colDimmed);
+        const cls = `pivot-cell${cellActive ? ' pivot-active' : ''}${cellDimmed ? ' pivot-dimmed' : ''}${v == null ? ' pivot-cell-empty' : ''}`;
+        return `<td class="${cls}" data-axis="cell" data-row="${escapeHtml(String(rk))}" data-col="${escapeHtml(String(ck))}">${fmt(v)}</td>`;
+      }).join('');
+      return `<tr>
+        <th class="${rowHeaderCls}" data-axis="row" data-value="${escapeHtml(String(rk))}">${escapeHtml(String(rk))}</th>
+        ${cells}
+        <td class="pivot-cell pivot-total-cell">${fmt(pivot.rowTotals[ri])}</td>
+      </tr>`;
+    }).join('');
+
+    const totalRow = `<tr class="pivot-total-row">
+      <th class="pivot-row-header pivot-total-label">Total</th>
+      ${pivot.colTotals.map((v) => `<td class="pivot-cell pivot-total-cell">${fmt(v)}</td>`).join('')}
+      <td class="pivot-cell pivot-total-cell pivot-grand-total">${fmt(pivot.grandTotal)}</td>
+    </tr>`;
+
+    el.innerHTML = `<table class="pivot-table">
+      <thead><tr><th class="pivot-corner"></th>${headCells}<th class="pivot-col-header pivot-total-label">Total</th></tr></thead>
+      <tbody>${bodyRows}${totalRow}</tbody>
+    </table>`;
+
+    el.querySelectorAll('th[data-axis="row"]').forEach((th) => {
+      th.addEventListener('click', () => GristBI.store.toggleFilter(tile.dimension, th.dataset.value, tile.id));
+    });
+    el.querySelectorAll('th[data-axis="col"]').forEach((th) => {
+      th.addEventListener('click', () => GristBI.store.toggleFilter(tile.columnDimension, th.dataset.value, tile.id));
+    });
+    el.querySelectorAll('td[data-axis="cell"]').forEach((td) => {
+      if (td.classList.contains('pivot-cell-empty')) return; // rien à filtrer sur une intersection sans donnée
+      td.addEventListener('click', () => {
+        GristBI.store.toggleFilter(tile.dimension, td.dataset.row, tile.id);
+        GristBI.store.toggleFilter(tile.columnDimension, td.dataset.col, tile.id);
+      });
+    });
   }
 
   function renderChart(tile, rows, state, container, drillPath) {
