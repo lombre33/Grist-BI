@@ -65,8 +65,19 @@
     'bookmarks.save.prompt': { fr: 'Nom de la vue à sauvegarder :', en: 'Name of the view to save:' },
     'bookmarks.exportExcel': { fr: 'Exporter en Excel', en: 'Export to Excel' },
     'bookmarks.exportPdf': { fr: 'Exporter en PDF', en: 'Export to PDF' },
+    'bookmarks.exportPptx': { fr: 'Exporter en PPTX', en: 'Export to PPTX' },
     'export.none': { fr: 'Aucune tuile à exporter.', en: 'No tile to export.' },
     'export.failed': { fr: "Échec de l'export Excel — voir la console (F12).", en: 'Excel export failed — see the console (F12).' },
+    'export.pdf.chartUnavailable': { fr: 'Graphique indisponible pour cette tuile — réaffichez-la avant d\'exporter.', en: 'Chart unavailable for this tile — display it again before exporting.' },
+    'export.pdf.networkError': {
+      fr: "Échec de l'export PDF — pdfmake est chargé depuis cdnjs.cloudflare.com (pas vendorisé dans ce dépôt, voir CLAUDE.md) : vérifiez votre connexion. Détail dans la console (F12).",
+      en: 'PDF export failed — pdfmake is loaded from cdnjs.cloudflare.com (not vendored in this repo, see CLAUDE.md): check your connection. Details in the console (F12).',
+    },
+    'export.pptx.chartUnavailable': { fr: 'Graphique indisponible pour cette tuile — réaffichez-la avant d\'exporter.', en: 'Chart unavailable for this tile — display it again before exporting.' },
+    'export.pptx.networkError': {
+      fr: "Échec de l'export PPTX — PptxGenJS est chargé depuis cdnjs.cloudflare.com (pas vendorisé dans ce dépôt, voir CLAUDE.md) : vérifiez votre connexion. Détail dans la console (F12).",
+      en: 'PPTX export failed — PptxGenJS is loaded from cdnjs.cloudflare.com (not vendored in this repo, see CLAUDE.md): check your connection. Details in the console (F12).',
+    },
 
     // --- Panneau Réglages (logo/Crédits/licence GPL v3, PR #7 ; langue, remplace le bouton de
     // bandeau #lang-toggle depuis le 29/09/2026 — placement de référence Publipostage+) ---

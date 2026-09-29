@@ -32,14 +32,6 @@
   ];
   let pdfLibsPromise = null;
 
-  // Chaînes visibles à l'utilisateur regroupées ici (plutôt que semées en dur dans la logique
-  // ci-dessous) pour rester faciles à brancher sur le futur mécanisme `data-i18n` (chantier
-  // bilingue fr/en en cours dans un autre fil, voir ROADMAP.md).
-  const STRINGS = {
-    chartUnavailable: 'Graphique indisponible pour cette tuile — réaffichez-la avant d\'exporter.',
-    networkError: "Échec de l'export PDF — pdfmake est chargé depuis cdnjs.cloudflare.com (pas vendorisé dans ce dépôt, voir CLAUDE.md) : vérifiez votre connexion. Détail dans la console (F12)."
-  };
-
   // Résolu au chargement, rejeté si le script ne charge pas (offline, CDN injoignable, hash SRI qui
   // ne correspond plus...) — l'appelant transforme ce rejet en message clair plutôt que de casser la
   // page ou de rester silencieux : c'est le prix d'un appel externe, exactement ce que vendoriser
@@ -83,7 +75,7 @@
       // Tuile jamais rendue dans cette session (ne devrait pas arriver pour la page courante,
       // affichée au moment du clic — voir render() dans main.js) : message explicite plutôt qu'une
       // exception qui interromprait tout l'export pour les autres tuiles.
-      return [title, { text: STRINGS.chartUnavailable, italics: true, margin: [0, 4, 0, 16] }];
+      return [title, { text: GristBI.i18n.t('export.pdf.chartUnavailable'), italics: true, margin: [0, 4, 0, 16] }];
     }
     const dataUrl = instance.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#ffffff' });
     return [title, { image: dataUrl, width: 480, margin: [0, 4, 0, 16] }];
@@ -109,5 +101,5 @@
     return true;
   }
 
-  GristBI.exportPdf = { exportDashboardToPdf, STRINGS };
+  GristBI.exportPdf = { exportDashboardToPdf };
 })(window);

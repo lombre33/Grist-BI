@@ -45,7 +45,7 @@ mécanisme comme un pilier acquis de l'architecture.
 Pas de `package.json`, pas d'étape de build : `index.html` charge directement chaque script via
 `<script src="...">`, dans un ordre précis (voir la fin du `<body>` d'`index.html`) :
 `i18n.js → data.js → combobox.js → demo-data.js → state.js → charts.js → export.js →
-pdf-export.js → grist-api.js → duckdb-engine.js → main.js`. `i18n.js` est chargé en tout premier
+pdf-export.js → pptx-export.js → grist-api.js → duckdb-engine.js → main.js`. `i18n.js` est chargé en tout premier
 (depuis le 29/09/2026, bilingue fr/en — voir le tableau ci-dessous) pour que tous les scripts
 suivants lisent `GristBI.i18n.t()` comme un global déjà prêt.
 
@@ -63,6 +63,7 @@ suivants lisent `GristBI.i18n.t()` comme un global déjà prêt.
 | `js/combobox.js` | Composant d'autocomplétion réutilisable, DOM-agnostique pour sa logique de filtrage (`filterOptions`, `highlightMatch`) + câblage DOM (`attach`). Modes `strict` (doit correspondre à une option, comme un `<select>`) et non-strict (texte libre, suggestions seulement). |
 | `js/export.js` | Construit le classeur `.xlsx` (une feuille par tuile, toutes pages confondues) via SheetJS vendorisé (`window.XLSX`) et déclenche le téléchargement. |
 | `js/pdf-export.js` | Export PDF (page actuellement affichée uniquement) via pdfmake, chargé depuis un CDN externe et non vendorisé (exception, voir §8) — capture l'image de chaque graphique déjà rendu (`GristBI.charts.getInstance`) plutôt que de recalculer, ce qui évite le mur asynchrone des tuiles en mode mesure DAX rencontré par l'export Excel. |
+| `js/pptx-export.js` | Export PPTX (page actuellement affichée uniquement) via PptxGenJS, même dérogation CDN/même stratégie de capture d'image que `js/pdf-export.js` — une diapositive par tuile (image ou tableau natif `slide.addTable`, selon `GristBI.data.tileExportKind`) plutôt qu'une grille façon écran. |
 | `js/vendor/echarts/`, `js/vendor/xlsx/`, `js/vendor/duckdb/`, `js/vendor/apache-arrow/`, `js/vendor/flatbuffers/`, `js/vendor/tslib/` | Bibliothèques tierces **vendorisées localement, jamais chargées depuis un CDN externe** — voir §7 pour la raison (bug réel rencontré). |
 | `dev-tests/` | Harnais de test hors Grist — voir §5. |
 | `README.md` | Vue d'ensemble produit, fonctionnalités, installation dans Grist, historique condensé des bugs réels corrigés. |
@@ -312,8 +313,8 @@ Cette liste condense les bugs réels les plus instructifs (détail complet dans 
   ces deux-là. Conséquences à respecter dans tout code qui en dépend : version figée dans l'URL du
   CDN (jamais `@latest`), hash SRI (`integrity`/`crossOrigin="anonymous"`), et un échec de
   chargement réseau doit toujours produire un message clair à l'utilisateur (voir
-  `js/pdf-export.js`), jamais une page cassée ou un échec silencieux — c'est le prix de ne pas
-  vendoriser.
+  `js/pdf-export.js`/`js/pptx-export.js`), jamais une page cassée ou un échec silencieux — c'est le
+  prix de ne pas vendoriser.
 - **Identité Grist Factory (logo + Crédits + licence), actée par Antoine le 2026-09-29** : bouton
   « Réglages » dans le bandeau du haut (`#open-settings`, `index.html`) ouvrant un panneau à deux
   sections — **Langue** (deux radio-boutons fr/en, `input[name="settings-lang"]`) puis **Crédits**

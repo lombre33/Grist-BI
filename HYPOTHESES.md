@@ -1346,7 +1346,52 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     confirmée pour `pdfmake.min.js`, mais un premier essai bouton "Exporter en PDF" dans un vrai
     navigateur reste la seule vérification qui couvre aussi ce dernier point.
   - **Hors scope de ce premier export** (documenté, pas oublié) : les autres pages du dashboard
-    (seulement la page affichée), le PPTX (PptxGenJS, PR séparée à venir).
+    (seulement la page affichée). Le PPTX (PptxGenJS) est désormais une fonctionnalité séparée, voir
+    l'entrée juste au-dessous.
+  - **Mise à jour i18n (PR #8, bilingue fr/en)** : le message d'échec réseau et le message
+    "graphique indisponible" ci-dessus sont passés de l'objet `STRINGS` figé en français à
+    `GristBI.i18n.t('export.pdf.networkError')`/`t('export.pdf.chartUnavailable')`, résolus au
+    moment de l'affichage (donc dans la langue active à cet instant, pas celle du chargement de la
+    page) — même chose pour le PPTX (`export.pptx.*`, voir l'entrée juste au-dessous). `js/data.js`
+    reste volontairement hors i18n (titres de tuile auto-composés) ; `js/pdf-export.js`/
+    `js/pptx-export.js`, eux, dépendent déjà du DOM et n'ont donc pas cette contrainte de pureté.
+
+- **Export PPTX du dashboard** (`js/pptx-export.js`, 2026-09-29, Tier 2 ROADMAP.md) : même
+  architecture que l'export PDF ci-dessus (voir cette entrée pour le choix de conception détaillé) —
+  une diapositive par tuile plutôt qu'un document qui s'écoule, image capturée
+  (`GristBI.charts.getInstance(tile.id).getDataURL()`) pour les tuiles-graphique, `slide.addTable`
+  avec les données de `GristBI.data.tileExportSheet` (déjà testées) pour pivot/KPI.
+  - **Dérogation CDN** : même dérogation d'Antoine que pdfmake (voir CLAUDE.md §8). PptxGenJS 4.0.1
+    n'a besoin que d'UN SEUL script (`dist/pptxgen.bundle.js`, qui embarque JSZip et expose à la fois
+    `window.PptxGenJS` et `window.JSZip`) — contrairement à pdfmake qui en a deux. **Différence
+    importante avec pdfmake** : aucun widget frère (`publipostageGrist`, `SlidesPlus`) ne charge
+    encore réellement PptxGenJS depuis un CDN en conditions réelles — `SlidesPlus/DEPENDENCIES.md`
+    ne fait que documenter le choix (version 4.0.1, MIT), jamais implémenté là-bas. L'URL
+    `cdnjs.cloudflare.com/ajax/libs/pptxgenjs/4.0.1/pptxgen.bundle.js` suit la convention connue de
+    cdnjs (même nom de fichier que dans le paquet npm) mais **n'a aucun précédent déjà fonctionnel à
+    copier**, contrairement à pdfmake — à vérifier en priorité par Antoine.
+  - **Chemin de succès vérifié localement (2026-09-29)**, même méthode que pour pdfmake : le paquet
+    npm officiel `pptxgenjs@4.0.1` (`registry.npmjs.org`, hors du blocage réseau qui vise cdnjs) a
+    été téléchargé ; son `dist/pptxgen.bundle.js` a un hash SHA-384 codé en dur dans
+    `js/pptx-export.js`, chargé dans un vrai navigateur (Playwright) pour confirmer qu'il expose bien
+    `window.PptxGenJS`/`window.JSZip` (vérifié — pas une simple lecture statique du bundle). Une
+    copie de ce fichier a servi à un test Playwright complet contre `dev-tests/harness.html`
+    (requête cdnjs interceptée et redirigée vers cette copie locale, jamais vers l'URL codée dans le
+    fichier livré) : les mêmes tuiles réalistes que pour le test PDF (bar, KPI, tableau croisé,
+    mesures YTD et N-1, données réelles sur 2 ans) ont produit un vrai fichier `.pptx` de 197 Ko,
+    inspecté en décompressant son XML OOXML — 10 diapositives (1 titre + 9 tuiles), 6 images PNG
+    correctement dimensionnées (544×~300px, ni vides ni dégénérées), le tableau croisé et le KPI
+    affichant le même total agrégé (cohérents entre eux), exactement comme pour le PDF.
+  - **Ce qui reste réellement non vérifié depuis ce projet** : contrairement à pdfmake, RIEN ne
+    confirme encore que `cdnjs.cloudflare.com` sert effectivement PptxGenJS à cette URL précise (ce
+    sandbox bloque cdnjs pour toute bibliothèque, donc impossible à tester ici) — seul le contenu du
+    fichier et son comportement une fois chargé ont pu être vérifiés, via la copie npm. Le tout
+    premier clic sur "Exporter en PPTX" dans un vrai navigateur reste nécessaire pour confirmer que
+    cette URL cdnjs existe réellement.
+  - **Testé** : bascule fr/en en direct du libellé du bouton et des deux messages d'erreur
+    (`export.pptx.networkError`/`export.pptx.chartUnavailable`), vérifiée via
+    `GristBI.i18n.setLang('en')` dans le même test Playwright.
+  - **Hors scope** : les autres pages du dashboard (seulement la page affichée), comme pour le PDF.
 
 - **Logo Grist Factory + panneau Crédits + licence GPL v3.0 (2026-09-29)** : les 3 points d'identité
   laissés de côté par le lot précédent (voir juste au-dessus), tranchés par Antoine via 3 cartes de
