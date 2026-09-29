@@ -37,7 +37,6 @@
       <span id="render-time" class="render-time"></span>
       <span id="filter-badges" class="filter-badges"></span>
       <button id="clear-filter" type="button" class="btn-secondary" data-i18n="topbar.clearFilters" hidden>Effacer les filtres</button>
-      <button id="lang-toggle" type="button" class="btn-tiny" data-i18n-aria="lang.toggle.aria" aria-label="Changer la langue de l'interface">EN</button>
       <button id="open-settings" type="button" class="settings-btn" data-i18n-title="settings.button" data-i18n-aria="settings.button" title="Réglages" aria-label="Réglages">
         <svg class="icon icon-settings" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><circle cx="8" cy="8" r="2.3"/><path d="M8 2v1.6M8 12.4V14M14 8h-1.6M3.6 8H2M12.24 3.76l-1.13 1.13M4.89 11.11l-1.13 1.13M12.24 12.24l-1.13-1.13M4.89 4.89L3.76 3.76"/></svg>
       </button>
@@ -49,31 +48,41 @@
     </div>
   </header>
 
-  <!-- Panneau Réglages : pour l'instant seulement les Crédits (Auteur/Site/Licence/Bio, cadrage
-       identité §1) — pas de gestion de langue/thème ici (la bascule de langue vit dans le bandeau du
-       haut, voir #lang-toggle). Libellés passés par data-i18n (fil « Bilingue fr/en »), même
-       convention d'ouverture/fermeture que Publipostage+ : hidden natif, pas de fermeture au clic
-       sur le fond. -->
+  <!-- Panneau Réglages : Langue (radio-boutons fr/en, même placement de référence que Publipostage+
+       js/settings.js — une langue choisie une fois est mémorisée, pas besoin d'une place permanente
+       dans le bandeau) puis Crédits (Auteur/Site/Licence/Bio, cadrage identité §1). Libellés passés
+       par data-i18n (fil « Bilingue fr/en »), même convention d'ouverture/fermeture que
+       Publipostage+ : hidden natif, pas de fermeture au clic sur le fond. -->
   <div id="settings-modal" class="settings-modal" hidden>
     <div class="settings-modal-content">
       <div class="settings-modal-header">
-        <h3 data-i18n="settings.credits.title">Crédits</h3>
+        <h3 data-i18n="settings.button">Réglages</h3>
         <button id="settings-close" type="button" class="settings-close" data-i18n-title="settings.close" data-i18n-aria="settings.close" title="Fermer" aria-label="Fermer">
           <svg class="icon icon-close" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M4 4l8 8M12 4l-8 8"/></svg>
         </button>
       </div>
-      <dl class="settings-credits-list">
-        <dt data-i18n="settings.credits.author">Auteur</dt>
-        <dd>Grist Factory</dd>
-        <dt data-i18n="settings.credits.website">Site</dt>
-        <dd><a href="https://grist-factory.fr" target="_blank" rel="noopener noreferrer">grist-factory.fr</a></dd>
-        <dt data-i18n="settings.credits.license">Licence</dt>
-        <dd><a href="https://github.com/lombre33/Grist-BI/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">GNU GPL v3.0</a></dd>
-        <dt data-i18n="settings.credits.bio">Bio</dt>
-        <dd data-i18n="settings.credits.bioText">Grist Factory conçoit des widgets libres pour Grist. Dashboard BI en est un : croiser vos
-          données Grist dans des tableaux de bord multi-tuiles avec cross-filtering et drill-down,
-          directement dans Grist.</dd>
-      </dl>
+      <div class="settings-section">
+        <h4 data-i18n="settings.language.title">Langue</h4>
+        <div class="settings-radio-row">
+          <label><input type="radio" name="settings-lang" value="fr" id="settings-lang-fr"><span data-i18n="settings.language.fr">Français</span></label>
+          <label><input type="radio" name="settings-lang" value="en" id="settings-lang-en"><span data-i18n="settings.language.en">English</span></label>
+        </div>
+      </div>
+      <div class="settings-section">
+        <h4 data-i18n="settings.credits.title">Crédits</h4>
+        <dl class="settings-credits-list">
+          <dt data-i18n="settings.credits.author">Auteur</dt>
+          <dd>Grist Factory</dd>
+          <dt data-i18n="settings.credits.website">Site</dt>
+          <dd><a href="https://grist-factory.fr" target="_blank" rel="noopener noreferrer">grist-factory.fr</a></dd>
+          <dt data-i18n="settings.credits.license">Licence</dt>
+          <dd><a href="https://github.com/lombre33/Grist-BI/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">GNU GPL v3.0</a></dd>
+          <dt data-i18n="settings.credits.bio">Bio</dt>
+          <dd data-i18n="settings.credits.bioText">Grist Factory conçoit des widgets libres pour Grist. Dashboard BI en est un : croiser vos
+            données Grist dans des tableaux de bord multi-tuiles avec cross-filtering et drill-down,
+            directement dans Grist.</dd>
+        </dl>
+      </div>
     </div>
   </div>
 
