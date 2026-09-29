@@ -243,6 +243,8 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   letter-spacing: 0.03em;
 }
 .table-bar .combobox-input { min-width: 220px; }
+.blend-bar { flex-wrap: wrap; }
+.blend-bar .combobox-input { min-width: 180px; }
 
 .pages-bar {
   display: flex;

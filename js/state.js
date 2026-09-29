@@ -35,6 +35,10 @@
     let advancedFilters = [];
     let drillIns = {}; // tileId -> [{ column, value }, ...] — chemin de drill-down, [] ou absent = niveau racine
     let bookmarks = []; // [{ id, name, activeFilters, advancedFilters, drillIns }, ...] — vues sauvegardées (voir saveBookmark)
+    // { secondaryTableId, primaryColumn, secondaryColumn } ou null (aucune jointure) — data blending
+    // multi-tables (voir GristBI.data.blendRows/js/main.js) : propre à la table de travail
+    // courante, comme bookmarks/pages, persisté avec elles dans BI_Dashboard_Config.
+    let blend = null;
     const listeners = new Set();
 
     function currentPage() { return pages.find((p) => p.id === currentPageId) || pages[0]; }
@@ -46,7 +50,7 @@
     // page (elles disparaissent de `state.tiles`), donc la réconciliation DOM déjà en place dans
     // main.js:render() détruit leurs instances ECharts automatiquement, sans code dédié.
     function getState() {
-      return { rows, pages, currentPageId, tiles: currentPage().tiles, activeFilters, advancedFilters, drillIns, bookmarks };
+      return { rows, pages, currentPageId, tiles: currentPage().tiles, activeFilters, advancedFilters, drillIns, bookmarks, blend };
     }
     function notify() { listeners.forEach((fn) => fn(getState())); }
     function subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); }
@@ -235,6 +239,8 @@
 
     function setBookmarks(newBookmarks) { bookmarks = newBookmarks || []; notify(); }
 
+    function setBlend(newBlend) { blend = newBlend || null; notify(); }
+
     // Capture l'état interactif COURANT (filtres croisés + filtres avancés + drill-down par tuile),
     // PAS les tuiles elles-mêmes (déjà persistées séparément, voir js/grist-api.js) : une vue
     // Power BI-like sur laquelle revenir en un clic, sans reconstruire les filtres à la main.
@@ -264,7 +270,7 @@
       setPages, setCurrentPage, addPage, renamePage, removePage,
       addTile, removeTile, updateTile, moveTile,
       toggleFilter, clearFilter, setAdvancedFilter, clearAdvancedFilter, drillInto, drillUp,
-      setBookmarks, saveBookmark, applyBookmark, removeBookmark
+      setBookmarks, saveBookmark, applyBookmark, removeBookmark, setBlend
     };
   }
 

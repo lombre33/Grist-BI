@@ -1494,6 +1494,65 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     **Jamais testé dans un vrai document Grist** (voir §8 de CLAUDE.md sur cette distinction
     permanente).
 
+- **Data blending multi-tables** (`js/data.js:blendRows`, 2026-09-29, Tier 2 ROADMAP.md) : LEFT JOIN
+  entre la table de travail courante et une seconde table du document, choisie via un nouveau
+  sélecteur (`#blend-secondary-table`, à côté du sélecteur de table principal) et deux clés de
+  jointure (`#blend-primary-column`/`#blend-secondary-column`, une colonne de chaque côté). Chaque
+  colonne de la table secondaire est reportée préfixée `<secondaryTableId>.<colonne>` (ex.
+  `Villes.Population`) pour ne jamais entrer en collision avec une colonne homonyme de la table
+  principale.
+  - **En JS pur, PAS via DuckDB-WASM (`js/duckdb-engine.js`)** : la note de ROADMAP.md envisageait
+    ce moteur, mais enrichir des lignes avant tout calcul n'est pas une agrégation — un simple
+    hash-join (`Map` indexée par la clé secondaire, comme `sameValue` le fait déjà pour un clic
+    ECharts : comparaison en chaîne, pas en type strict) évite le coût de chargement WASM pour ça et
+    reste testable sous Node comme le reste de `js/data.js`, contrairement à
+    `groupByAggregate`/`timeSeriesMeasures` qui ont besoin d'un vrai navigateur.
+  - **Note corrigée par rapport à ROADMAP.md** : la note « contredit le choix récent de désactiver
+    `onRecords` » s'est révélée être une erreur de documentation, pas un vrai obstacle — se
+    connecter à une SECONDE table choisie explicitement par l'utilisateur passe par
+    `GristBI.api.listAvailableTables()`/`loadTable()` (le même mécanisme déjà utilisé par le
+    sélecteur de table principal), jamais par `grist.onRecords()` (qui concerne uniquement la table
+    liée à la page hôte, un mécanisme différent et délibérément abandonné, voir §3 de CLAUDE.md).
+    Corrigé dans ROADMAP.md.
+  - **Forme de ligne toujours identique, matché ou pas** : une ligne principale sans correspondance
+    reçoit les colonnes secondaires à `null`, jamais absentes — `availableColumns()` (`js/main.js`)
+    ne lit que `rows[0]` pour peupler les sélecteurs de colonne du formulaire de tuile ; une forme de
+    ligne qui varierait selon le résultat du match aurait rendu les colonnes secondaires invisibles
+    dès que la première ligne ne matche pas (piège trouvé en écrivant le test Node correspondant,
+    avant même d'atteindre le navigateur).
+  - **Limite connue** : une clé dupliquée côté table secondaire ne fait PAS un vrai LEFT JOIN 1-n —
+    la dernière ligne trouvée gagne (voir le test Node dédié). Un vrai blending 1-n demanderait
+    d'agréger la table secondaire au préalable ; hors périmètre de ce premier jet, à documenter
+    comme piste future plutôt qu'à deviner l'intention de l'utilisateur.
+  - **Persistance** : `blend` (`{secondaryTableId, primaryColumn, secondaryColumn}` ou `null`) suit
+    exactement la même convention que `bookmarks`/`pages` dans `BI_Dashboard_Config`
+    (`js/grist-api.js:singlePageConfig`/`normalizeConfig`/`loadConfig`/`saveConfig`) — propre à
+    chaque table de travail, absent des formats historiques donc toujours `null` par défaut (compat
+    ascendante). Un blend incomplet (au moins un des 3 champs encore vide) équivaut à "aucune
+    jointure", plus simple à raisonner qu'un état à moitié configuré et ça laisse l'utilisateur
+    choisir les 3 champs dans n'importe quel ordre.
+  - **Auto-détection des clés de jointure (`Ref:`/`RefList:` via `_grist_Tables_column`)
+    délibérément pas tentée dans ce premier jet** : ce POC ne lit toujours pas les vrais types de
+    colonnes Grist (voir §6 de CLAUDE.md, correction technique du 2026-09-15) ; un sélecteur manuel
+    à 3 champs est plus simple, moins risqué et testable sans dépendre d'une API interne Grist
+    jamais encore exercée dans ce dépôt. Piste future à documenter dans ROADMAP.md, pas à deviner.
+  - **Testé sous Node** (`dev-tests/test-data.js`) : cas nominal (2 tables, clé texte), ligne sans
+    correspondance (colonnes secondaires à `null`, forme de ligne préservée), table secondaire vide
+    (identité), table principale vide, comparaison de clé insensible au type (nombre vs chaîne, côté
+    primaire et secondaire), clé secondaire dupliquée (dernière ligne gagne) ; `state.setBlend`
+    (défaut `null`, mise à jour, retrait, repli `undefined` → `null` comme `setBookmarks`).
+  - **Testé en Playwright** contre `dev-tests/harness.html`, avec une SECONDE table mock ajoutée via
+    `window.__gristStubPreseed` (`Villes` : 4 régions, une colonne `Population`) — script ad hoc, non
+    committé (voir §5 de CLAUDE.md) : les 3 comboboxes pilotées comme un vrai clic/frappe clavier
+    utilisateur (pas les globaux `GristBI` directement), jointure appliquée avec les bonnes valeurs
+    par région, colonne jointe automatiquement proposée au sélecteur de mesure du formulaire de
+    tuile (confirme qu'aucun changement n'était nécessaire dans `charts.js`/`data.js`/les exports),
+    retrait de la jointure (retour à "(aucune)") qui fait disparaître les colonnes jointes, ET
+    persistance à travers un changement de table de travail (configurer la jointure sur
+    `BI_StressTest`, basculer sur `Villes` — aucune jointure sauvegardée pour elle — puis revenir sur
+    `BI_StressTest` : la jointure et les 3 comboboxes sont restaurées à l'identique depuis
+    `BI_Dashboard_Config`). **Jamais testé dans un vrai document Grist** (voir §8 de CLAUDE.md).
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée

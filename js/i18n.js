@@ -47,6 +47,16 @@
       en: 'Could not connect to table "{table}" — see the console (F12).',
     },
 
+    // --- Data blending multi-tables ---
+    'blend.secondaryTable.label': { fr: 'Table secondaire', en: 'Secondary table' },
+    'blend.primaryColumn.label': { fr: 'Clé (table principale)', en: 'Key (primary table)' },
+    'blend.secondaryColumn.label': { fr: 'Clé (table secondaire)', en: 'Key (secondary table)' },
+    'blend.none': { fr: '(aucune)', en: '(none)' },
+    'blend.failed': {
+      fr: 'Échec de la jointure avec la table "{table}" — voir la console (F12).',
+      en: 'Join with table "{table}" failed — see the console (F12).',
+    },
+
     // --- Pages ---
     'pages.addPage': { fr: '+ Page', en: '+ Page' },
     'pages.addPage.title': { fr: 'Ajouter une page', en: 'Add a page' },
