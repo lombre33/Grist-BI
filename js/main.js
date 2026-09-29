@@ -87,6 +87,7 @@
   const saveBookmarkBtn = document.getElementById('save-bookmark');
   const exportExcelBtn = document.getElementById('export-excel');
   const exportPdfBtn = document.getElementById('export-pdf');
+  const exportPptxBtn = document.getElementById('export-pptx');
   const tableSelectInput = document.getElementById('table-select');
   const pageTabsEl = document.getElementById('page-tabs');
   const addPageBtn = document.getElementById('add-page');
@@ -770,7 +771,18 @@
       if (!exported) alert(t('export.none'));
     } catch (e) {
       console.error('[GristBI] échec de l\'export PDF', e);
-      alert(GristBI.exportPdf.STRINGS.networkError);
+      alert(t('export.pdf.networkError'));
+    }
+  });
+
+  // Même raisonnement que l'export PDF ci-dessus, pour PptxGenJS (js/pptx-export.js).
+  exportPptxBtn.addEventListener('click', async () => {
+    try {
+      const exported = await GristBI.exportPptx.exportDashboardToPptx(store.getState());
+      if (!exported) alert(t('export.none'));
+    } catch (e) {
+      console.error('[GristBI] échec de l\'export PPTX', e);
+      alert(t('export.pptx.networkError'));
     }
   });
 
