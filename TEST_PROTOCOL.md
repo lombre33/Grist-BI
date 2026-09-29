@@ -443,6 +443,27 @@ davantage de scénarios — voir HYPOTHESES.md) :
 - [ ] Deux tuiles avec le même titre → noms de feuilles dédupliqués avec suffixe `" (2)"` (couvert côté Node via `sanitizeSheetName`, pas de cas Playwright dédié avec de vraies tuiles dupliquées) ⬜
 - [ ] **[NON TESTABLE ICI]** Déclenchement du téléchargement depuis l'intérieur d'une VRAIE iframe de widget Grist (pas juste une page top-level Chromium headless) — voir HYPOTHESES.md, point 11
 
+### `js/i18n.js` — bilingue fr/en, mécanisme `data-i18n` (cadrage d'identité Grist Factory, Node pour le dictionnaire/`t()`, Playwright pour le câblage DOM)
+
+Même mécanisme que `publipostageGrist/js/i18n.js`. Voir HYPOTHESES.md pour le détail des deux
+pièges trouvés (boutons de tuile mis en cache, `blankLabel` de combobox non relu) et du périmètre
+délibérément laissé de côté (contenu généré par `js/data.js`/`js/demo-data.js`).
+
+- [x] Chaque clé de `STRINGS` porte une traduction fr ET en non vide (106 clés) ✅
+- [x] `t(key, vars)` — substitution de `{var}`, pluriel `{n|singulier|pluriel}` conforme à `Intl.PluralRules` en fr (0 et 1 au singulier) ET en (seul 1 au singulier) ✅
+- [x] `t()`/`getLang()`/`setLang()` fonctionnent sous Node sans DOM ni `localStorage` (repli silencieux, pas d'exception) ✅
+- [x] Clé inconnue → avertit en console ET renvoie la clé elle-même (pas de plantage, pas de chaîne vide silencieuse) ✅
+- [x] Bascule fr/en via `#lang-toggle` retraduit tout le formulaire statique (labels, options, placeholders) 🌐
+- [x] [BUG RÉEL, voir HYPOTHESES.md] Les boutons d'action d'une tuile déjà affichée (déplacer/modifier/supprimer) se retraduisent SANS reconstruction de la tuile (mise en cache par `render()`) grâce à `data-i18n-aria`/`data-i18n-title` + `applyTranslations()` rappelé à chaque rendu 🌐
+- [x] [BUG RÉEL, voir HYPOTHESES.md] Le `blankLabel` "(aucun)"/"(none)" des comboboxes optionnelles (drill-down, Tendance vs) se retraduit à la bascule de langue (`refreshColumnSelects` rappelé dans l'abonné `onChange`) 🌐
+- [x] Une valeur déjà choisie dans un combobox (ex. Dimension = Region) survit à la bascule de langue, pas réinitialisée 🌐
+- [x] Le `<code>` imbriqué dans le bandeau d'avertissement ECharts (`data-i18n-html`) reste un vrai élément DOM après traduction, pas juste du texte échappé 🌐
+- [x] Le `<span>` de la case « Filtrer aussi les autres cartes en détaillant » se retraduit SANS supprimer la case à cocher imbriquée dans le même `<label>` 🌐
+- [x] La langue choisie survit à un rechargement de page (`localStorage.gristbi_lang`) 🌐
+- [x] Alerte de validation de formulaire (ex. "dimensions lignes/colonnes du tableau croisé doivent être différentes") traduite selon la langue active au moment du clic 🌐
+- [x] En-têtes "Total" du tableau croisé traduits (mêmes clés que le rendu à l'écran) 🌐
+- [ ] **[NON TESTABLE ICI]** Comportement réel à l'intérieur d'une vraie iframe de widget Grist (`localStorage` scindé par origine notamment) — jamais vérifié en conditions réelles Grist, voir HYPOTHESES.md
+
 ### CSS — classe de bug à systématiquement re-vérifier
 
 - [x] `.field[hidden]` masque réellement l'élément (pas seulement `display:flex` de `.field` qui gagne à spécificité égale) [BUG RÉEL, trouvé 2 fois sur des champs différents] ✅ (règle en place)
@@ -492,6 +513,32 @@ davantage de scénarios — voir HYPOTHESES.md) :
     bouton s'affichait avec le style par défaut du navigateur à l'intérieur d'un `.filter-chip`
     sinon entièrement stylé. Invisible tant qu'aucun filtre avancé n'avait jamais été posé lors d'une
     revue visuelle. Corrigé en partageant les styles de `.filter-chip-remove`.
+21. **Les boutons d'action d'une tuile déjà affichée ne se seraient jamais retraduits à un
+    changement de langue** [BUG RÉEL, trouvé en développant le bilingue fr/en (`js/i18n.js`)] —
+    `js/main.js:buildTileElement` construit les boutons déplacer/modifier/supprimer d'une tuile
+    UNE SEULE FOIS via `innerHTML`, avec leur `title`/`aria-label` figés au moment de la création ;
+    `render()` réutilise ensuite cet élément mis en cache tant que la tuile existe (voir le bug #1,
+    même mécanisme de cache), sans jamais rappeler `buildTileElement`. Un changement de langue
+    (`GristBI.i18n.setLang`) n'exécute PAS ce chemin de construction — seule une nouvelle tuile
+    l'aurait fait passer par la bonne langue, laissant les tuiles déjà affichées bloquées dans la
+    langue du chargement de la page. Corrigé en donnant à ces boutons À LA FOIS le texte déjà
+    traduit à la création ET les attributs `data-i18n-aria`/`data-i18n-title` correspondants, puis
+    en appelant `GristBI.i18n.applyTranslations()` (qui retrouve tout élément portant ces attributs,
+    sans reconstruction) à CHAQUE `render()`, pas seulement à la création. Vérifié en Playwright :
+    créer une tuile, changer de langue, relire le `title` du bouton "déplacer" sans avoir retiré ni
+    recréé la tuile entre-temps.
+22. **Le texte de substitution "(aucun)"/"(none)" d'un combobox optionnel restait figé dans
+    l'ancienne langue après un changement de langue** [BUG RÉEL, trouvé en développant le bilingue
+    fr/en (`js/i18n.js`)] — `Combobox.setOptions(options, {blankLabel})` (`js/combobox.js`) écrit
+    `blankLabel` dans `inputEl.placeholder` uniquement AU MOMENT de l'appel ; les champs Drill-down
+    et Tendance vs ne rappellent `setOptions` qu'à des moments qui n'ont rien à voir avec la langue
+    (changement de table, ajout d'un niveau de drill). `GristBI.i18n.setLang` seul ne les aurait
+    donc jamais retouchés, contrairement au reste du formulaire (labels/options via `data-i18n`).
+    Corrigé en rappelant `refreshColumnSelects(store.getState().rows)` dans l'abonné
+    `GristBI.i18n.onChange` de `js/main.js` — `setOptions` en mode strict préserve la valeur déjà
+    choisie si elle reste valide (voir `js/combobox.js`), donc sans effet de bord sur une tuile en
+    cours d'édition. Vérifié en Playwright : choisir une dimension de drill-down, changer de langue,
+    vérifier à la fois que le placeholder a changé ET que la valeur choisie est intacte.
 
 ## Fragilité de test connue (PAS un bug produit — investiguée en profondeur, à ne pas re-diagnostiquer)
 

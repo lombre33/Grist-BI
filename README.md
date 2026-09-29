@@ -96,6 +96,12 @@ réellement (voir HYPOTHESES.md).
   charge par défaut — une table quelconque démarre sur un dashboard vide à construire soi-même, avec
   sa propre configuration sauvegardée indépendamment (persistance déjà par table, réutilisée telle
   quelle). Revenir sur une table déjà visitée restaure ses tuiles.
+- **Bilingue fr/en** : bouton de bascule dans le bandeau du haut, toute la chrome de l'interface
+  (libellés, boutons, messages, badges) se traduit sans recharger la page, langue mémorisée d'une
+  session à l'autre (`localStorage`). Mécanisme `data-i18n` (`js/i18n.js`), même principe que le
+  widget frère [publipostageGrist](https://github.com/lombre33/publipostagegrist). Le contenu
+  généré à partir des noms de colonnes du document (titres de tuile, export Excel) n'est pas
+  concerné — voir HYPOTHESES.md.
 - Persistance de la configuration du dashboard (tuiles + vues sauvegardées) dans le document Grist
   (par table liée), donc conservée entre deux ouvertures du widget.
 - **Table de travail par défaut, connectée automatiquement** : au chargement, le widget se connecte

@@ -9,6 +9,7 @@
     groupByAggregate, sameValue, aggregateSingle, pivotTable, computeTrend, measureSeriesForTile,
     escapeHtml, tileDrillLevels, currentDimension, rowsForTile
   } = GristBI.data;
+  const { t } = GristBI.i18n;
 
   const chartInstances = new Map();
   // Numéro de rendu en cours par tuile en mode mesure temporelle (voir renderMeasureChart) : le
@@ -81,7 +82,7 @@
     const el = container.querySelector(`[data-tile-id="${tile.id}"] .tile-chart`);
     if (!el) return;
     if (typeof echarts === 'undefined') {
-      el.textContent = 'ECharts indisponible — voir le bandeau en haut de page.';
+      el.textContent = t('chart.unavailable');
       return;
     }
     let instance = chartInstances.get(tile.id);
@@ -200,14 +201,15 @@
       </tr>`;
     }).join('');
 
+    const totalLabel = escapeHtml(t('chart.pivot.total'));
     const totalRow = `<tr class="pivot-total-row">
-      <th class="pivot-row-header pivot-total-label">Total</th>
+      <th class="pivot-row-header pivot-total-label">${totalLabel}</th>
       ${pivot.colTotals.map((v) => `<td class="pivot-cell pivot-total-cell">${fmt(v)}</td>`).join('')}
       <td class="pivot-cell pivot-total-cell pivot-grand-total">${fmt(pivot.grandTotal)}</td>
     </tr>`;
 
     el.innerHTML = `<table class="pivot-table">
-      <thead><tr><th class="pivot-corner"></th>${headCells}<th class="pivot-col-header pivot-total-label">Total</th></tr></thead>
+      <thead><tr><th class="pivot-corner"></th>${headCells}<th class="pivot-col-header pivot-total-label">${totalLabel}</th></tr></thead>
       <tbody>${bodyRows}${totalRow}</tbody>
     </table>`;
 
@@ -233,7 +235,7 @@
     if (typeof echarts === 'undefined') {
       // Pas d'erreur JS ici : sans ce message, la tuile resterait juste vide sans indice (voir le
       // bandeau #echarts-warning dans main.js pour le diagnostic complet).
-      el.textContent = 'ECharts indisponible — voir le bandeau en haut de page.';
+      el.textContent = t('chart.unavailable');
       return;
     }
 
@@ -338,7 +340,7 @@
     const el = container.querySelector(`[data-tile-id="${tile.id}"] .tile-chart`);
     if (!el) return;
     if (typeof echarts === 'undefined') {
-      el.textContent = 'ECharts indisponible — voir le bandeau en haut de page.';
+      el.textContent = t('chart.unavailable');
       return;
     }
     const instance = getOrCreateChartInstance(tile.id, el);
@@ -348,7 +350,7 @@
     // tuile éditée/supprimée pendant le calcul SQL ne doivent pas faire apparaître un résultat périmé.
     const seq = (measureRenderSeq.get(tile.id) || 0) + 1;
     measureRenderSeq.set(tile.id, seq);
-    instance.showLoading('default', { text: 'Calcul…', color: CATEGORICAL_PALETTE[0], maskColor: 'rgba(255, 255, 255, 0.6)' });
+    instance.showLoading('default', { text: t('chart.computing'), color: CATEGORICAL_PALETTE[0], maskColor: 'rgba(255, 255, 255, 0.6)' });
 
     let timeSeries;
     try {
@@ -358,7 +360,7 @@
       if (measureRenderSeq.get(tile.id) !== seq || instance.isDisposed()) return; // périmé/tuile supprimée entre-temps
       instance.hideLoading();
       const freshEl = container.querySelector(`[data-tile-id="${tile.id}"] .tile-chart`);
-      if (freshEl) freshEl.textContent = 'Échec du calcul de la mesure — voir la console (F12).';
+      if (freshEl) freshEl.textContent = t('chart.measureFailed');
       return;
     }
     if (measureRenderSeq.get(tile.id) !== seq || instance.isDisposed()) return; // périmé/tuile supprimée entre-temps
@@ -390,7 +392,7 @@
     el.hidden = false;
     if (!drillPath.length) {
       el.innerHTML = `<span>${escapeHtml(tile.dimension)}</span>
-        <span class="breadcrumb-hint">(cliquer pour détailler par ${escapeHtml(levels[0])})</span>`;
+        <span class="breadcrumb-hint">${escapeHtml(t('chart.breadcrumb.hint', { column: levels[0] }))}</span>`;
       return;
     }
     const rootCrumb = `<button type="button" class="breadcrumb-link" data-depth="0">${escapeHtml(tile.dimension)}</button>`;

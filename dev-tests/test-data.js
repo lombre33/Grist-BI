@@ -1,6 +1,6 @@
 /*
  * Tests unitaires (Node, sans navigateur ni Grist) des fonctions pures de js/data.js, js/state.js,
- * js/demo-data.js et js/combobox.js. Lancer avec: node dev-tests/test-data.js
+ * js/demo-data.js, js/combobox.js et js/i18n.js. Lancer avec: node dev-tests/test-data.js
  */
 const assert = require('assert');
 const data = require('../js/data.js');
@@ -8,6 +8,7 @@ const state = require('../js/state.js');
 const demoData = require('../js/demo-data.js');
 const combobox = require('../js/combobox.js');
 const duckdbEngine = require('../js/duckdb-engine.js');
+const i18n = require('../js/i18n.js');
 
 const rows = [
   { id: 1, Region: 'Nord', Montant: 100 },
@@ -877,4 +878,61 @@ const SAMPLE_TIME_SERIES = [
   console.log('OK data.measureSeriesForTile — série temporelle vide -> catégories/données vides, pas d\'exception');
 }
 
-console.log('\nTous les tests data.js/state.js/demo-data.js/combobox.js/duckdb-engine.js sont passés.');
+// --- js/i18n.js : mécanisme de traduction fr/en (data-i18n, voir index.html/harness.html) ---
+
+// Complétude du dictionnaire : chaque clé doit porter fr ET en, non vides — une entrée oubliée
+// n'échouerait sinon qu'au hasard d'un test manuel en anglais (voir MAINTENANCE en tête du fichier,
+// même garde-fou que publipostageGrist/js/i18n.js).
+{
+  const keys = Object.keys(i18n.STRINGS);
+  assert.ok(keys.length > 0, 'STRINGS ne doit pas être vide');
+  for (const key of keys) {
+    const entry = i18n.STRINGS[key];
+    assert.ok(typeof entry.fr === 'string' && entry.fr.trim() !== '', `${key} : traduction fr manquante ou vide`);
+    assert.ok(typeof entry.en === 'string' && entry.en.trim() !== '', `${key} : traduction en manquante ou vide`);
+  }
+  console.log(`OK i18n.STRINGS — ${keys.length} clés, toutes avec fr ET en non vides`);
+}
+
+// t()/getLang()/setLang() fonctionnent sans DOM ni localStorage (Node) — repli silencieux plutôt
+// qu'une exception, comme documenté en tête de js/i18n.js.
+{
+  assert.strictEqual(i18n.getLang(), 'fr'); // repli par défaut hors navigateur (pas de localStorage)
+  assert.strictEqual(i18n.t('topbar.title'), 'Dashboard BI');
+  i18n.setLang('en');
+  assert.strictEqual(i18n.getLang(), 'en');
+  assert.strictEqual(i18n.t('topbar.title'), 'BI Dashboard');
+  i18n.setLang('fr');
+  assert.strictEqual(i18n.getLang(), 'fr');
+  console.log('OK i18n.t/getLang/setLang — bascule fr/en, repli "fr" par défaut sans localStorage');
+}
+
+// Clé inconnue : avertit (console.warn) et renvoie la clé elle-même plutôt que planter ou renvoyer
+// une chaîne vide silencieuse — permet de repérer un data-i18n mal orthographié à l'écran.
+{
+  const originalWarn = console.warn;
+  let warned = false;
+  console.warn = () => { warned = true; };
+  const result = i18n.t('cle.qui.nexiste.pas');
+  console.warn = originalWarn;
+  assert.strictEqual(result, 'cle.qui.nexiste.pas');
+  assert.ok(warned, 'une clé inconnue doit avertir en console');
+  console.log('OK i18n.t — clé inconnue : avertit et renvoie la clé (pas de plantage, pas de silence)');
+}
+
+// Substitution de variables ({var}) et pluriel ({n|singulier|pluriel}, via Intl.PluralRules) —
+// mêmes règles pour fr (0 et 1 au singulier) et en (seul 1 au singulier).
+{
+  assert.strictEqual(i18n.t('table.connectFailed', { table: 'Ventes' }), 'Impossible de se connecter à la table "Ventes" — voir la console (F12).');
+  assert.strictEqual(i18n.t('status.rowCount', { n: 0 }), '0 ligne');
+  assert.strictEqual(i18n.t('status.rowCount', { n: 1 }), '1 ligne');
+  assert.strictEqual(i18n.t('status.rowCount', { n: 2 }), '2 lignes');
+  i18n.setLang('en');
+  assert.strictEqual(i18n.t('status.rowCount', { n: 0 }), '0 rows');
+  assert.strictEqual(i18n.t('status.rowCount', { n: 1 }), '1 row');
+  assert.strictEqual(i18n.t('status.rowCount', { n: 2 }), '2 rows');
+  i18n.setLang('fr');
+  console.log('OK i18n.t — substitution de variables + pluriel fr/en (Intl.PluralRules)');
+}
+
+console.log('\nTous les tests data.js/state.js/demo-data.js/combobox.js/duckdb-engine.js/i18n.js sont passés.');

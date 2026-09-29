@@ -9,6 +9,7 @@
   const GristBI = window.GristBI;
   const store = (GristBI.store = GristBI.state.createStore());
   const { escapeHtml, tileDrillLevels } = GristBI.data;
+  const { t } = GristBI.i18n;
 
   // Icônes du chrome : traits monochromes dessinés à la main (`stroke="currentColor"`, `fill="none"`)
   // plutôt que des glyphes texte/emoji (◂ ▸ ✎ ✓ &times;) — mêmes contraintes que le reste du projet :
@@ -157,8 +158,8 @@
     fillCombobox(columnDimensionSelect, cols);
     fillCombobox(measureSelect, cols);
     fillCombobox(measureYSelect, cols);
-    drillLevelSelects.forEach((select) => fillCombobox(select, cols, { blankLabel: '(aucun)' }));
-    fillCombobox(trendDimensionSelect, cols, { blankLabel: '(aucune)' });
+    drillLevelSelects.forEach((select) => fillCombobox(select, cols, { blankLabel: t('tileForm.none.m') }));
+    fillCombobox(trendDimensionSelect, cols, { blankLabel: t('tileForm.none.f') });
     fillCombobox(dateColumnSelect, cols);
     fillCombobox(filterColumnSelect, cols);
     updateAdvancedFilterFieldsForColumn(rows);
@@ -217,6 +218,9 @@
   // KPI et jauge : une seule valeur agrégée, pas de dimension de regroupement ni de drill-down.
   function typeHasNoDimension(type) { return type === 'kpi' || type === 'gauge'; }
 
+  // Titres de tuile auto-composés (ex. "YTD : sum(Montant)") : du CONTENU généré à partir de noms
+  // de colonnes, pas de la chrome — même périmètre volontairement laissé de côté que les titres
+  // par défaut de js/demo-data.js et les en-têtes d'export Excel de js/data.js (voir js/i18n.js).
   const MEASURE_MODE_TITLES = { cumulative: 'Cumul', ytd: 'YTD', yoy: 'Comparaison N-1' };
 
   // Idem pour une tuile "Barres" avec un mode de calcul temporel actif ('cumulative'/'ytd'/'yoy',
@@ -251,7 +255,7 @@
     list.hidden = true;
     wrapper.appendChild(input);
     wrapper.appendChild(list);
-    GristBI.combobox.attach(input, list, { strict: true, blankLabel: '(aucun)' });
+    GristBI.combobox.attach(input, list, { strict: true, blankLabel: t('tileForm.none.m') });
     input.addEventListener('change', () => {
       if (!input.value) {
         // Niveau vidé -> tout niveau plus profond n'a plus de sens (un trou dans la hiérarchie,
@@ -283,7 +287,7 @@
   addDrillLevelBtn.addEventListener('click', () => {
     if (drillLevelSelects.length >= MAX_DRILL_LEVELS) return;
     const select = createDrillLevelSelect(drillLevelSelects.length);
-    fillCombobox(select, availableColumns(store.getState().rows), { blankLabel: '(aucun)' });
+    fillCombobox(select, availableColumns(store.getState().rows), { blankLabel: t('tileForm.none.m') });
     drillLevelsContainer.appendChild(select.parentElement);
     drillLevelSelects.push(select);
     updateDrillLevelsUI();
@@ -304,6 +308,14 @@
   })();
 
   function render(state) {
+    // Balaie tout le document pour les attributs data-i18n-* (voir js/i18n.js) à CHAQUE rendu, pas
+    // seulement au changement de langue : les boutons d'en-tête de tuile (buildTileElement) sont mis
+    // en cache et jamais reconstruits tant que la tuile existe (voir juste en dessous), donc un
+    // changement de langue seul ne les régénérerait pas — applyTranslations() les retrouve par leurs
+    // attributs data-i18n-aria/-title et les corrige même sans reconstruction, même principe que la
+    // relecture d'état en direct plutôt que capturée (voir js/charts.js).
+    GristBI.i18n.applyTranslations();
+
     // Réconciliation incrémentale plutôt que innerHTML='' + reconstruction : une instance ECharts
     // reste attachée à SON élément .tile-chart tant que la tuile existe, sinon setOption() continue
     // de s'exécuter sur un canvas détaché du DOM (rendu invisible bien qu'aucune erreur ne soit levée).
@@ -352,14 +364,14 @@
     GristBI.charts.resizeAll();
     if (renderTimeEl) {
       const ms = Math.round(performance.now() - renderStart);
-      renderTimeEl.textContent = state.tiles.length ? `rendu : ${ms} ms` : '';
+      renderTimeEl.textContent = state.tiles.length ? t('status.renderTime', { ms }) : '';
     }
 
     renderPageTabs(state.pages, state.currentPageId);
     renderFilterBadges(state.activeFilters);
     renderAdvancedFilterBadges(state.advancedFilters);
     renderBookmarks(state.bookmarks);
-    rowCountEl.textContent = `${state.rows.length} ligne(s)`;
+    rowCountEl.textContent = t('status.rowCount', { n: state.rows.length });
 
     // `pages`/`currentPageId`/`bookmarks` ne changent de référence/valeur que via leurs actions
     // dédiées (state.js) : un rendu déclenché par un simple rafraîchissement de données (setRows) ne
@@ -384,7 +396,7 @@
     pageTabsEl.innerHTML = pages.map((p) => {
       const active = p.id === currentPageId;
       const removeBtn = active && pages.length > 1
-        ? `<span class="page-tab-remove" data-page-id="${escapeHtml(p.id)}" title="Supprimer cette page">${icon('close')}</span>`
+        ? `<span class="page-tab-remove" data-page-id="${escapeHtml(p.id)}" title="${escapeHtml(t('pages.remove.title'))}">${icon('close')}</span>`
         : '';
       return `<button type="button" class="page-tab${active ? ' active' : ''}" data-page-id="${escapeHtml(p.id)}">
         ${escapeHtml(p.name)}${removeBtn}
@@ -398,7 +410,7 @@
       });
       tab.addEventListener('dblclick', () => {
         const page = pages.find((p) => p.id === pageId);
-        const name = (prompt('Nouveau nom de la page :', page ? page.name : '') || '').trim();
+        const name = (prompt(t('pages.rename.prompt'), page ? page.name : '') || '').trim();
         if (name) store.renamePage(pageId, name);
       });
     }
@@ -407,7 +419,7 @@
         e.stopPropagation(); // ne pas aussi déclencher le clic de l'onglet parent (setCurrentPage, no-op ici)
         const pageId = removeBtn.dataset.pageId;
         const page = pages.find((p) => p.id === pageId);
-        if (confirm(`Supprimer la page « ${page ? page.name : ''} » et toutes ses tuiles ?`)) {
+        if (confirm(t('pages.remove.confirm', { name: page ? page.name : '' }))) {
           store.removePage(pageId);
         }
       });
@@ -421,7 +433,7 @@
     filterBadgesEl.innerHTML = activeFilters.map((f) => `
       <span class="filter-chip">
         ${escapeHtml(f.column)} = ${escapeHtml(String(f.value))}
-        <button type="button" class="filter-chip-remove" data-column="${escapeHtml(f.column)}" aria-label="Retirer ce filtre">${icon('close')}</button>
+        <button type="button" class="filter-chip-remove" data-column="${escapeHtml(f.column)}" aria-label="${escapeHtml(t('filters.remove.aria'))}">${icon('close')}</button>
       </span>
     `).join('');
     for (const btn of filterBadgesEl.querySelectorAll('.filter-chip-remove')) {
@@ -430,9 +442,11 @@
     clearFilterBtn.hidden = activeFilters.length === 0;
   }
 
-  const RELATIVE_DATE_LABELS = {
-    last7d: '7 derniers jours', last30d: '30 derniers jours', thisMonth: 'ce mois-ci',
-    thisYear: 'cette année', last12m: '12 derniers mois'
+  // Mêmes clés que les options du <select> "Période" du formulaire de filtre avancé (voir
+  // index.html/harness.html, filters.relative.*) — un seul texte traduit pour les deux.
+  const RELATIVE_DATE_KEYS = {
+    last7d: 'filters.relative.last7d', last30d: 'filters.relative.last30d', thisMonth: 'filters.relative.thisMonth',
+    thisYear: 'filters.relative.thisYear', last12m: 'filters.relative.last12m'
   };
 
   // Libellé lisible d'un filtre avancé pour son badge (voir GristBI.data.matchesFilter pour la
@@ -444,18 +458,18 @@
         if (f.min != null && f.max != null) return `${f.column} : ${f.min} – ${f.max}`;
         if (f.min != null) return `${f.column} ≥ ${f.min}`;
         if (f.max != null) return `${f.column} ≤ ${f.max}`;
-        return `${f.column} : (plage vide)`;
+        return `${f.column} : ${t('filters.emptyRange')}`;
       }
       case 'dateRange': {
         if (f.start && f.end) return `${f.column} : ${f.start} → ${f.end}`;
         if (f.start) return `${f.column} ≥ ${f.start}`;
         if (f.end) return `${f.column} ≤ ${f.end}`;
-        return `${f.column} : (plage vide)`;
+        return `${f.column} : ${t('filters.emptyRange')}`;
       }
       case 'relativeDate':
-        return `${f.column} : ${RELATIVE_DATE_LABELS[f.preset] || f.preset}`;
+        return `${f.column} : ${RELATIVE_DATE_KEYS[f.preset] ? t(RELATIVE_DATE_KEYS[f.preset]) : f.preset}`;
       case 'contains':
-        return `${f.column} contient "${f.query}"`;
+        return `${f.column} ${t('filters.contains')} "${f.query}"`;
       default:
         return `${f.column} : ${f.type}`;
     }
@@ -468,7 +482,7 @@
     advancedFilterBadgesEl.innerHTML = advancedFilters.map((f) => `
       <span class="filter-chip">
         ${escapeHtml(describeAdvancedFilter(f))}
-        <button type="button" class="advanced-filter-chip-remove" data-column="${escapeHtml(f.column)}" aria-label="Retirer ce filtre">${icon('close')}</button>
+        <button type="button" class="advanced-filter-chip-remove" data-column="${escapeHtml(f.column)}" aria-label="${escapeHtml(t('filters.remove.aria'))}">${icon('close')}</button>
       </span>
     `).join('');
     for (const btn of advancedFilterBadgesEl.querySelectorAll('.advanced-filter-chip-remove')) {
@@ -481,7 +495,7 @@
   // actuels correspondent encore à la vue choisie après coup (simplification délibérée).
   function renderBookmarks(bookmarks) {
     const current = bookmarkSelect.value;
-    bookmarkSelect.innerHTML = '<option value="">Vues sauvegardées…</option>'
+    bookmarkSelect.innerHTML = `<option value="">${escapeHtml(t('bookmarks.placeholder'))}</option>`
       + bookmarks.map((b) => `<option value="${escapeHtml(b.id)}">${escapeHtml(b.name)}</option>`).join('');
     if (bookmarks.some((b) => b.id === current)) bookmarkSelect.value = current;
     deleteBookmarkBtn.disabled = !bookmarkSelect.value;
@@ -491,12 +505,17 @@
     const el = document.createElement('div');
     el.className = `tile tile-${tile.type}`;
     el.dataset.tileId = tile.id;
+    // data-i18n-aria/-title (en plus du texte déjà traduit ci-dessous) : cette tuile est mise en
+    // cache et jamais reconstruite tant qu'elle existe (voir render()), donc un changement de
+    // langue seul ne repasserait jamais ici — c'est GristBI.i18n.applyTranslations(), appelé à
+    // chaque render(), qui retrouve ces boutons par leurs attributs et les corrige sans
+    // reconstruction (voir le commentaire en tête de render()).
     const header = `<div class="tile-header"><span>${escapeHtml(tile.title)}</span>
         <span class="tile-actions">
-          <button class="tile-move-left" type="button" aria-label="Déplacer vers la gauche" title="Déplacer vers la gauche">${icon('chevronLeft')}</button>
-          <button class="tile-move-right" type="button" aria-label="Déplacer vers la droite" title="Déplacer vers la droite">${icon('chevronRight')}</button>
-          <button class="tile-edit" type="button" aria-label="Modifier" title="Modifier la tuile">${icon('edit')}</button>
-          <button class="tile-remove" type="button" aria-label="Supprimer" title="Supprimer la tuile">${icon('close')}</button>
+          <button class="tile-move-left" type="button" data-i18n-aria="tile.moveLeft" data-i18n-title="tile.moveLeft" aria-label="${escapeHtml(t('tile.moveLeft'))}" title="${escapeHtml(t('tile.moveLeft'))}">${icon('chevronLeft')}</button>
+          <button class="tile-move-right" type="button" data-i18n-aria="tile.moveRight" data-i18n-title="tile.moveRight" aria-label="${escapeHtml(t('tile.moveRight'))}" title="${escapeHtml(t('tile.moveRight'))}">${icon('chevronRight')}</button>
+          <button class="tile-edit" type="button" data-i18n-aria="tile.edit.aria" data-i18n-title="tile.edit.title" aria-label="${escapeHtml(t('tile.edit.aria'))}" title="${escapeHtml(t('tile.edit.title'))}">${icon('edit')}</button>
+          <button class="tile-remove" type="button" data-i18n-aria="tile.remove.aria" data-i18n-title="tile.remove.title" aria-label="${escapeHtml(t('tile.remove.aria'))}" title="${escapeHtml(t('tile.remove.title'))}">${icon('close')}</button>
         </span></div>`;
     el.innerHTML = tile.type === 'kpi'
       ? `${header}
@@ -533,7 +552,7 @@
     // une 2e mesure (axe Y). Le pivot ajoute une 2e dimension (colonnes) et n'a pas de drill-down
     // (voir supportsDrillDown).
     dimensionField.hidden = formHasNoDimension();
-    dimensionLabel.textContent = isPivot ? 'Dimension (lignes)' : 'Dimension';
+    dimensionLabel.textContent = t(isPivot ? 'tileForm.dimension.labelRows' : 'tileForm.dimension.label');
     columnDimensionField.hidden = !isPivot;
     drillField.hidden = formHasNoDimension() || isPivot;
     trendField.hidden = !isKpi;
@@ -542,7 +561,7 @@
     measureModeField.hidden = !isBar;
     dateColumnField.hidden = !hasMeasureMode;
     measureYField.hidden = !isScatter;
-    measureLabel.textContent = isScatter ? 'Mesure X' : 'Mesure';
+    measureLabel.textContent = t(isScatter ? 'tileForm.measure.labelX' : 'tileForm.measure.label');
     updateDrillLevelsUI();
   }
 
@@ -556,7 +575,7 @@
     levels.forEach((lvl, i) => {
       if (i >= drillLevelSelects.length) {
         const select = createDrillLevelSelect(i);
-        fillCombobox(select, cols, { blankLabel: '(aucun)' });
+        fillCombobox(select, cols, { blankLabel: t('tileForm.none.m') });
         drillLevelsContainer.appendChild(select.parentElement);
         drillLevelSelects.push(select);
       }
@@ -575,14 +594,14 @@
     measureSelect.value = tile.measure;
     aggSelect.value = tile.aggFn;
     trendDimensionSelect.value = tile.trendDimension || '';
-    submitTileBtn.textContent = 'Modifier la tuile';
+    submitTileBtn.textContent = t('tileForm.submit.edit');
     cancelEditBtn.hidden = false;
     addTileForm.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
   function stopEditTile() {
     editingTileId = null;
-    submitTileBtn.textContent = '+ Ajouter la tuile';
+    submitTileBtn.textContent = t('tileForm.submit.add');
     cancelEditBtn.hidden = true;
   }
 
@@ -606,10 +625,10 @@
     const aggFn = aggSelect.value;
     if (!measure || (hasDimension && !dimension)) return;
     if (isScatter && !measureYSelect.value) return; // 2e mesure obligatoire pour un nuage de points
-    if (measureMode && !dateColumn) { alert('Choisissez une colonne date pour ce mode de calcul.'); return; }
+    if (measureMode && !dateColumn) { alert(t('tileForm.alert.dateColumnRequired')); return; }
     if (isPivot && !columnDimension) return; // 2e dimension obligatoire pour un tableau croisé
     if (isPivot && columnDimension === dimension) {
-      alert('Les dimensions lignes et colonnes du tableau croisé doivent être différentes.');
+      alert(t('tileForm.alert.pivotDimsDiffer'));
       return;
     }
     let gaugeMin, gaugeMax;
@@ -617,7 +636,7 @@
       gaugeMin = parseFloat(gaugeMinInput.value);
       gaugeMax = parseFloat(gaugeMaxInput.value);
       if (!Number.isFinite(gaugeMin) || !Number.isFinite(gaugeMax) || gaugeMax <= gaugeMin) {
-        alert('Les valeurs Min/Max de la jauge doivent être des nombres valides, avec Max > Min.');
+        alert(t('tileForm.alert.gaugeMinMax'));
         return;
       }
     }
@@ -627,7 +646,7 @@
     // niveaux (voir ROADMAP.md, cluster "Hiérarchies & drill-down").
     const allDims = hasDimension ? [dimension].concat(drillDimensions) : [];
     if (new Set(allDims).size !== allDims.length) {
-      alert('Une même colonne ne peut pas apparaître deux fois dans le drill-down, ni reprendre la dimension racine.');
+      alert(t('tileForm.alert.drillDuplicate'));
       return;
     }
     const title = isPivot ? `${measure} par ${dimension} × ${columnDimension}`
@@ -677,8 +696,8 @@
     if (kind === 'number') {
       const min = filterMinInput.value === '' ? null : parseFloat(filterMinInput.value);
       const max = filterMaxInput.value === '' ? null : parseFloat(filterMaxInput.value);
-      if (min == null && max == null) { alert('Renseignez au moins une borne (Min ou Max).'); return; }
-      if (min != null && max != null && max < min) { alert('Max doit être supérieur ou égal à Min.'); return; }
+      if (min == null && max == null) { alert(t('filters.minBoundRequired')); return; }
+      if (min != null && max != null && max < min) { alert(t('filters.maxGteMin')); return; }
       filter = { type: 'range', min, max };
     } else if (kind === 'date') {
       if (filterDateModeSelect.value === 'relativeDate') {
@@ -686,13 +705,13 @@
       } else {
         const start = filterDateStartInput.value || null;
         const end = filterDateEndInput.value || null;
-        if (!start && !end) { alert('Renseignez au moins une date (Du ou au).'); return; }
-        if (start && end && end < start) { alert('La date de fin doit être postérieure à la date de début.'); return; }
+        if (!start && !end) { alert(t('filters.dateBoundRequired')); return; }
+        if (start && end && end < start) { alert(t('filters.endAfterStart')); return; }
         filter = { type: 'dateRange', start, end };
       }
     } else {
       const query = filterTextInput.value.trim();
-      if (!query) { alert('Saisissez un texte à rechercher.'); return; }
+      if (!query) { alert(t('filters.textRequired')); return; }
       filter = { type: 'contains', query };
     }
     store.setAdvancedFilter(column, filter);
@@ -716,7 +735,7 @@
   });
 
   saveBookmarkBtn.addEventListener('click', () => {
-    const name = (prompt('Nom de la vue à sauvegarder :') || '').trim();
+    const name = (prompt(t('bookmarks.save.prompt')) || '').trim();
     if (!name) return; // annulé ou vide
     store.saveBookmark('bm_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name);
   });
@@ -729,15 +748,15 @@
   exportExcelBtn.addEventListener('click', () => {
     try {
       const exported = GristBI.exportExcel.exportDashboardToExcel(store.getState());
-      if (!exported) alert('Aucune tuile à exporter.');
+      if (!exported) alert(t('export.none'));
     } catch (e) {
       console.error('[GristBI] échec de l\'export Excel', e);
-      alert("Échec de l'export Excel — voir la console (F12).");
+      alert(t('export.failed'));
     }
   });
 
   addPageBtn.addEventListener('click', () => {
-    const name = (prompt('Nom de la nouvelle page :', `Page ${store.getState().pages.length + 1}`) || '').trim();
+    const name = (prompt(t('pages.new.prompt'), `Page ${store.getState().pages.length + 1}`) || '').trim();
     if (name) store.addPage(name);
   });
 
@@ -858,7 +877,7 @@
       await refreshTablePicker();
     } catch (e) {
       console.error('[GristBI] échec de la connexion à la table choisie', e);
-      alert(`Impossible de se connecter à la table "${tableId}" — voir la console (F12).`);
+      alert(t('table.connectFailed', { table: tableId }));
       tableSelectInput.value = currentTableId; // revient sur la table encore effectivement active
     }
   });
@@ -873,11 +892,12 @@
   // ensuite se reconnecter à N'IMPORTE QUELLE AUTRE table du document via le sélecteur ci-dessus.
   async function bootstrap() {
     await GristBI.api.init();
-    rowCountEl.textContent = 'Connexion…';
+    rowCountEl.textContent = t('status.connecting');
     const onProgress = (phase, sent, total) => {
       const pct = Math.round((sent / total) * 100);
-      const label = phase === 'migrate' ? 'Mise à jour du schéma…' : 'Création…';
-      rowCountEl.textContent = `${label} ${pct}% (${sent.toLocaleString('fr-FR')}/${total.toLocaleString('fr-FR')})`;
+      const label = t(phase === 'migrate' ? 'status.migrating' : 'status.creating');
+      const locale = GristBI.i18n.getLang() === 'en' ? 'en-US' : 'fr-FR';
+      rowCountEl.textContent = t('status.progress', { label, pct, sent: sent.toLocaleString(locale), total: total.toLocaleString(locale) });
     };
     try {
       const { tableId, rows, created } = await GristBI.api.loadOrCreateStressData(onProgress);
@@ -887,8 +907,38 @@
       await refreshTablePicker();
     } catch (e) {
       console.error('[GristBI] échec de la connexion automatique au jeu de données de test de charge', e);
-      rowCountEl.textContent = 'Échec de la connexion aux données — voir la console (F12).';
+      rowCountEl.textContent = t('status.connectionFailed');
     }
   }
+
+  // Sélecteur de langue (bandeau du haut) : bascule fr/en, persistée par GristBI.i18n (localStorage).
+  // Le libellé du bouton affiche la langue CIBLE (celle sur laquelle il bascule), convention
+  // courante pour ce genre de bouton compact — pas besoin de traduction, ce sont des codes de
+  // langue. onChange (voir js/i18n.js) couvre tout ce qu'aucun attribut data-i18n-* ne peut porter
+  // parce que ça dépend d'un autre état que la langue : le libellé Dimension/Mesure selon le type
+  // de tuile choisi (updateFormFieldsForType) et le texte du bouton Ajouter/Modifier selon le mode
+  // édition (submitTileBtn) — puis un render() complet pour tout le reste (tuiles, badges, pages).
+  const langToggleBtn = document.getElementById('lang-toggle');
+  function refreshLangToggleLabel() {
+    langToggleBtn.textContent = GristBI.i18n.getLang() === 'fr' ? 'EN' : 'FR';
+  }
+  langToggleBtn.addEventListener('click', () => {
+    GristBI.i18n.setLang(GristBI.i18n.getLang() === 'fr' ? 'en' : 'fr');
+  });
+  GristBI.i18n.onChange(() => {
+    refreshLangToggleLabel();
+    // Rafraîchit aussi le blankLabel "(aucun)"/"(none)" des comboboxes optionnelles (drill-down,
+    // Tendance vs) : c'est `Combobox.setOptions` (js/combobox.js) qui l'écrit dans `.placeholder`
+    // au moment de l'appel, jamais relu automatiquement — sans ce rappel, le placeholder resterait
+    // figé dans l'ancienne langue après un changement, contrairement au reste du formulaire.
+    // `setOptions` en mode strict garde la valeur déjà choisie si elle reste valide (voir
+    // combobox.js), donc sans effet de bord sur une tuile en cours d'édition.
+    refreshColumnSelects(store.getState().rows);
+    updateFormFieldsForType();
+    submitTileBtn.textContent = t(editingTileId ? 'tileForm.submit.edit' : 'tileForm.submit.add');
+    render(store.getState());
+  });
+  refreshLangToggleLabel();
+
   bootstrap();
 })();
