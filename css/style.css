@@ -81,6 +81,60 @@ body {
 .row-count { color: var(--text-secondary); font-weight: 500; }
 .render-time { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 
+/* Bouton Réglages + logo Grist Factory : ajoutés en dernier dans .topbar-info (jamais entre des
+   contrôles existants) pour ne rien déplacer — non-régression, cadrage identité §1. */
+.settings-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px 5px;
+  border-radius: var(--radius-sm);
+  transition: background 0.12s var(--ease), color 0.12s var(--ease);
+}
+.settings-btn:hover { background: var(--surface-sunken); color: var(--accent); }
+
+/* Avatar fourni par Antoine, pas un asset à recréer (cadrage identité §1) : cercle discret, jamais
+   un élément qui capte l'attention ni ne déplace les contrôles voisins. */
+.brand-logo { width: 18px; height: 18px; border-radius: 50%; opacity: 0.85; flex-shrink: 0; }
+
+/* Panneau Réglages (Crédits) : même overlay plein écran + non-fermeture au clic sur le fond que sur
+   Publipostage+ (js/settings.js de ce widget frère). `[hidden]` redéclaré explicitement : une règle
+   d'auteur `display:flex` bat toujours `[hidden]{display:none}` à spécificité égale, quel que soit
+   l'ordre de chargement — piège déjà rencontré 3 fois sur ce dépôt (voir CLAUDE.md §7 piège n°10). */
+.settings-modal { position: fixed; inset: 0; background: rgba(11, 11, 11, 0.45); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.settings-modal[hidden] { display: none; }
+.settings-modal-content {
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  background: var(--surface);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  padding: 16px 18px;
+}
+.settings-modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.settings-modal-header h3 { margin: 0; font-size: 14px; font-weight: 700; color: var(--text); }
+.settings-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 3px;
+  border-radius: 50%;
+  transition: background 0.12s var(--ease), color 0.12s var(--ease);
+}
+.settings-close:hover { background: var(--surface-sunken); color: var(--text); }
+.settings-credits-list { display: grid; grid-template-columns: auto 1fr; gap: 7px 14px; margin: 0; font-size: 12.5px; }
+.settings-credits-list dt { font-weight: 700; color: var(--text-secondary); }
+.settings-credits-list dd { margin: 0; color: var(--text); line-height: 1.5; }
+.settings-credits-list a { color: var(--accent); }
+
 .filter-badges { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 
 .filter-chip {
