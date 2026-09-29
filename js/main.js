@@ -747,7 +747,7 @@
       if (!exported) alert('Aucune tuile à exporter.');
     } catch (e) {
       console.error('[GristBI] échec de l\'export PDF', e);
-      alert("Échec de l'export PDF — pdfmake est chargé depuis cdnjs.cloudflare.com (pas vendorisé dans ce dépôt, voir CLAUDE.md) : vérifiez votre connexion. Détail dans la console (F12).");
+      alert(GristBI.exportPdf.STRINGS.networkError);
     }
   });
 
