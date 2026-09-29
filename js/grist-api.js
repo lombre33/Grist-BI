@@ -24,6 +24,19 @@
   // existe encore et que le nom fixe n'existe pas, on le RENOMME (`RenameTable`) plutôt que de
   // laisser une table orpheline en plus dans le document.
   const LEGACY_STRESS_TABLE_NAMES = ['BI_StressTest_v2', 'BI_StressTest_v1'];
+  // Table dédiée aux commentaires collaboratifs (ROADMAP.md Tier 2, 2026-09-29) : 1 LIGNE PAR
+  // COMMENTAIRE, plutôt qu'un champ de plus dans le blob JSON de BI_Dashboard_Config — ce blob est
+  // une seule ligne par table de travail, donc deux commentaires ajoutés en même temps par deux
+  // personnes s'écraseraient l'un l'autre (dernière écriture gagne). Une ligne par commentaire n'a
+  // pas ce problème : deux `AddRecord` concurrents créent simplement deux lignes.
+  const COMMENTS_TABLE = 'BI_Dashboard_Comments';
+  const COMMENTS_COLUMNS = [
+    { id: 'TableId', type: 'Text' }, // table de travail concernée, comme BI_Dashboard_Config
+    { id: 'TileId', type: 'Text' }, // id de tuile déjà globalement unique dans ce widget (voir js/main.js)
+    { id: 'Author', type: 'Text' }, // saisi à la main (voir js/main.js) — PAS le pattern getCurrentUserEmail
+    { id: 'Text', type: 'Text' },
+    { id: 'CreatedAt', type: 'Text' } // ISO 8601, calculé en JS au moment de l'ajout
+  ];
   // Nombre d'actions envoyées par appel à applyUserActions() lors d'une génération/suppression en
   // masse : un seul appel avec des dizaines de milliers d'actions est un pari risqué (timeout,
   // limite de payload côté Grist - aucune des deux non testée ici, voir HYPOTHESES.md) ; les
@@ -374,6 +387,25 @@
     );
   }
 
+  // Même mécanisme idempotent que loadOrCreateStressData (voir loadOrCreateTable ci-dessus,
+  // garde-fous anti-duplication inclus), mais SANS aucune ligne de départ (`() => []` : une table
+  // de commentaires neuve doit rester vide, contrairement à BI_StressTest qui se remplit de son
+  // jeu de données de démo) et sans colonne dérivée à recalculer pour l'instant (`() => ({})` —
+  // à réviser le jour où une colonne serait ajoutée à COMMENTS_COLUMNS).
+  function loadOrCreateComments(onProgress) {
+    return loadOrCreateTable(COMMENTS_TABLE, [], COMMENTS_COLUMNS, () => [], () => ({}), onProgress);
+  }
+
+  // Ajoute UN commentaire (AddRecord isolé, même pattern que saveConfig ci-dessus) — jamais par
+  // lot, un commentaire est toujours un geste utilisateur unique, pas un remplissage en masse.
+  // Renvoie la ligne complète (avec son id Grist réel) pour un ajout optimiste côté store
+  // (js/state.js:addCommentLocal), sans re-fetch de toute la table à chaque commentaire.
+  async function addComment(tableId, tileId, author, text) {
+    const fields = { TableId: tableId, TileId: tileId, Author: author, Text: text, CreatedAt: new Date().toISOString() };
+    const result = await grist.docApi.applyUserActions([['AddRecord', COMMENTS_TABLE, null, fields]]);
+    return Object.assign({ id: result.retValues[0] }, fields);
+  }
+
   // Toutes les tables du document, table de config interne exclue (jamais une donnée à visualiser)
   // — pour le sélecteur de table (voir main.js). `_rawTables` remis à `null` avant de relire :
   // volontairement une lecture FRAÎCHE à chaque appel (pas de cache ici, contrairement à
@@ -398,6 +430,6 @@
 
   GristBI.api = {
     init, loadConfig, saveConfig, loadOrCreateStressData,
-    listAvailableTables, loadTable
+    listAvailableTables, loadTable, loadOrCreateComments, addComment
   };
 })(window);

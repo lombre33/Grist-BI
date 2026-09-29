@@ -199,6 +199,17 @@
     'tile.edit.title': { fr: 'Modifier la tuile', en: 'Edit tile' },
     'tile.remove.aria': { fr: 'Supprimer', en: 'Delete' },
     'tile.remove.title': { fr: 'Supprimer la tuile', en: 'Delete tile' },
+    'tile.comments.aria': { fr: 'Commentaires', en: 'Comments' },
+    'tile.comments.title': { fr: 'Commentaires de la tuile', en: 'Tile comments' },
+
+    // --- Commentaires collaboratifs (panneau ouvert depuis une tuile) ---
+    'comments.modal.title': { fr: 'Commentaires', en: 'Comments' },
+    'comments.empty': { fr: 'Aucun commentaire pour l’instant.', en: 'No comments yet.' },
+    'comments.author.placeholder': { fr: 'Votre nom', en: 'Your name' },
+    'comments.text.placeholder': { fr: 'Écrire un commentaire…', en: 'Write a comment…' },
+    'comments.submit': { fr: 'Ajouter', en: 'Add' },
+    'comments.count': { fr: '{n} {n|commentaire|commentaires}', en: '{n} {n|comment|comments}' },
+    'comments.addFailed': { fr: "Échec de l'ajout du commentaire — voir la console (F12).", en: 'Failed to add the comment — see the console (F12).' },
 
     // --- État vide ---
     'emptyState.hint': {

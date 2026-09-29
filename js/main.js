@@ -22,7 +22,8 @@
     chevronLeft: '<path d="M10 3l-5 5 5 5"/>',
     chevronRight: '<path d="M6 3l5 5-5 5"/>',
     warning: '<path d="M8 2.2l6.5 11.6H1.5L8 2.2Z"/><path d="M8 6.6v3.2"/><path d="M8 11.9v.01"/>',
-    settings: '<circle cx="8" cy="8" r="2.3"/><path d="M8 2v1.6M8 12.4V14M14 8h-1.6M3.6 8H2M12.24 3.76l-1.13 1.13M4.89 11.11l-1.13 1.13M12.24 12.24l-1.13-1.13M4.89 4.89L3.76 3.76"/>'
+    settings: '<circle cx="8" cy="8" r="2.3"/><path d="M8 2v1.6M8 12.4V14M14 8h-1.6M3.6 8H2M12.24 3.76l-1.13 1.13M4.89 11.11l-1.13 1.13M12.24 12.24l-1.13-1.13M4.89 4.89L3.76 3.76"/>',
+    comment: '<path d="M2.5 3.5h11a1 1 0 0 1 1 1V10a1 1 0 0 1-1 1H6.5l-2.8 2.5V11H2.5a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z"/>'
   };
   function icon(name) {
     return `<svg class="icon icon-${name}" viewBox="0 0 16 16" aria-hidden="true" focusable="false">${ICON_PATHS[name]}</svg>`;
@@ -33,6 +34,7 @@
   // codé en dur ici — c'est la SEULE table pour laquelle ce widget connaît des tuiles par défaut
   // (GristBI.demoData.defaultLargeTiles), donc la seule sur laquelle proposer de les restaurer.
   let defaultTableId = null;
+  let commentsModalTileId = null; // tuile actuellement affichée dans #comments-modal, ou null si fermé
   let saveTimer = null;
   let pendingSave = null; // { tableId, pages, currentPageId, bookmarks, blend } en attente d'écriture, voir flushPendingSave()
   let lastRenderedPages = null; // référence, pour ne pas re-sauvegarder la config à chaque rafraîchissement de données
@@ -124,6 +126,14 @@
   const settingsBtn = document.getElementById('open-settings');
   const settingsModal = document.getElementById('settings-modal');
   const settingsCloseBtn = document.getElementById('settings-close');
+  const commentsModal = document.getElementById('comments-modal');
+  const commentsCloseBtn = document.getElementById('comments-close');
+  const commentsModalTileEl = document.getElementById('comments-modal-tile');
+  const commentsListEl = document.getElementById('comments-list');
+  const commentsEmptyEl = document.getElementById('comments-empty');
+  const commentForm = document.getElementById('comment-form');
+  const commentAuthorInput = document.getElementById('comment-author');
+  const commentTextInput = document.getElementById('comment-text');
 
   // Tous les champs qui référencent une COLONNE deviennent des comboboxes avec autocomplétion
   // (demande explicite de l'utilisateur, voir js/combobox.js) — en mode strict : la valeur doit
@@ -438,6 +448,15 @@
       const moveRightBtn = el.querySelector('.tile-move-right');
       if (moveLeftBtn) moveLeftBtn.disabled = index === 0;
       if (moveRightBtn) moveRightBtn.disabled = index === state.tiles.length - 1;
+      // Badge de compte sur le bouton "Commentaires" : recalculé à chaque rendu (comme
+      // moveLeftBtn/moveRightBtn ci-dessus), jamais seulement à la création de la tuile — un
+      // commentaire peut être ajouté alors que la tuile est déjà affichée depuis longtemps.
+      const commentsCountEl = el.querySelector('.tile-comments-count');
+      if (commentsCountEl) {
+        const n = GristBI.data.commentsForTile(state.comments, tile.id).length;
+        commentsCountEl.hidden = n === 0;
+        commentsCountEl.textContent = n > 99 ? '99+' : String(n);
+      }
     });
 
     emptyState.hidden = state.tiles.length > 0;
@@ -477,6 +496,10 @@
       lastRenderedBlend = state.blend;
       scheduleSave(state.pages, state.currentPageId, state.bookmarks, state.blend);
     }
+    // Tient la liste du panneau Commentaires à jour s'il est ouvert (ajout d'un commentaire,
+    // changement de langue...) sans avoir à le refermer/rouvrir — no-op si fermé
+    // (commentsModalTileId à null, voir sa définition).
+    renderCommentsModal();
   }
 
   // Une page ne se supprime jamais toute seule (state.js:removePage refuse de vider la dernière),
@@ -607,6 +630,7 @@
           <button class="tile-move-left" type="button" data-i18n-aria="tile.moveLeft" data-i18n-title="tile.moveLeft" aria-label="${escapeHtml(t('tile.moveLeft'))}" title="${escapeHtml(t('tile.moveLeft'))}">${icon('chevronLeft')}</button>
           <button class="tile-move-right" type="button" data-i18n-aria="tile.moveRight" data-i18n-title="tile.moveRight" aria-label="${escapeHtml(t('tile.moveRight'))}" title="${escapeHtml(t('tile.moveRight'))}">${icon('chevronRight')}</button>
           <button class="tile-edit" type="button" data-i18n-aria="tile.edit.aria" data-i18n-title="tile.edit.title" aria-label="${escapeHtml(t('tile.edit.aria'))}" title="${escapeHtml(t('tile.edit.title'))}">${icon('edit')}</button>
+          <button class="tile-comments" type="button" data-i18n-aria="tile.comments.aria" data-i18n-title="tile.comments.title" aria-label="${escapeHtml(t('tile.comments.aria'))}" title="${escapeHtml(t('tile.comments.title'))}">${icon('comment')}<span class="tile-comments-count" hidden></span></button>
           <button class="tile-remove" type="button" data-i18n-aria="tile.remove.aria" data-i18n-title="tile.remove.title" aria-label="${escapeHtml(t('tile.remove.aria'))}" title="${escapeHtml(t('tile.remove.title'))}">${icon('close')}</button>
         </span></div>`;
     el.innerHTML = tile.type === 'kpi'
@@ -624,9 +648,54 @@
       store.removeTile(tile.id);
     });
     el.querySelector('.tile-edit').addEventListener('click', () => startEditTile(tile));
+    el.querySelector('.tile-comments').addEventListener('click', () => openCommentsModal(tile));
     el.querySelector('.tile-move-left').addEventListener('click', () => store.moveTile(tile.id, -1));
     el.querySelector('.tile-move-right').addEventListener('click', () => store.moveTile(tile.id, 1));
     return el;
+  }
+
+  // Clé localStorage dédiée (même garde `typeof localStorage !== 'undefined'` + repli silencieux
+  // que GristBI.i18n pour `gristbi_lang`, voir js/i18n.js) : le nom saisi une fois est mémorisé
+  // d'une session à l'autre, comme la langue — pas la peine de le retaper à chaque commentaire.
+  function loadSavedCommentAuthor() {
+    if (typeof localStorage === 'undefined') return '';
+    try { return localStorage.getItem('gristbi_comment_author') || ''; } catch (e) { return ''; }
+  }
+  function saveCommentAuthor(author) {
+    if (typeof localStorage === 'undefined') return;
+    try { localStorage.setItem('gristbi_comment_author', author); } catch (e) { /* stockage indisponible - sans conséquence, juste à retaper la prochaine fois */ }
+  }
+
+  // Reconstruit la liste de commentaires affichée dans #comments-modal pour `commentsModalTileId`
+  // — relit TOUJOURS l'état vivant du store (comme le gestionnaire de clic générique de
+  // js/charts.js), jamais une variable capturée au moment de l'ouverture, pour qu'un ajout de
+  // commentaire (ou un changement de langue, voir GristBI.i18n.onChange plus bas) mette la liste à
+  // jour sans avoir à refermer/rouvrir le panneau.
+  function renderCommentsModal() {
+    if (!commentsModalTileId) return;
+    const comments = GristBI.data.commentsForTile(store.getState().comments, commentsModalTileId);
+    const locale = GristBI.i18n.getLang() === 'en' ? 'en-US' : 'fr-FR';
+    commentsListEl.innerHTML = comments.map((c) => `
+      <li class="comment-item">
+        <div class="comment-meta"><strong>${escapeHtml(c.Author)}</strong><span class="comment-date">${escapeHtml(new Date(c.CreatedAt).toLocaleString(locale))}</span></div>
+        <p class="comment-text">${escapeHtml(c.Text)}</p>
+      </li>`).join('');
+    commentsEmptyEl.hidden = comments.length > 0;
+  }
+
+  function openCommentsModal(tile) {
+    commentsModalTileId = tile.id;
+    commentsModalTileEl.textContent = tile.title;
+    commentAuthorInput.value = loadSavedCommentAuthor();
+    commentTextInput.value = '';
+    renderCommentsModal();
+    commentsModal.hidden = false;
+    commentTextInput.focus();
+  }
+
+  function closeCommentsModal() {
+    commentsModal.hidden = true;
+    commentsModalTileId = null;
   }
 
   function updateFormFieldsForType() {
@@ -912,6 +981,36 @@
     settingsCloseBtn.addEventListener('click', () => { settingsModal.hidden = true; });
   }
 
+  // Panneau Commentaires : même convention hidden natif/pas de fermeture au clic sur le fond que
+  // #settings-modal ci-dessus (voir openCommentsModal/closeCommentsModal plus haut pour l'ouverture,
+  // déclenchée depuis le bouton de CHAQUE tuile, pas un bouton de bandeau unique).
+  if (commentsCloseBtn) commentsCloseBtn.addEventListener('click', closeCommentsModal);
+
+  // Ajout d'un commentaire : AddRecord côté Grist (js/grist-api.js:addComment), puis ajout
+  // optimiste côté store (pas de re-fetch de toute la table) — la liste affichée se remet à jour
+  // via renderCommentsModal(), appelée depuis render() (voir plus haut) puisque addCommentLocal
+  // déclenche notify(). Le nom est mémorisé pour la prochaine fois, le texte est vidé mais le
+  // panneau reste ouvert (plusieurs commentaires à la suite sans le rouvrir).
+  if (commentForm) {
+    commentForm.addEventListener('submit', async (evt) => {
+      evt.preventDefault();
+      if (!commentsModalTileId) return;
+      const author = commentAuthorInput.value.trim();
+      const text = commentTextInput.value.trim();
+      if (!author || !text) return;
+      saveCommentAuthor(author);
+      try {
+        const comment = await GristBI.api.addComment(currentTableId, commentsModalTileId, author, text);
+        store.addCommentLocal(comment);
+        commentTextInput.value = '';
+        commentTextInput.focus();
+      } catch (e) {
+        console.error('[GristBI] échec de l\'ajout du commentaire', e);
+        alert(t('comments.addFailed'));
+      }
+    });
+  }
+
   window.addEventListener('resize', () => GristBI.charts.resizeAll());
 
   // `window`.resize ne se déclenche pas forcément de façon fiable quand c'est le panneau Grist
@@ -1163,6 +1262,16 @@
     } catch (e) {
       console.error('[GristBI] échec de la connexion automatique au jeu de données de test de charge', e);
       rowCountEl.textContent = t('status.connectionFailed');
+    }
+    // Table dédiée, indépendante de la table de travail (voir js/state.js:comments) : chargée UNE
+    // SEULE fois par session, jamais rechargée à un changement de table (switchTable) — dans un
+    // try/catch séparé pour qu'un échec ici (ex. table de commentaires non créable) n'empêche
+    // jamais l'affichage du dashboard lui-même, la vraie raison d'être du widget.
+    try {
+      const { rows: commentRows } = await GristBI.api.loadOrCreateComments();
+      store.setComments(commentRows);
+    } catch (e) {
+      console.error('[GristBI] échec de la connexion à la table de commentaires collaboratifs (BI_Dashboard_Comments) — les commentaires resteront indisponibles pour cette session', e);
     }
   }
 
