@@ -49,6 +49,37 @@
 
   function cloneColumnar(t) { return JSON.parse(JSON.stringify(t)); }
 
+  // Simulation minimale des tables système Grist `_grist_Tables`/`_grist_Tables_column` — seule
+  // façon, côté widget, de connaître le VRAI type d'une colonne d'une table arbitraire (voir
+  // js/grist-api.js:realDateColumnIds, ajouté le 29/09/2026 : le point aveugle réel relevé ce
+  // jour-là, une table choisie par l'utilisateur via le sélecteur n'a aucun schéma JS statique
+  // connu de ce widget). Seules les colonnes réellement lues par ce widget sont modélisées
+  // (`tableId` côté `_grist_Tables` ; `parentId`/`colId`/`type` côté `_grist_Tables_column`) — un
+  // vrai `_grist_Tables_column` porte aussi `label`/`isFormula`/`widgetOptions`/etc., jamais lus
+  // ici, donc jamais simulés. N'écrase PAS un préremplissage existant (`__gristStubPreseed`) qui
+  // fournirait déjà ces tables — seulement initialisé s'il manque, pour que d'anciens scripts de
+  // test qui préremplissent une table SANS ces métadonnées continuent de fonctionner à l'identique
+  // (repli sur schéma JS statique côté widget, voir dateColumnIdsFrom, sans planter ici).
+  if (!tables['_grist_Tables']) tables['_grist_Tables'] = { id: [], tableId: [] };
+  if (!tables['_grist_Tables_column']) tables['_grist_Tables_column'] = { id: [], parentId: [], colId: [], type: [] };
+
+  function metaTableRowId(tableId) {
+    const idx = tables['_grist_Tables'].tableId.indexOf(tableId);
+    return idx >= 0 ? tables['_grist_Tables'].id[idx] : null;
+  }
+  function registerMetaTable(tableId) {
+    const newId = nextRowId++;
+    tables['_grist_Tables'].id.push(newId);
+    tables['_grist_Tables'].tableId.push(tableId);
+    return newId;
+  }
+  function registerMetaColumn(parentRowId, colId, type) {
+    tables['_grist_Tables_column'].id.push(nextRowId++);
+    tables['_grist_Tables_column'].parentId.push(parentRowId);
+    tables['_grist_Tables_column'].colId.push(colId);
+    tables['_grist_Tables_column'].type.push(type);
+  }
+
   // Type déclaré de chaque colonne, PAR TABLE (jamais mêlé à `tables[tableId]` lui-même : ce dernier
   // est renvoyé tel quel par fetchTable() via cloneColumnar, un champ technique ici s'y retrouverait
   // donc à tort comme une "colonne" de plus). Alimenté par AddTable/AddColumn, déplacé par
@@ -119,12 +150,16 @@
     docApi: {
       async listTables() {
         // Le vrai grist.docApi.listTables() renvoie un tableau de chaînes (les tableId), PAS des
-        // objets {id} — vérifié contre la définition TypeScript de l'API Grist réelle.
+        // objets {id} — vérifié contre la définition TypeScript de l'API Grist réelle. Les tables
+        // système `_grist_*` ne font PAS partie de cette liste côté vrai moteur Grist (seul
+        // `fetchTable('_grist_Tables'...)` les expose, en connaissant déjà leur nom exact — voir
+        // realDateColumnIds) : les exclure ici aussi, sans quoi elles apparaîtraient à tort dans le
+        // sélecteur de table du widget (listAvailableTables, js/grist-api.js).
         if (window.__gristStubRaceCalls > 0) {
           window.__gristStubRaceCalls--;
           return [];
         }
-        return Object.keys(tables);
+        return Object.keys(tables).filter((id) => !id.startsWith('_grist_'));
       },
       async fetchTable(tableId) {
         return tables[tableId] ? cloneColumnar(tables[tableId]) : { id: [] };
@@ -163,6 +198,13 @@
             // qui l'exclut des sélecteurs de colonne.
             t.manualSort = [];
             tables[actualTableId] = t;
+            const parentRowId = registerMetaTable(actualTableId);
+            for (const col of columns) registerMetaColumn(parentRowId, col.id, col.type);
+            // `ManualSortPos` : type interne réel de la colonne `manualSort` côté moteur Grist —
+            // affirmé de mémoire, jamais revérifié contre un vrai document dans cette session (sans
+            // impact pratique ici : ni 'Date' ni 'DateTime', donc jamais retenue par
+            // realDateColumnIds quelle que soit l'exactitude de cette chaîne précise).
+            registerMetaColumn(parentRowId, 'manualSort', 'ManualSortPos');
             retValues.push({ id: Object.keys(tables).length, table_id: actualTableId, columns: columns.map((c) => c.id) });
           } else if (kind === 'AddRecord') {
             const fields = action[3] || {};
@@ -199,6 +241,8 @@
             t[colId] = new Array(t.id.length).fill(null);
             if (!columnTypesByTable[tableId]) columnTypesByTable[tableId] = {};
             columnTypesByTable[tableId][colId] = colOpts.type;
+            const parentRowId = metaTableRowId(tableId);
+            if (parentRowId != null) registerMetaColumn(parentRowId, colId, colOpts.type);
             retValues.push(null);
           } else if (kind === 'RenameTable') {
             const oldTableId = action[1];
@@ -218,6 +262,8 @@
             delete tables[oldTableId];
             columnTypesByTable[newTableId] = columnTypesByTable[oldTableId];
             delete columnTypesByTable[oldTableId];
+            const metaIdx = tables['_grist_Tables'].tableId.indexOf(oldTableId);
+            if (metaIdx >= 0) tables['_grist_Tables'].tableId[metaIdx] = newTableId;
             retValues.push(null);
           } else {
             console.warn('[grist-stub] action non gérée par le mock:', kind);

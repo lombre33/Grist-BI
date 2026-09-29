@@ -1797,11 +1797,11 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     `fetchTable`/`onRecords` les renvoie, sans lecture des vrais types Grist `_grist_Tables_column`,
     voir la correction technique du 2026-09-15 dans ROADMAP.md) : le format exact renvoyé pour une
     colonne `Date` Grist réelle (chaîne ISO ? timestamp Unix ? autre ?) n'est pas confirmé ici.
-    **Le format lui-même est désormais pris en charge — voir le point 15 ci-dessous** : pour la
-    table de travail (`BI_StressTest`), un nombre (secondes epoch UTC) est reconverti en chaîne ISO
-    à la lecture, donc `TRY_CAST(... AS DATE)`/`parseDateValue` reçoivent bien le format attendu.
-    Reste non couvert : une table arbitraire choisie via le sélecteur de table (le point (d)
-    d'origine, ci-dessus, garde donc sa validité pour CE cas précis).
+    **Le format lui-même est désormais pris en charge — voir le point 15 ci-dessous** : un nombre
+    (secondes epoch UTC) est reconverti en chaîne ISO à la lecture, donc `TRY_CAST(... AS
+    DATE)`/`parseDateValue` reçoivent bien le format attendu — pour la table de travail
+    (`BI_StressTest`) ET, depuis le correctif généralisé du même jour (PR #17), pour une table
+    arbitraire choisie via le sélecteur de table (lecture des vrais types via `_grist_Tables_column`).
 15. **Vérification du format réel de l'API Grist pour trois points précis, demandée le 29/09/2026
     après la livraison du drill-down et des commentaires collaboratifs** (la campagne réelle du
     19/09/2026, §"Validé en conditions réelles" plus haut dans ce document, avait testé le volume,
@@ -1817,12 +1817,23 @@ dans une seule instance de widget, avec ses propres tuiles internes.
       colonne compte). Appelé depuis `js/grist-api.js` (`dateColumnIdsFrom(columns)`, calculé à
       partir du schéma JS connu de ce widget) dans `loadOrCreateTable`/`ensureColumnsUpToDate` — donc
       pour `BI_StressTest` ET `BI_Dashboard_Comments`, les deux seules tables dont ce widget connaît
-      le schéma à l'avance. **Non corrigé, par construction, et documenté comme tel** : `loadTable()`
-      (sélecteur de table, data blending) n'a aucune métadonnée de type pour une table arbitraire —
-      une vraie colonne Date y resterait mal classée par `inferColumnKind`. Une heuristique sur la
-      seule valeur (plage plausible d'epoch) a été jugée trop fragile pour ce premier correctif
-      (risque de faux positif sur une vraie mesure numérique) : laissé comme point ouvert plutôt que
-      traité par un correctif hâtif.
+      le schéma à l'avance. **Généralisé le même jour (PR #17), à la demande du coordinateur du
+      projet** : le cas laissé ouvert par le premier correctif était en réalité le cas PRINCIPAL, pas
+      un cas limite — Antoine choisit ses propres tables via le sélecteur, avec ses propres colonnes
+      Date, jamais couvertes par un schéma JS statique. `grist-api.js:realDateColumnIds(tableId)` lit
+      le VRAI type de chaque colonne via les tables système Grist (`_grist_Tables`/
+      `_grist_Tables_column`, accessible avec l'accès `full` déjà demandé — voir CLAUDE.md §6,
+      correction technique du 2026-09-15, qui avait déjà identifié cette lecture comme possible,
+      jamais faite avant ce jour) : couvre désormais `loadTable()` (sélecteur de table, data
+      blending) aussi, plus seulement les deux tables au schéma JS connu. Une heuristique sur la
+      seule valeur (plage plausible d'epoch, sans lecture de métadonnées) avait été envisagée pour le
+      premier correctif et jugée trop fragile (risque de faux positif sur une vraie mesure numérique)
+      — la lecture des vrais types s'est révélée une solution plus propre, sans ce risque, une fois
+      relevé que l'accès `full` déjà demandé par ce widget suffisait à la rendre possible sans
+      négociation d'accès supplémentaire. Repli sur `[]` (comportement du premier correctif) si
+      cette lecture échoue — droits restreints, ou tables système absentes/renommées dans une future
+      version de Grist : dans ce cas, seul le schéma JS statique continue de couvrir
+      `BI_StressTest`/`BI_Dashboard_Comments`, sans crash.
       - **Testé sous Node** (`dev-tests/test-data.js`) : `tableToRows`/`epochSecondsToIsoDate`, y
         compris le cas adversarial d'une mesure numérique dont la valeur coïncide avec un epoch
         plausible sur une colonne NON listée dans `dateColumnIds` (doit rester un nombre, jamais
@@ -1840,14 +1851,27 @@ dans une seule instance de widget, avec ses propres tuiles internes.
         n'apparaît QUE pour une colonne classée "date" par `inferColumnKind`) réapparaît correctement
         pour la colonne `Date` malgré son format brut numérique — preuve bout en bout que le correctif
         couvre bien le chemin réellement utilisé par le widget, pas seulement la fonction isolée.
+      - **Généralisation (PR #17) testée sous Playwright** : une table arbitraire ("VentesRegion",
+        jamais connue du schéma JS statique de ce widget), choisie via `#table-select`, avec une
+        colonne `DateVente` réellement typée `Date` uniquement dans les métadonnées système
+        (`_grist_Tables`/`_grist_Tables_column` simulées par le mock) — la valeur est bien convertie
+        en ISO, le bouton de suggestion de hiérarchie apparaît pour `DateVente`, et les colonnes
+        dérivées Année/Trimestre/Mois (PR #14) se calculent correctement dessus, malgré l'absence
+        totale de schéma statique pour cette table. Vérifié aussi : `_grist_Tables`/
+        `_grist_Tables_column` n'apparaissent jamais dans `listTables()` (pas de fuite dans le
+        sélecteur), et un échec de cette lecture (droits restreints simulés) se replie proprement sur
+        le schéma JS statique pour `BI_StressTest`, sans crash.
       - **Non vérifié depuis cette session** : le format exact affirmé ici (secondes depuis l'epoch
-        UTC pour `Date`) vient de la documentation/du comportement connu du moteur Grist, pas d'un
-        nouvel aller-retour contre un vrai document Grist ouvert pendant cette investigation (la
+        UTC pour `Date`) et la forme exacte de `_grist_Tables_column` (`parentId`/`colId`/`type`,
+        `DateTime:<fuseau>`) viennent de la documentation/du comportement connu du moteur Grist, pas
+        d'un nouvel aller-retour contre un vrai document Grist ouvert pendant cette investigation (la
         campagne du 19/09/2026 ne l'avait pas testé non plus, voir plus haut). Une vérification à la
-        console d'un vrai widget (`JSON.stringify(await grist.docApi.fetchTable('BI_StressTest'))`)
-        reste le seul point de confirmation manquant. `DateTime` n'a délibérément pas été traité
-        (aucune colonne de ce projet n'utilise ce type, et `parseDateValue` ne sait de toute façon pas
-        parser une composante horaire — un futur ajout devra traiter les deux ensemble).
+        console d'un vrai widget (`JSON.stringify(await grist.docApi.fetchTable('_grist_Tables_column'))`)
+        reste le seul point de confirmation manquant. Une colonne `DateTime:<fuseau>` est désormais
+        traitée comme `Date` par `realDateColumnIds` (même conversion en 'AAAA-MM-JJ', composante
+        horaire perdue — `parseDateValue` ne sait de toute façon gérer qu'une précision journalière) ;
+        `dateColumnIdsFrom` (schéma JS statique) reste volontairement limité à `Date` seul, aucune
+        colonne de ce projet n'utilisant `DateTime`.
     - **Colonnes `Ref:` (référence) renvoyées en id brut** — déjà couvert, sans changement de code
       nécessaire : voir l'entrée du 2026-09-15 sur `blendJoinColumns()`/l'ajout de `id` comme clé de
       jointure sélectionnable (§ data blending, plus haut dans ce document). Le mécanisme retenu à
