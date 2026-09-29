@@ -19,10 +19,13 @@
   const GristBI = global.GristBI || (global.GristBI = {});
 
   // Même version/CDN/hash SRI que publipostageGrist (js/pdf-export.js de ce dépôt-là, vérifié le
-  // 2026-09-29) — pas revérifié depuis CE sandbox, dont la politique réseau bloque cdnjs.cloudflare.com
-  // (même catégorie que le blocage CDN déjà rencontré pour ECharts, voir HYPOTHESES.md point 3) ;
-  // fonctionne dans un navigateur normal, jamais confirmé ici même. Recalculer ce hash si la version
-  // change : `curl -s <url> | openssl dgst -sha384 -binary | openssl base64 -A`.
+  // 2026-09-29). cdnjs.cloudflare.com reste bloqué par la politique réseau de ce sandbox (même
+  // catégorie que le blocage CDN déjà rencontré pour ECharts), mais le hash de pdfmake.min.js a été
+  // recoupé avec le paquet npm officiel de cette version (identique) et le chemin de succès complet
+  // (chargement, rendu d'image, tableaux) vérifié en local avec cette copie — voir HYPOTHESES.md,
+  // entrée "Export PDF du dashboard", pour le détail et ce qui reste réellement non testé (le hash de
+  // vfs_fonts.min.js, la requête réseau réelle vers cdnjs). Recalculer ce hash si la version change :
+  // `curl -s <url> | openssl dgst -sha384 -binary | openssl base64 -A`.
   const PDF_LIB_URLS = [
     { src: 'https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js', integrity: 'sha384-VFQrHzqBh5qiJIU0uGU5CIW3+OWpdGGJM9LBnGbuIH2mkICcFZ7lPd/AAtI7SNf7' },
     { src: 'https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.min.js', integrity: 'sha384-dWs4+zGqy/KS6giKxiK+6iowhidQwjVFaiE1lMar36QwIulE44VyBSQp0brMCx4D' }

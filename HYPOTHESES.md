@@ -1324,13 +1324,27 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     dans la mémoire du projet), ce qui a permis de vérifier RÉELLEMENT ce chemin d'échec plutôt que
     de le supposer correct. L'export Excel reste fonctionnel après cet échec (pas de corruption
     d'état partagé).
-  - **Jamais vérifié en conditions réelles depuis ce projet** (même limite structurelle que le point
-    3 ci-dessous pour ECharts, avant qu'il soit vendorisé — sauf que pdfmake ne le sera pas, par
-    choix d'Antoine) : le chemin de SUCCÈS n'a jamais pu être exécuté ici — chargement réel de
-    pdfmake/vfs_fonts depuis cdnjs, `getDataURL()` sur une vraie instance ECharts en conditions
-    réelles Grist, rendu effectif du PDF téléchargé (mise en page, lisibilité des images, tableaux
-    pivot/KPI). À faire au prochain accès à un vrai navigateur/document Grist non bloqué par cette
-    politique réseau précise.
+  - **Chemin de succès vérifié localement (2026-09-29)**, en contournant UNIQUEMENT le blocage réseau
+    du sandbox, jamais le code livré : `cdnjs.cloudflare.com` reste injoignable ici, mais
+    `registry.npmjs.org` (hors de la politique réseau qui bloque cdnjs) l'est — le paquet npm
+    `pdfmake@0.2.7` en a été téléchargé, et `build/pdfmake.min.js` qu'il contient a un hash SHA-384
+    **identique** à celui codé en dur dans `js/pdf-export.js` (donc, très probablement, le même
+    fichier que sert cdnjs pour cette version). Une copie de ce fichier a servi à un test Playwright
+    contre `dev-tests/harness.html` (requêtes vers cdnjs interceptées et redirigées vers cette copie
+    locale, jamais vers le vrai `js/pdf-export.js` livré, qui garde son URL cdnjs inchangée) : de
+    vraies tuiles (bar, KPI, tableau croisé, mesures YTD et N-1) sur des données réalistes (2688
+    lignes, dates réelles sur 2 ans) ont produit un vrai PDF de 3 pages, inspecté avec `pdfjs-dist` —
+    6 images de graphique correctement dimensionnées (544×~300px, ni vides ni dégénérées), le tableau
+    croisé et le KPI affichant les mêmes totaux agrégés (582882, cohérents entre eux), pagination
+    automatique correcte. `vfs_fonts.js` du paquet npm n'est pas minifié (hash différent de la
+    version cdnjs, mêmes données de police) : le test a désactivé l'attribut `integrity` du
+    `<script>` injecté, UNIQUEMENT pour ce test, jamais dans `js/pdf-export.js`.
+  - **Ce qui reste réellement non vérifié depuis ce projet** : le chargement RÉSEAU réel depuis
+    `cdnjs.cloudflare.com` (ce sandbox le bloque toujours, `ERR_TUNNEL_CONNECTION_FAILED`) et le hash
+    SRI de `vfs_fonts.min.js` codé dans `js/pdf-export.js` (non recalculable ici, cdnjs ne servant
+    qu'une version minifiée introuvable sur npm) — risque jugé faible vu la correspondance exacte déjà
+    confirmée pour `pdfmake.min.js`, mais un premier essai bouton "Exporter en PDF" dans un vrai
+    navigateur reste la seule vérification qui couvre aussi ce dernier point.
   - **Hors scope de ce premier export** (documenté, pas oublié) : les autres pages du dashboard
     (seulement la page affichée), le PPTX (PptxGenJS, PR séparée à venir).
 
