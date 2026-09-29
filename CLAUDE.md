@@ -303,6 +303,33 @@ Cette liste condense les bugs réels les plus instructifs (détail complet dans 
 15. **La forme réelle de `grist.docApi.listTables()`** est `Promise<string[]>`, pas des objets
     `{id}` — un décalage entre le mock et l'API réelle a laissé une branche défensive du code
     totalement non exercée par les tests jusqu'à ce que ce bug soit trouvé.
+16. **Une colonne réellement typée `Date`/`DateTime` côté Grist renvoie sa valeur, via
+    `fetchTable()`, en nombre de secondes depuis l'epoch UTC — jamais la chaîne ISO 'AAAA-MM-JJ'**
+    que ce widget écrit lui-même via `AddRecord` (`js/demo-data.js:deriveDateColumn`). Repéré le
+    29/09/2026 en vérifiant le format réel de l'API Grist après la livraison du drill-down
+    hiérarchique (bug n°14 de cette liste concerne le même point aveugle méthodologique : la
+    campagne réelle du 19/09/2026 n'avait testé ni ce format, ni celui des colonnes Reference, voir
+    HYPOTHESES.md) — la colonne `Date` de `BI_StressTest` (`{id:'Date', type:'Date'}` dans
+    `js/demo-data.js:COLUMNS_LARGE`) est réellement typée ainsi, donc directement concernée. Sans
+    correctif, `GristBI.data.parseDateValue` (chaîne stricte `^\d{4}-\d{2}-\d{2}$`) échoue sur un
+    nombre, et `inferColumnKind` (`js/main.js`) classe alors la colonne comme "nombre" au lieu de
+    "date" — cassant silencieusement le drill-down hiérarchique automatique et le sélecteur de
+    colonne date des mesures façon DAX. Corrigé par `GristBI.data.tableToRows(table, dateColumnIds)`
+    (nouveau 2e paramètre optionnel, reconvertit en 'AAAA-MM-JJ'), appelé depuis `grist-api.js` avec
+    `dateColumnIdsFrom(columns)` — mais UNIQUEMENT pour les tables dont ce widget connaît le schéma
+    à l'avance (`BI_StressTest`, `BI_Dashboard_Comments`), jamais pour une table arbitraire choisie
+    via le sélecteur de table ou le data blending (`loadTable`), où le type réel des colonnes n'est
+    toujours pas lu (voir §6, correction technique du 2026-09-15 : possible mais pas fait). Le mock
+    (`dev-tests/grist-stub.js`) a été rendu fidèle à ce format précis (une colonne déclarée `Date`
+    est désormais sérialisée en nombre par `AddRecord`/`UpdateRecord`, comme le ferait réellement
+    Grist), pour que ce scénario reste couvert par `dev-tests/test-data.js` à l'avenir. **Ce qui
+    reste non vérifié depuis cette session** : ce format exact (secondes depuis l'epoch UTC) est
+    affirmé à partir de la documentation/du comportement connu du moteur Grist, pas revérifié contre
+    un vrai document Grist ouvert dans cette session précise — une vérification à la console d'un
+    vrai widget (`JSON.stringify(await grist.docApi.fetchTable('BI_StressTest'))`) reste le seul
+    point de confirmation manquant. Voir HYPOTHESES.md pour le détail complet, y compris les deux
+    autres points vérifiés le même jour (colonnes Reference, collision `AddTable` pour
+    `BI_Dashboard_Comments`).
 
 ## 8. Règles du projet (vérifiées dans le code et la documentation)
 
