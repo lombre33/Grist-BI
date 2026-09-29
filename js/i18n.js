@@ -151,6 +151,7 @@
     'tileForm.dimension.label': { fr: 'Dimension', en: 'Dimension' },
     'tileForm.dimension.labelRows': { fr: 'Dimension (lignes)', en: 'Dimension (rows)' },
     'tileForm.columnDimension.label': { fr: 'Dimension (colonnes)', en: 'Dimension (columns)' },
+    'tileForm.suggestDateHierarchy': { fr: 'Détailler par Année/Trimestre/Mois/Jour', en: 'Break down by Year/Quarter/Month/Day' },
     'tileForm.drill.label': { fr: 'Drill-down', en: 'Drill-down' },
     'tileForm.drill.addLevel': { fr: '+ Niveau', en: '+ Level' },
     'tileForm.drill.crossFilter': { fr: 'Filtrer aussi les autres cartes en détaillant', en: 'Also filter other tiles when drilling down' },

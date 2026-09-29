@@ -64,6 +64,7 @@
   const dimensionField = document.getElementById('tile-dimension-field');
   const dimensionLabel = document.getElementById('tile-dimension-label');
   const dimensionSelect = document.getElementById('tile-dimension');
+  const suggestDateHierarchyBtn = document.getElementById('tile-suggest-date-hierarchy');
   const columnDimensionField = document.getElementById('tile-column-dimension-field');
   const columnDimensionSelect = document.getElementById('tile-column-dimension');
   const drillField = document.getElementById('tile-drill-field');
@@ -217,6 +218,7 @@
     fillCombobox(dateColumnSelect, cols);
     fillCombobox(filterColumnSelect, cols);
     updateAdvancedFilterFieldsForColumn(rows);
+    updateSuggestDateHierarchyVisibility(rows);
   }
 
   // Devine le "type" d'une colonne en inspectant une VALEUR réelle plutôt qu'un nom de colonne
@@ -235,6 +237,41 @@
     if (GristBI.data.parseDateValue(v) != null) return 'date';
     if (typeof v === 'number' || (typeof v === 'string' && v !== '' && Number.isFinite(Number(v)))) return 'number';
     return 'text';
+  }
+
+  // Drill-down hiérarchique automatique (ROADMAP.md Tier 2) : dérive Année/Trimestre/Mois (voir
+  // GristBI.data.deriveDateHierarchyColumns) pour CHAQUE colonne classée "date" par
+  // inferColumnKind ci-dessus — automatique et sans configuration, contrairement au choix
+  // d'utiliser cette hiérarchie pour une tuile donnée, qui reste une suggestion à confirmer (voir
+  // updateSuggestDateHierarchyVisibility/le clic du bouton plus bas). `availableColumns(rows)` est
+  // calculé UNE FOIS avant la boucle (pas recalculé à chaque itération) : les colonnes dérivées
+  // elles-mêmes (des chaînes comme "T1"/"01", jamais au format AAAA-MM-JJ) ne repasseraient de
+  // toute façon jamais le test `inferColumnKind === 'date'`, mais autant rester explicite plutôt
+  // que de dépendre de cette propriété. Appelé depuis applyBlend (js/main.js), jamais depuis
+  // refreshColumnSelects : cette dernière ne fait que peupler des comboboxes, jamais transformer les
+  // lignes elles-mêmes.
+  function withDateHierarchies(rows) {
+    if (!rows.length) return rows;
+    let enriched = rows;
+    availableColumns(rows).forEach((col) => {
+      if (inferColumnKind(col, rows) === 'date') enriched = GristBI.data.deriveDateHierarchyColumns(enriched, col);
+    });
+    return enriched;
+  }
+
+  // Bouton "Détailler par Année/Trimestre/Mois/Jour" : visible seulement quand la dimension
+  // choisie est une colonne classée "date" par inferColumnKind ET que le drill-down a un sens pour
+  // ce type de tuile (formHasNoDimension couvre KPI/jauge/mode mesure ; le pivot n'a pas de
+  // drill-down non plus, voir supportsDrillDown). N'applique rien tout seul — reste une suggestion
+  // à confirmer d'un clic (voir ROADMAP.md : seule la dérivation des colonnes elle-même,
+  // withDateHierarchies ci-dessus, est automatique et sans confirmation). `rows` optionnel : passé
+  // explicitement par refreshColumnSelects, même raison que pour
+  // updateAdvancedFilterFieldsForColumn (store.getState().rows n'est pas encore à jour à cet
+  // instant lors d'un changement de table).
+  function updateSuggestDateHierarchyVisibility(rows) {
+    const noDrill = formHasNoDimension() || tileTypeSelect.value === 'pivot';
+    const column = dimensionSelect.value;
+    suggestDateHierarchyBtn.hidden = noDrill || !column || inferColumnKind(column, rows) !== 'date';
   }
 
   // Bascule les champs du formulaire de filtre avancé selon le "type" inféré de la colonne
@@ -618,14 +655,16 @@
     measureYField.hidden = !isScatter;
     measureLabel.textContent = t(isScatter ? 'tileForm.measure.labelX' : 'tileForm.measure.label');
     updateDrillLevelsUI();
+    updateSuggestDateHierarchyVisibility();
   }
 
-  function startEditTile(tile) {
-    editingTileId = tile.id;
-    tileTypeSelect.value = tile.type;
-    if (tile.dimension) dimensionSelect.value = tile.dimension;
+  // Remplit les niveaux de drill-down du formulaire avec `levels` (noms de colonnes réelles ou
+  // dérivées, ex. "Date.Trimestre") : crée les comboboxes de niveau manquantes au besoin, exactement
+  // comme le faisait l'édition d'une tuile existante avant cette extraction — réutilisé par le
+  // bouton de suggestion Année/Trimestre/Mois/Jour ci-dessous, qui doit remplir les niveaux 2 et 3
+  // sans que l'utilisateur ait cliqué "+ Niveau" à la main.
+  function setDrillLevels(levels) {
     resetDrillLevels();
-    const levels = tileDrillLevels(tile);
     const cols = availableColumns(store.getState().rows);
     levels.forEach((lvl, i) => {
       if (i >= drillLevelSelects.length) {
@@ -636,6 +675,14 @@
       }
       drillLevelSelects[i].value = lvl;
     });
+    updateDrillLevelsUI();
+  }
+
+  function startEditTile(tile) {
+    editingTileId = tile.id;
+    tileTypeSelect.value = tile.type;
+    if (tile.dimension) dimensionSelect.value = tile.dimension;
+    setDrillLevels(tileDrillLevels(tile));
     drillCrossFilterCheckbox.checked = !!tile.drillCrossFilter;
     columnDimensionSelect.value = tile.columnDimension || '';
     measureYSelect.value = tile.measureY || '';
@@ -662,6 +709,21 @@
 
   tileTypeSelect.addEventListener('change', updateFormFieldsForType);
   measureModeSelect.addEventListener('change', updateFormFieldsForType);
+  dimensionSelect.addEventListener('change', () => updateSuggestDateHierarchyVisibility());
+
+  // Applique la suggestion Année/Trimestre/Mois/Jour : bascule la dimension sur la colonne Année
+  // dérivée (voir withDateHierarchies) et préremplit les niveaux de drill-down avec
+  // Trimestre/Mois/`dateColumn` — la colonne de date d'origine sert de dernier niveau (Jour), voir
+  // GristBI.data.deriveDateHierarchyColumns pour la raison de ne pas dériver ce niveau. Un clic
+  // configure, ne soumet pas le formulaire — l'utilisateur garde la main pour ajuster avant de
+  // valider, comme pour tout autre choix de dimension/drill-down.
+  suggestDateHierarchyBtn.addEventListener('click', () => {
+    const dateColumn = dimensionSelect.value;
+    if (!dateColumn || inferColumnKind(dateColumn) !== 'date') return;
+    dimensionSelect.value = `${dateColumn}.Annee`;
+    setDrillLevels([`${dateColumn}.Trimestre`, `${dateColumn}.Mois`, dateColumn]);
+    updateSuggestDateHierarchyVisibility();
+  });
 
   addTileForm.addEventListener('submit', (evt) => {
     evt.preventDefault();
@@ -908,26 +970,31 @@
   // lignes déjà jointes, voir la déclaration de `currentPrimaryRows` plus haut) avec la table
   // secondaire de `blend`, si elle est complètement configurée (les 3 champs remplis — un blend
   // partiel équivaut à "aucune jointure", plus simple et plus sûr qu'un état intermédiaire à moitié
-  // appliqué). Pousse toujours le résultat dans le store, y compris `blend == null` (repasse alors
-  // simplement sur les lignes brutes) : c'est l'unique point d'entrée qui alimente
-  // `refreshColumnSelects`/`store.setRows` après le chargement initial, pour que ces deux appels
-  // ne soient jamais dupliqués/oubliés à un site d'appel.
+  // appliqué). `withDateHierarchies` (voir plus haut) enrichit ensuite systématiquement le résultat,
+  // qu'une jointure ait eu lieu ou non — jamais sauté, y compris sans blend, sinon la hiérarchie
+  // Année/Trimestre/Mois de la table de travail principale elle-même ne serait jamais dérivée.
+  // Pousse toujours le résultat dans le store, y compris `blend == null` : c'est l'unique point
+  // d'entrée qui alimente `refreshColumnSelects`/`store.setRows` après le chargement initial, pour
+  // que ces deux appels ne soient jamais dupliqués/oubliés à un site d'appel.
   async function applyBlend(blend) {
     if (!blend || !blend.secondaryTableId || !blend.primaryColumn || !blend.secondaryColumn) {
-      refreshColumnSelects(currentPrimaryRows);
-      store.setRows(currentPrimaryRows);
+      const rows = withDateHierarchies(currentPrimaryRows);
+      refreshColumnSelects(rows);
+      store.setRows(rows);
       return;
     }
     try {
       const { rows: secondaryRows } = await GristBI.api.loadTable(blend.secondaryTableId);
       const merged = GristBI.data.blendRows(currentPrimaryRows, secondaryRows, blend.primaryColumn, blend.secondaryColumn, blend.secondaryTableId);
-      refreshColumnSelects(merged);
-      store.setRows(merged);
+      const rows = withDateHierarchies(merged);
+      refreshColumnSelects(rows);
+      store.setRows(rows);
     } catch (e) {
       console.error('[GristBI] échec de la jointure avec la table secondaire', e);
       alert(t('blend.failed', { table: blend.secondaryTableId }));
-      refreshColumnSelects(currentPrimaryRows);
-      store.setRows(currentPrimaryRows);
+      const rows = withDateHierarchies(currentPrimaryRows);
+      refreshColumnSelects(rows);
+      store.setRows(rows);
     }
   }
 

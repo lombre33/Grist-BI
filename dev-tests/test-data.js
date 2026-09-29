@@ -485,6 +485,48 @@ const rows = [
   console.log('OK blendRows (clé secondaire dupliquée : dernière ligne gagne, limite documentée)');
 }
 
+// deriveDateHierarchyColumns : drill-down hiérarchique automatique (ROADMAP.md Tier 2) — Année/
+// Trimestre/Mois dérivés d'une colonne Date, en plus de la colonne d'origine (jamais un
+// remplacement). Cas nominal : plusieurs mois couvrant plusieurs trimestres.
+{
+  const rows = [
+    { id: 1, Date: '2026-01-15', Montant: 10 }, // T1
+    { id: 2, Date: '2026-04-02', Montant: 20 }, // T2
+    { id: 3, Date: '2026-12-31', Montant: 30 }  // T4
+  ];
+  const enriched = data.deriveDateHierarchyColumns(rows, 'Date');
+  assert.deepStrictEqual(enriched, [
+    { id: 1, Date: '2026-01-15', Montant: 10, 'Date.Annee': 2026, 'Date.Trimestre': 'T1', 'Date.Mois': '01' },
+    { id: 2, Date: '2026-04-02', Montant: 20, 'Date.Annee': 2026, 'Date.Trimestre': 'T2', 'Date.Mois': '04' },
+    { id: 3, Date: '2026-12-31', Montant: 30, 'Date.Annee': 2026, 'Date.Trimestre': 'T4', 'Date.Mois': '12' }
+  ]);
+  console.log('OK deriveDateHierarchyColumns (cas nominal : Année/Trimestre/Mois dérivés, colonne Date conservée)');
+}
+
+// deriveDateHierarchyColumns : valeur qui ne parse pas comme date (voir parseDateValue, format
+// AAAA-MM-JJ strict) -> les 3 colonnes dérivées à null, jamais absentes (même raison que
+// blendRows : availableColumns(), js/main.js, ne lit que rows[0]).
+{
+  const rows = [
+    { id: 1, Date: '2026-01-15' },
+    { id: 2, Date: 'pas une date' },
+    { id: 3, Date: null }
+  ];
+  const enriched = data.deriveDateHierarchyColumns(rows, 'Date');
+  assert.deepStrictEqual(Object.keys(enriched[0]), Object.keys(enriched[1]));
+  assert.strictEqual(enriched[1]['Date.Annee'], null);
+  assert.strictEqual(enriched[1]['Date.Trimestre'], null);
+  assert.strictEqual(enriched[1]['Date.Mois'], null);
+  assert.strictEqual(enriched[2]['Date.Annee'], null);
+  console.log('OK deriveDateHierarchyColumns (valeur non parseable : colonnes dérivées à null, jamais absentes)');
+}
+
+// deriveDateHierarchyColumns : tableau vide -> tableau vide, sans exception
+{
+  assert.deepStrictEqual(data.deriveDateHierarchyColumns([], 'Date'), []);
+  console.log('OK deriveDateHierarchyColumns (tableau vide : identité)');
+}
+
 // state: toggle de filtre croisé - un seul filtre par colonne (activation/toggle-off/remplacement)
 {
   const store = state.createStore();

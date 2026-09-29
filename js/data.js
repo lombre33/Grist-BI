@@ -439,11 +439,50 @@
     });
   }
 
+  // Drill-down hiérarchique automatique (ROADMAP.md Tier 2) : dérive Année/Trimestre/Mois à partir
+  // d'UNE colonne Date déjà présente dans les lignes (`dateColumn`, format AAAA-MM-JJ, voir
+  // `parseDateValue`). Le niveau "Jour" n'est PAS dérivé séparément — la colonne Date d'origine
+  // (déjà une chaîne unique par jour) sert elle-même de dernier niveau, voir js/main.js
+  // (suggestion de hiérarchie sur le formulaire de tuile, jamais silencieuse : ROADMAP.md dit
+  // explicitement "reste une suggestion à confirmer").
+  //
+  // Trimestre/Mois en `T1`.."T4"/`01`.."12", SANS préfixer l'année : une fois drillé dans une Année
+  // donnée, `GristBI.data.rowsForTile` a déjà filtré les lignes sur cette année (chaque niveau du
+  // chemin de drill s'applique en filtre AND, voir `rowsForTile`/`drillInto` dans js/state.js) —
+  // `T1`/`01` restent donc sans ambiguïté au niveau où ils sont group-by, pas besoin d'un préfixe
+  // qui alourdirait l'affichage.
+  //
+  // Colonnes dérivées TOUJOURS EN PLUS de `dateColumn` (jamais un remplacement), nommées
+  // `${dateColumn}.Annee`/`.Trimestre`/`.Mois` (même convention de préfixe que `blendRows` pour les
+  // colonnes secondaires) : une ligne dont `dateColumn` ne parse pas comme date reçoit `null` pour
+  // les 3, jamais une clé absente (même raison que `blendRows` : `availableColumns()`, js/main.js,
+  // ne lit que `rows[0]` pour peupler les sélecteurs de colonne).
+  //
+  // Pas de niveau "Pays > Région > Ville" ou autre hiérarchie non temporelle : ROADMAP.md le dit
+  // explicitement non fiable sans un type Grist dédié, contrairement à une colonne Date — resterait
+  // une pure suggestion de nom de colonne à deviner, hors périmètre de ce premier jet.
+  function deriveDateHierarchyColumns(rows, dateColumn) {
+    const anneeKey = `${dateColumn}.Annee`;
+    const trimestreKey = `${dateColumn}.Trimestre`;
+    const moisKey = `${dateColumn}.Mois`;
+    return (rows || []).map((row) => {
+      const ms = parseDateValue(row[dateColumn]);
+      if (ms == null) return Object.assign({}, row, { [anneeKey]: null, [trimestreKey]: null, [moisKey]: null });
+      const d = new Date(ms);
+      const month = d.getUTCMonth(); // 0-11
+      return Object.assign({}, row, {
+        [anneeKey]: d.getUTCFullYear(),
+        [trimestreKey]: `T${Math.floor(month / 3) + 1}`,
+        [moisKey]: String(month + 1).padStart(2, '0')
+      });
+    });
+  }
+
   return {
     tableToRows, applyFilters, matchesFilter, sameValue, parseDateValue, relativeDateRange,
     RELATIVE_DATE_PRESETS, groupByAggregate, aggregateSingle, pivotTable, distinctColumnValues,
     computeTrend, periodLabel, measureSeriesForTile, escapeHtml, tileDrillLevels, currentDimension,
     rowsForTile, tileExportSheet, tileExportKind, sanitizeSheetName, buildWorkbookSheets, blendRows,
-    AGGREGATORS
+    deriveDateHierarchyColumns, AGGREGATORS
   };
 });
