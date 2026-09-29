@@ -84,6 +84,7 @@
   const deleteBookmarkBtn = document.getElementById('delete-bookmark');
   const saveBookmarkBtn = document.getElementById('save-bookmark');
   const exportExcelBtn = document.getElementById('export-excel');
+  const exportPdfBtn = document.getElementById('export-pdf');
   const tableSelectInput = document.getElementById('table-select');
   const pageTabsEl = document.getElementById('page-tabs');
   const addPageBtn = document.getElementById('add-page');
@@ -733,6 +734,20 @@
     } catch (e) {
       console.error('[GristBI] échec de l\'export Excel', e);
       alert("Échec de l'export Excel — voir la console (F12).");
+    }
+  });
+
+  // Seulement la page actuellement affichée (voir js/pdf-export.js), pas toutes les pages comme
+  // l'export Excel — chaque graphique capturé est celui déjà rendu de CETTE page. pdfmake est
+  // chargé depuis un CDN externe (dérogation d'Antoine, voir CLAUDE.md) : un échec réseau doit être
+  // clairement dit à l'utilisateur plutôt que de rester silencieux ou de casser la page.
+  exportPdfBtn.addEventListener('click', async () => {
+    try {
+      const exported = await GristBI.exportPdf.exportDashboardToPdf(store.getState());
+      if (!exported) alert('Aucune tuile à exporter.');
+    } catch (e) {
+      console.error('[GristBI] échec de l\'export PDF', e);
+      alert(GristBI.exportPdf.STRINGS.networkError);
     }
   });
 

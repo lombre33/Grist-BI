@@ -308,6 +308,17 @@
     return applyFilters(state.rows, filtersFromOtherTiles.concat(state.advancedFilters || []).concat(drillPath));
   }
 
+  // Comment une tuile doit être représentée dans un export visuel (PDF/PPT, voir js/pdf-export.js) :
+  // 'image' pour toute tuile rendue par une instance ECharts déjà en cache (bar y compris en mode
+  // mesure DAX, pie, treemap, scatter, gauge — voir GristBI.charts.getInstance), capturée telle
+  // qu'affichée à l'écran plutôt que recalculée (contourne le calcul ASYNCHRONE des mesures DAX,
+  // contrairement à tileExportSheet qui doit s'en excuser explicitement pour rester synchrone) ;
+  // 'table' pour le pivot (déjà une table HTML, pas de graphique) et le KPI (texte simple, pas de
+  // graphique) — ces deux réutilisent directement tileExportSheet, déjà correct pour eux.
+  function tileExportKind(tile) {
+    return (tile.type === 'kpi' || tile.type === 'pivot') ? 'table' : 'image';
+  }
+
   // Représentation tabulaire d'une tuile pour l'export Excel : mêmes agrégats que le rendu
   // (aggregateSingle pour kpi/gauge, groupByAggregate pour bar/pie/treemap, les deux mesures pour
   // scatter), mais en lignes de tableau plutôt qu'en graphique. `header`/`rows` plutôt qu'un tableau
@@ -397,6 +408,6 @@
     tableToRows, applyFilters, matchesFilter, sameValue, parseDateValue, relativeDateRange,
     RELATIVE_DATE_PRESETS, groupByAggregate, aggregateSingle, pivotTable, distinctColumnValues,
     computeTrend, periodLabel, measureSeriesForTile, escapeHtml, tileDrillLevels, currentDimension,
-    rowsForTile, tileExportSheet, sanitizeSheetName, buildWorkbookSheets, AGGREGATORS
+    rowsForTile, tileExportSheet, tileExportKind, sanitizeSheetName, buildWorkbookSheets, AGGREGATORS
   };
 });
