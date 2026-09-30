@@ -127,9 +127,9 @@ dépôt. Les tests se lancent manuellement (voir §5).
   (`loadOrCreateTable`) que `BI_StressTest`/`BI_Dashboard_Config` ci-dessus, mais sans aucune ligne
   de départ. Chargée UNE SEULE fois par session au bootstrap (pas à chaque changement de table,
   contrairement à la config) : les commentaires ne sont pas structurés par table de travail, un id
-  de tuile est déjà globalement unique dans ce widget. **PR ouverte, fusion tenue en attente** :
-  Antoine n'a pas encore répondu à la carte de décision sur le lieu de stockage (nouvelle table vs
-  champ JSON existant) — voir HYPOTHESES.md.
+  de tuile est déjà globalement unique dans ce widget. **Fusionné (PR #15, 2026-09-30)** : Antoine
+  a répondu à la carte de décision sur le lieu de stockage en choisissant « Nouvelle table » (le
+  choix déjà implémenté par la PR) — voir HYPOTHESES.md.
 
 ## 4. Lancer et prévisualiser en local
 
@@ -213,8 +213,8 @@ dépôt. Les tests se lancent manuellement (voir §5).
     pas** (`js/data.js:blendRows`, LEFT JOIN en JS pur, voir §2). ✅ Faits (voir ROADMAP.md pour le
     détail de chacun) : mesures façon DAX simplifié, tableau croisé dynamique, export PDF/PPT, data
     blending multi-tables, drill-down hiérarchique automatique (temporel uniquement), commentaires
-    collaboratifs (PR ouverte, fusion en attente du choix d'Antoine sur le lieu de stockage — voir
-    HYPOTHESES.md). Waterfall/Radar restent à faire, faible valeur.
+    collaboratifs (PR #15, fusionnée le 2026-09-30 après le choix d'Antoine sur le lieu de
+    stockage — voir HYPOTHESES.md). Waterfall/Radar restent à faire, faible valeur.
   - **Tier 3** : faisable seulement en sortant du widget (nécessite un service externe avec
     backend/cron — alertes email/SMS, rafraîchissement programmé réel, Q&A IA générative,
     embedding live hors Grist).
