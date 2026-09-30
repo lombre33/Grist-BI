@@ -1642,10 +1642,12 @@ dans une seule instance de widget, avec ses propres tuiles internes.
   `BI_Dashboard_Comments`, une ligne par commentaire — décision produit posée à Antoine via une
   carte de décision (nouvelle table vs champ JSON dans `BI_Dashboard_Config`), avec la nouvelle
   table recommandée pour éviter l'écrasement de commentaires ajoutés en même temps par deux
-  personnes (le blob JSON n'a qu'une ligne par table de travail). **PR ouverte sur cette base, mais
-  la FUSION est tenue en attente de sa réponse** (demande explicite du coordinateur du projet,
-  29/09/2026 ~22h27) : une nouvelle table qui apparaîtrait dans son document est un choix de
-  produit qu'il doit voir avant qu'il soit acté, pas seulement une préférence d'implémentation.
+  personnes (le blob JSON n'a qu'une ligne par table de travail). **Antoine a répondu à la carte de
+  décision le 30/09/2026 en choisissant « Nouvelle table »** — la fusion (tenue en attente de cette
+  réponse par demande explicite du coordinateur du projet, 29/09/2026 ~22h27, une nouvelle table
+  apparaissant dans son document étant un choix de produit qu'il devait voir avant qu'il soit acté)
+  a suivi : **PR #15 fusionnée sur `main` le 30/09/2026**, sans changement de conception puisque la
+  PR construisait déjà sur l'option qu'il a choisie.
   - **Même mécanisme idempotent que `BI_StressTest`/`BI_Dashboard_Config`** (`loadOrCreateTable`,
     garde-fous anti-duplication inclus, voir CLAUDE.md §3/§7), mais SANS aucune ligne de départ
     (`buildRows` renvoie toujours `[]`, contrairement au jeu de données de démo) — colonnes
