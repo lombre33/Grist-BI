@@ -39,6 +39,15 @@
     // multi-tables (voir GristBI.data.blendRows/js/main.js) : propre à la table de travail
     // courante, comme bookmarks/pages, persisté avec elles dans BI_Dashboard_Config.
     let blend = null;
+    // [{ id, TableId, TileId, Author, Text, CreatedAt }, ...] — commentaires collaboratifs (voir
+    // ROADMAP.md Tier 2), TOUJOURS chargés dans leur ENTIER depuis leur propre table Grist
+    // dédiée (BI_Dashboard_Comments, js/grist-api.js), jamais filtrés par table de travail au
+    // chargement (voir GristBI.data.commentsForTile pour le filtrage par tuile à l'affichage) —
+    // même convention que BI_Dashboard_Config, qui contient aussi les lignes de TOUTES les tables
+    // de travail jamais utilisées. Contrairement à `blend`/`bookmarks`/`pages`, PAS persisté dans
+    // ConfigJSON : cette table dédiée existe justement pour éviter le blob JSON partagé qui
+    // écraserait des commentaires ajoutés en même temps par deux personnes.
+    let comments = [];
     const listeners = new Set();
 
     function currentPage() { return pages.find((p) => p.id === currentPageId) || pages[0]; }
@@ -50,7 +59,7 @@
     // page (elles disparaissent de `state.tiles`), donc la réconciliation DOM déjà en place dans
     // main.js:render() détruit leurs instances ECharts automatiquement, sans code dédié.
     function getState() {
-      return { rows, pages, currentPageId, tiles: currentPage().tiles, activeFilters, advancedFilters, drillIns, bookmarks, blend };
+      return { rows, pages, currentPageId, tiles: currentPage().tiles, activeFilters, advancedFilters, drillIns, bookmarks, blend, comments };
     }
     function notify() { listeners.forEach((fn) => fn(getState())); }
     function subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); }
@@ -241,6 +250,16 @@
 
     function setBlend(newBlend) { blend = newBlend || null; notify(); }
 
+    // Remplace TOUS les commentaires connus (relecture complète de BI_Dashboard_Comments, voir
+    // js/grist-api.js:loadOrCreateComments) — appelé au chargement d'une table de travail, jamais
+    // par tuile individuellement.
+    function setComments(newComments) { comments = newComments || []; notify(); }
+
+    // Ajout optimiste d'UN commentaire déjà écrit côté Grist (voir js/grist-api.js:addComment, qui
+    // renvoie la ligne complète avec son id réel) — évite un aller-retour réseau supplémentaire
+    // pour relire toute la table après un simple ajout.
+    function addCommentLocal(comment) { comments = comments.concat([comment]); notify(); }
+
     // Capture l'état interactif COURANT (filtres croisés + filtres avancés + drill-down par tuile),
     // PAS les tuiles elles-mêmes (déjà persistées séparément, voir js/grist-api.js) : une vue
     // Power BI-like sur laquelle revenir en un clic, sans reconstruire les filtres à la main.
@@ -270,7 +289,8 @@
       setPages, setCurrentPage, addPage, renamePage, removePage,
       addTile, removeTile, updateTile, moveTile,
       toggleFilter, clearFilter, setAdvancedFilter, clearAdvancedFilter, drillInto, drillUp,
-      setBookmarks, saveBookmark, applyBookmark, removeBookmark, setBlend
+      setBookmarks, saveBookmark, applyBookmark, removeBookmark, setBlend,
+      setComments, addCommentLocal
     };
   }
 

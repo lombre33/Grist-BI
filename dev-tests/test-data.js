@@ -527,6 +527,25 @@ const rows = [
   console.log('OK deriveDateHierarchyColumns (tableau vide : identité)');
 }
 
+// commentsForTile (commentaires collaboratifs, ROADMAP.md Tier 2) : filtre par TileId (pas
+// TableId, voir js/data.js — les id de tuile sont déjà globalement uniques), trié du plus ancien
+// au plus récent sur CreatedAt (ISO 8601, comparable en chaîne) plutôt que sur l'ordre de retour
+// de fetchTable (non garanti, même prudence que groupByAggregate).
+{
+  const comments = [
+    { id: 3, TableId: 'BI_StressTest', TileId: 'tile_a', Author: 'Bea', Text: 'Dernier', CreatedAt: '2026-09-29T10:00:00.000Z' },
+    { id: 1, TableId: 'BI_StressTest', TileId: 'tile_a', Author: 'Ana', Text: 'Premier', CreatedAt: '2026-09-29T08:00:00.000Z' },
+    { id: 2, TableId: 'BI_StressTest', TileId: 'tile_b', Author: 'Cy', Text: 'Autre tuile', CreatedAt: '2026-09-29T09:00:00.000Z' }
+  ];
+  const forTileA = data.commentsForTile(comments, 'tile_a');
+  assert.deepStrictEqual(forTileA.map((c) => c.id), [1, 3], 'filtré sur tile_a, du plus ancien au plus récent malgré l\'ordre de départ');
+  assert.deepStrictEqual(data.commentsForTile(comments, 'tile_b').map((c) => c.id), [2]);
+  assert.deepStrictEqual(data.commentsForTile(comments, 'tile_inconnue'), [], 'aucune correspondance -> tableau vide');
+  assert.deepStrictEqual(data.commentsForTile([], 'tile_a'), [], 'aucun commentaire chargé -> tableau vide');
+  assert.deepStrictEqual(data.commentsForTile(null, 'tile_a'), [], 'comments absent (undefined/null) -> tableau vide, pas une exception');
+  console.log('OK data.commentsForTile (filtre par tuile, tri chronologique, cas vides)');
+}
+
 // tableToRows / epochSecondsToIsoDate (format réel de l'API Grist, vérifié le 29/09/2026 après la
 // livraison du drill-down) : une colonne réellement typée `Date` côté Grist renvoie, via
 // fetchTable(), un nombre de secondes depuis l'epoch UTC — pas la chaîne ISO 'AAAA-MM-JJ' que ce
@@ -840,6 +859,24 @@ const rows = [
   store.setBlend(undefined); // comme setBookmarks(undefined) -> [] : repli sur la valeur par défaut
   assert.strictEqual(store.getState().blend, null);
   console.log('OK state.setBlend (jointure propre à la table courante, repli sur null)');
+}
+
+// state: setComments/addCommentLocal (commentaires collaboratifs) — contrairement à blend/bookmarks/
+// pages, PAS propre à une table de travail (voir js/state.js) : setComments remplace TOUJOURS
+// l'ensemble complet (relecture de BI_Dashboard_Comments), addCommentLocal ajoute un commentaire
+// déjà écrit côté Grist sans redemander toute la table.
+{
+  const store = state.createStore();
+  assert.deepStrictEqual(store.getState().comments, [], 'aucun commentaire par défaut');
+  const loaded = [{ id: 1, TableId: 'T', TileId: 'tile_a', Author: 'Ana', Text: 'Salut', CreatedAt: '2026-09-29T08:00:00.000Z' }];
+  store.setComments(loaded);
+  assert.deepStrictEqual(store.getState().comments, loaded);
+  const added = { id: 2, TableId: 'T', TileId: 'tile_a', Author: 'Bea', Text: 'Bonjour', CreatedAt: '2026-09-29T09:00:00.000Z' };
+  store.addCommentLocal(added);
+  assert.deepStrictEqual(store.getState().comments, loaded.concat([added]), 'ajout optimiste, sans perdre les commentaires déjà chargés');
+  store.setComments(undefined); // comme setBookmarks(undefined)/setBlend(undefined) -> repli sur []
+  assert.deepStrictEqual(store.getState().comments, []);
+  console.log('OK state.setComments/addCommentLocal (chargement complet + ajout optimiste, repli sur [])');
 }
 
 // state: dashboards multi-pages — nominal (addTile/removeTile/updateTile/moveTile n'agissent QUE

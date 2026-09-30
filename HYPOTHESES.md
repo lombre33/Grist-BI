@@ -1636,6 +1636,72 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     plus restreints — 4 trimestres puis seulement 3 mois affichés, cohérent avec le filtrage en
     cascade). **Jamais testé dans un vrai document Grist** (voir §8 de CLAUDE.md).
 
+- **Commentaires collaboratifs** (`js/grist-api.js:loadOrCreateComments`/`addComment`,
+  `js/data.js:commentsForTile`, `js/state.js:comments`/`setComments`/`addCommentLocal`,
+  2026-09-29, Tier 2 ROADMAP.md) : 3e table interne créée par ce widget,
+  `BI_Dashboard_Comments`, une ligne par commentaire — décision produit posée à Antoine via une
+  carte de décision (nouvelle table vs champ JSON dans `BI_Dashboard_Config`), avec la nouvelle
+  table recommandée pour éviter l'écrasement de commentaires ajoutés en même temps par deux
+  personnes (le blob JSON n'a qu'une ligne par table de travail). **PR ouverte sur cette base, mais
+  la FUSION est tenue en attente de sa réponse** (demande explicite du coordinateur du projet,
+  29/09/2026 ~22h27) : une nouvelle table qui apparaîtrait dans son document est un choix de
+  produit qu'il doit voir avant qu'il soit acté, pas seulement une préférence d'implémentation.
+  - **Même mécanisme idempotent que `BI_StressTest`/`BI_Dashboard_Config`** (`loadOrCreateTable`,
+    garde-fous anti-duplication inclus, voir CLAUDE.md §3/§7), mais SANS aucune ligne de départ
+    (`buildRows` renvoie toujours `[]`, contrairement au jeu de données de démo) — colonnes
+    `TableId`/`TileId`/`Author`/`Text`/`CreatedAt`, toutes `Text`.
+  - **Chargée UNE SEULE fois par session, au bootstrap** (`store.setComments`), PAS à chaque
+    changement de table de travail (`switchTable`) contrairement à `blend`/`bookmarks`/`pages` :
+    les commentaires ne sont pas structurés PAR table de travail dans ce widget, un id de tuile est
+    déjà globalement unique (`Date.now()` + suffixe aléatoire, voir `js/main.js`) — filtrer par
+    `TileId` (`GristBI.data.commentsForTile`) suffit donc à retrouver les bons commentaires quelle
+    que soit la table de travail active, sans avoir besoin de connaître `TableId` pour ça. La
+    colonne `TableId` existe malgré tout sur chaque ligne, pour qu'un humain lisant la table brute
+    dans Grist puisse identifier la table de travail concernée sans remonter par l'id de tuile.
+  - **Attribution auteur EN SAISIE MANUELLE dans ce premier jet, PAS le pattern
+    `getCurrentUserEmail`** (table-sonde à formule Grist déclenchée, voir l'entrée "Correction
+    technique importante (2026-09-15)" plus haut et ROADMAP.md) : ce mécanisme reste "confirmé
+    faisable" mais volontairement non tenté ici — jamais utilisé dans ce dépôt (`RemoveRecord`
+    n'apparaît nulle part ailleurs), et c'est la SEULE exception envisagée dans tout ce projet à la
+    règle "aucune formule Grist" (CLAUDE.md §8), un changement d'architecture qui mérite sa propre
+    PR et sa propre discussion plutôt que d'être mélangé silencieusement à cette fonctionnalité.
+    Le nom saisi est mémorisé en `localStorage` (`gristbi_comment_author`, même garde
+    `typeof localStorage !== 'undefined'` + repli silencieux que `gristbi_lang`, voir
+    `js/i18n.js`) pour ne pas le retaper à chaque commentaire — persistance vérifiée en Playwright
+    à travers un rechargement complet de page.
+  - **Ajout optimiste, pas de re-fetch** : `addComment` (`js/grist-api.js`) renvoie la ligne
+    complète (avec l'id Grist réel du nouveau commentaire) directement depuis la réponse
+    d'`AddRecord`, `store.addCommentLocal` l'ajoute au tableau déjà en mémoire — jamais besoin de
+    relire toute la table de commentaires après un ajout.
+  - **UI** : bouton "Commentaires" sur chaque tuile (`.tile-actions`, entre Modifier et Supprimer),
+    avec un badge de compte recalculé À CHAQUE `render()` (comme `moveLeftBtn`/`moveRightBtn`, pas
+    seulement à la création de la tuile — un commentaire peut être ajouté tuile déjà affichée
+    depuis longtemps). Panneau singleton calqué sur `#settings-modal` (même convention
+    hidden natif + `[hidden]{display:none}` explicite, piège n°10 CLAUDE.md §7 ; pas de fermeture
+    au clic sur le fond), réutilisé pour la tuile cliquée plutôt qu'un panneau par tuile — son
+    contenu (titre de tuile, liste) est reconstruit à chaque ouverture et tenu à jour en direct
+    tant qu'il reste ouvert (`renderCommentsModal`, appelée depuis `render()`, donc aussi après un
+    changement de langue).
+  - **Testé sous Node** (`dev-tests/test-data.js`) : `commentsForTile` (filtre par `TileId` — pas
+    `TableId` — tri chronologique sur `CreatedAt` malgré un ordre de départ différent, tuile
+    inconnue, tableau de commentaires vide/absent) ; `state.setComments`/`addCommentLocal`
+    (défaut `[]`, chargement complet, ajout optimiste sans perdre les commentaires déjà chargés,
+    repli `undefined` → `[]` comme `setBookmarks`/`setBlend`).
+  - **Testé en Playwright** contre `dev-tests/harness.html` (script ad hoc, non committé, voir §5
+    de CLAUDE.md), servi en HTTP local : badge caché sans commentaire, panneau affichant le bon
+    titre de tuile, message "aucun commentaire" affiché puis masqué après le premier ajout, champ
+    texte vidé mais auteur conservé entre deux ajouts consécutifs, badge de compte mis à jour même
+    panneau ouvert, commentaires toujours présents après fermeture/réouverture du panneau (état en
+    mémoire du store, pas relu depuis Grist), **aucune fuite entre tuiles** (une 2e tuile affiche 0
+    commentaire alors que la 1re en a 2, confirmant le filtrage par `TileId`), nom d'auteur
+    mémorisé après un rechargement complet de la page (`localStorage`, alors que les commentaires
+    eux-mêmes ne survivent pas au rechargement dans ce mock sans persistance, comme attendu — voir
+    CLAUDE.md §4). **Jamais testé dans un vrai document Grist** (voir §8 de CLAUDE.md) : en
+    particulier, la création réelle d'une 3e table interne (`AddTable`) n'a jamais été exercée
+    contre le vrai moteur Grist pour CETTE table précise (seulement `BI_StressTest`/
+    `BI_Dashboard_Config`, voir "Validé en conditions réelles" plus loin) — même mécanisme
+    générique, mais jamais essayé pour un 3e appelant.
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée

@@ -511,11 +511,25 @@
     });
   }
 
+  // Commentaires d'une tuile donnée (comparaison sur `TileId`, pas `TableId` : les id de tuile
+  // sont déjà globalement uniques dans ce widget — voir `Date.now()`+aléatoire en js/main.js —
+  // donc pas besoin de connaître la table de travail courante pour filtrer). Triés du plus ancien
+  // au plus récent : `fetchTable` ne garantit pas de renvoyer les lignes dans l'ordre d'insertion
+  // (même prudence que pour `groupByAggregate`, voir CLAUDE.md §7 piège n°14) — `CreatedAt` est un
+  // ISO 8601, donc comparable directement en chaîne.
+  function commentsForTile(comments, tileId) {
+    return (comments || [])
+      .filter((c) => c.TileId === tileId)
+      .slice()
+      .sort((a, b) => (a.CreatedAt < b.CreatedAt ? -1 : a.CreatedAt > b.CreatedAt ? 1 : 0));
+  }
+
   return {
     tableToRows, epochSecondsToIsoDate, applyFilters, matchesFilter, sameValue, parseDateValue,
     relativeDateRange, RELATIVE_DATE_PRESETS, groupByAggregate, aggregateSingle, pivotTable,
     distinctColumnValues, computeTrend, periodLabel, measureSeriesForTile, escapeHtml,
     tileDrillLevels, currentDimension, rowsForTile, tileExportSheet, tileExportKind,
-    sanitizeSheetName, buildWorkbookSheets, blendRows, deriveDateHierarchyColumns, AGGREGATORS
+    sanitizeSheetName, buildWorkbookSheets, blendRows, deriveDateHierarchyColumns,
+    commentsForTile, AGGREGATORS
   };
 });

@@ -144,6 +144,30 @@ body {
 .settings-radio-row label { display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--text); cursor: pointer; }
 .settings-radio-row input[type="radio"] { cursor: pointer; }
 
+/* Panneau Commentaires collaboratifs : réutilise .settings-modal/.settings-modal-content
+   (même gabarit d'ouverture/fermeture, voir index.html) mais un peu plus large — un fil de
+   commentaires + une zone de texte tiennent mal dans les 320px du panneau Réglages. */
+#comments-modal .settings-modal-content { width: 380px; }
+.comments-modal-tile { margin: -4px 0 10px; font-size: 12.5px; color: var(--text-secondary); font-weight: 600; }
+.comments-list { list-style: none; margin: 0 0 12px; padding: 0; max-height: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+.comment-item { padding: 8px 10px; background: var(--surface-sunken); border-radius: var(--radius-sm); }
+.comment-meta { display: flex; align-items: baseline; gap: 6px; margin-bottom: 3px; }
+.comment-meta strong { font-size: 12px; color: var(--text); }
+.comment-meta .comment-date { font-size: 10.5px; color: var(--muted); }
+.comment-text { margin: 0; font-size: 12.5px; color: var(--text); line-height: 1.4; white-space: pre-wrap; }
+.comments-empty { margin: 0 0 12px; font-size: 12.5px; color: var(--muted); }
+.comment-form { display: flex; flex-direction: column; gap: 8px; }
+.comment-form input, .comment-form textarea {
+  font: inherit;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  resize: vertical;
+}
+.comment-form textarea { min-height: 44px; }
+
 .filter-badges { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 
 .filter-chip {
@@ -467,7 +491,25 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 .tile-move-left:disabled, .tile-move-right:disabled { opacity: 0.3; cursor: default; }
 .tile-move-left:hover:not(:disabled), .tile-move-right:hover:not(:disabled) { color: var(--accent); }
 .tile-edit:hover { color: var(--accent); }
+.tile-comments:hover { background: var(--surface-sunken); color: var(--accent); }
 .tile-remove:hover { color: var(--critical); }
+.tile-comments { position: relative; }
+.tile-comments-count {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  min-width: 12px;
+  height: 12px;
+  padding: 0 2px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: var(--surface);
+  font-size: 8.5px;
+  font-weight: 700;
+  line-height: 12px;
+  text-align: center;
+}
+.tile-comments-count[hidden] { display: none; }
 
 /* Icônes de chrome : traits monochromes dessinés à la main (js/main.js:ICON_PATHS), jamais des
    glyphes texte/emoji — `stroke="currentColor"` hérite la couleur du bouton parent (survol/actif/

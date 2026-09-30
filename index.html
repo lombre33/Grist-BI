@@ -93,6 +93,30 @@
     </div>
   </div>
 
+  <!-- Panneau Commentaires collaboratifs (ROADMAP.md Tier 2, 2026-09-29) : même gabarit/convention
+       d'ouverture-fermeture que #settings-modal ci-dessus (hidden natif, pas de fermeture au clic
+       sur le fond) — singleton réutilisé pour la tuile cliquée (voir js/main.js), jamais un panneau
+       par tuile. Le titre de la tuile (dynamique) reste hors data-i18n, dans #comments-modal-tile,
+       pour ne jamais être écrasé par applyTranslations() à chaque rendu. -->
+  <div id="comments-modal" class="settings-modal" hidden>
+    <div class="settings-modal-content">
+      <div class="settings-modal-header">
+        <h3 data-i18n="comments.modal.title">Commentaires</h3>
+        <button id="comments-close" type="button" class="settings-close" data-i18n-title="settings.close" data-i18n-aria="settings.close" title="Fermer" aria-label="Fermer">
+          <svg class="icon icon-close" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+        </button>
+      </div>
+      <p id="comments-modal-tile" class="comments-modal-tile"></p>
+      <ul id="comments-list" class="comments-list"></ul>
+      <p id="comments-empty" class="comments-empty" data-i18n="comments.empty" hidden>Aucun commentaire pour l'instant.</p>
+      <form id="comment-form" class="comment-form">
+        <input type="text" id="comment-author" data-i18n-placeholder="comments.author.placeholder" placeholder="Votre nom" required />
+        <textarea id="comment-text" data-i18n-placeholder="comments.text.placeholder" placeholder="Écrire un commentaire…" rows="2" required></textarea>
+        <button type="submit" class="btn-primary" data-i18n="comments.submit">Ajouter</button>
+      </form>
+    </div>
+  </div>
+
   <div class="table-bar">
     <label for="table-select" data-i18n="table.label">Table de travail</label>
     <div class="combobox">
