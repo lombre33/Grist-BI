@@ -224,8 +224,12 @@ dépôt. Les tests se lancent manuellement (voir §5).
   - Une correction technique importante du 2026-09-15 a révisé plusieurs affirmations initiales de
     la roadmap après vérification dans le code réel du widget frère `publipostageGrist` : le widget
     **peut** en réalité lire les vrais types de colonnes Grist (`_grist_Tables_column`) et obtenir
-    l'identité de l'utilisateur courant (pattern table-sonde à formule déclenchée) — ce POC ne le
-    fait pas encore, mais ce n'est plus considéré comme bloqué.
+    l'identité de l'utilisateur courant (pattern table-sonde à formule déclenchée). **Le premier de
+    ces deux points est désormais fait** (29/09/2026, PR #17, voir §7 piège n°16) :
+    `grist-api.js:realDateColumnIds` lit `_grist_Tables`/`_grist_Tables_column` pour détecter les
+    colonnes Date/DateTime de n'importe quelle table, avec repli silencieux en cas d'échec. Le
+    second (identité de l'utilisateur courant) reste non fait, plus considéré comme faisable que
+    bloqué.
 - **`HYPOTHESES.md`** (~1285 lignes, dense) est le **journal de vérité** sur ce qui a vraiment été
   testé et où. Il documente, dans l'ordre chronologique, chaque feature livrée avec où/comment elle
   a été testée (Node, Playwright contre le mock, **jamais** un vrai document Grist), les bugs réels
@@ -313,6 +317,40 @@ Cette liste condense les bugs réels les plus instructifs (détail complet dans 
 15. **La forme réelle de `grist.docApi.listTables()`** est `Promise<string[]>`, pas des objets
     `{id}` — un décalage entre le mock et l'API réelle a laissé une branche défensive du code
     totalement non exercée par les tests jusqu'à ce que ce bug soit trouvé.
+16. **Une colonne réellement typée `Date`/`DateTime` côté Grist renvoie sa valeur, via
+    `fetchTable()`, en nombre de secondes depuis l'epoch UTC — jamais la chaîne ISO 'AAAA-MM-JJ'**
+    que ce widget écrit lui-même via `AddRecord` (`js/demo-data.js:deriveDateColumn`). Repéré le
+    29/09/2026 en vérifiant le format réel de l'API Grist après la livraison du drill-down
+    hiérarchique (bug n°14 de cette liste concerne le même point aveugle méthodologique : la
+    campagne réelle du 19/09/2026 n'avait testé ni ce format, ni celui des colonnes Reference, voir
+    HYPOTHESES.md) — la colonne `Date` de `BI_StressTest` (`{id:'Date', type:'Date'}` dans
+    `js/demo-data.js:COLUMNS_LARGE`) est réellement typée ainsi, donc directement concernée. Sans
+    correctif, `GristBI.data.parseDateValue` (chaîne stricte `^\d{4}-\d{2}-\d{2}$`) échoue sur un
+    nombre, et `inferColumnKind` (`js/main.js`) classe alors la colonne comme "nombre" au lieu de
+    "date" — cassant silencieusement le drill-down hiérarchique automatique et le sélecteur de
+    colonne date des mesures façon DAX. Corrigé en deux temps le même jour : d'abord (PR #16)
+    `GristBI.data.tableToRows(table, dateColumnIds)` (nouveau 2e paramètre optionnel, reconvertit en
+    'AAAA-MM-JJ') avec `dateColumnIdsFrom(columns)`, limité aux tables dont ce widget connaît le
+    schéma JS statique à l'avance (`BI_StressTest`, `BI_Dashboard_Comments`) ; puis, à la demande du
+    coordinateur du projet (le cas principal — une table choisie par l'utilisateur via le sélecteur
+    n'a jamais ce schéma statique), généralisé (PR #17) par `grist-api.js:realDateColumnIds(tableId)`,
+    qui lit le VRAI type de chaque colonne via les tables système Grist (`_grist_Tables`/
+    `_grist_Tables_column`, accessible avec l'accès `full` déjà demandé — voir §6, correction
+    technique du 2026-09-15, qui l'avait déjà identifié comme possible, jamais fait avant ce jour) :
+    couvre désormais N'IMPORTE QUELLE table du document, y compris une table arbitraire choisie via
+    le sélecteur ou le data blending (`loadTable`). Repli sur `[]` si cette lecture échoue (droits
+    restreints, tables système absentes/renommées) — dans ce cas, seul le schéma JS statique
+    continue de s'appliquer pour les deux tables internes, exactement comme avant cette
+    généralisation. Le mock (`dev-tests/grist-stub.js`) simule aussi ces deux tables système
+    (`AddTable`/`AddColumn`/`RenameTable` les tiennent à jour), et `listTables()` les exclut
+    (comme le vrai moteur). **Ce qui reste non vérifié depuis cette session** : ce format exact
+    (secondes depuis l'epoch UTC pour `Date`) et la forme exacte de `_grist_Tables_column` sont
+    affirmés à partir de la documentation/du comportement connu du moteur Grist, jamais revérifiés
+    contre un vrai document Grist ouvert dans cette session précise — une vérification à la console
+    d'un vrai widget (`JSON.stringify(await grist.docApi.fetchTable('_grist_Tables_column'))`) reste
+    le seul point de confirmation manquant. Voir HYPOTHESES.md pour le détail complet, y compris les
+    deux autres points vérifiés le même jour (colonnes Reference, collision `AddTable` pour
+    `BI_Dashboard_Comments`).
 
 ## 8. Règles du projet (vérifiées dans le code et la documentation)
 

@@ -546,6 +546,47 @@ const rows = [
   console.log('OK data.commentsForTile (filtre par tuile, tri chronologique, cas vides)');
 }
 
+// tableToRows / epochSecondsToIsoDate (format réel de l'API Grist, vérifié le 29/09/2026 après la
+// livraison du drill-down) : une colonne réellement typée `Date` côté Grist renvoie, via
+// fetchTable(), un nombre de secondes depuis l'epoch UTC — pas la chaîne ISO 'AAAA-MM-JJ' que ce
+// widget écrit lui-même (js/demo-data.js:deriveDateColumn). Sans conversion à la lecture,
+// inferColumnKind (js/main.js) classerait une vraie colonne Date comme "number", cassant le
+// drill-down hiérarchique automatique (PR #14) et le sélecteur de colonne date des mesures DAX. Voir
+// js/grist-api.js:dateColumnIdsFrom pour où `dateColumnIds` est calculé (uniquement pour les tables
+// dont ce widget connaît le schéma — BI_StressTest, BI_Dashboard_Comments — jamais pour une table
+// arbitraire choisie via le sélecteur, voir HYPOTHESES.md).
+{
+  assert.strictEqual(data.epochSecondsToIsoDate(1768435200), '2026-01-15', 'epoch UTC -> AAAA-MM-JJ');
+  console.log('OK epochSecondsToIsoDate');
+}
+
+{
+  // Table colonnaire façon fetchTable() réel : `Date` en nombre (colonne typée Date côté Grist),
+  // `Montant` en nombre aussi (une vraie mesure numérique, qui ne doit JAMAIS être convertie même si
+  // elle tombe par coïncidence dans une plage plausible d'epoch).
+  const table = {
+    id: [1, 2],
+    Region: ['Nord', 'Sud'],
+    Date: [1768435200, 1735689600], // 2026-01-15, 2025-01-01 (secondes depuis epoch UTC)
+    Montant: [100, 1768435200] // coïncidence délibérée avec une valeur Date ci-dessus
+  };
+  const rowsFromTable = data.tableToRows(table, ['Date']);
+  assert.deepStrictEqual(rowsFromTable, [
+    { id: 1, Region: 'Nord', Date: '2026-01-15', Montant: 100 },
+    { id: 2, Region: 'Sud', Date: '2025-01-01', Montant: 1768435200 }
+  ], 'seule la colonne déclarée date est convertie, jamais une mesure numérique par coïncidence de valeur');
+  console.log('OK tableToRows convertit uniquement les colonnes déclarées dans dateColumnIds');
+}
+
+{
+  // Sans dateColumnIds (comportement historique, ex. loadTable() pour une table arbitraire dont ce
+  // widget ne connaît pas le schéma) : aucune conversion, le nombre brut traverse tel quel — point
+  // ouvert documenté dans HYPOTHESES.md, pas une régression de ce correctif.
+  const table = { id: [1], Date: [1768435200] };
+  assert.deepStrictEqual(data.tableToRows(table), [{ id: 1, Date: 1768435200 }]);
+  console.log('OK tableToRows sans dateColumnIds : comportement historique inchangé (schéma inconnu)');
+}
+
 // state: toggle de filtre croisé - un seul filtre par colonne (activation/toggle-off/remplacement)
 {
   const store = state.createStore();

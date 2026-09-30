@@ -21,16 +21,49 @@
   // la simulait pas, donc aucun test ne l'exerçait avant.
   const GRIST_TECHNICAL_COLUMNS = new Set(['manualSort']);
 
+  // Une colonne Grist réellement typée `Date`/`DateTime` renvoie sa valeur, via `fetchTable()`, en
+  // nombre de secondes depuis l'epoch UTC (minuit pour `Date`) — PAS la chaîne ISO 'AAAA-MM-JJ' que
+  // ce widget écrit lui-même via AddRecord (voir js/demo-data.js:deriveDateColumn) et que le reste du
+  // code (parseDateValue, inferColumnKind dans main.js) suppose partout en entrée. Sans conversion,
+  // une vraie colonne Date (comme `Date` de BI_StressTest, `{id:'Date', type:'Date'}` dans
+  // js/demo-data.js:COLUMNS_LARGE) serait classée "nombre" par inferColumnKind au lieu de "date" —
+  // cassant silencieusement le drill-down hiérarchique automatique (js/main.js:withDateHierarchies)
+  // et le sélecteur de colonne date des mesures façon DAX. [Point relevé le 29/09/2026 en vérifiant
+  // le format réel de l'API Grist après la livraison du drill-down — voir HYPOTHESES.md : la
+  // campagne en conditions réelles du 19/09/2026 n'avait testé ni le format Date, ni le format
+  // Reference, seulement le round-trip volumétrique/l'idempotence/l'export.] Cette conversion ne
+  // s'applique QUE si l'appelant connaît le type réel de la colonne (voir `dateColumnIds` plus bas) —
+  // sans lecture de `_grist_Tables_column`, ce widget n'a cette information que pour les colonnes de
+  // sa PROPRE table de travail (voir grist-api.js:loadOrCreateTable), jamais pour une table
+  // quelconque choisie via le sélecteur de table (voir loadTable) : ce cas reste un point ouvert,
+  // documenté dans HYPOTHESES.md plutôt que traité par une heuristique fragile sur la seule valeur.
+  function epochSecondsToIsoDate(seconds) {
+    const d = new Date(seconds * 1000);
+    const yyyy = d.getUTCFullYear();
+    const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(d.getUTCDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
   // grist.docApi.fetchTable() renvoie un format colonnaire ({id:[...], ColA:[...], ...}) ;
   // grist.onRecords() renvoie déjà des objets-lignes. On garde ce convertisseur pour le premier cas
   // (utilisé par grist-api.js pour lire la table de config interne et la table de travail).
-  function tableToRows(table) {
+  // `dateColumnIds` (optionnel, tableau/Set d'id de colonnes) : voir epochSecondsToIsoDate ci-dessus —
+  // seules ces colonnes voient leur valeur numérique convertie en chaîne ISO, jamais une conversion
+  // globale par valeur (une vraie mesure numérique ne doit jamais être touchée).
+  function tableToRows(table, dateColumnIds) {
     const keys = Object.keys(table || {}).filter((k) => k !== 'id' && !GRIST_TECHNICAL_COLUMNS.has(k));
+    const dateKeys = dateColumnIds ? new Set(dateColumnIds) : null;
     const n = (table && table.id ? table.id.length : 0);
     const rows = [];
     for (let i = 0; i < n; i++) {
       const row = { id: table.id[i] };
-      for (const k of keys) row[k] = table[k][i];
+      for (const k of keys) {
+        const v = table[k][i];
+        row[k] = (dateKeys && dateKeys.has(k) && typeof v === 'number' && Number.isFinite(v))
+          ? epochSecondsToIsoDate(v)
+          : v;
+      }
       rows.push(row);
     }
     return rows;
@@ -492,10 +525,11 @@
   }
 
   return {
-    tableToRows, applyFilters, matchesFilter, sameValue, parseDateValue, relativeDateRange,
-    RELATIVE_DATE_PRESETS, groupByAggregate, aggregateSingle, pivotTable, distinctColumnValues,
-    computeTrend, periodLabel, measureSeriesForTile, escapeHtml, tileDrillLevels, currentDimension,
-    rowsForTile, tileExportSheet, tileExportKind, sanitizeSheetName, buildWorkbookSheets, blendRows,
-    deriveDateHierarchyColumns, commentsForTile, AGGREGATORS
+    tableToRows, epochSecondsToIsoDate, applyFilters, matchesFilter, sameValue, parseDateValue,
+    relativeDateRange, RELATIVE_DATE_PRESETS, groupByAggregate, aggregateSingle, pivotTable,
+    distinctColumnValues, computeTrend, periodLabel, measureSeriesForTile, escapeHtml,
+    tileDrillLevels, currentDimension, rowsForTile, tileExportSheet, tileExportKind,
+    sanitizeSheetName, buildWorkbookSheets, blendRows, deriveDateHierarchyColumns,
+    commentsForTile, AGGREGATORS
   };
 });
