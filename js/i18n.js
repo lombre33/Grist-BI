@@ -201,6 +201,16 @@
     'tile.remove.title': { fr: 'Supprimer la tuile', en: 'Delete tile' },
     'tile.comments.aria': { fr: 'Commentaires', en: 'Comments' },
     'tile.comments.title': { fr: 'Commentaires de la tuile', en: 'Tile comments' },
+    'tile.detail.aria': { fr: 'Détail', en: 'Detail' },
+    'tile.detail.title': { fr: 'Voir les lignes de données de la tuile', en: 'View the tile’s data rows' },
+
+    // --- Modale de détail (substitut du drillthrough Power BI, panneau ouvert depuis une tuile) ---
+    'detail.modal.title': { fr: 'Détail — {n} {n|ligne|lignes}', en: 'Detail — {n} {n|row|rows}' },
+    'detail.modal.empty': { fr: 'Aucune ligne pour l’instant.', en: 'No rows yet.' },
+    'detail.modal.truncated': {
+      fr: 'Affichage des {shown} premières lignes sur {total}. Exportez en Excel pour tout voir.',
+      en: 'Showing the first {shown} rows out of {total}. Export to Excel to see everything.'
+    },
 
     // --- Commentaires collaboratifs (panneau ouvert depuis une tuile) ---
     'comments.modal.title': { fr: 'Commentaires', en: 'Comments' },

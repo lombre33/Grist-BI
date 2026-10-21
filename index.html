@@ -117,6 +117,27 @@
     </div>
   </div>
 
+  <!-- Modale de détail (substitut du drillthrough Power BI, ROADMAP.md : "clic → page dédiée" est
+       bloquant pour un widget, une modale dans la même page est le substitut retenu). Même gabarit
+       que #settings-modal/#comments-modal ci-dessus (hidden natif, pas de fermeture au clic sur le
+       fond), élargi en CSS pour accueillir un tableau de lignes brutes — voir js/main.js pour
+       openDetailModal/closeDetailModal/renderDetailModal. Affiche les lignes REÇUES PAR LA TUILE au
+       moment de l'ouverture (même filtrage que le rendu/export : GristBI.data.rowsForTile), pas
+       seulement le segment cliqué — rejoue la même donnée que ce que la tuile affiche déjà. -->
+  <div id="detail-modal" class="settings-modal" hidden>
+    <div class="settings-modal-content detail-modal-content">
+      <div class="settings-modal-header">
+        <h3 id="detail-modal-title"></h3>
+        <button id="detail-close" type="button" class="settings-close" data-i18n-title="settings.close" data-i18n-aria="settings.close" title="Fermer" aria-label="Fermer">
+          <svg class="icon icon-close" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+        </button>
+      </div>
+      <p id="detail-modal-empty" class="comments-empty" data-i18n="detail.modal.empty" hidden>Aucune ligne pour l'instant.</p>
+      <div id="detail-modal-table-wrap" class="detail-table-wrap"></div>
+      <p id="detail-modal-truncated" class="detail-modal-truncated" hidden></p>
+    </div>
+  </div>
+
   <div class="table-bar">
     <label for="table-select" data-i18n="table.label">Table de travail</label>
     <div class="combobox">

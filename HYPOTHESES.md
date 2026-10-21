@@ -1636,6 +1636,52 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     plus restreints — 4 trimestres puis seulement 3 mois affichés, cohérent avec le filtrage en
     cascade). **Jamais testé dans un vrai document Grist** (voir §8 de CLAUDE.md).
 
+- **Modale de détail** (substitut du drillthrough Power BI, `js/main.js:openDetailModal`/
+  `closeDetailModal`/`renderDetailModal`, `#detail-modal` dans `index.html`/`dev-tests/harness.html`,
+  2026-10-21, Tier 2 ROADMAP.md — demande d'Antoine du 2026-10-21, « afficher les lignes derrière un
+  point ou une barre cliquée ») : bouton "Détail" (icône loupe, `.tile-detail`) ajouté dans l'en-tête
+  de CHAQUE tuile (kpi/gauge/pivot compris, pas seulement bar/pie/treemap/scatter), à côté du bouton
+  Commentaires déjà existant — même gabarit `.settings-modal` que les panneaux Réglages/Commentaires
+  (élargi en CSS, `.detail-modal-content`), même convention d'ouverture/fermeture (`hidden` natif,
+  pas de fermeture au clic sur le fond).
+  - **Lignes affichées = `GristBI.data.rowsForTile(tile, state)`**, exactement le même pipeline de
+    filtrage que le rendu ECharts/l'export Excel (cross-filtres des AUTRES tuiles, filtres avancés,
+    propre chemin de drill-down de la tuile) — PAS seulement le segment précis cliqué : la tuile a
+    déjà été affinée par filtre/drill avant que l'utilisateur ne clique "Détail", le detail modal
+    montre donc "ce que cette tuile affiche en ce moment", cohérent avec ce qui est déjà à l'écran.
+  - **Colonnes = `Object.keys(rows[0])`**, même convention que `availableColumns()` (js/main.js) :
+    inclut les colonnes dérivées (ex. `Date.Annee`/`Date.Trimestre`/`Date.Mois`) et les colonnes de
+    data blending (`<table>.<colonne>`) si présentes, puisqu'elles font partie de la forme réelle de
+    la ligne.
+  - **Plafonné à 500 lignes affichées** (`DETAIL_MODAL_MAX_ROWS`), avec un message de troncature
+    explicite pointant vers l'export Excel pour tout voir d'un coup — un tableau HTML de 47 040
+    lignes sans pagination serait un coût DOM inutile pour une modale d'inspection ponctuelle (même
+    préoccupation que `.tile-chart { overflow: auto }` pour le tableau croisé).
+  - **Live, pas un instantané figé à l'ouverture** : `render()` rappelle `renderDetailModal()` à
+    chaque changement d'état (même mécanisme que `renderCommentsModal()` déjà en place pour le
+    panneau Commentaires), qui relit `store.getState()` et retrouve la tuile par id à chaque appel
+    (repli silencieux — ferme la modale — si la tuile a été supprimée entre-temps, même garde que le
+    gestionnaire de clic générique de `js/charts.js`).
+  - **Testé en Playwright** contre `dev-tests/harness.html` (script ad hoc, non committé, voir §5 de
+    CLAUDE.md), servi en HTTP local : bouton visible sur la 1re tuile par défaut, clic → modale
+    visible avec titre "Détail — 47040 lignes" (aucun filtre actif), tableau de 500 lignes/12
+    colonnes (8 colonnes déclarées de `BI_StressTest` + 3 colonnes dérivées Année/Trimestre/Mois +
+    `id`), message de troncature "Affichage des 500 premières lignes sur 47040." affiché. Fermeture
+    via le bouton confirmée. Un cross-filtre posé sur une AUTRE tuile PENDANT que la modale de la 1re
+    tuile est fermée, puis rouverte, fait bien tomber le compte à 9408 lignes — confirme le bon
+    pipeline de filtrage. Bascule de langue (fr → en, modale laissée ouverte entre temps) confirme la
+    retraduction réactive du titre ("Detail — 9408 rows", pluriel anglais correct). **Mise à jour en
+    direct SANS fermer/rouvrir la modale** : tentée en re-cliquant la même part de camembert pour
+    retirer le filtre pendant que la modale reste ouverte — non concluante en Playwright (clic
+    répété sur un camembert plein, dont le centre géométrique est un point dégénéré commun à toutes
+    les parts ; `activeFilters` lu directement via `window.GristBI.store.getState()` est resté
+    identique aux deux clics, donc le 2e clic n'a tout simplement pas été pris en compte comme un
+    nouveau toggle — même famille de flakiness déjà documentée pour les clics sur un nuage de points,
+    voir TEST_PROTOCOL.md, pas un bug produit). Le mécanisme lui-même (rappel systématique de
+    `renderDetailModal()` depuis `render()`) est garanti par construction, identique à celui déjà
+    éprouvé pour `renderCommentsModal()` — pas re-testé au pixel près pour cette raison. **Jamais
+    testé dans un vrai document Grist** (voir §8 de CLAUDE.md).
+
 - **Commentaires collaboratifs** (`js/grist-api.js:loadOrCreateComments`/`addComment`,
   `js/data.js:commentsForTile`, `js/state.js:comments`/`setComments`/`addCommentLocal`,
   2026-09-29, Tier 2 ROADMAP.md) : 3e table interne créée par ce widget,
