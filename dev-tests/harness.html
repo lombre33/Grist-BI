@@ -86,6 +86,22 @@
     </div>
   </div>
 
+  <!-- Modale de détail : voir index.html pour la documentation complète (même markup exact, ce
+       harnais duplique le DOM de index.html, voir CLAUDE.md §4). -->
+  <div id="detail-modal" class="settings-modal" hidden>
+    <div class="settings-modal-content detail-modal-content">
+      <div class="settings-modal-header">
+        <h3 id="detail-modal-title"></h3>
+        <button id="detail-close" type="button" class="settings-close" data-i18n-title="settings.close" data-i18n-aria="settings.close" title="Fermer" aria-label="Fermer">
+          <svg class="icon icon-close" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+        </button>
+      </div>
+      <p id="detail-modal-empty" class="comments-empty" data-i18n="detail.modal.empty" hidden>Aucune ligne pour l'instant.</p>
+      <div id="detail-modal-table-wrap" class="detail-table-wrap"></div>
+      <p id="detail-modal-truncated" class="detail-modal-truncated" hidden></p>
+    </div>
+  </div>
+
   <div class="table-bar">
     <label for="table-select" data-i18n="table.label">Table de travail</label>
     <div class="combobox">

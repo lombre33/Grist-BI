@@ -364,6 +364,10 @@ davantage de scénarios — voir HYPOTHESES.md) :
 - [x] `drillCrossFilter` : case à cocher visible seulement si niveau 1 choisi, préremplie à l'édition 🌐
 - [x] `drillCrossFilter` : décochée + sauvegardée → drill-down redevient purement local 🌐
 - [ ] Stress dataset (~47 040 lignes) : cross-filtering reste correct à ce volume ⬜ (couvert par un script scratch non maintenu, à réintégrer si le volume redevient un point de risque)
+- [x] Modale de détail (substitut du drillthrough) : bouton "Détail" visible sur chaque tuile, clic → lignes de `rowsForTile` affichées (titre avec le bon compte), tableau plafonné à 500 lignes + message de troncature au-delà, fermeture via le bouton 🌐
+- [x] Modale de détail : compte de lignes correct après un cross-filtre posé sur une AUTRE tuile (fermée puis rouverte) 🌐
+- [x] Modale de détail : titre retraduit après bascule de langue fr/en (pluriel correct des deux côtés) 🌐
+- [ ] Modale de détail : mise à jour EN DIRECT (sans fermer/rouvrir) quand un filtre change pendant qu'elle est ouverte ⬜ — garanti par construction (même rappel systématique `render() → renderDetailModal()` que pour `renderCommentsModal()`, déjà éprouvé), tentative Playwright non concluante (flakiness du clic répété sur un camembert plein, voir HYPOTHESES.md)
 - [ ] Redimensionnement réel du panneau Grist (ResizeObserver) ⬜ **[NON TESTABLE ICI]** — logique de coalescing vérifiée par lecture de code seulement
 - [ ] `window.resize` classique (hors ResizeObserver) ⬜
 - [x] [BUG RÉEL #17 ci-dessous] Aucun canvas ECharts ne déborde sous sa carte `.tile` (comparaison `getBoundingClientRect()`, pas une inspection visuelle), à l'état initial ET sur une tuile drillée avec fil d'Ariane à 2 niveaux réellement affiché (pire cas) 🌐
