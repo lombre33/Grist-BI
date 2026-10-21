@@ -246,8 +246,9 @@ body {
 .btn-secondary { background: var(--surface); border-color: var(--border-strong); color: var(--text); }
 .btn-secondary:hover { background: var(--surface-sunken); border-color: var(--muted); }
 .btn-tiny { padding: 4px 10px; font-size: 11px; align-self: flex-start; }
-.btn-secondary:disabled { opacity: 0.5; cursor: default; box-shadow: none; }
+.btn-secondary:disabled, .btn-primary:disabled, .btn-tiny:disabled { opacity: 0.5; cursor: default; box-shadow: none; }
 .btn-secondary:disabled:hover { background: var(--surface); border-color: var(--border-strong); }
+.btn-primary:disabled:hover { background: var(--accent); }
 
 button:focus-visible, select:focus-visible, input:focus-visible {
   outline: 2px solid var(--accent);
@@ -499,7 +500,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 
 .tile-actions { display: flex; align-items: center; gap: 1px; flex-shrink: 0; }
 
-.tile-move-left, .tile-move-right, .tile-edit, .tile-remove {
+.tile-move-left, .tile-move-right, .tile-edit, .tile-remove, .tile-comments, .tile-detail {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -516,7 +517,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 .tile-move-left:disabled, .tile-move-right:disabled { opacity: 0.3; cursor: default; }
 .tile-move-left:hover:not(:disabled), .tile-move-right:hover:not(:disabled) { color: var(--accent); }
 .tile-edit:hover { color: var(--accent); }
-.tile-comments:hover { background: var(--surface-sunken); color: var(--accent); }
+.tile-comments:hover, .tile-detail:hover { background: var(--surface-sunken); color: var(--accent); }
 .tile-remove:hover { color: var(--critical); }
 .tile-comments { position: relative; }
 .tile-comments-count {
