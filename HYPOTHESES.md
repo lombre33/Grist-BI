@@ -1557,11 +1557,11 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     ascendante). Un blend incomplet (au moins un des 3 champs encore vide) équivaut à "aucune
     jointure", plus simple à raisonner qu'un état à moitié configuré et ça laisse l'utilisateur
     choisir les 3 champs dans n'importe quel ordre.
-  - **Auto-détection des clés de jointure (`Ref:`/`RefList:` via `_grist_Tables_column`)
-    délibérément pas tentée dans ce premier jet** : ce POC ne lit toujours pas les vrais types de
-    colonnes Grist (voir §6 de CLAUDE.md, correction technique du 2026-09-15) ; un sélecteur manuel
-    à 3 champs est plus simple, moins risqué et testable sans dépendre d'une API interne Grist
-    jamais encore exercée dans ce dépôt. Piste future à documenter dans ROADMAP.md, pas à deviner.
+  - **Auto-détection des clés de jointure via `Ref:` : FAIT le 2026-10-21** (à l'origine notée
+    « délibérément pas tentée dans ce premier jet » — ce POC ne lisait pas encore les vrais types de
+    colonnes Grist au moment du data blending initial ; corrigé depuis par `realDateColumnIds`
+    (PR #17, 29/09) pour les dates, et par l'entrée dédiée ci-dessous pour les clés de jointure). Voir
+    la nouvelle entrée "Clés de jointure suggérées" plus bas pour le détail complet.
   - **Testé sous Node** (`dev-tests/test-data.js`) : cas nominal (2 tables, clé texte), ligne sans
     correspondance (colonnes secondaires à `null`, forme de ligne préservée), table secondaire vide
     (identité), table principale vide, comparaison de clé insensible au type (nombre vs chaîne, côté
@@ -1578,6 +1578,45 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     `BI_StressTest`, basculer sur `Villes` — aucune jointure sauvegardée pour elle — puis revenir sur
     `BI_StressTest` : la jointure et les 3 comboboxes sont restaurées à l'identique depuis
     `BI_Dashboard_Config`). **Jamais testé dans un vrai document Grist** (voir §8 de CLAUDE.md).
+
+- **Clés de jointure suggérées pour le data blending** (`js/grist-api.js:refColumnsForTable`,
+  `js/main.js:suggestBlendJoinColumns`, 2026-10-21, Tier 2 ROADMAP.md — demande d'Antoine du
+  2026-10-21) : en choisissant une table secondaire, le widget propose désormais automatiquement la
+  paire de clés si une colonne `Ref:` relie les deux tables, au lieu de laisser l'utilisateur deviner
+  laquelle de ses colonnes numériques est en réalité une référence Grist.
+  - **Même mécanisme de lecture que `realDateColumnIds`** (`_grist_Tables`/`_grist_Tables_column`,
+    déjà confirmé lisible avec l'accès `full` sur un vrai Grist le 30/09/2026) : `refColumnsForTable`
+    renvoie, pour une table donnée, chaque colonne de type `Ref:<AutreTable>` avec la table qu'elle
+    cible. Repli sur `[]` en cas d'échec (droits restreints, tables système absentes), comme pour la
+    détection des colonnes Date — la suggestion disparaît simplement, rien ne casse.
+  - **`RefList:` délibérément EXCLUE** : une telle colonne porte une LISTE d'ids, jamais une valeur
+    scalaire — `blendRows` ne fait qu'une égalité simple par ligne, inadaptée à une liste (joindre
+    dessus donnerait une correspondance silencieusement toujours fausse). `type.startsWith('Ref:')`
+    suffit à l'exclure sans logique dédiée : le 4e caractère d'un type `RefList:...` (`L`) ne
+    correspond jamais au `:` attendu à cette position pour un simple `Ref:`.
+  - **Priorité PRINCIPALE → SECONDAIRE, puis repli SECONDAIRE → PRINCIPALE** : le cas le plus
+    fréquent est d'enrichir la table de travail avec une table de référence (ex. `Ventes.VilleRef`
+    → `Villes.id`) ; la relation inverse (une colonne `Ref:` côté table SECONDAIRE pointant vers la
+    PRINCIPALE) reste couverte en repli, avec `primaryColumn: 'id'`.
+  - **Respecte une clé principale déjà choisie à la main** : le listener de changement de table
+    secondaire préserve délibérément `blendPrimaryColumnInput.value` d'un choix précédent (voir le
+    commentaire déjà en place avant cette fonctionnalité) — la suggestion ne touche alors QUE la clé
+    secondaire, et seulement si cette colonne principale référence bien la nouvelle table secondaire ;
+    sinon, aucune suggestion n'est faite (l'utilisateur garde la main entière, comme avant).
+  - **Testé en Playwright** contre `dev-tests/harness.html` (script ad hoc, non committé, voir §5 de
+    CLAUDE.md), avec deux tables mock entièrement préremplies via `window.__gristStubPreseed`
+    (`Ventes` avec une colonne `VilleRef` de type `Ref:Villes`, `Villes` avec `Nom`/`Population`), y
+    compris leurs métadonnées système (`_grist_Tables`/`_grist_Tables_column`) : en basculant la
+    table de travail sur `Ventes` puis en choisissant `Villes` comme table secondaire, les deux
+    comboboxes de clé se remplissent automatiquement à `VilleRef`/`id`, `state.blend` reflète cette
+    paire, et la jointure produit bien `Villes.Nom`/`Villes.Population` pour chaque ligne. Repli
+    confirmé en basculant ensuite la table secondaire vers `BI_StressTest` (aucune relation `Ref:`
+    connue) : la clé principale déjà choisie (`VilleRef`) est conservée telle quelle (convention
+    existante), la clé secondaire reste vide, et `state.blend` redevient `null` (jointure incomplète)
+    — comportement identique à celui d'avant cette fonctionnalité. **Jamais testé dans un vrai
+    document Grist** (voir §8 de CLAUDE.md) : la forme exacte d'un type `Ref:` réel
+    (`_grist_Tables_column.type`) est affirmée par analogie avec `realDateColumnIds`, déjà vérifié
+    contre un vrai Grist pour les colonnes Date/DateTime, mais jamais spécifiquement pour `Ref:`.
 
 - **Drill-down hiérarchique automatique** (`js/data.js:deriveDateHierarchyColumns`, `js/main.js`,
   2026-09-29, Tier 2 ROADMAP.md) : périmètre volontairement limité aux hiérarchies TEMPORELLES,

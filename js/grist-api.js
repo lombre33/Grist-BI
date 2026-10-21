@@ -376,6 +376,45 @@
     return Array.from(new Set(dateColumnIdsFrom(columns).concat(await realDateColumnIds(tableId))));
   }
 
+  // Colonnes de RÉFÉRENCE SIMPLE (`Ref:<AutreTable>`) de `tableId`, avec la table ciblée par chacune
+  // — même mécanisme de lecture que `realDateColumnIds` ci-dessus (`_grist_Tables`/
+  // `_grist_Tables_column`, déjà confirmé lisible avec l'accès `full` sur un vrai Grist le
+  // 30/09/2026), réutilisé pour suggérer une clé de jointure de data blending (ROADMAP.md : "Auto-
+  // détection des clés via Ref:/RefList: délibérément pas tentée dans ce premier jet... piste
+  // future", voir aussi CLAUDE.md §6) plutôt que de laisser l'utilisateur deviner quelle colonne
+  // réfère quelle table. **`RefList:` est délibérément EXCLUE** : une telle colonne porte une LISTE
+  // d'ids, jamais une valeur scalaire — `GristBI.data.blendRows` ne fait qu'une égalité simple par
+  // ligne, inadaptée à une liste (joindre dessus donnerait silencieusement une jointure toujours
+  // fausse, jamais une vraie jointure 1-N). Le type d'une colonne Ref Grist encode directement la
+  // table ciblée après le préfixe (`Ref:NomTable`), pas besoin d'un second aller-retour. Repli sur
+  // `[]` en cas d'échec, même raison que `realDateColumnIds` (droits restreints, tables système
+  // absentes/renommées) : la suggestion disparaît simplement, l'utilisateur choisit ses clés à la
+  // main comme avant cette fonctionnalité.
+  async function refColumnsForTable(tableId) {
+    try {
+      const tablesMeta = await grist.docApi.fetchTable('_grist_Tables');
+      const columnsMeta = await grist.docApi.fetchTable('_grist_Tables_column');
+      const rowIdx = (tablesMeta.tableId || []).indexOf(tableId);
+      if (rowIdx < 0) return [];
+      const parentRowId = tablesMeta.id[rowIdx];
+      const result = [];
+      const n = (columnsMeta.id || []).length;
+      for (let i = 0; i < n; i++) {
+        const type = columnsMeta.type[i] || '';
+        if (columnsMeta.parentId[i] === parentRowId && type.startsWith('Ref:')) {
+          result.push({ colId: columnsMeta.colId[i], targetTableId: type.slice('Ref:'.length) });
+        }
+      }
+      return result;
+    } catch (e) {
+      console.warn(
+        '[GristBI] lecture des colonnes de référence (_grist_Tables_column) impossible pour ' +
+        `"${tableId}" — aucune clé de jointure ne sera suggérée pour le data blending`, e
+      );
+      return [];
+    }
+  }
+
   async function ensureColumnsUpToDate(tableId, columns, deriveMissingColumns, onProgress) {
     const table = await grist.docApi.fetchTable(tableId);
     const existingIds = new Set(Object.keys(table).filter((k) => k !== 'id'));
@@ -498,6 +537,6 @@
 
   GristBI.api = {
     init, loadConfig, saveConfig, loadOrCreateStressData,
-    listAvailableTables, loadTable, loadOrCreateComments, addComment
+    listAvailableTables, loadTable, loadOrCreateComments, addComment, refColumnsForTable
   };
 })(window);

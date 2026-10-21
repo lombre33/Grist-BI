@@ -1264,11 +1264,48 @@
     applyBlend(currentBlend);
   }
 
+  // Suggère une paire de clés de jointure à partir des colonnes de référence Grist RÉELLES
+  // (`Ref:`, jamais `RefList:` — voir GristBI.api.refColumnsForTable) plutôt que de laisser
+  // l'utilisateur deviner quelle colonne numérique réfère quelle table (ROADMAP.md : piste notée
+  // comme "pas tentée dans ce premier jet" au moment du data blending initial). Respecte un choix
+  // DÉJÀ fait côté table principale (`currentPrimaryColumn`, voir le commentaire du listener de
+  // changement de table secondaire ci-dessous, qui le préserve délibérément) : dans ce cas, ne
+  // suggère QUE la clé secondaire, et seulement si cette colonne réfère bien la nouvelle table
+  // secondaire — jamais une suggestion qui contredirait un choix explicite déjà en place. Sinon,
+  // cherche d'abord une référence PRINCIPALE -> SECONDAIRE (cas le plus courant : enrichir la table
+  // de travail avec une table de référence), puis seulement à défaut l'inverse (SECONDAIRE ->
+  // PRINCIPALE). Renvoie `null` si aucune référence ne relie les deux tables — l'utilisateur choisit
+  // alors ses clés à la main, exactement comme avant cette fonctionnalité.
+  async function suggestBlendJoinColumns(secondaryTableId, currentPrimaryColumn) {
+    if (!secondaryTableId) return null;
+    const [primaryRefCols, secondaryRefCols] = await Promise.all([
+      GristBI.api.refColumnsForTable(currentTableId),
+      GristBI.api.refColumnsForTable(secondaryTableId)
+    ]);
+    if (currentPrimaryColumn) {
+      const stillValid = primaryRefCols.some((c) => c.colId === currentPrimaryColumn && c.targetTableId === secondaryTableId);
+      return stillValid ? { primaryColumn: currentPrimaryColumn, secondaryColumn: 'id' } : null;
+    }
+    const primaryMatch = primaryRefCols.find((c) => c.targetTableId === secondaryTableId);
+    if (primaryMatch) return { primaryColumn: primaryMatch.colId, secondaryColumn: 'id' };
+    const secondaryMatch = secondaryRefCols.find((c) => c.targetTableId === currentTableId);
+    if (secondaryMatch) return { primaryColumn: 'id', secondaryColumn: secondaryMatch.colId };
+    return null;
+  }
+
   blendSecondaryTableInput.addEventListener('change', () => {
     // Changer de table secondaire invalide les clés déjà choisies (colonnes d'une autre table) :
     // on ne garde QUE la clé côté table principale, jamais la clé secondaire de l'ancien choix.
     blendSecondaryColumnInput.value = '';
-    refreshBlendSecondaryColumnPicker().then(commitBlendFromForm);
+    const secondaryTableId = blendSecondaryTableInput.value;
+    const keptPrimaryColumn = blendPrimaryColumnInput.value;
+    refreshBlendSecondaryColumnPicker().then(() => suggestBlendJoinColumns(secondaryTableId, keptPrimaryColumn)).then((suggestion) => {
+      if (suggestion) {
+        blendPrimaryColumnInput.value = suggestion.primaryColumn;
+        blendSecondaryColumnInput.value = suggestion.secondaryColumn;
+      }
+      commitBlendFromForm();
+    });
   });
   blendPrimaryColumnInput.addEventListener('change', commitBlendFromForm);
   blendSecondaryColumnInput.addEventListener('change', commitBlendFromForm);
