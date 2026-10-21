@@ -167,6 +167,10 @@ body {
   resize: vertical;
 }
 .comment-form textarea { min-height: 44px; }
+/* Auteur reconnu automatiquement (js/main.js:openCommentsModal, detectedUserEmail) : même fond que
+   .comment-item pour signaler visuellement un champ verrouillé, pas une simple désactivation grisée
+   par défaut du navigateur qui suggérerait à tort un champ indisponible plutôt qu'une valeur fixe. */
+.comment-form input[readonly] { background: var(--surface-sunken); cursor: default; }
 
 /* Modale de détail (substitut du drillthrough, voir index.html) : nettement plus large/haute que
    #settings-modal/#comments-modal (une grille de données, pas un formulaire court) — colonne
