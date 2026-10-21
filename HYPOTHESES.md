@@ -1725,11 +1725,58 @@ dans une seule instance de widget, avec ses propres tuiles internes.
 - **Bookmarks partagés entre tuiles/pages, navigation multi-pages** : les vues sauvegardées
   (voir plus haut) sont un mécanisme volontairement simple (filtres + drill-down d'UN dashboard),
   pas un système de navigation entre plusieurs pages/dashboards.
-- **Hiérarchies non temporelles suggérées automatiquement** (ex. Pays > Région > Ville) : le
-  drill-down hiérarchique automatique (voir l'entrée dédiée plus haut) ne couvre QUE les colonnes
-  classées "date" par `inferColumnKind` — non tenté pour le reste, comme prévu explicitement par
-  ROADMAP.md ("une suggestion à confirmer, jamais une config silencieuse"), faute d'un signal fiable
-  (pas de lecture du vrai type Grist, pas de métadonnées de relation entre colonnes dans ce POC).
+- **Hiérarchies non temporelles suggérées AUTOMATIQUEMENT** (ex. Pays > Région > Ville, un clic qui
+  préremplirait les niveaux tout seul) : le drill-down hiérarchique automatique (voir l'entrée
+  dédiée plus haut) ne couvre QUE les colonnes classées "date" par `inferColumnKind` — non tenté
+  pour le reste, comme prévu explicitement par ROADMAP.md ("une suggestion à confirmer, jamais une
+  config silencieuse"), faute d'un signal fiable (pas de lecture du vrai type Grist, pas de
+  métadonnées de relation entre colonnes dans ce POC). **Ne pas confondre avec la configuration
+  MANUELLE d'une telle hiérarchie (via "+ Niveau"), qui fonctionne déjà — voir l'entrée dédiée
+  ci-dessous, ajoutée le 2026-10-21.**
+
+- **Drill-down hiérarchique NON temporel, configuré manuellement** (ex. Région > Produit > Année,
+  type "Pays > Région > Ville" demandé par Antoine le 2026-10-21, ROADMAP.md Tier 2) : vérifié que
+  ceci fonctionnait déjà SANS AUCUN changement de code, avant d'écrire la moindre ligne. Preuve :
+  - `js/data.js:tileDrillLevels`/`currentDimension` et `js/state.js:drillInto`/`drillUp` ne lisent
+    que `tile.drillDimensions` (un tableau de noms de colonnes) — aucun des deux n'appelle
+    `inferColumnKind` ni n'inspecte autrement le type d'une colonne. Seule la fonctionnalité
+    SÉPARÉE "Détailler par Année/Trimestre/Mois/Jour" (`#tile-suggest-date-hierarchy`, voir
+    l'entrée "Drill-down hiérarchique automatique" ci-dessus) est restreinte aux colonnes date —
+    elle ne fait que PRÉREMPLIR le même tableau `drillDimensions` générique, via `setDrillLevels`.
+  - Le formulaire de tuile (`js/main.js`) expose déjà un bouton "+ Niveau" (`#tile-drill-add-level`,
+    livré avec #14 lors de la généralisation "à N niveaux", voir le commentaire de
+    `createDrillLevelSelect`) qui ajoute un combobox de PLUS, rempli avec `availableColumns(rows)` —
+    c'est-à-dire absolument toutes les colonnes, catégorielles comprises, jusqu'à
+    `MAX_DRILL_LEVELS = 5`. Les tests Node existants du drill-down (`dev-tests/test-data.js`,
+    section "state: drill-down multi-niveaux") utilisaient déjà des noms de colonnes génériques
+    (`'Mois'`, `'Semaine'`) sans jamais passer par `deriveDateHierarchyColumns` — un premier indice
+    déjà présent avant cette session, mais jamais vérifié explicitement avec une hiérarchie
+    PUREMENT catégorielle ni avec un vrai clic navigateur.
+  - **Testé sous Node** (nouveau bloc `dev-tests/test-data.js`, juste après le test de
+    `data.tileDrillLevels`) : tuile `dimension: 'Region'`, `drillDimensions: ['Produit', 'Annee']`
+    (mélange catégoriel + numérique, aucune colonne dérivée de date) ; `rowsForTile` +
+    `groupByAggregate` au niveau racine, puis après `drillInto('Region', 'Nord')` (niveau Produit),
+    puis après `drillInto('Produit', 'Casque audio')` (niveau Année) — les trois niveaux
+    d'agrégation obtenus correspondent exactement aux lignes attendues à la main.
+  - **Testé en Playwright** contre `dev-tests/harness.html` (script ad hoc, non committé, voir §5 de
+    CLAUDE.md), servi en HTTP local : formulaire rempli à la main (dimension `Region`, niveau 1
+    `Produit` via le combobox déjà présent au chargement, "+ Niveau" cliqué pour ajouter un niveau 2
+    `Annee`), tuile "Barres" soumise sur `Montant`/somme. Un clic réel sur une barre de la tuile
+    nouvellement créée a bien fait apparaître le fil d'Ariane `Region ▸ Sud · Produit` (dimension
+    affichée passée de `Region` à `Produit`, exactement comme pour une hiérarchie temporelle) ; un
+    clic sur le lien racine du fil d'Ariane (`data-depth="0"`) a bien fait remonter à la racine
+    (`Region (cliquer pour détailler par Produit)`). Confirme que `getOrCreateChartInstance`
+    (gestionnaire de clic générique, `js/charts.js`) ne traite pas non plus différemment un niveau
+    catégoriel d'un niveau temporel.
+  - **Conclusion** : la demande d'Antoine du 2026-10-21 ("hiérarchies de colonnes catégorielles
+    définies par l'utilisateur, par exemple Pays > Région > Ville, en plus des hiérarchies
+    temporelles") était déjà satisfaite par le Tier 1 "Drill-down manuel N niveaux" (✅ fait
+    2026-09-15) — aucune tuile n'a besoin d'une colonne date pour avoir un drill-down à plusieurs
+    niveaux. Seul un éventuel bouton de SUGGESTION en un clic pour un enchaînement catégoriel
+    connu à l'avance (ex. mémoriser qu'une telle liste de colonnes forme toujours "Pays > Région >
+    Ville" pour ne plus avoir à les re-choisir à chaque tuile) resterait à faire si souhaité — non
+    demandé explicitement, donc non tenté ici (voir CLAUDE.md : ne pas construire au-delà de ce qui
+    est demandé).
 
 ## Points à valider en conditions réelles (pas testables depuis ce sandbox)
 
