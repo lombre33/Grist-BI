@@ -8,11 +8,15 @@
  * le même dépôt/la même origine que le reste du widget (jamais un CDN, même convention
  * qu'ECharts/SheetJS), donc AUCUN coût réseau tant qu'aucun code ne les demande explicitement.
  *
- * `groupByAggregate`/`aggregateSingle` reproduisent la même signature et les mêmes agrégateurs
- * (sum/avg/count/min/max) que leurs équivalents purs JS de js/data.js, vérifiés identiques sur les
- * colonnes numériques propres réellement utilisées par ce widget (Montant/Quantite...) — voir
- * HYPOTHESES.md pour les cas limites (colonne à valeurs mixtes texte/nombre) où le comportement
- * peut diverger subtilement entre les deux moteurs.
+ * `groupByAggregate`/`aggregateSingle`/`pivotTable` reproduisent la même signature et les mêmes
+ * agrégateurs (sum/avg/count/min/max) que leurs équivalents purs JS de js/data.js, vérifiés
+ * identiques sur les colonnes numériques propres réellement utilisées par ce widget
+ * (Montant/Quantite...) — voir HYPOTHESES.md pour les cas limites (colonne à valeurs mixtes
+ * texte/nombre) où le comportement peut diverger subtilement entre les deux moteurs. Depuis
+ * 2026-10-21, `js/charts.js` choisit automatiquement entre ce moteur et la version JS pure selon le
+ * volume de lignes (voir sa doc, DUCKDB_ROW_THRESHOLD) — ce fichier reste volontairement agnostique
+ * de ce choix, purement mécanique (une fonction = une requête SQL), jamais lui-même responsable de
+ * décider QUAND s'en servir.
  *
  * Bundle "eh" uniquement (mono-thread, exceptions WASM) : pas de variante "coi" (multi-thread, qui
  * exige des en-têtes COOP/COEP non réglables sur une page statique GitHub Pages), pas de variante
@@ -166,6 +170,65 @@
     }
   }
 
+  // Équivalent SQL de js/data.js:pivotTable(rows, rowDim, colDim, measureCol, aggFn) — même
+  // contrat : rowKeys/colKeys dans l'ordre de 1re apparition (pas alphabétique, même raison que
+  // groupByAggregate ci-dessus), cellule `null` (pas 0) quand aucune ligne ne correspond à cette
+  // intersection, totaux de ligne/colonne/général calculés en agrégeant DIRECTEMENT les lignes
+  // brutes concernées (ignorant l'autre dimension), jamais en recombinant les cellules déjà
+  // agrégées (faux pour moyenne/min/max dès que les colonnes n'ont pas le même nombre de lignes,
+  // voir la doc de la version JS). 4 requêtes séparées sur la même table temporaire plutôt qu'une
+  // seule combinée (UNION) : rowDim/colDim peuvent être de types SQL différents (texte vs nombre),
+  // qu'une UNION obligerait à forcer vers un type commun pour rien — 4 petits aller-retours restent
+  // négligeables face au coût fixe du chargement DuckDB-WASM lui-même.
+  async function pivotTable(rows, rowDim, colDim, measureCol, aggFn) {
+    assertSafeIdentifier(rowDim);
+    assertSafeIdentifier(colDim);
+    assertSafeIdentifier(measureCol);
+    if (!rows.length) return { rowKeys: [], colKeys: [], cells: [], rowTotals: [], colTotals: [], grandTotal: 0 };
+    const agg = AGG_SQL[aggFn] || AGG_SQL.sum;
+    const conn = await init();
+    const tableName = await loadRowsAsTempTable(conn, rows);
+    try {
+      const rowResult = await conn.query(
+        `SELECT "${rowDim}" AS key, ${agg(measureCol)} AS value, MIN("__row_idx") AS ord
+         FROM "${tableName}" GROUP BY 1 ORDER BY ord`
+      );
+      const colResult = await conn.query(
+        `SELECT "${colDim}" AS key, ${agg(measureCol)} AS value, MIN("__row_idx") AS ord
+         FROM "${tableName}" GROUP BY 1 ORDER BY ord`
+      );
+      const cellResult = await conn.query(
+        `SELECT "${rowDim}" AS rk, "${colDim}" AS ck, ${agg(measureCol)} AS value
+         FROM "${tableName}" GROUP BY 1, 2`
+      );
+      const grandResult = await conn.query(`SELECT ${agg(measureCol)} AS value FROM "${tableName}"`);
+
+      const rowRows = arrowTableToObjects(rowResult);
+      const colRows = arrowTableToObjects(colResult);
+      const cellRows = arrowTableToObjects(cellResult);
+      const grandRows = arrowTableToObjects(grandResult);
+
+      const rowKeys = rowRows.map((r) => r.key);
+      const rowTotals = rowRows.map((r) => Number(r.value));
+      const colKeys = colRows.map((r) => r.key);
+      const colTotals = colRows.map((r) => Number(r.value));
+      // Clé composite texte pour l'appariement ligne/colonne -> cellule : les deux côtés
+      // (rowKeys/colKeys ci-dessus et cellRows ici) viennent de la MÊME colonne de la MÊME table
+      // temporaire à chaque fois, donc Arrow leur donne systématiquement le même type JS (ex.
+      // toujours BigInt pour une colonne entière) — la conversion implicite en chaîne d'un
+      // template literal reste donc cohérente des deux côtés, jamais un mélange "123" / 123n.
+      const cellMap = new Map(cellRows.map((r) => [`${r.rk}\u0000${r.ck}`, Number(r.value)]));
+      const cells = rowKeys.map((rk) => colKeys.map((ck) => {
+        const v = cellMap.get(`${rk}\u0000${ck}`);
+        return v === undefined ? null : v;
+      }));
+      const grandTotal = Number(grandRows[0].value);
+      return { rowKeys, colKeys, cells, rowTotals, colTotals, grandTotal };
+    } finally {
+      await conn.query(`DROP TABLE IF EXISTS "${tableName}"`);
+    }
+  }
+
   // Vrai seulement APRÈS un premier appel réussi à init() (le module est chargé, une connexion
   // existe) — permet à une feature future de savoir si utiliser ce moteur coûterait un chargement
   // WASM immédiat ou réutiliserait une instance déjà prête, sans jamais déclencher ce chargement
@@ -231,7 +294,7 @@
   }
 
   return {
-    init, groupByAggregate, aggregateSingle, timeSeriesMeasures, isReady, csvEscape,
+    init, groupByAggregate, aggregateSingle, pivotTable, timeSeriesMeasures, isReady, csvEscape,
     assertSafeIdentifier
   };
 });

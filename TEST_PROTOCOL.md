@@ -232,7 +232,8 @@ sur une origine `file://` (`"null"`), contrairement aux scripts classiques du re
 - [x] [BUG RÉEL, voir HYPOTHESES.md] AUCUNE requête vers un domaine externe (ex. `extensions.duckdb.org`, l'extension JSON de DuckDB) même APRÈS un usage réel du moteur, pas seulement à l'état initial — régression directe du piège JSON→CSV trouvé en développant cette fondation 🌐
 - [x] Garde-fou injection SQL : un nom de colonne contenant un guillemet est rejeté avant construction de la requête, pas inséré tel quel 🌐
 - [ ] **[NON TESTABLE ICI]** Comportement réel depuis GitHub Pages (types MIME `.wasm`/`.mjs`, absence de blocage réseau) et à l'intérieur d'une vraie iframe de widget Grist — voir HYPOTHESES.md, point 14 des validations réelles
-- [x] Consommation réelle par une feature Tier 2 : mesures façon DAX (Cumul/YTD/N-1), voir la sous-section dédiée ci-dessous — le pivot/le data blending ne l'utilisent pas encore
+- [x] Consommation réelle par une feature Tier 2 : mesures façon DAX (Cumul/YTD/N-1, voir la sous-section dédiée ci-dessous) puis, depuis le 2026-10-21, TOUTE tuile au-delà d'un seuil de volume (bar/pie/treemap/scatter/kpi/gauge/pivot, voir la sous-section dédiée plus bas) — le data blending (`blendRows`) reste le seul calcul de ce widget délibérément sans dépendance à ce moteur
+- [x] `pivotTable` (nouveau 2026-10-21) — résultats identiques à `js/data.js:pivotTable` sur le jeu de test de charge réel (47 040 lignes) : mêmes `rowKeys`/`colKeys` (ordre de 1re apparition), même `grandTotal`, et TOUTES les cellules identiques une par une (pas seulement les totaux) 🌐
 
 ### `js/duckdb-engine.js` + `js/data.js` + `js/charts.js` + `js/main.js` — mesures façon DAX simplifié : Cumul/YTD/Comparaison N-1 (Roadmap Tier 2, Node pour la logique pure, Playwright pour le SQL/le formulaire/le rendu réels)
 
@@ -269,6 +270,23 @@ service HTTP local que la section précédente (`import()` dynamique bloqué par
 - [x] `buildWorkbookSheetsAsync` + génération XLSX réelle (SheetJS) contient les vraies valeurs Cumul/YTD/N-1 pour une tuile en mode mesure dans le classeur, pas seulement sans plantage (voir l'entrée dédiée 2026-10-21 plus haut) 🌐
 - [ ] **[NON TESTABLE ICI]** `tile.dateColumn` contre une vraie colonne Grist de type `Date`/`DateTime` natif (format réellement renvoyé par `fetchTable` jamais confirmé ici, voir HYPOTHESES.md point 14d) — ce POC ne teste que le format ISO `AAAA-MM-JJ` de son propre jeu de données
 - [ ] Granularité jour/trimestre/année configurable, fenêtre glissante (ex. "12 derniers mois") — délibérément HORS PÉRIMÈTRE, granularité mensuelle fixée en v1 (voir HYPOTHESES.md/ROADMAP.md) ⬜
+
+### `js/duckdb-engine.js` + `js/charts.js` — DuckDB-WASM pour TOUTE agrégation au-delà d'un seuil (Roadmap Tier 2, Node pour la logique pure, Playwright pour le seuil/le rendu réels)
+
+Même contrainte de service HTTP local que les deux sections précédentes. Seuil : `DUCKDB_ROW_THRESHOLD`
+(5000 lignes) dans `js/charts.js`, délibérément choisi empiriquement, pas une recommandation DuckDB
+officielle — voir sa doc dans le code.
+
+- [x] Sous le seuil (jeu de données < 5000 lignes) : AUCUN appel à `GristBI.duckdbEngine` depuis `js/charts.js`, quel que soit le type de tuile — vérifié en patchant les 3 fonctions du moteur et en comptant les appels réels avant/après un filtre qui fait repasser une tuile sous le seuil 🌐
+- [x] Au-dessus du seuil (47 040 lignes réelles de `BI_StressTest`) : `GristBI.duckdbEngine.groupByAggregate`/`aggregateSingle`/`pivotTable` RÉELLEMENT appelés (compteur instrumenté) pour les 7 types de tuile (bar/pie/treemap/scatter/kpi/gauge/pivot) 🌐
+- [x] Valeurs identiques au chemin JS pur sur les mêmes lignes réelles : `groupByAggregate` (bar/pie), `aggregateSingle` (kpi/gauge), `pivotTable` cellule par cellule (pas seulement les totaux) — voir aussi l'entrée dédiée de `js/duckdb-engine.js` plus haut 🌐
+- [x] KPI : valeur ET tendance (`computeTrendAsync`/`trendFromGroups`) lancées en parallèle (`Promise.all`), pas en séquence — vérifié par relecture du code (pas de test de latence dédié, le gain n'est mesurable qu'en conditions réseau réelles) ✅
+- [x] Scatter : les deux agrégations (mesure X/mesure Y) lancées en parallèle, même raisonnement ✅
+- [x] Instance ECharts partagée (`getOrCreateChartInstance`) reste la MÊME à travers plusieurs re-rendus asynchrones successifs d'une tuile au-dessus du seuil (pas de dispose+recréation implicite qui perdrait le gestionnaire de clic déjà câblé) — instance non disposée, `showLoading`/`hideLoading` appelés pendant le calcul 🌐
+- [x] Un compteur de rendu PARTAGÉ par tuile (`renderSeq`/`bumpSeq`/`isStale`, pas un par fonction de rendu) : si une tuile change de type (ex. Barres -> KPI) pendant qu'un calcul DuckDB du type précédent est encore en vol, ce résultat périmé est bien abandonné — vérifié par relecture du code (le même mécanisme protégeait déjà `renderMeasureChart` avant cette extension, voir plus haut) ✅
+- [x] Échec du calcul DuckDB (import rejeté/erreur SQL) au-dessus du seuil : repli silencieux sur le calcul JS pur (`console.warn`, pas de tuile cassée) — vérifié par relecture du code (`try`/`catch` autour de chaque appel `GristBI.duckdbEngine.*` dans `computeGroupBy`/`computeAggregateSingle`/`computePivot`), pas reproduit en conditions réelles (nécessiterait de faire échouer le chargement WASM lui-même, non simulé ici) ⬜
+- [x] [BUG RÉEL ci-dessous, trouvé en relecture avant commit] `renderGauge`/`renderChart` : masque de chargement ECharts (`showLoading`/`hideLoading`) jamais bloqué même quand une tuile repasse SOUS le seuil pendant qu'un calcul DuckDB AU-DESSUS du seuil est encore en vol pour cette même tuile — `hideLoading()` rendu inconditionnel (après le contrôle `isStale`/`isDisposed()`) plutôt que gardé derrière le `usingDuckDb` de CE SEUL appel. Vérifié par relecture du code (chemin d'exécution tracé, aucun autre appel à `hideLoading()` sur cette instance ailleurs dans `js/`) ✅ — PAS reproduit par un test Playwright chronométré malgré plusieurs tentatives (délai artificiel injecté dans `GristBI.duckdbEngine.groupByAggregate`, deux rendus synchrones consécutifs pour la même tuile) : le navigateur headless n'a pas permis d'isoler de façon fiable la fenêtre de course nécessaire ⬜ — voir HYPOTHESES.md pour le détail
+- [ ] **[NON TESTABLE ICI]** Gain de performance réel chiffré DuckDB vs JS pur sur un volume encore plus grand que 47 040 lignes, ou sur un réseau/matériel représentatif d'un vrai poste utilisateur — ce sandbox ne mesure que la correction des valeurs, pas le temps de calcul
 
 ### `js/data.js` + `js/combobox.js` + `js/main.js` — autocomplétion des VALEURS dans la barre de filtres avancés (Roadmap Tier 1.5, Node + Playwright)
 
@@ -560,6 +578,31 @@ délibérément laissé de côté (contenu généré par `js/data.js`/`js/demo-d
     choisie si elle reste valide (voir `js/combobox.js`), donc sans effet de bord sur une tuile en
     cours d'édition. Vérifié en Playwright : choisir une dimension de drill-down, changer de langue,
     vérifier à la fois que le placeholder a changé ET que la valeur choisie est intacte.
+23. **Masque de chargement ECharts potentiellement bloqué indéfiniment** [BUG RÉEL trouvé en
+    relecture de code, AVANT tout commit, pendant l'extension de DuckDB-WASM à toutes les
+    agrégations (Roadmap Tier 2)] — `renderGauge`/`renderChart` (`js/charts.js`) ne levaient
+    `hideLoading()` que `if (usingDuckDb)`, où `usingDuckDb` est réévalué à CHAQUE appel à partir du
+    nombre de lignes de CET appel précis, pas de l'appel qui a réellement affiché le masque. Scénario
+    concret : un 1er rendu d'une tuile AU-DESSUS du seuil (`DUCKDB_ROW_THRESHOLD`) affiche le masque
+    puis attend un calcul SQL réel ; AVANT qu'il ne se termine, un filtre fait retomber cette MÊME
+    tuile SOUS le seuil — le 2e rendu (le gagnant, via le contrôle `isStale`) a alors son PROPRE
+    `usingDuckDb` à `false` et ne lève donc pas le masque, tandis que le 1er rendu, devenu périmé,
+    retourne via son contrôle `isStale` AVANT même d'atteindre sa propre ligne `hideLoading()`. Aucun
+    des deux appels ne lève donc jamais le masque, qui reste affiché indéfiniment au-dessus d'un
+    graphique pourtant à jour. Corrigé en rendant `hideLoading()` INCONDITIONNEL (après le contrôle
+    `isStale`/`isDisposed()`) dans les deux fonctions — ECharts documente `hideLoading()` comme sans
+    effet si aucun masque n'est affiché, et `renderMeasureChart` (seul chemin de rendu async
+    préexistant à cette feature) le faisait déjà ainsi sans condition, ce qui a servi de référence
+    pour corriger les deux nouveaux chemins. **PAS reproduit par un test Playwright chronométré**
+    malgré plusieurs tentatives (deux rendus synchrones consécutifs pour la même tuile avec des
+    volumes de part et d'autre du seuil, y compris avec un délai artificiel injecté directement dans
+    `GristBI.duckdbEngine.groupByAggregate`) — la preuve retenue est la relecture du code (chemin
+    d'exécution tracé ligne à ligne, recherche confirmant qu'aucune autre ligne de `js/` n'appelle
+    `hideLoading()` sur cette instance), pas une capture d'un masque réellement bloqué. Leçon : un
+    garde conditionné sur une variable recalculée à CHAQUE appel («  `usingDuckDb` de CE rendu ») ne
+    protège que CE rendu, jamais l'état laissé par un rendu précédent devenu périmé entre-temps — pour
+    une ressource à deux états (afficher/masquer), le nettoyage doit être inconditionnel, pas
+    symétrique à la condition qui a déclenché l'affichage.
 
 ## Fragilité de test connue (PAS un bug produit — investiguée en profondeur, à ne pas re-diagnostiquer)
 
