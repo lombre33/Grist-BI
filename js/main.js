@@ -346,7 +346,13 @@
   // Le pivot a DEUX dimensions (lignes + colonnes, voir tile-column-dimension-field) déjà
   // affichées simultanément dans la grille : pas de notion de "détailler" une dimension au clic
   // comme pour bar/pie/treemap/scatter (qui n'en ont qu'une), donc pas de drill-down pour ce type.
-  function supportsDrillDown(type) { return !typeHasNoDimension(type) && type !== 'pivot'; }
+  // Le radar non plus (voir js/charts.js:renderChart) : une seule série couvre TOUTES les valeurs
+  // de la dimension à la fois (un axe par valeur), le clic ECharts sur un radar ne distingue pas
+  // quel axe a été visé — aucune valeur de dimension cohérente à driller, le gestionnaire de clic
+  // générique l'ignore explicitement (voir le garde dans getOrCreateChartInstance). Masquer le
+  // formulaire de configuration du drill-down pour ce type plutôt que de laisser l'utilisateur
+  // configurer des niveaux qui ne se déclencheront jamais au clic.
+  function supportsDrillDown(type) { return !typeHasNoDimension(type) && type !== 'pivot' && type !== 'radar'; }
 
   // Drill-down à N niveaux : un combobox par niveau, créé dynamiquement ("+ Niveau") plutôt que des
   // champs figés dans le HTML — data.js/state.js/charts.js gèrent déjà un tableau drillDimensions
@@ -389,7 +395,7 @@
   // séquentielle, comme l'ancien niveau 2 qui n'apparaissait qu'une fois le niveau 1 choisi) et que
   // le plafond n'est pas atteint ; recalcule aussi la visibilité de la case cross-filter.
   function updateDrillLevelsUI() {
-    const noDrill = formHasNoDimension() || tileTypeSelect.value === 'pivot';
+    const noDrill = formHasNoDimension() || !supportsDrillDown(tileTypeSelect.value);
     const lastSelect = drillLevelSelects[drillLevelSelects.length - 1];
     addDrillLevelBtn.hidden = noDrill || !lastSelect || !lastSelect.value || drillLevelSelects.length >= MAX_DRILL_LEVELS;
     drillCrossFilterField.hidden = noDrill || !drillLevelSelects[0] || !drillLevelSelects[0].value;
@@ -781,12 +787,12 @@
     // drill-down, juste un agrégat sur toute la sélection (le KPI peut en plus le comparer à une
     // période via "Tendance vs", la jauge le positionne sur un cadran Min/Max, la tuile Barres en
     // mode mesure affiche l'évolution mensuelle de `tile-date-column`). Le nuage de points ajoute
-    // une 2e mesure (axe Y). Le pivot ajoute une 2e dimension (colonnes) et n'a pas de drill-down
-    // (voir supportsDrillDown).
+    // une 2e mesure (axe Y). Le pivot et le radar ajoutent une 2e dimension/un axe par valeur mais
+    // n'ont pas de drill-down (voir supportsDrillDown).
     dimensionField.hidden = formHasNoDimension();
     dimensionLabel.textContent = t(isPivot ? 'tileForm.dimension.labelRows' : 'tileForm.dimension.label');
     columnDimensionField.hidden = !isPivot;
-    drillField.hidden = formHasNoDimension() || isPivot;
+    drillField.hidden = formHasNoDimension() || !supportsDrillDown(type);
     trendField.hidden = !isKpi;
     gaugeMinField.hidden = !isGauge;
     gaugeMaxField.hidden = !isGauge;

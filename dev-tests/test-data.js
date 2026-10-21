@@ -1148,6 +1148,32 @@ const SAMPLE_TIME_SERIES = [
   console.log('OK data.measureSeriesForTile — série temporelle vide -> catégories/données vides, pas d\'exception');
 }
 
+// data.waterfallSeries (tuile "Cascade (waterfall)", js/charts.js:renderChart) : décompose un
+// agrégat ordonné en 3 séries empilables (base invisible + hausse/baisse visibles) simulant une
+// vraie série waterfall, absente d'ECharts — voir ROADMAP.md.
+{
+  // Mélange hausse/baisse/zéro, dans l'ORDRE D'APPARITION (jamais retrié, piège n°14) : +10, -4, 0, +7.
+  const agg = [
+    { dimension: 'A', value: 10 },
+    { dimension: 'B', value: -4 },
+    { dimension: 'C', value: 0 },
+    { dimension: 'D', value: 7 }
+  ];
+  const { base, rise, fall } = data.waterfallSeries(agg);
+  // Cumul attendu après chaque catégorie : 10, 6, 6, 13.
+  assert.deepStrictEqual(base, [0, 6, 6, 6]); // min(départ, arrivée) de chaque barre
+  assert.deepStrictEqual(rise, [10, 0, 0, 7]);
+  assert.deepStrictEqual(fall, [0, 4, 0, 0]);
+  console.log('OK data.waterfallSeries (cumul correct, hausse/baisse/zéro décomposés, ordre préservé)');
+}
+{
+  const { base, rise, fall } = data.waterfallSeries([]);
+  assert.deepStrictEqual(base, []);
+  assert.deepStrictEqual(rise, []);
+  assert.deepStrictEqual(fall, []);
+  console.log('OK data.waterfallSeries — agrégat vide -> 3 tableaux vides, pas d\'exception');
+}
+
 // --- js/i18n.js : mécanisme de traduction fr/en (data-i18n, voir index.html/harness.html) ---
 
 // Complétude du dictionnaire : chaque clé doit porter fr ET en, non vides — une entrée oubliée

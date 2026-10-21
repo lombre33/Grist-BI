@@ -1,13 +1,14 @@
 /*
- * Rendu des tuiles (bar/pie/kpi/gauge/treemap/scatter) avec ECharts : filtres croisés multiples,
- * tendance KPI, et drill-down multi-niveaux (voir GristBI.data.tileDrillLevels) avec fil d'Ariane.
- * Dépend du global `echarts` (js/vendor/echarts/, voir index.html) et de GristBI.data/GristBI.store.
+ * Rendu des tuiles (bar/pie/kpi/gauge/treemap/scatter/waterfall/radar) avec ECharts : filtres
+ * croisés multiples, tendance KPI, et drill-down multi-niveaux (voir GristBI.data.tileDrillLevels)
+ * avec fil d'Ariane. Dépend du global `echarts` (js/vendor/echarts/, voir index.html) et de
+ * GristBI.data/GristBI.store.
  */
 (function (global) {
   const GristBI = global.GristBI || (global.GristBI = {});
   const {
     groupByAggregate, sameValue, aggregateSingle, pivotTable, trendFromGroups, measureSeriesForTile,
-    escapeHtml, tileDrillLevels, currentDimension, rowsForTile
+    waterfallSeries, escapeHtml, tileDrillLevels, currentDimension, rowsForTile
   } = GristBI.data;
   const { t } = GristBI.i18n;
 
@@ -218,6 +219,14 @@
       // Mode mesure temporelle (voir renderMeasureChart) : un point est un mois CALCULÉ (bucket
       // DuckDB), pas une vraie valeur de la dimension d'origine — rien de cohérent à filtrer/driller.
       if (currentTile.type === 'bar' && currentTile.measureMode && currentTile.measureMode !== 'brut') return;
+      // Radar (voir renderChart) : une seule série/un seul "polygone" couvrant TOUTES les valeurs de
+      // la dimension à la fois (un axe par valeur) — params.name sur un clic est alors le nom de CE
+      // polygone (tile.measure), jamais celui d'un axe précis cliqué individuellement. ECharts ne
+      // distingue pas l'axe survolé/cliqué au clic sur un radar (seulement au survol, dans le
+      // tooltip) : aucune valeur de dimension cohérente à driller/filtrer ici, contrairement à
+      // bar/pie/treemap/scatter/waterfall qui restent tous sur un axe catégoriel classique. Repli
+      // silencieux (aucune action) plutôt qu'un filtre posé par erreur sur "tile.measure".
+      if (currentTile.type === 'radar') return;
       const livePath = (liveState.drillIns && liveState.drillIns[currentTile.id]) || [];
       const dim = currentDimension(currentTile, livePath);
       const levels = tileDrillLevels(currentTile);
@@ -413,6 +422,73 @@
             value: [d.value, aggYByDimension.get(d.dimension)],
             itemStyle: dim(d.dimension)
           }))
+        }]
+      };
+    } else if (tile.type === 'waterfall') {
+      // Pas de série ECharts native "waterfall" (voir ROADMAP.md) : simulation standard par 2
+      // séries de barres empilées — une invisible (`base`, la partie du cumul déjà atteinte avant
+      // cette catégorie) portant la vraie partie visible (`rise`/`fall` selon le signe), comme
+      // documenté par ECharts lui-même pour ce type de graphique. Reste sur le MÊME
+      // dimension/measure/aggFn que "bar" (aucun nouveau champ de formulaire) : seul l'empilement
+      // cumulatif change, pas la donnée sous-jacente — même `agg` que la branche "bar" ci-dessous.
+      // xAxis reste catégoriel -> params.name (clic) est TOUJOURS la catégorie, quelle que soit la
+      // série cliquée (y compris la base invisible) : le gestionnaire générique de clic
+      // (getOrCreateChartInstance) fonctionne donc ici SANS aucune adaptation, contrairement au
+      // radar ci-dessous.
+      const { base, rise, fall } = waterfallSeries(agg);
+      option = {
+        color: CATEGORICAL_PALETTE,
+        grid: { ...numericGrid, top: 40 },
+        legend: { top: 0, data: [t('chart.waterfall.increase'), t('chart.waterfall.decrease')] },
+        tooltip: { trigger: 'axis' },
+        xAxis: { type: 'category', data: agg.map((d) => d.dimension) },
+        yAxis: { type: 'value', axisLabel: { formatter: formatCompactNumber } },
+        series: [
+          {
+            name: t('chart.waterfall.base'),
+            type: 'bar',
+            stack: 'waterfall',
+            itemStyle: { color: 'transparent' },
+            tooltip: { show: false },
+            data: base.map((v, i) => ({ value: v, itemStyle: dim(agg[i].dimension) }))
+          },
+          {
+            name: t('chart.waterfall.increase'),
+            type: 'bar',
+            stack: 'waterfall',
+            itemStyle: { color: CATEGORICAL_PALETTE[2] },
+            data: rise.map((v, i) => ({ value: v, itemStyle: dim(agg[i].dimension) }))
+          },
+          {
+            name: t('chart.waterfall.decrease'),
+            type: 'bar',
+            stack: 'waterfall',
+            itemStyle: { color: CATEGORICAL_PALETTE[7] },
+            data: fall.map((v, i) => ({ value: v, itemStyle: dim(agg[i].dimension) }))
+          }
+        ]
+      };
+    } else if (tile.type === 'radar') {
+      // Radar à UNE SEULE série (un "polygone"), un axe par valeur de la dimension (plutôt que le
+      // radar classique Power BI : plusieurs mesures en axes pour comparer quelques entités) — le
+      // choix retenu dans ce jeu de données reste cohérent avec le reste des types de tuiles (même
+      // dimension/measure/aggFn que bar/pie/treemap, aucun nouveau champ de formulaire), voir
+      // ROADMAP.md pour pourquoi un radar "classique multi-mesures" ne collait à aucun jeu de
+      // données démonstratif disponible ici. Même max PARTAGÉ par tous les axes (pas un max par
+      // axe, qui normaliserait chaque axe à 100% et rendrait toute comparaison de hauteur entre
+      // axes trompeuse) ; `min` partagé aussi, pour les mesures pouvant être négatives.
+      const values = agg.map((d) => d.value);
+      const maxVal = Math.max(0, ...values);
+      const minVal = Math.min(0, ...values);
+      option = {
+        color: CATEGORICAL_PALETTE,
+        tooltip: { trigger: 'item' },
+        radar: {
+          indicator: agg.map((d) => ({ name: String(d.dimension), max: maxVal || 1, min: minVal }))
+        },
+        series: [{
+          type: 'radar',
+          data: [{ name: tile.measure, value: values }]
         }]
       };
     } else {

@@ -148,6 +148,8 @@
     'tileForm.type.kpi': { fr: 'Carte KPI', en: 'KPI card' },
     'tileForm.type.gauge': { fr: 'Jauge', en: 'Gauge' },
     'tileForm.type.pivot': { fr: 'Tableau croisé', en: 'Pivot table' },
+    'tileForm.type.waterfall': { fr: 'Cascade (waterfall)', en: 'Waterfall' },
+    'tileForm.type.radar': { fr: 'Radar', en: 'Radar' },
     'tileForm.dimension.label': { fr: 'Dimension', en: 'Dimension' },
     'tileForm.dimension.labelRows': { fr: 'Dimension (lignes)', en: 'Dimension (rows)' },
     'tileForm.columnDimension.label': { fr: 'Dimension (colonnes)', en: 'Dimension (columns)' },
@@ -244,6 +246,9 @@
     'chart.computing': { fr: 'Calcul…', en: 'Computing…' },
     'chart.pivot.total': { fr: 'Total', en: 'Total' },
     'chart.breadcrumb.hint': { fr: '(cliquer pour détailler par {column})', en: '(click to drill down by {column})' },
+    'chart.waterfall.base': { fr: 'Base (cumul)', en: 'Base (running total)' },
+    'chart.waterfall.increase': { fr: 'Hausse', en: 'Increase' },
+    'chart.waterfall.decrease': { fr: 'Baisse', en: 'Decrease' },
   };
 
   let lang = (typeof localStorage !== 'undefined' && localStorage.getItem('gristbi_lang') === 'en') ? 'en' : 'fr';

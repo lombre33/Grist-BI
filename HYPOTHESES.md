@@ -1873,6 +1873,90 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     confirmer sur un vrai Grist — un premier clic réel sur le bouton Commentaires d'Antoine reste
     l'unique vérification qui manque pour cette feature précise.
 
+- **Tuiles "Cascade (waterfall)" et "Radar"** (`js/charts.js:renderChart`, `js/data.js:waterfallSeries`,
+  2026-10-21, Tier 2 ROADMAP.md, "features visibles restantes" — dernière de la liste, faible
+  valeur) : les 2 derniers types de tuile listés dans ROADMAP.md comme non faits. Les deux
+  réutilisent EXACTEMENT les mêmes champs de formulaire que bar/pie/treemap (dimension/mesure/
+  aggFn) — aucun nouveau champ, aucune nouvelle table Grist, aucun nouveau test de schéma.
+  - **Waterfall** : pas de série ECharts native pour ce type (confirmé — ECharts 5.6.0 vendorisé
+    dans ce dépôt n'en propose aucune). Simulation standard, documentée par ECharts lui-même pour ce
+    cas : 2 séries de barres EMPILÉES (`stack: 'waterfall'`) — une invisible (`base`, la partie du
+    cumul déjà atteinte avant cette catégorie, `itemStyle: {color: 'transparent'}`,
+    `tooltip: {show: false}`) portant une partie VISIBLE scindée en deux séries nommées (`rise` pour
+    une valeur positive, `fall` pour une valeur négative, afin que la légende distingue Hausse/
+    Baisse par de VRAIS noms de série plutôt qu'une seule couleur ambiguë). Couleurs reprises de
+    `CATEGORICAL_PALETTE` (déjà validée colorblind-safe par la skill *dataviz* de ce projet, jamais
+    de nouvelle couleur inventée pour cette feature) : vert (`#1baf7a`, index 2) pour la hausse,
+    rouge (`#e34948`, index 7) pour la baisse.
+    - **Calcul extrait dans `js/data.js` (PUR, testable sous Node)**, pas directement dans
+      `js/charts.js` (DOM-dépendant) : `waterfallSeries(agg)` prend le MÊME tableau
+      `[{dimension, value}, ...]` que produit déjà `groupByAggregate` (voir bar/pie/treemap), JAMAIS
+      retrié (piège n°14, CLAUDE.md §7 — l'ordre d'apparition reste la source de vérité), et renvoie
+      `{base, rise, fall}`. `js/charts.js` ne fait plus que construire l'option ECharts à partir de
+      ce résultat, même séparation de responsabilités que `measureSeriesForTile`/`renderMeasureChart`
+      (voir plus haut dans ce document).
+    - **Reste cliquable pour le drill-down/cross-filter EXACTEMENT comme "bar"**, sans aucune
+      adaptation du gestionnaire de clic générique (`js/charts.js:getOrCreateChartInstance`) : l'axe
+      X reste catégoriel (`xAxis: {type: 'category', data: agg.map(d => d.dimension)}`), donc
+      `params.name` au clic est TOUJOURS le nom de la catégorie cliquée, quelle que soit la série
+      empilée visée (y compris un clic sur la partie invisible `base`, qui reste cliquable — seul son
+      tooltip est supprimé, pas sa capacité à recevoir un clic). Vérifié en Playwright (voir plus
+      bas) : un clic sur la 1re barre pose bien un cross-filter `Region=Nord`, identique à une tuile
+      "bar" sur les mêmes données.
+  - **Radar** : UNE SEULE série/un seul "polygone" couvrant TOUTES les valeurs de la dimension à la
+    fois (un axe/indicateur par valeur de la dimension), PAS le radar classique Power BI (plusieurs
+    MESURES en axes, pour comparer quelques entités) — ce 2e modèle a été écarté : confirmé qu'aucun
+    jeu de données démonstratif de ce dépôt (`BI_StressTest` : Région/Produit/Année/Mois/Quantité/
+    Montant) n'a assez de colonnes NUMÉRIQUES indépendantes pour en faire un radar multi-mesures
+    démonstratif, exactement la limite déjà pressentie dans ROADMAP.md avant cette session. Même
+    `max`/`min` PARTAGÉS par tous les axes (pas un max par axe, qui normaliserait chaque axe à 100%
+    de sa propre valeur et rendrait toute comparaison de hauteur entre axes trompeuse) —
+    `maxVal = Math.max(0, ...values)`, `minVal = Math.min(0, ...values)` (ce dernier pour couvrir une
+    mesure pouvant être négative, qu'un radar ECharts ne gère pas bien avec un `min` implicite à 0).
+    - **Limite technique assumée et documentée, pas une omission** : le clic ECharts sur un radar ne
+      distingue PAS quel axe/indicateur a été visé — `params.name` au clic est le nom du SEUL item de
+      `series[0].data` (ici `tile.measure`), jamais le nom d'un axe précis. Driller/filtrer sur cette
+      valeur serait un filtre posé par erreur sur un nom de mesure, pas une vraie valeur de dimension
+      — un vrai bug silencieux du genre que ce projet documente abondamment comme piège (voir
+      CLAUDE.md §7). Corrigé par 2 gardes explicites plutôt que de laisser cette incohérence passer
+      silencieusement :
+      1. `js/charts.js:getOrCreateChartInstance` — `if (currentTile.type === 'radar') return;` dans
+         le gestionnaire de clic générique, AVANT toute tentative de drill/cross-filter (même famille
+         de garde que celui déjà existant pour une tuile Barres en mode mesure temporelle).
+      2. `js/main.js:supportsDrillDown('radar')` renvoie `false` (comme `'pivot'`) : le formulaire
+         masque entièrement la configuration du drill-down pour ce type (`drillField`/
+         `addDrillLevelBtn`/`drillCrossFilterField`), pour ne jamais laisser l'utilisateur configurer
+         des niveaux qui ne se déclencheraient jamais au clic. `updateFormFieldsForType`/
+         `updateDrillLevelsUI` ont été réécrits pour appeler `supportsDrillDown(type)` au lieu de
+         dupliquer `type === 'pivot'` à 2 endroits séparés (nettoyage mineur, même occasion).
+  - **Aucun changement nécessaire côté export** (`js/data.js:tileExportSheet`/`tileExportKind`,
+    `js/pdf-export.js`/`js/pptx-export.js`/`js/export.js`) : les deux nouveaux types tombent déjà
+    dans la branche par défaut de `tileExportSheet` (`[dimension, measure]`, comme bar/pie/treemap,
+    AUCUN cas spécial écrit pour eux), et `tileExportKind` renvoie déjà 'image' par défaut pour tout
+    type hors kpi/pivot — vérifié par lecture de code, aucune branche de ces fichiers ne mentionne
+    `tile.type` d'une façon qui les exclurait.
+  - **Testé sous Node** (`dev-tests/test-data.js`) : `data.waterfallSeries` — cumul correct sur un
+    mélange hausse/baisse/zéro dans l'ordre d'apparition (`[+10, -4, 0, +7]` → `base=[0,6,6,6]`,
+    `rise=[10,0,0,7]`, `fall=[0,4,0,0]`), agrégat vide → 3 tableaux vides sans exception.
+  - **Testé en Playwright** contre `dev-tests/harness.html` (script ad hoc, non committé, voir §5 de
+    CLAUDE.md), servi en HTTP local : les 2 types apparaissent dans le sélecteur, une tuile de chaque
+    se crée et se rend (canvas ECharts non vide, aucune erreur JS) ; `#tile-drill-field` masqué pour
+    radar, visible pour bar (confirmant `supportsDrillDown`) ; un clic PRÉCIS (coordonnées calculées
+    via `echarts.convertToPixel`, pas une position devinée — **piège de méthodologie de test trouvé
+    ET corrigé en cours de vérification** : la tuile nouvellement ajoutée se trouve tout en bas de la
+    page, hors du viewport Playwright par défaut, un premier essai de clic à des coordonnées non
+    scrollées dans la vue n'atteignait donc RIEN de réel côté navigateur — `element.scrollIntoView()`
+    avant de mesurer `getBoundingClientRect()` a corrigé le script de test lui-même, pas le produit ;
+    confirmé en isolant la technique sur une tuile "bar" déjà existante, qui fonctionnait déjà avant
+    ce correctif de script) sur la 1re barre d'une tuile waterfall pose bien un cross-filter
+    `Region=Nord` (identique à "bar") ; le même clic au centre d'une tuile radar NE pose AUCUN filtre
+    supplémentaire (garde confirmée). Vérifié aussi que `index.html` (import map distinct de
+    `dev-tests/harness.html`, piège historique #18) continue de charger sans erreur après l'ajout des
+    2 nouvelles options du sélecteur de type.
+  - **Jamais testé dans un vrai document Grist** (voir §8/§9 de CLAUDE.md), comme tout rendu ECharts
+    de ce projet — aucun point aveugle SPÉCIFIQUE à ces 2 types au-delà de ce qui s'applique déjà à
+    bar/pie/treemap/scatter.
+
 - **Export Excel des tuiles en mode mesure (Cumul/YTD/N-1) — vraies valeurs (2026-10-21, Tier 2
   ROADMAP.md)** : jusqu'ici, `GristBI.data.tileExportSheet` remplaçait une tuile Barres en mode
   mesure par un texte explicite ("Export non disponible…", voir l'entrée "Export PDF du dashboard"
