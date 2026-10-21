@@ -1704,6 +1704,53 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     `BI_Dashboard_Config`, voir "Validé en conditions réelles" plus loin) — même mécanisme
     générique, mais jamais essayé pour un 3e appelant.
 
+- **Export Excel des tuiles en mode mesure (Cumul/YTD/N-1) — vraies valeurs (2026-10-21, Tier 2
+  ROADMAP.md)** : jusqu'ici, `GristBI.data.tileExportSheet` remplaçait une tuile Barres en mode
+  mesure par un texte explicite ("Export non disponible…", voir l'entrée "Export PDF du dashboard"
+  plus haut) plutôt que les vraies valeurs — le calcul réel (`GristBI.duckdbEngine.timeSeriesMeasures`)
+  est ASYNCHRONE, incompatible avec cette fonction volontairement pure/synchrone (testable sous
+  Node). Contrairement à l'export PDF/PPTX (qui contourne ce mur en capturant l'image déjà rendue),
+  l'export Excel a besoin des VRAIES données tabulaires, pas d'une image — il n'y a pas de
+  contournement équivalent.
+  - **Mécanisme retenu** : deux nouvelles fonctions dans `js/data.js`, `measureExportSheet(tile,
+    state, computeMeasureSeries)` et `buildWorkbookSheetsAsync(state, computeMeasureSeries)`,
+    variantes async de `tileExportSheet`/`buildWorkbookSheets` (gardées inchangées, toujours
+    utilisées par `js/pdf-export.js`/`js/pptx-export.js` pour kpi/pivot, qui ne passent jamais par
+    le cas mesure — `tileExportKind` route toujours une tuile Barres vers 'image'). Seule UNE tuile
+    en mode mesure déclenche `computeMeasureSeries` ; toutes les autres tuiles du classeur restent
+    calculées par le chemin pur/synchrone existant, inchangé.
+  - **`computeMeasureSeries` est INJECTÉ par l'appelant** (`js/export.js`, qui fournit
+    `(tile, rows) => GristBI.duckdbEngine.timeSeriesMeasures(rows, tile.dateColumn, tile.measure,
+    tile.aggFn)` — même appel que `js/charts.js:renderMeasureChart`, pour garantir que l'export
+    contient EXACTEMENT les valeurs affichées à l'écran) plutôt qu'importé directement dans
+    `js/data.js` : ce module reste sans dépendance à un autre module GristBI (voir son en-tête),
+    donc testable sous Node avec une fonction factice, sans jamais toucher à DuckDB-WASM (dont
+    l'exécution réelle nécessite un navigateur, voir CLAUDE.md §5). Un échec du calcul (DuckDB
+    indisponible, erreur SQL) retombe sur un message explicite PAR TUILE (`measureExportSheet`
+    attrape l'erreur) plutôt que de faire échouer tout le classeur.
+  - `js/export.js:exportDashboardToExcel` et le gestionnaire de clic (`js/main.js`) sont devenus
+    `async`/`await` en conséquence — seul changement de surface côté appelant, le reste de l'UI
+    (alerte si classeur vide, message d'erreur générique) est inchangé.
+  - **Testé sous Node** (`dev-tests/test-data.js`) : `measureExportSheet` pour les modes `ytd` (1
+    colonne) et `yoy` (2 colonnes, `previousYear` manquant -> chaîne vide dans la cellule plutôt que
+    `null`) avec un `computeMeasureSeries` factice (Promise résolue avec un `timeSeries` écrit à la
+    main) ; le cas d'échec (`computeMeasureSeries` qui rejette) ; `buildWorkbookSheetsAsync` sur un
+    classeur mixte (une tuile normale + une tuile mesure) vérifiant que seule la tuile mesure
+    déclenche l'injection, l'autre restant calculée à l'identique de `buildWorkbookSheets`.
+  - **Testé en Playwright contre un vrai navigateur** (script ad hoc, non committé, voir §5 de
+    CLAUDE.md), servi en HTTP local (`dev-tests/harness.html`, donc le vrai `js/duckdb-engine.js`
+    s'exécute, pas un mock) : tuile Barres en mode YTD sur la colonne `Date`/mesure `Montant` des
+    47 040 lignes réelles de `BI_StressTest`, export cliqué, fichier `.xlsx` réellement téléchargé
+    relu côté Node (SheetJS vendorisé, `XLSX.read` sur le buffer) — la feuille de cette tuile
+    contient 84 lignes (7 ans × 12 mois, cohérent avec la vérification à l'écran de la feature DAX
+    d'origine, voir plus haut) et uniquement des valeurs YTD numériques finies, strictement
+    croissantes à l'intérieur d'une même année puis qui repartent plus bas en janvier (comportement
+    YTD attendu) — plus aucun message "non disponible" dans ce classeur. Pas testé : les modes
+    `cumulative`/`yoy` en conditions réelles de navigateur (seulement sous Node avec un
+    `computeMeasureSeries` factice) — jugé suffisant, `measureSeriesForTile` (qui produit les deux
+    autres formes) est déjà testé exhaustivement sous Node par ailleurs (voir plus haut dans ce
+    document), et `ytd` exerce le même chemin DuckDB réel que les deux autres modes.
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée

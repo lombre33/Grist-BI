@@ -926,14 +926,16 @@
     store.saveBookmark('bm_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name);
   });
 
-  // Une feuille par tuile, toutes pages confondues (voir GristBI.data.buildWorkbookSheets) — les
-  // données déjà agrégées/filtrées EXACTEMENT comme à l'écran (rowsForTile est la même fonction que
-  // charts.js). Jamais vérifié en conditions réelles Grist que le téléchargement se déclenche bien
-  // depuis l'iframe du widget (voir HYPOTHESES.md) — fonctionne dans ce harness et un navigateur
-  // standard, l'iframe n'étant pas sandboxée (voir ROADMAP.md).
-  exportExcelBtn.addEventListener('click', () => {
+  // Une feuille par tuile, toutes pages confondues (voir GristBI.data.buildWorkbookSheetsAsync) —
+  // les données déjà agrégées/filtrées EXACTEMENT comme à l'écran (rowsForTile est la même fonction
+  // que charts.js), y compris pour une tuile en mode mesure (Cumul/YTD/N-1), désormais calculée via
+  // DuckDB-WASM plutôt que remplacée par un message (voir js/export.js). Jamais vérifié en
+  // conditions réelles Grist que le téléchargement se déclenche bien depuis l'iframe du widget
+  // (voir HYPOTHESES.md) — fonctionne dans ce harness et un navigateur standard, l'iframe n'étant
+  // pas sandboxée (voir ROADMAP.md).
+  exportExcelBtn.addEventListener('click', async () => {
     try {
-      const exported = GristBI.exportExcel.exportDashboardToExcel(store.getState());
+      const exported = await GristBI.exportExcel.exportDashboardToExcel(store.getState());
       if (!exported) alert(t('export.none'));
     } catch (e) {
       console.error('[GristBI] échec de l\'export Excel', e);

@@ -377,14 +377,15 @@
       return { name: title, header, rows: bodyRows };
     }
     // Mode de calcul temporel (voir GristBI.duckdbEngine.timeSeriesMeasures) : ce calcul est
-    // ASYNCHRONE (une vraie requête SQL DuckDB-WASM), alors que tileExportSheet/buildWorkbookSheets
-    // sont volontairement PURES/synchrones (testables sous Node, voir plus haut) — l'inclure ici
-    // demanderait de rendre tout l'export async pour une seule feature. Sous-ensemble ciblé assumé
-    // (comme le reste de cette feature, voir ROADMAP.md) : un texte explicite plutôt qu'un export
+    // ASYNCHRONE (une vraie requête SQL DuckDB-WASM), alors que cette fonction est volontairement
+    // PURE/synchrone (testable sous Node, voir plus haut) — impossible de produire les vraies
+    // valeurs Cumul/YTD/N-1 ici. Un appel direct et synchrone sur une tuile en mode mesure (plus
+    // aucun dans ce dépôt depuis que `buildWorkbookSheetsAsync` ci-dessous gère ce cas à part, mais
+    // gardé pour tout futur appelant direct) retombe donc sur ce texte explicite plutôt qu'un export
     // silencieusement incohérent (sans cette branche, `dimension` serait vide et produirait une
-    // seule ligne "undefined" trompeuse au lieu des vraies valeurs cumul/YTD/N-1 affichées à l'écran).
+    // seule ligne "undefined" trompeuse au lieu des vraies valeurs affichées à l'écran).
     if (tile.type === 'bar' && tile.measureMode && tile.measureMode !== 'brut') {
-      return { name: title, header: ['Info'], rows: [['Export non disponible pour les tuiles avec un mode de calcul temporel (Cumul/YTD/N-1) — voir HYPOTHESES.md.']] };
+      return { name: title, header: ['Info'], rows: [['Export non disponible pour les tuiles avec un mode de calcul temporel (Cumul/YTD/N-1) — voir GristBI.data.buildWorkbookSheetsAsync.']] };
     }
     const drillPath = (state.drillIns && state.drillIns[tile.id]) || [];
     const dimension = currentDimension(tile, drillPath);
@@ -430,6 +431,60 @@
     for (const page of state.pages) {
       for (const tile of page.tiles) {
         const sheet = tileExportSheet(tile, state);
+        const label = multiPage ? `${page.name} - ${sheet.name}` : sheet.name;
+        sheets.push({ name: sanitizeSheetName(label, usedNames), header: sheet.header, rows: sheet.rows });
+      }
+    }
+    return sheets;
+  }
+
+  // Variante async de tileExportSheet, pour UNE tuile Barres en mode de calcul temporel
+  // (Cumul/YTD/N-1) : contrairement au reste de ce fichier (volontairement pur/synchrone), ce cas
+  // a besoin d'une vraie requête SQL DuckDB-WASM (voir GristBI.duckdbEngine.timeSeriesMeasures) —
+  // c'était la limite assumée documentée plus haut (tileExportSheet renvoyait un texte explicite à
+  // la place des valeurs). `computeMeasureSeries(tile, rows)` est INJECTÉ par l'appelant (voir
+  // buildWorkbookSheetsAsync ci-dessous) plutôt qu'importé directement ici : ce module reste sans
+  // dépendance à un autre module GristBI (voir l'en-tête de ce fichier), donc testable sous Node
+  // avec une fonction de calcul factice (voir dev-tests/test-data.js), au lieu d'exiger un vrai
+  // navigateur pour tester la composition header/rows elle-même. Même mise en forme que
+  // measureSeriesForTile/renderMeasureChart (js/charts.js) : une colonne "Période" puis une colonne
+  // par série (Cumul, ou Valeur+N-1 pour 'yoy'), valeur manquante (N-1 sans donnée) en chaîne vide
+  // plutôt que `null` dans la cellule Excel — même convention que pivotTable/tileExportSheet
+  // ci-dessus pour "aucune donnée". Un échec du calcul (DuckDB indisponible, erreur SQL) retombe
+  // sur un message explicite PAR TUILE plutôt que de faire échouer tout le classeur — les autres
+  // feuilles du classeur restent exportées normalement.
+  async function measureExportSheet(tile, state, computeMeasureSeries) {
+    const rows = rowsForTile(tile, state);
+    const title = tile.title || `${tile.aggFn}(${tile.measure})`;
+    try {
+      const timeSeries = await computeMeasureSeries(tile, rows);
+      const { categories, series } = measureSeriesForTile(tile.measureMode, timeSeries);
+      const header = ['Période'].concat(series.map((s) => s.label));
+      const bodyRows = categories.map((cat, i) => [cat].concat(series.map((s) => (s.data[i] == null ? '' : s.data[i]))));
+      return { name: title, header, rows: bodyRows };
+    } catch (e) {
+      return { name: title, header: ['Info'], rows: [['Échec du calcul de la mesure temporelle (Cumul/YTD/N-1) — voir la console du navigateur.']] };
+    }
+  }
+
+  // Variante async de buildWorkbookSheets : même composition (une feuille par tuile, toutes pages
+  // confondues, même préfixage/troncature de nom via sanitizeSheetName), mais route une tuile
+  // Barres en mode de calcul temporel vers measureExportSheet (ci-dessus) au lieu du texte
+  // explicite de tileExportSheet — c'est la fonction que js/export.js doit appeler pour que
+  // l'export Excel contienne les vraies valeurs Cumul/YTD/N-1, pas seulement un message.
+  // `computeMeasureSeries` (même contrat que pour measureExportSheet) n'est appelé QUE pour les
+  // tuiles qui en ont réellement besoin — toutes les autres tuiles restent calculées de façon pure
+  // et synchrone via tileExportSheet, aucun changement de comportement pour elles.
+  async function buildWorkbookSheetsAsync(state, computeMeasureSeries) {
+    const usedNames = new Set();
+    const sheets = [];
+    const multiPage = state.pages.length > 1;
+    for (const page of state.pages) {
+      for (const tile of page.tiles) {
+        const isTemporalMeasure = tile.type === 'bar' && tile.measureMode && tile.measureMode !== 'brut';
+        const sheet = isTemporalMeasure
+          ? await measureExportSheet(tile, state, computeMeasureSeries)
+          : tileExportSheet(tile, state);
         const label = multiPage ? `${page.name} - ${sheet.name}` : sheet.name;
         sheets.push({ name: sanitizeSheetName(label, usedNames), header: sheet.header, rows: sheet.rows });
       }
@@ -529,7 +584,7 @@
     relativeDateRange, RELATIVE_DATE_PRESETS, groupByAggregate, aggregateSingle, pivotTable,
     distinctColumnValues, computeTrend, periodLabel, measureSeriesForTile, escapeHtml,
     tileDrillLevels, currentDimension, rowsForTile, tileExportSheet, tileExportKind,
-    sanitizeSheetName, buildWorkbookSheets, blendRows, deriveDateHierarchyColumns,
-    commentsForTile, AGGREGATORS
+    sanitizeSheetName, buildWorkbookSheets, measureExportSheet, buildWorkbookSheetsAsync,
+    blendRows, deriveDateHierarchyColumns, commentsForTile, AGGREGATORS
   };
 });
