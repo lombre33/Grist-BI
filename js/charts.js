@@ -7,17 +7,74 @@
 (function (global) {
   const GristBI = global.GristBI || (global.GristBI = {});
   const {
-    groupByAggregate, sameValue, aggregateSingle, pivotTable, computeTrend, measureSeriesForTile,
+    groupByAggregate, sameValue, aggregateSingle, pivotTable, trendFromGroups, measureSeriesForTile,
     waterfallSeries, escapeHtml, tileDrillLevels, currentDimension, rowsForTile
   } = GristBI.data;
   const { t } = GristBI.i18n;
 
   const chartInstances = new Map();
-  // Numéro de rendu en cours par tuile en mode mesure temporelle (voir renderMeasureChart) : le
-  // calcul SQL DuckDB est asynchrone, un nouveau rendu (filtre, édition, suppression) peut démarrer
-  // avant qu'un précédent n'ait fini — seul le résultat du DERNIER appel lancé pour une tuile donnée
-  // doit s'appliquer, les autres sont silencieusement abandonnés à leur retour.
-  const measureRenderSeq = new Map();
+  // Numéro de rendu en cours par tuile, PARTAGÉ par tous les chemins de rendu asynchrones
+  // (renderKpi/renderGauge/renderChart/renderPivot/renderMeasureChart, voir computeGroupBy et
+  // consorts plus bas) : un calcul SQL DuckDB est asynchrone, un nouveau rendu (filtre, édition,
+  // suppression, ou même un changement de type de rendu pour la MÊME tuile) peut démarrer avant
+  // qu'un précédent n'ait fini — seul le résultat du DERNIER appel lancé pour une tuile donnée doit
+  // s'appliquer, les autres sont silencieusement abandonnés à leur retour. Un seul compteur par
+  // tuile (pas un par fonction de rendu) : si une tuile passe de "Barres" à "KPI" entre-temps, le
+  // calcul KPI qui démarre invalide aussi un calcul Barres encore en vol pour cette même tuile.
+  const renderSeq = new Map();
+  function bumpSeq(tileId) {
+    const seq = (renderSeq.get(tileId) || 0) + 1;
+    renderSeq.set(tileId, seq);
+    return seq;
+  }
+  function isStale(tileId, seq) {
+    return renderSeq.get(tileId) !== seq;
+  }
+
+  // Volume à partir duquel une agrégation passe par une vraie requête SQL DuckDB-WASM plutôt que
+  // par la version JS pure de js/data.js (ROADMAP.md Tier 2 : "Moteur DuckDB-WASM, remplace
+  // Array.reduce"). En-dessous, le coût FIXE du moteur (sérialisation CSV des lignes, chargement
+  // paresseux du binaire ~34 Mo au tout premier appel, aller-retour avec le Worker) dépasse
+  // largement ce qu'`Array.reduce` coûte déjà pour un petit tableau — valeur choisie empiriquement
+  // (pas une recommandation DuckDB officielle) pour rester nettement sous le volume de la table de
+  // test de charge de ce projet (~47 000 lignes, voir HYPOTHESES.md) tout en laissant les dashboards
+  // habituels, bien plus petits, sur le chemin JS synchrone existant — AUCUN changement de
+  // comportement pour eux. Un échec du chargement/calcul DuckDB (réseau, navigateur trop ancien)
+  // retombe silencieusement sur la version JS plutôt que de casser le rendu — même philosophie que
+  // le bandeau d'avertissement ECharts (`typeof echarts === 'undefined'`) plus bas dans ce fichier.
+  const DUCKDB_ROW_THRESHOLD = 5000;
+
+  async function computeGroupBy(rows, dimensionCol, measureCol, aggFn) {
+    if (rows.length >= DUCKDB_ROW_THRESHOLD) {
+      try { return await GristBI.duckdbEngine.groupByAggregate(rows, dimensionCol, measureCol, aggFn); }
+      catch (e) { console.warn('[GristBI] DuckDB indisponible pour cette agrégation, repli sur le calcul JS', e); }
+    }
+    return groupByAggregate(rows, dimensionCol, measureCol, aggFn);
+  }
+
+  async function computeAggregateSingle(rows, measureCol, aggFn) {
+    if (rows.length >= DUCKDB_ROW_THRESHOLD) {
+      try { return await GristBI.duckdbEngine.aggregateSingle(rows, measureCol, aggFn); }
+      catch (e) { console.warn('[GristBI] DuckDB indisponible pour cette agrégation, repli sur le calcul JS', e); }
+    }
+    return aggregateSingle(rows, measureCol, aggFn);
+  }
+
+  async function computePivot(rows, rowDim, colDim, measureCol, aggFn) {
+    if (rows.length >= DUCKDB_ROW_THRESHOLD) {
+      try { return await GristBI.duckdbEngine.pivotTable(rows, rowDim, colDim, measureCol, aggFn); }
+      catch (e) { console.warn('[GristBI] DuckDB indisponible pour ce tableau croisé, repli sur le calcul JS', e); }
+    }
+    return pivotTable(rows, rowDim, colDim, measureCol, aggFn);
+  }
+
+  // Même logique de comparaison que GristBI.data.computeTrend (trendFromGroups, partagée), mais sur
+  // un groupByAggregate passé par computeGroupBy ci-dessus — donc lui aussi sur DuckDB au-delà du
+  // seuil, plutôt que de rester bloqué sur la version JS pour cette seule partie du rendu KPI.
+  async function computeTrendAsync(rows, trendDimension, measureCol, aggFn) {
+    if (!trendDimension) return null;
+    return trendFromGroups(await computeGroupBy(rows, trendDimension, measureCol, aggFn));
+  }
 
   // Palette catégorielle validée colorblind-safe (skill dataviz de ce projet,
   // references/palette.md — worst adjacent CVD ΔE 9.1 clair, OKLab, cible ≥8 — ordre figé, jamais
@@ -57,14 +114,26 @@
     }
   }
 
-  function renderKpi(tile, rows, container) {
+  // ASYNCHRONE depuis que la valeur/la tendance peuvent passer par DuckDB-WASM au-delà du seuil
+  // (voir computeAggregateSingle/computeTrendAsync) — les deux calculs sont indépendants (une
+  // tuile KPI n'a qu'une seule mesure mais potentiellement une dimension de tendance différente),
+  // lancés en parallèle plutôt qu'en séquence pour ne payer qu'une seule fois la latence du plus
+  // lent des deux. Sous le seuil (l'immense majorité des dashboards), les deux résolvent sur le
+  // même tick et rien ne change visuellement par rapport à l'ancien comportement synchrone.
+  async function renderKpi(tile, rows, container) {
+    const seq = bumpSeq(tile.id);
+    const [value, trend] = await Promise.all([
+      computeAggregateSingle(rows, tile.measure, tile.aggFn),
+      computeTrendAsync(rows, tile.trendDimension, tile.measure, tile.aggFn)
+    ]);
+    if (isStale(tile.id, seq)) return; // rendu plus récent pour cette tuile entre-temps
+
     const valueEl = container.querySelector(`[data-tile-id="${tile.id}"] .tile-kpi-value`);
     if (!valueEl) return;
-    valueEl.textContent = formatNumber(aggregateSingle(rows, tile.measure, tile.aggFn));
+    valueEl.textContent = formatNumber(value);
 
     const trendEl = container.querySelector(`[data-tile-id="${tile.id}"] .tile-kpi-trend`);
     if (!trendEl) return;
-    const trend = tile.trendDimension ? computeTrend(rows, tile.trendDimension, tile.measure, tile.aggFn) : null;
     if (!trend) {
       trendEl.hidden = true;
       return;
@@ -79,7 +148,7 @@
   // dimension) : réutilise aggregateSingle telle quelle. Rendue via ECharts (contrairement à la
   // carte KPI, en texte pur) pour l'aiguille/le cadran, donc utilise .tile-chart comme bar/pie.
   // Pas de dimension -> pas de gestionnaire de clic (rien à filtrer/détailler par segment).
-  function renderGauge(tile, rows, container) {
+  async function renderGauge(tile, rows, container) {
     const el = container.querySelector(`[data-tile-id="${tile.id}"] .tile-chart`);
     if (!el) return;
     if (typeof echarts === 'undefined') {
@@ -91,7 +160,19 @@
       instance = echarts.init(el);
       chartInstances.set(tile.id, instance);
     }
-    const value = aggregateSingle(rows, tile.measure, tile.aggFn);
+    const seq = bumpSeq(tile.id);
+    const usingDuckDb = rows.length >= DUCKDB_ROW_THRESHOLD;
+    if (usingDuckDb) instance.showLoading('default', { text: t('chart.computing'), color: CATEGORICAL_PALETTE[0], maskColor: 'rgba(255, 255, 255, 0.6)' });
+    const value = await computeAggregateSingle(rows, tile.measure, tile.aggFn);
+    if (isStale(tile.id, seq) || instance.isDisposed()) return;
+    // Inconditionnel (pas `if (usingDuckDb)`) : CE rendu-ci peut être sous le seuil (donc ne pas
+    // avoir affiché son propre masque) alors qu'un rendu précédent pour CETTE MÊME tuile, lui
+    // au-dessus du seuil, l'avait affiché puis a été invalidé par ce rendu-ci avant d'atteindre son
+    // propre hideLoading() (voir isStale ci-dessus) — sans cet appel inconditionnel, un filtre qui
+    // fait repasser une tuile sous le seuil pendant qu'un calcul DuckDB est encore en vol pour elle
+    // laisserait le masque de chargement bloqué indéfiniment sur un graphique pourtant à jour.
+    // hideLoading() est documenté comme sans effet si aucun masque n'est affiché.
+    instance.hideLoading();
     const min = Number.isFinite(tile.gaugeMin) ? tile.gaugeMin : 0;
     const max = Number.isFinite(tile.gaugeMax) ? tile.gaugeMax : Math.max(value * 1.5, 1);
     instance.setOption({
@@ -171,10 +252,12 @@
   // un en-tête de ligne/colonne ne pose/retire que le filtre correspondant à CETTE dimension. Reclic
   // sur la même cellule retire les deux (toggleFilter est déjà idempotent par colonne). Les totaux
   // (ligne/colonne/général) ne sont jamais cliquables : ce sont des agrégats, pas un point de donnée.
-  function renderPivot(tile, rows, state, container) {
+  async function renderPivot(tile, rows, state, container) {
+    const seq = bumpSeq(tile.id);
+    const pivot = await computePivot(rows, tile.dimension, tile.columnDimension, tile.measure, tile.aggFn);
+    if (isStale(tile.id, seq)) return; // rendu plus récent pour cette tuile entre-temps
     const el = container.querySelector(`[data-tile-id="${tile.id}"] .tile-chart`);
     if (!el) return;
-    const pivot = pivotTable(rows, tile.dimension, tile.columnDimension, tile.measure, tile.aggFn);
     if (!pivot.rowKeys.length || !pivot.colKeys.length) {
       el.innerHTML = '<p class="pivot-empty">Aucune donnée à afficher.</p>';
       return;
@@ -237,7 +320,14 @@
     });
   }
 
-  function renderChart(tile, rows, state, container, drillPath) {
+  // ASYNCHRONE depuis que l'agrégation peut passer par DuckDB-WASM au-delà du seuil (voir
+  // computeGroupBy) : récupère/crée l'instance ECharts et affiche le fil d'Ariane IMMÉDIATEMENT
+  // (ni l'un ni l'autre ne dépend du calcul), bascule l'instance en "chargement" seulement si ce
+  // rendu-ci va effectivement utiliser DuckDB (jamais pour les dashboards habituels, bien plus
+  // petits que le seuil — zéro changement visuel pour eux), puis attend l'agrégation avant de
+  // construire les séries ECharts, exactement comme renderMeasureChart le fait déjà pour les
+  // mesures temporelles.
+  async function renderChart(tile, rows, state, container, drillPath) {
     const el = container.querySelector(`[data-tile-id="${tile.id}"] .tile-chart`);
     if (!el) return;
     renderBreadcrumb(tile, drillPath, container);
@@ -251,7 +341,23 @@
     const dimension = currentDimension(tile, drillPath);
     const instance = getOrCreateChartInstance(tile.id, el);
 
-    const agg = groupByAggregate(rows, dimension, tile.measure, tile.aggFn);
+    const seq = bumpSeq(tile.id);
+    const usingDuckDb = rows.length >= DUCKDB_ROW_THRESHOLD;
+    if (usingDuckDb) instance.showLoading('default', { text: t('chart.computing'), color: CATEGORICAL_PALETTE[0], maskColor: 'rgba(255, 255, 255, 0.6)' });
+    // scatter a besoin de deux agrégations indépendantes (mesures X/Y) : lancées en parallèle, pas
+    // en séquence, pour ne payer qu'une seule fois la latence du plus lent des deux chargements
+    // DuckDB — même raisonnement que renderKpi (valeur + tendance).
+    const [agg, aggY] = await Promise.all([
+      computeGroupBy(rows, dimension, tile.measure, tile.aggFn),
+      tile.type === 'scatter' ? computeGroupBy(rows, dimension, tile.measureY, tile.aggFn) : Promise.resolve(null)
+    ]);
+    if (isStale(tile.id, seq) || instance.isDisposed()) return; // rendu plus récent entre-temps
+    // Inconditionnel, même raison que renderGauge ci-dessus : un rendu qui repasse sous le seuil
+    // pendant qu'un rendu précédent (au-dessus du seuil) pour cette même tuile est encore en vol
+    // doit quand même lever le masque que CE DERNIER a affiché, même si CE rendu-ci (le gagnant)
+    // n'utilise pas DuckDB lui-même — sinon le masque reste bloqué indéfiniment.
+    instance.hideLoading();
+
     const activeOnThisDimension = state.activeFilters.find((f) => f.column === dimension);
     // sameValue (pas !==) : le filtre stocke souvent params.name (toujours une chaîne ECharts),
     // à comparer à `d` qui garde le type d'origine de la donnée (ex. Annee=2025, un nombre).
@@ -289,10 +395,9 @@
     } else if (tile.type === 'scatter') {
       // Version agrégée (pas ligne-à-ligne) : un point par valeur de la dimension, ses coordonnées
       // X/Y sont les agrégats de deux mesures DIFFÉRENTES sur ce même groupe. Les deux appels à
-      // groupByAggregate portent sur le même `rows`/`dimension`, donc le même ensemble de groupes,
-      // mais on associe par NOM de dimension (Map) plutôt que par index pour rester correct même si
-      // l'ordre venait à diverger un jour entre les deux appels.
-      const aggY = groupByAggregate(rows, dimension, tile.measureY, tile.aggFn);
+      // computeGroupBy (ci-dessus, en parallèle) portent sur le même `rows`/`dimension`, donc le
+      // même ensemble de groupes, mais on associe par NOM de dimension (Map) plutôt que par index
+      // pour rester correct même si l'ordre venait à diverger un jour entre les deux appels.
       const aggYByDimension = new Map(aggY.map((d) => [d.dimension, d.value]));
       option = {
         color: CATEGORICAL_PALETTE,
@@ -422,10 +527,9 @@
     const instance = getOrCreateChartInstance(tile.id, el);
 
     // Capturé AVANT l'attente asynchrone : seul le dernier appel lancé pour CETTE tuile doit
-    // appliquer son résultat (voir la doc de measureRenderSeq plus haut) — un filtre posé, une
-    // tuile éditée/supprimée pendant le calcul SQL ne doivent pas faire apparaître un résultat périmé.
-    const seq = (measureRenderSeq.get(tile.id) || 0) + 1;
-    measureRenderSeq.set(tile.id, seq);
+    // appliquer son résultat (voir la doc de renderSeq plus haut) — un filtre posé, une tuile
+    // éditée/supprimée pendant le calcul SQL ne doivent pas faire apparaître un résultat périmé.
+    const seq = bumpSeq(tile.id);
     instance.showLoading('default', { text: t('chart.computing'), color: CATEGORICAL_PALETTE[0], maskColor: 'rgba(255, 255, 255, 0.6)' });
 
     let timeSeries;
@@ -433,13 +537,13 @@
       timeSeries = await GristBI.duckdbEngine.timeSeriesMeasures(rows, tile.dateColumn, tile.measure, tile.aggFn);
     } catch (e) {
       console.error('[GristBI] échec du calcul de la mesure temporelle (DuckDB)', e);
-      if (measureRenderSeq.get(tile.id) !== seq || instance.isDisposed()) return; // périmé/tuile supprimée entre-temps
+      if (isStale(tile.id, seq) || instance.isDisposed()) return; // périmé/tuile supprimée entre-temps
       instance.hideLoading();
       const freshEl = container.querySelector(`[data-tile-id="${tile.id}"] .tile-chart`);
       if (freshEl) freshEl.textContent = t('chart.measureFailed');
       return;
     }
-    if (measureRenderSeq.get(tile.id) !== seq || instance.isDisposed()) return; // périmé/tuile supprimée entre-temps
+    if (isStale(tile.id, seq) || instance.isDisposed()) return; // périmé/tuile supprimée entre-temps
     instance.hideLoading();
 
     const { categories, series } = measureSeriesForTile(tile.measureMode, timeSeries);
@@ -503,7 +607,7 @@
   function disposeTile(tileId) {
     const inst = chartInstances.get(tileId);
     if (inst) { inst.dispose(); chartInstances.delete(tileId); }
-    measureRenderSeq.delete(tileId);
+    renderSeq.delete(tileId);
   }
 
   // Exposé uniquement pour dev-tests/ (calcul de coordonnées pixel précises dans le test Playwright
