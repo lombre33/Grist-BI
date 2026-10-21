@@ -108,6 +108,11 @@ une feature "testée", vérifier qu'on s'est posé chacune de ces questions :
 - [x] `rowsForTile` — la tuile SOURCE d'un filtre croisé ne le subit pas elle-même (reste cliquable sur tous ses segments), une AUTRE tuile le subit ✅
 - [x] `rowsForTile` — les filtres avancés s'appliquent à TOUTES les tuiles sans exception, y compris la source d'un filtre croisé ✅
 - [x] `rowsForTile` — le drill-down propre à la tuile s'applique même pour la tuile source d'un filtre croisé ✅
+- [x] Drill-down hiérarchique NON temporel (Région > Produit > Année, colonnes catégorielles et
+  numérique mélangées, aucune colonne dérivée de date) — `currentDimension`/`groupByAggregate` sur
+  3 niveaux successifs renvoient l'agrégat attendu à chaque profondeur ✅ ; clic réel niveau 1 et
+  remontée via le fil d'Ariane contre `dev-tests/harness.html` 🌐 (script ad hoc, non committé —
+  voir HYPOTHESES.md, entrée du 2026-10-21)
 - [x] `tileExportSheet` — bar (header/rows agrégés comme le rendu) ✅
 - [x] `tileExportSheet` — kpi (repli du nom de feuille sur `aggFn(measure)` si `tile.title` absent) ✅
 - [x] `tileExportSheet` — scatter (2 mesures alignées par nom de dimension, pas par index) ✅

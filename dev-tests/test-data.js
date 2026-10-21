@@ -729,6 +729,54 @@ const rows = [
   console.log('OK data.tileDrillLevels (nouveau format tableau + ancien format compat)');
 }
 
+// Drill-down hiérarchique NON temporel (ex. Région > Produit, voir ROADMAP.md) : contrairement au
+// drill-down automatique (temporel uniquement, dérivé par deriveDateHierarchyColumns/
+// withDateHierarchies dans js/main.js), rien n'empêche de composer `drillDimensions` avec de pures
+// colonnes catégorielles — le mécanisme a été généralisé à N niveaux arbitraires pour #14 (voir
+// state.js/data.js) sans jamais inspecter le TYPE des colonnes. Vérifié ici de bout en bout
+// (rowsForTile + groupByAggregate, le même chemin que charts.js), pas seulement sur l'état du
+// store comme les tests drillInto/drillUp plus haut : confirmé aussi en conditions réelles de clic
+// contre dev-tests/harness.html (Région > Produit > Année), voir HYPOTHESES.md.
+{
+  const categoricalRows = [
+    { Region: 'Nord', Produit: 'Casque audio', Annee: 2025, Montant: 100 },
+    { Region: 'Nord', Produit: 'Casque audio', Annee: 2026, Montant: 120 },
+    { Region: 'Nord', Produit: 'Enceinte', Annee: 2025, Montant: 40 },
+    { Region: 'Sud', Produit: 'Casque audio', Annee: 2025, Montant: 30 },
+    { Region: 'Sud', Produit: 'Enceinte', Annee: 2025, Montant: 70 }
+  ];
+  const store = state.createStore();
+  store.setRows(categoricalRows);
+  store.addTile({
+    id: 't1', type: 'bar', dimension: 'Region', drillDimensions: ['Produit', 'Annee'],
+    measure: 'Montant', aggFn: 'sum'
+  });
+  const tile = store.getState().tiles[0];
+
+  // Racine : agrégat par Région, aucune colonne dérivée/temporelle en jeu.
+  let agg = data.groupByAggregate(data.rowsForTile(tile, store.getState()), data.currentDimension(tile, []), tile.measure, tile.aggFn);
+  assert.deepStrictEqual(agg, [{ dimension: 'Nord', value: 260 }, { dimension: 'Sud', value: 100 }]);
+
+  // Niveau 1 : détaille "Nord" par Produit (toujours catégoriel, pas de date).
+  store.drillInto('t1', 'Region', 'Nord');
+  let state1 = store.getState();
+  let dim1 = data.currentDimension(tile, state1.drillIns.t1);
+  assert.strictEqual(dim1, 'Produit');
+  agg = data.groupByAggregate(data.rowsForTile(tile, state1), dim1, tile.measure, tile.aggFn);
+  assert.deepStrictEqual(agg, [{ dimension: 'Casque audio', value: 220 }, { dimension: 'Enceinte', value: 40 }]);
+
+  // Niveau 2 : détaille "Nord > Casque audio" par Année (mélange catégoriel + numérique dans la
+  // même hiérarchie, sans aucun traitement spécial).
+  store.drillInto('t1', 'Produit', 'Casque audio');
+  let state2 = store.getState();
+  let dim2 = data.currentDimension(tile, state2.drillIns.t1);
+  assert.strictEqual(dim2, 'Annee');
+  agg = data.groupByAggregate(data.rowsForTile(tile, state2), dim2, tile.measure, tile.aggFn);
+  assert.deepStrictEqual(agg, [{ dimension: 2025, value: 100 }, { dimension: 2026, value: 120 }]);
+
+  console.log('OK drill-down catégoriel non temporel (Région > Produit > Année) sans dérivation de date');
+}
+
 // state: addTile / removeTile
 {
   const store = state.createStore();
