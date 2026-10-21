@@ -36,6 +36,11 @@
   // (GristBI.demoData.defaultLargeTiles), donc la seule sur laquelle proposer de les restaurer.
   let defaultTableId = null;
   let commentsModalTileId = null; // tuile actuellement affichée dans #comments-modal, ou null si fermé
+  // Email de l'utilisateur courant, détecté UNE SEULE fois au bootstrap via la table-sonde
+  // BI_Dashboard_UserProbe (GristBI.api.getCurrentUserEmail(), js/grist-api.js) — `null` tant que la
+  // détection n'a pas abouti (mock de dev-tests/, widget hors Grist, droits insuffisants...), auquel
+  // cas openCommentsModal retombe sur la saisie manuelle existante (loadSavedCommentAuthor).
+  let detectedUserEmail = null;
   let detailModalTileId = null; // tuile actuellement affichée dans #detail-modal, ou null si fermé
   const DETAIL_MODAL_MAX_ROWS = 500; // voir renderDetailModal : au-delà, l'export Excel reste la voie pour tout voir
   let saveTimer = null;
@@ -700,7 +705,16 @@
   function openCommentsModal(tile) {
     commentsModalTileId = tile.id;
     commentsModalTileEl.textContent = tile.title;
-    commentAuthorInput.value = loadSavedCommentAuthor();
+    // Auteur reconnu automatiquement quand la détection a abouti (voir detectedUserEmail
+    // ci-dessus) : champ pré-rempli et verrouillé, cohérence garantie avec la véritable identité
+    // Grist plutôt qu'un nom retapé/modifiable. Repli IDENTIQUE à avant cette fonctionnalité sinon.
+    if (detectedUserEmail) {
+      commentAuthorInput.value = detectedUserEmail;
+      commentAuthorInput.readOnly = true;
+    } else {
+      commentAuthorInput.value = loadSavedCommentAuthor();
+      commentAuthorInput.readOnly = false;
+    }
     commentTextInput.value = '';
     renderCommentsModal();
     commentsModal.hidden = false;
@@ -1063,7 +1077,10 @@
       const author = commentAuthorInput.value.trim();
       const text = commentTextInput.value.trim();
       if (!author || !text) return;
-      saveCommentAuthor(author);
+      // Pas la peine de mémoriser en localStorage un auteur qui n'a jamais été retapé à la main
+      // (voir openCommentsModal) : ça resterait un nom figé par la détection automatique d'une
+      // session passée, jamais relu tant que detectedUserEmail reste disponible de toute façon.
+      if (!detectedUserEmail) saveCommentAuthor(author);
       try {
         const comment = await GristBI.api.addComment(currentTableId, commentsModalTileId, author, text);
         store.addCommentLocal(comment);
@@ -1374,6 +1391,17 @@
       store.setComments(commentRows);
     } catch (e) {
       console.error('[GristBI] échec de la connexion à la table de commentaires collaboratifs (BI_Dashboard_Comments) — les commentaires resteront indisponibles pour cette session', e);
+    }
+    // Détection de l'auteur courant (table-sonde BI_Dashboard_UserProbe, voir js/grist-api.js) :
+    // UNE SEULE fois par session, comme les commentaires ci-dessus — l'identité ne change pas en
+    // cours de route. `detectedUserEmail` reste à `null` (repli sur la saisie manuelle inchangée,
+    // voir openCommentsModal) si cette détection échoue pour n'importe quelle raison (widget hors
+    // Grist, mock de dev-tests/ qui ne simule pas le moteur de formules, droits insuffisants...) —
+    // try/catch séparé pour la même raison que les commentaires : jamais bloquant pour le dashboard.
+    try {
+      detectedUserEmail = await GristBI.api.getCurrentUserEmail();
+    } catch (e) {
+      console.error('[GristBI] échec de la détection automatique de l\'auteur courant — repli sur la saisie manuelle', e);
     }
   }
 

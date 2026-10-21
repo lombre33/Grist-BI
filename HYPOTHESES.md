@@ -1745,17 +1745,14 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     que soit la table de travail active, sans avoir besoin de connaître `TableId` pour ça. La
     colonne `TableId` existe malgré tout sur chaque ligne, pour qu'un humain lisant la table brute
     dans Grist puisse identifier la table de travail concernée sans remonter par l'id de tuile.
-  - **Attribution auteur EN SAISIE MANUELLE dans ce premier jet, PAS le pattern
-    `getCurrentUserEmail`** (table-sonde à formule Grist déclenchée, voir l'entrée "Correction
-    technique importante (2026-09-15)" plus haut et ROADMAP.md) : ce mécanisme reste "confirmé
-    faisable" mais volontairement non tenté ici — jamais utilisé dans ce dépôt (`RemoveRecord`
-    n'apparaît nulle part ailleurs), et c'est la SEULE exception envisagée dans tout ce projet à la
-    règle "aucune formule Grist" (CLAUDE.md §8), un changement d'architecture qui mérite sa propre
-    PR et sa propre discussion plutôt que d'être mélangé silencieusement à cette fonctionnalité.
-    Le nom saisi est mémorisé en `localStorage` (`gristbi_comment_author`, même garde
-    `typeof localStorage !== 'undefined'` + repli silencieux que `gristbi_lang`, voir
-    `js/i18n.js`) pour ne pas le retaper à chaque commentaire — persistance vérifiée en Playwright
-    à travers un rechargement complet de page.
+  - **Attribution auteur EN SAISIE MANUELLE dans ce premier jet.** Le nom saisi est mémorisé en
+    `localStorage` (`gristbi_comment_author`, même garde `typeof localStorage !== 'undefined'` +
+    repli silencieux que `gristbi_lang`, voir `js/i18n.js`) pour ne pas le retaper à chaque
+    commentaire — persistance vérifiée en Playwright à travers un rechargement complet de page.
+    **Remplacée depuis par une reconnaissance automatique quand c'est possible (21/10/2026)** : voir
+    la nouvelle entrée "Auteur des commentaires reconnu automatiquement" plus bas pour le détail
+    complet. Ce repli en saisie manuelle reste le comportement exact de ce premier jet dès que la
+    détection automatique échoue.
   - **Ajout optimiste, pas de re-fetch** : `addComment` (`js/grist-api.js`) renvoie la ligne
     complète (avec l'id Grist réel du nouveau commentaire) directement depuis la réponse
     d'`AddRecord`, `store.addCommentLocal` l'ajoute au tableau déjà en mémoire — jamais besoin de
@@ -1788,6 +1785,93 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     contre le vrai moteur Grist pour CETTE table précise (seulement `BI_StressTest`/
     `BI_Dashboard_Config`, voir "Validé en conditions réelles" plus loin) — même mécanisme
     générique, mais jamais essayé pour un 3e appelant.
+
+- **Auteur des commentaires reconnu automatiquement** (`js/grist-api.js:getCurrentUserEmail`,
+  2026-10-21, Tier 2 ROADMAP.md, "features visibles restantes") : remplace la saisie manuelle de
+  l'entrée "Commentaires collaboratifs" ci-dessus par le pattern `getCurrentUserEmail()` déjà décrit
+  comme "confirmé faisable" (porté de `publipostageGrist`, voir l'entrée "Correction technique
+  importante (2026-09-15)" plus haut et ROADMAP.md) — SEULE feature de ce projet à utiliser le
+  langage de formules Grist (CLAUDE.md §8), SEULE exception délibérée, documentée comme telle
+  partout où cette règle est énoncée.
+  - **Mécanisme retenu : une 4e table interne dédiée, `BI_Dashboard_UserProbe`**, PAS une colonne
+    ajoutée directement à `BI_Dashboard_Comments`, bien que le coordinateur du projet ait
+    initialement suggéré cette 2e option pour éviter "une table de plus". Raison technique du choix
+    inverse : une formule Grist normale RECALCULE sa valeur à chaque lecture, par N'IMPORTE QUEL
+    viewer du document qui ouvre `fetchTable` sur cette table — une colonne `Email` posée directement
+    sur une ligne de commentaire déjà existante changerait donc de signification à chaque nouvelle
+    ouverture du document par quelqu'un d'autre, inutilisable comme auteur figé à la création. La
+    table dédiée contourne entièrement ce problème SANS avoir besoin des réglages avancés de
+    recalcul de Grist (`recalcWhen`/`recalcDeps`, propres aux "formules déclenchées" permanentes,
+    jamais nécessaires ici) : une ligne y est ajoutée, sa valeur calculée est lue IMMÉDIATEMENT après
+    l'`AddRecord` qui déclenche son calcul (donc pour l'utilisateur courant, à cet instant précis),
+    puis la ligne est aussitôt supprimée — seul ce round-trip compte, la table ne conserve jamais
+    aucune valeur entre deux appels. Recherché et écarté en cours de session : une piste explorée via
+    le code source de `gristlabs/grist-core` (mentions de `recalcWhen: "never"/"allupdates"/""` et de
+    `recalcDeps` pour les formules dites "déclenchées" permanentes) se serait révélée une complexité
+    inutile pour ce besoin précis — une formule Grist ORDINAIRE (`isFormula: true, formula:
+    'user.Email'`, sans aucun réglage de recalcul particulier) suffit entièrement dès lors qu'on ne
+    relit sa valeur qu'une seule fois, juste après l'avoir déclenchée.
+  - **Schéma** : `USER_PROBE_COLUMNS = [{ id: 'Email', type: 'Text', isFormula: true, formula:
+    'user.Email' }]`. Créée de façon idempotente comme les 3 autres tables internes
+    (`tableExistsConfirmed` + comparaison de l'`actualTableId` réellement créé par `AddTable`, même
+    garde-fou anti-collision que `loadOrCreateTable`, CLAUDE.md §3/§7) mais SANS passer par
+    `loadOrCreateTable` elle-même : cette dernière recourt à `ensureColumnsUpToDate`/
+    `deriveMissingColumns` pour faire évoluer un schéma via de VRAIES valeurs calculées en JS puis
+    écrites par `UpdateRecord` — mécanisme délibérément incompatible avec une colonne à formule
+    Grist, qu'il ne faut surtout pas laisser réécrire. `ensureUserProbeTableExists` (dédiée,
+    `js/grist-api.js`) reproduit seulement la partie création/garde-fou anti-collision, jamais le
+    remplissage ni le backfill de colonnes.
+  - **`RemoveRecord` utilisé pour la première fois par le CODE de ce widget** (déjà mocké dans
+    `dev-tests/grist-stub.js` depuis l'origine, mais jamais exercé par `js/grist-api.js` avant cette
+    feature) — portée volontairement limitée à une ligne de table-sonde éphémère que ce widget vient
+    de créer lui-même l'instant d'avant, jamais à une table ou à une donnée appartenant à
+    l'utilisateur : ne change rien à la règle "jamais `RemoveTable`" (CLAUDE.md §3/§8, verbe distinct,
+    toujours évité).
+  - **Mémorisée pour toute la session** (`_currentUserEmailPromise`, `js/grist-api.js`) comme les
+    commentaires eux-mêmes (`js/main.js:bootstrap`) : l'identité ne change pas en cours de route,
+    inutile de refaire ce round-trip (AddTable éventuel + AddRecord + fetchTable + RemoveRecord) à
+    chaque ouverture du panneau Commentaires. Appelée une seule fois au bootstrap, dans son propre
+    `try/catch` séparé de celui des commentaires (même raison : un échec ici — widget ouvert hors
+    Grist, droits insuffisants, mock sans moteur de formules — ne doit jamais empêcher l'affichage du
+    dashboard lui-même).
+  - **UI (`js/main.js:openCommentsModal`)** : si la détection a abouti (`detectedUserEmail`
+    non `null`), le champ `#comment-author` est pré-rempli avec l'email détecté et VERROUILLÉ
+    (`readOnly = true`, fond grisé via `.comment-form input[readonly]`, voir `css/style.css`) —
+    cohérence garantie avec la véritable identité Grist plutôt qu'un nom retapé/modifiable à la main.
+    Sinon (repli), comportement STRICTEMENT inchangé par rapport au premier jet : champ éditable,
+    pré-rempli depuis `localStorage`, mémorisé à nouveau après chaque ajout. Un auteur auto-détecté
+    n'est PAS sauvegardé dans `localStorage` (inutile : il n'a jamais été retapé à la main, et
+    `detectedUserEmail` reste disponible pour toute la session de toute façon). Infobulle
+    bilingue (`data-i18n-title="comments.author.autoTitle"`) sur le champ dans les deux cas,
+    expliquant la détection automatique quand elle fonctionne.
+  - **Exclue du sélecteur de table** (`listAvailableTables`, `js/grist-api.js`) comme
+    `BI_Dashboard_Config` : une table-sonde à une seule colonne formule n'a aucun sens comme table de
+    travail à visualiser. `BI_Dashboard_Comments`, elle, n'était déjà PAS exclue avant cette feature
+    (lacune préexistante, non corrigée ici — hors périmètre de cette PR, voir le code de
+    `listAvailableTables` pour l'état exact).
+  - **Testé en Playwright** contre `dev-tests/grist-stub.js` (script ad hoc, non committé, voir §5 de
+    CLAUDE.md), servi en HTTP local : `getCurrentUserEmail()` renvoie `null` contre ce mock — **ce
+    mock ne simule PAS le moteur de formules Grist** (`cloneColumnar`/`AddRecord` : une colonne
+    `isFormula` déclarée à la création reste un tableau vide, jamais recalculée, voir
+    `dev-tests/grist-stub.js`), donc CE scénario est exactement "détection indisponible", vérifié
+    comme tel : la table `BI_Dashboard_UserProbe` est bien créée (une seule fois, confirmé par un 2e
+    appel qui réutilise la promesse mémorisée sans créer de 2e table ni ajouter/retirer de 2e ligne),
+    le round-trip `AddRecord`/`fetchTable`/`RemoveRecord` ne lève aucune exception, et le panneau
+    Commentaires retombe bien sur le champ éditable + la mémorisation `localStorage` existante (ajout
+    d'un commentaire par ce chemin de repli vérifié bout en bout). Vérifié aussi que `index.html`
+    (import map distinct de `dev-tests/harness.html`, voir CLAUDE.md §4 et piège historique #18)
+    continue de charger sans erreur après ce changement (attribut `data-i18n-title` ajouté sur
+    `#comment-author`).
+  - **Jamais testé dans un vrai document Grist** (voir §8/§9 de CLAUDE.md) : c'est, de toutes les
+    features de ce dépôt, celle dont le chemin PRINCIPAL (la détection réussissant réellement, pas
+    son repli) est structurellement le MOINS vérifiable depuis ce sandbox — ni `dev-tests/
+    grist-stub.js` ni aucun autre mock de ce dépôt ne simule le moteur de formules Grist ni
+    l'identité utilisateur côté serveur. Le format exact de `user.Email` (une adresse email simple ?
+    une chaîne vide pour un utilisateur anonyme/non connecté ? une exception plutôt qu'une valeur
+    dans ce cas ?) et le comportement réel d'un `RemoveRecord` juste après un `AddRecord` dans le
+    même document (latence de propagation ? confirmation immédiate ?) restent entièrement à
+    confirmer sur un vrai Grist — un premier clic réel sur le bouton Commentaires d'Antoine reste
+    l'unique vérification qui manque pour cette feature précise.
 
 - **Export Excel des tuiles en mode mesure (Cumul/YTD/N-1) — vraies valeurs (2026-10-21, Tier 2
   ROADMAP.md)** : jusqu'ici, `GristBI.data.tileExportSheet` remplaçait une tuile Barres en mode

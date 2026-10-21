@@ -216,6 +216,10 @@
     'comments.modal.title': { fr: 'Commentaires', en: 'Comments' },
     'comments.empty': { fr: 'Aucun commentaire pour l’instant.', en: 'No comments yet.' },
     'comments.author.placeholder': { fr: 'Votre nom', en: 'Your name' },
+    'comments.author.autoTitle': {
+      fr: 'Identifié automatiquement via votre session Grist quand c’est possible, sinon à saisir à la main.',
+      en: 'Automatically identified from your Grist session when possible, otherwise type it in by hand.'
+    },
     'comments.text.placeholder': { fr: 'Écrire un commentaire…', en: 'Write a comment…' },
     'comments.submit': { fr: 'Ajouter', en: 'Add' },
     'comments.count': { fr: '{n} {n|commentaire|commentaires}', en: '{n} {n|comment|comments}' },
