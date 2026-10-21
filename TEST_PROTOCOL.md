@@ -393,6 +393,9 @@ davantage de scénarios — voir HYPOTHESES.md) :
 - [x] Auteur des commentaires : repli sur la saisie manuelle + mémorisation `localStorage` inchangés quand la détection échoue (systématique contre ce mock, qui ne simule pas le moteur de formules Grist) 🌐
 - [x] Auteur des commentaires : `index.html` (import map distinct de `dev-tests/harness.html`, piège historique #18) continue de charger sans erreur après ce changement 🌐
 - [ ] Auteur des commentaires : chemin de détection RÉUSSIE (`user.Email` réellement résolu par le moteur de formules Grist) ⬜ **[NON TESTABLE ICI]** — aucun mock de ce dépôt ne simule le moteur de formules Grist ni l'identité utilisateur côté serveur, voir HYPOTHESES.md
+- [x] Tuile Waterfall : création + rendu (canvas non vide), clic sur la 1re barre pose un cross-filter identique à une tuile "bar" sur les mêmes données 🌐
+- [x] Tuile Radar : création + rendu (canvas non vide), clic au centre NE pose AUCUN filtre (garde explicite, voir HYPOTHESES.md) 🌐
+- [x] Radar : `#tile-drill-field` masqué dans le formulaire (`supportsDrillDown`), contrairement à bar/waterfall où il reste visible 🌐
 - [ ] Redimensionnement réel du panneau Grist (ResizeObserver) ⬜ **[NON TESTABLE ICI]** — logique de coalescing vérifiée par lecture de code seulement
 - [ ] `window.resize` classique (hors ResizeObserver) ⬜
 - [x] [BUG RÉEL #17 ci-dessous] Aucun canvas ECharts ne déborde sous sa carte `.tile` (comparaison `getBoundingClientRect()`, pas une inspection visuelle), à l'état initial ET sur une tuile drillée avec fil d'Ariane à 2 niveaux réellement affiché (pire cas) 🌐

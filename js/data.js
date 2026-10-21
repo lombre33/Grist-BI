@@ -312,6 +312,30 @@
     return { categories, series: [{ label: 'Cumul', data: timeSeries.map((r) => r.cumulative) }] }; // 'cumulative' par défaut
   }
 
+  // Décompose un agrégat (même forme que groupByAggregate : [{dimension, value}, ...], DÉJÀ dans
+  // l'ordre voulu — jamais retrié ici, voir piège n°14 CLAUDE.md §7) en 3 séries empilables pour
+  // simuler une tuile "waterfall" avec 2 séries de barres ECharts (aucune série native pour ce
+  // type, voir ROADMAP.md) : `base` (la partie du cumul déjà atteinte avant cette catégorie,
+  // invisible à l'écran), `rise` (hauteur visible pour une valeur positive) et `fall` (hauteur
+  // visible, toujours positive, pour une valeur négative — la couleur distingue hausse/baisse, pas
+  // le signe de la donnée empilée). Pure/synchrone, testable sous Node (voir js/charts.js pour le
+  // câblage ECharts, DOM-dépendant lui).
+  function waterfallSeries(agg) {
+    let running = 0;
+    const base = [];
+    const rise = [];
+    const fall = [];
+    agg.forEach((d) => {
+      const start = running;
+      const end = running + d.value;
+      base.push(Math.min(start, end));
+      rise.push(d.value >= 0 ? d.value : 0);
+      fall.push(d.value < 0 ? -d.value : 0);
+      running = end;
+    });
+    return { base, rise, fall };
+  }
+
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, (c) => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -591,7 +615,8 @@
   return {
     tableToRows, epochSecondsToIsoDate, applyFilters, matchesFilter, sameValue, parseDateValue,
     relativeDateRange, RELATIVE_DATE_PRESETS, groupByAggregate, aggregateSingle, pivotTable,
-    distinctColumnValues, computeTrend, trendFromGroups, periodLabel, measureSeriesForTile, escapeHtml,
+    distinctColumnValues, computeTrend, trendFromGroups, periodLabel, measureSeriesForTile,
+    waterfallSeries, escapeHtml,
     tileDrillLevels, currentDimension, rowsForTile, tileExportSheet, tileExportKind,
     sanitizeSheetName, buildWorkbookSheets, measureExportSheet, buildWorkbookSheetsAsync,
     blendRows, deriveDateHierarchyColumns, commentsForTile, AGGREGATORS
