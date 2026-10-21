@@ -368,6 +368,9 @@ davantage de scénarios — voir HYPOTHESES.md) :
 - [x] Modale de détail : compte de lignes correct après un cross-filtre posé sur une AUTRE tuile (fermée puis rouverte) 🌐
 - [x] Modale de détail : titre retraduit après bascule de langue fr/en (pluriel correct des deux côtés) 🌐
 - [ ] Modale de détail : mise à jour EN DIRECT (sans fermer/rouvrir) quand un filtre change pendant qu'elle est ouverte ⬜ — garanti par construction (même rappel systématique `render() → renderDetailModal()` que pour `renderCommentsModal()`, déjà éprouvé), tentative Playwright non concluante (flakiness du clic répété sur un camembert plein, voir HYPOTHESES.md)
+- [x] Clés de jointure suggérées (data blending) : table secondaire reliée par une vraie colonne `Ref:` → les 2 comboboxes de clé se préremplissent automatiquement, jointure appliquée avec les bonnes colonnes secondaires 🌐
+- [x] Clés de jointure suggérées : une clé principale déjà choisie à la main est conservée au changement de table secondaire (jamais écrasée par la suggestion) 🌐
+- [x] Clés de jointure suggérées : repli sans suggestion (clés vides, `state.blend` à `null`) quand la table secondaire choisie n'a aucune relation `Ref:` connue avec la table principale 🌐
 - [ ] Redimensionnement réel du panneau Grist (ResizeObserver) ⬜ **[NON TESTABLE ICI]** — logique de coalescing vérifiée par lecture de code seulement
 - [ ] `window.resize` classique (hors ResizeObserver) ⬜
 - [x] [BUG RÉEL #17 ci-dessous] Aucun canvas ECharts ne déborde sous sa carte `.tile` (comparaison `getBoundingClientRect()`, pas une inspection visuelle), à l'état initial ET sur une tuile drillée avec fil d'Ariane à 2 niveaux réellement affiché (pire cas) 🌐
