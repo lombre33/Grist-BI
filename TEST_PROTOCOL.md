@@ -654,6 +654,85 @@ délibérément laissé de côté (contenu généré par `js/data.js`/`js/demo-d
     une ressource à deux états (afficher/masquer), le nettoyage doit être inconditionnel, pas
     symétrique à la condition qui a déclenché l'affichage.
 
+24. **`.tile-comments`/`.tile-detail` affichés avec le style par défaut du navigateur (bordure
+    carrée, fond blanc) au lieu des icônes sobres du reste de la rangée d'actions** [BUG RÉEL, trouvé
+    lors de l'audit UX/UI du 21/10/2026, en capturant un screenshot d'une tuile] — le sélecteur CSS de
+    base (`.tile-move-left, .tile-move-right, .tile-edit, .tile-remove { background:none; border:none;
+    padding:4px 5px; border-radius:var(--radius-sm); ... }`) n'avait jamais été étendu aux boutons
+    "Commentaires" (PR #15, 2026-09-30) ni "Détail" (PR #22, 2026-10-21) au moment de leur ajout — tous
+    deux ne portaient QUE des règles `:hover`/accessoires (`.tile-comments { position: relative; }`
+    pour le badge de compte), jamais le reset de base. Invisible sans capture d'écran : ces deux
+    boutons restaient entièrement cliquables/fonctionnels, seul leur HABILLAGE différait visuellement
+    du reste de la rangée (bordure carrée du navigateur au lieu d'un bouton plat arrondi). Corrigé en
+    ajoutant `.tile-comments, .tile-detail` au sélecteur de base et à la règle `:hover` partagée.
+25. **Formulaire d'ajout de tuile et barres dépendantes (filtre avancé, data blending, vues
+    sauvegardées/exports, +Page) pleinement interactifs mais totalement inopérants sur un document
+    SANS AUCUNE table utilisateur** [BUG RÉEL, trouvé lors de l'audit UX/UI du 21/10/2026, en testant
+    un document réellement vide après le retrait de la création automatique de `BI_StressTest`
+    (2026-10-21, voir l'entrée "bouton Restaurer les tuiles par défaut" ci-dessus)] — dans cet état,
+    `currentTableId` reste `null` et le bouton "+ Ajouter la tuile" (bleu, premier plan) ne fait RIEN
+    au clic (`addTileForm` submit : `if (!measure...) return;`), sans le moindre retour pour
+    l'utilisateur ; seul le message `status.noTables`, discret dans le badge du bandeau du haut,
+    expliquait pourquoi. Plus subtil : `store.subscribe(render)` seul ne peint RIEN tant qu'aucune
+    mutation d'état n'a eu lieu, or un document sans table ne déclenche jamais `switchTable()` (la
+    seule mutation qui ferait tourner `render()` ailleurs) — sans un premier rendu explicite, le DOM
+    restait figé sur le HTML statique de départ indéfiniment, pas seulement un court instant. Corrigé
+    par `setTableDependentControlsEnabled(enabled)` (désactive formulaire d'ajout de tuile + filtre
+    avancé + data blending + vues sauvegardées/exports + "+Page", rappelée à chaque `render()`), un
+    message centré reprenant `status.noTables` à la place du conseil habituel "Ajoutez-en une
+    ci-dessus" (trompeur ici), et un appel explicite `render(store.getState())` juste après
+    `store.subscribe(render)` pour peindre cet état dès le chargement, avant même que `bootstrap()`
+    (jamais attendu à cet endroit) n'ait pu résoudre quoi que ce soit. Complété par
+    `.btn-primary:disabled`/`.btn-tiny:disabled { opacity: 0.5; ... }` (manquants : seul
+    `.btn-secondary:disabled` existait), sans quoi le bouton "+ Ajouter la tuile" désactivé restait
+    visuellement aussi vif qu'actif (`opacity:1`, `cursor:pointer`) malgré son inertie réelle.
+26. **[Même famille que le bug #18, nouvelle variante] `_rawTables.push(...)` sur `null` pouvait faire
+    planter la création de `BI_Dashboard_Config`/`BI_Dashboard_Comments` au tout premier contrôle
+    d'existence RÉEL de la session, ET deux appels concurrents à `ensureConfigTableExists()` pouvaient
+    chacun lancer leur propre `AddTable` pour la même table** [BUG RÉEL, trouvé lors de l'audit UX/UI
+    du 21/10/2026, en testant un document réellement vide de bout en bout avec `node_modules/playwright`
+    contre `dev-tests/harness.html`] — deux défauts distincts, découverts l'un après l'autre sur le
+    même chemin de code :
+    (a) `tableExistsConfirmed()` (`js/grist-api.js`) remet délibérément `_rawTables` à `null` quand son
+    budget de nouvelles tentatives s'épuise sans jamais avoir trouvé la table (pour forcer une lecture
+    fraîche au contrôle SUIVANT, voir le bug #18) — mais `loadOrCreateTable`/`ensureConfigTableExists`
+    faisaient `_rawTables.push(tableId)` SANS GARDE juste après une création réussie, supposant à tort
+    que `_rawTables` était toujours un tableau à ce stade. Sur un document VRAIMENT neuf, le tout
+    premier contrôle d'existence de la session (`_raceGuardArmed` encore `true`) épuise justement ce
+    budget avant de conclure que la table n'existe pas — `BI_Dashboard_Config` (`ensureConfigTableExists`,
+    appelée par `loadConfig`/`switchTable`) et `BI_Dashboard_Comments` (`loadOrCreateComments`, appelée
+    par `bootstrap()` quand aucune table utilisateur n'existe, le seul cas où `BI_Dashboard_Config`
+    n'est PAS déjà chargée avant et n'a donc pas pu "amorcer" `_rawTables`) tombaient toutes les deux
+    dans ce cas. Résultat observé : `TypeError: Cannot read properties of null (reading 'push')`,
+    rattrapée par le `try/catch` de `loadConfig`/`bootstrap()` (jamais bloquant pour le tableau de bord
+    lui-même) mais empêchant `fillTable()`/la mise à jour locale du cache de s'exécuter. Corrigé par
+    `if (_rawTables) _rawTables.push(tableId)` aux deux sites d'appel — une prochaine lecture
+    (`listAllTablesCached`) refera de toute façon un appel réseau frais qui trouvera la table tout
+    juste créée ; reconstruire un tableau tronqué ici aurait remplacé ce futur appel réseau par un
+    cache incomplet, pire que ne rien faire.
+    (b) Repéré en creusant POURQUOI ce crash n'apparaissait que de façon non déterministe d'un run à
+    l'autre : `main.js:switchTable` appelle `store.clearFilter()`/`store.clearAdvancedFilter()` AVANT
+    `loadConfig(tableId)`, alors que `currentTableId` est déjà posé — ces deux mutations déclenchent
+    déjà un `render()` (abonné via `store.subscribe`) qui peut programmer une sauvegarde
+    (`scheduleSave`, le filtre est vide donc en général un no-op, SAUF si une référence d'état a déjà
+    changé entre temps). Son debounce (600ms) peut retomber PENDANT que le tout premier
+    `tableExistsConfirmed('BI_Dashboard_Config')` de `loadConfig` est encore en train de réessayer
+    (budget ~9,3s) : `saveConfig` appelle alors elle aussi `ensureConfigTableExists()`, un DEUXIÈME
+    appel CONCURRENT pour la MÊME table pendant que le premier est encore en cours, chacun pouvant
+    lancer son propre `AddTable('BI_Dashboard_Config', ...)` en parallèle — un risque de table orpheline
+    dupliquée (le filet anti-collision de `AddTable` détecte bien la 2e tentative après coup, mais le
+    principe même de deux créations concurrentes pour une table censée être unique par session est le
+    vrai défaut). Corrigé en reprenant EXACTEMENT le mécanisme déjà utilisé par `getCurrentUserEmail()`
+    (promesse mémorisée pour toute la session, `_currentUserEmailPromise`) : `ensureConfigTableExists()`
+    mémorise désormais `_configTableExistsPromise` et la renvoie telle quelle à tout appel
+    concurrent/suivant plutôt que de relancer son propre `AddTable`. Vérifié en Playwright contre
+    `dev-tests/harness.html` (préremplissage d'une seule table utilisateur, document sans
+    `BI_Dashboard_Config` préexistant) : avant le correctif, le crash et le double `AddTable` étaient
+    reproductibles selon le timing exact (non déterministe d'un run à l'autre) ; après le correctif,
+    le tableau de bord se stabilise de façon fiable, sans erreur console, après le budget de nouvelles
+    tentatives (~9,3s, comportement attendu et déjà documenté par le bug #18 — pas quelque chose à
+    "accélérer", seulement à sécuriser). Script Playwright ad hoc, non committé (voir §5 de CLAUDE.md).
+
 ## Fragilité de test connue (PAS un bug produit — investiguée en profondeur, à ne pas re-diagnostiquer)
 
 En rejouant la suite Playwright existante pendant le développement des filtres avancés, le script

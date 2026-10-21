@@ -424,6 +424,27 @@
     drillLevelSelects.push(select);
   })();
 
+  // Désactive les contrôles qui n'ont de sens qu'avec une table de travail connectée (formulaire
+  // d'ajout de tuile, filtre avancé, data blending, vues sauvegardées/exports, +Page) tant que
+  // `currentTableId` reste `null` (document sans aucune table utilisateur, voir bootstrap()) —
+  // repéré lors de l'audit UX du 21/10/2026 : ces contrôles restaient auparavant pleinement
+  // interactifs (bouton "+ Ajouter la tuile" bleu, premier plan) mais totalement inopérants dans cet
+  // état (voir addTileForm submit, `if (!measure...) return;`), sans le moindre retour pour
+  // l'utilisateur — seul le message `status.noTables`, discret dans le bandeau du haut, expliquait
+  // pourquoi. Le sélecteur de table principal (`tableSelectInput`) reste volontairement actif : c'est
+  // la seule échappatoire utile dans cet état. `deleteBookmarkBtn` n'est pas listé ici : son état
+  // dépend déjà de la sélection courante et reste correct dans les deux cas (voir renderBookmarks(),
+  // appelé juste après dans render()).
+  function setTableDependentControlsEnabled(enabled) {
+    for (const form of [addTileForm, advancedFilterForm]) {
+      form.querySelectorAll('input, select, button, textarea').forEach((el) => { el.disabled = !enabled; });
+    }
+    for (const el of [bookmarkSelect, saveBookmarkBtn, exportExcelBtn, exportPdfBtn, exportPptxBtn, addPageBtn,
+                       blendSecondaryTableInput, blendPrimaryColumnInput, blendSecondaryColumnInput]) {
+      el.disabled = !enabled;
+    }
+  }
+
   function render(state) {
     // Balaie tout le document pour les attributs data-i18n-* (voir js/i18n.js) à CHAQUE rendu, pas
     // seulement au changement de langue : les boutons d'en-tête de tuile (buildTileElement) sont mis
@@ -476,6 +497,11 @@
     });
 
     emptyState.hidden = state.tiles.length > 0;
+    // Tant qu'aucune table n'est connectée, remplace le conseil habituel ("Ajoutez-en une
+    // ci-dessus") — trompeur ici, puisque le formulaire au-dessus est désactivé (voir
+    // setTableDependentControlsEnabled ci-dessous) — par le même message que le bandeau du haut,
+    // repris bien plus visiblement au centre de la page plutôt que dans le seul badge discret.
+    if (!currentTableId) emptyState.textContent = t('status.noTables');
     // Temps de rendu affiché dans le bandeau : utile pour repérer à l'œil un ralentissement sur une
     // table de travail à fort volume, sans devoir ouvrir les DevTools à chaque fois.
     const renderStart = performance.now();
@@ -491,6 +517,9 @@
     renderPageTabs(state.pages, state.currentPageId);
     renderFilterBadges(state.activeFilters);
     renderAdvancedFilterBadges(state.advancedFilters);
+    // Avant renderBookmarks() : deleteBookmarkBtn doit rester déterminé par la sélection courante
+    // (voir renderBookmarks ci-dessous), pas par ce bascule générique.
+    setTableDependentControlsEnabled(Boolean(currentTableId));
     renderBookmarks(state.bookmarks);
     // `currentTableId` reste `null` tant qu'aucune table n'a pu être rejointe (document sans
     // aucune table utilisateur, voir bootstrap()) : un rendu déclenché dans cet état (ex. un
@@ -1205,6 +1234,16 @@
   }
 
   store.subscribe(render);
+  // Premier rendu explicite, synchrone, AVANT que bootstrap() (plus bas, jamais attendu ici) n'ait pu
+  // résoudre quoi que ce soit : `store.subscribe` seul ne peint rien tant qu'aucune mutation d'état
+  // n'a eu lieu, or un document SANS aucune table utilisateur ne déclenche jamais switchTable() — la
+  // seule mutation d'état qui ferait naturellement tourner `render()` ailleurs (ex. store.setPages()
+  // dans switchTable). Sans cet appel, `status.noTables`/setTableDependentControlsEnabled restaient
+  // inertes indéfiniment dans ce cas précis : le DOM gardait tel quel le HTML statique de départ
+  // (formulaire d'ajout de tuile pleinement interactif mais inopérant) — repéré lors de l'audit UX du
+  // 21/10/2026 en testant un document réellement vide. Repeint sans effet de bord dans le cas normal
+  // (une table est trouvée) : switchTable() déclenchera de toute façon ses propres rendus juste après.
+  render(store.getState());
 
   // Liste les tables du document dans le sélecteur (voir GristBI.api.listAvailableTables — relit
   // TOUJOURS à la demande, jamais un cache, pour refléter une table créée dans Grist entre-temps) et

@@ -146,30 +146,48 @@
     return (rv && rv.table_id) || null;
   }
 
-  async function ensureConfigTableExists() {
-    if (await tableExistsConfirmed(CONFIG_TABLE)) return;
-    const result = await grist.docApi.applyUserActions([
-      ['AddTable', CONFIG_TABLE, [
-        { id: 'TableId', type: 'Text' },
-        { id: 'ConfigJSON', type: 'Text' }
-      ]]
-    ]);
-    // [Filet de sécurité, voir loadOrCreateTable plus bas pour la version complète/documentée de ce
-    // mécanisme] Si Grist a silencieusement suffixé le nom (collision malgré tableExistsConfirmed),
-    // la table de config réelle préexistante reste "BI_Dashboard_Config" — loadConfig/saveConfig la
-    // relisent toujours directement par ce nom, donc aucune perte de données ; on évite juste de
-    // mettre en cache le mauvais id.
-    const actualTableId = actualAddTableId(result);
-    if (actualTableId && actualTableId !== CONFIG_TABLE) {
-      console.error(
-        `[GristBI] AddTable("${CONFIG_TABLE}") a créé "${actualTableId}" à la place (collision de nom : ` +
-        'la table existait déjà malgré la vérification). Table vide orpheline à supprimer manuellement ' +
-        'dans Grist si besoin — aucune donnée de config perdue ni dupliquée.'
-      );
-      _rawTables = null;
-      return;
-    }
-    _rawTables.push(CONFIG_TABLE);
+  // [BUG RÉEL trouvé le 21/10/2026, lors de l'audit UX/UI, sur un document VRAIMENT vide (aucune
+  // table utilisateur)] `loadConfig()` et `saveConfig()` appellent CHACUNE `ensureConfigTableExists()`
+  // — hors, dans `main.js:switchTable`, `store.clearFilter()`/`store.clearAdvancedFilter()` (avant
+  // `loadConfig`) déclenchent déjà un `render()` (store.subscribe) qui peut programmer une sauvegarde
+  // (`scheduleSave`, `currentTableId` déjà posé à ce stade) : son debounce (600ms) peut retomber
+  // PENDANT que le tout premier `tableExistsConfirmed(CONFIG_TABLE)` de `loadConfig` est encore en
+  // train de réessayer (budget ~9,3s, voir RACE_GUARD_RETRY_DELAYS_MS) — deux appels CONCURRENTS à
+  // cette fonction pour la MÊME table, chacun pouvant lancer son propre `AddTable`. Repris EXACTEMENT
+  // comme `getCurrentUserEmail()` ci-dessous mémorise `_currentUserEmailPromise` : un seul appel
+  // réseau par session, tous les appels concurrents/suivants attendent ou réutilisent CE MÊME résultat
+  // plutôt que de se court-circuiter l'un l'autre.
+  let _configTableExistsPromise = null;
+  function ensureConfigTableExists() {
+    if (_configTableExistsPromise) return _configTableExistsPromise;
+    _configTableExistsPromise = (async () => {
+      if (await tableExistsConfirmed(CONFIG_TABLE)) return;
+      const result = await grist.docApi.applyUserActions([
+        ['AddTable', CONFIG_TABLE, [
+          { id: 'TableId', type: 'Text' },
+          { id: 'ConfigJSON', type: 'Text' }
+        ]]
+      ]);
+      // [Filet de sécurité, voir loadOrCreateTable plus bas pour la version complète/documentée de ce
+      // mécanisme] Si Grist a silencieusement suffixé le nom (collision malgré tableExistsConfirmed),
+      // la table de config réelle préexistante reste "BI_Dashboard_Config" — loadConfig/saveConfig la
+      // relisent toujours directement par ce nom, donc aucune perte de données ; on évite juste de
+      // mettre en cache le mauvais id.
+      const actualTableId = actualAddTableId(result);
+      if (actualTableId && actualTableId !== CONFIG_TABLE) {
+        console.error(
+          `[GristBI] AddTable("${CONFIG_TABLE}") a créé "${actualTableId}" à la place (collision de nom : ` +
+          'la table existait déjà malgré la vérification). Table vide orpheline à supprimer manuellement ' +
+          'dans Grist si besoin — aucune donnée de config perdue ni dupliquée.'
+        );
+        _rawTables = null;
+        return;
+      }
+      // `_rawTables` peut valoir `null` ici (budget de `tableExistsConfirmed` épuisé juste avant,
+      // voir sa documentation) — même garde que `loadOrCreateTable` plus bas, même raison.
+      if (_rawTables) _rawTables.push(CONFIG_TABLE);
+    })();
+    return _configTableExistsPromise;
   }
 
   // Le format sauvegardé a changé deux fois (voir ci-dessous) : normalise le plus ancien (un simple
@@ -433,7 +451,24 @@
         _rawTables = null;
         alreadyExists = true;
       } else {
-        _rawTables.push(tableId);
+        // [BUG RÉEL trouvé le 21/10/2026, lors de l'audit UX/UI, en testant un document VRAIMENT
+        // vide (aucune table utilisateur) : `_rawTables` peut valoir `null` ici, pas seulement un
+        // tableau à compléter. C'est le cas précis où CETTE création est le tout premier contrôle
+        // d'existence de la session (`_raceGuardArmed` encore `true`, voir tableExistsConfirmed) ET
+        // que la table ne préexistait vraiment pas : le budget de nouvelles tentatives s'épuise alors
+        // en entier et `tableExistsConfirmed` remet volontairement `_rawTables` à `null` avant de
+        // renvoyer `false` (pour forcer une lecture fraîche au contrôle suivant) — un `.push()`
+        // inconditionnel plantait alors ici (`TypeError: Cannot read properties of null`), avant même
+        // `fillTable()`. Repéré sur `BI_Dashboard_Comments` : sans aucune table utilisateur, son
+        // `loadOrCreateComments()` (bootstrap()) devient le tout premier contrôle de la session, alors
+        // que `BI_Dashboard_Config` (qui l'aurait été avant, primant `_rawTables` au passage) n'est
+        // jamais chargée dans ce cas précis (voir CLAUDE.md §3 : `loadConfig` ne s'exécute que dans
+        // switchTable(), jamais appelée tant qu'aucune table n'est connectée). Ne RIEN écrire dans
+        // `_rawTables` quand il est `null` : une prochaine lecture (listAllTablesCached) refera de
+        // toute façon un appel réseau frais, qui trouvera la table tout juste créée — reconstruire un
+        // tableau tronqué ici serait pire (il remplacerait ce futur appel réseau par un cache
+        // incomplet, voir `if (!_rawTables) _rawTables = ...` dans listAllTablesCached).
+        if (_rawTables) _rawTables.push(tableId);
         await fillTable(tableId, buildRows(), columns, onProgress);
       }
     }
