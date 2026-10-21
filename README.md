@@ -71,7 +71,8 @@ réellement (voir HYPOTHESES.md).
   avancés et niveau de drill-down par tuile appliqués. Basé sur [SheetJS](https://sheetjs.com/)
   embarqué localement ; le déclenchement du téléchargement depuis l'iframe du widget n'est pas
   encore vérifié en conditions réelles Grist (voir HYPOTHESES.md). Une tuile en mode mesure (voir
-  ci-dessous) exporte un texte explicite plutôt que ses valeurs (limite assumée, voir HYPOTHESES.md).
+  ci-dessous) exporte désormais ses vraies valeurs (Cumul/YTD/N-1, calculées via DuckDB-WASM comme
+  à l'écran), pas un texte d'excuse — voir HYPOTHESES.md.
 - **Mesures façon DAX simplifié (Cumul / YTD / Comparaison N-1)** : sur une tuile barres, le champ
   « Mode » remplace Dimension/Drill-down par « Colonne date » — l'axe devient le MOIS calculé depuis
   cette colonne. « Cumul » = somme courante depuis le début de la série ; « Cumul annuel (YTD) » =

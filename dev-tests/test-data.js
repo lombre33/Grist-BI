@@ -1205,4 +1205,63 @@ const SAMPLE_TIME_SERIES = [
   console.log('OK i18n.t — substitution de variables + pluriel fr/en (Intl.PluralRules)');
 }
 
-console.log('\nTous les tests data.js/state.js/demo-data.js/combobox.js/duckdb-engine.js/i18n.js sont passés.');
+// measureExportSheet / buildWorkbookSheetsAsync : export Excel RÉEL (plus un simple message) pour
+// une tuile Barres en mode de calcul temporel (Cumul/YTD/N-1) — voir js/export.js. `computeMeasureSeries`
+// est ici FACTICE (une Promise résolue avec un timeSeries écrit à la main), jamais le vrai
+// GristBI.duckdbEngine.timeSeriesMeasures : l'exécution SQL réelle nécessite un navigateur (voir
+// CLAUDE.md §5), ce module reste donc testable 100% sous Node grâce à l'injection de dépendance
+// (voir js/data.js). Seule partie asynchrone de ce fichier de test : placée en tout dernier pour
+// que son achèvement précède le message final ci-dessous plutôt que de le laisser s'afficher avant
+// que ces assertions n'aient tourné.
+(async () => {
+  const fakeTimeSeries = [
+    { period: '2025-01-01', value: 100, cumulative: 100, ytd: 100, previousYear: null },
+    { period: '2025-02-01', value: 50, cumulative: 150, ytd: 150, previousYear: null },
+    { period: '2026-01-01', value: 120, cumulative: 270, ytd: 120, previousYear: 100 }
+  ];
+  const computeMeasureSeries = async () => fakeTimeSeries;
+  const baseState = { rows: [], activeFilters: [], advancedFilters: [], drillIns: {} };
+
+  // 'ytd' : une seule colonne de valeur en plus de la période
+  const ytdTile = { id: 't1', title: 'Cumul annuel', type: 'bar', measure: 'Montant', aggFn: 'sum', measureMode: 'ytd', dateColumn: 'Date' };
+  const ytdSheet = await data.measureExportSheet(ytdTile, baseState, computeMeasureSeries);
+  assert.strictEqual(ytdSheet.name, 'Cumul annuel');
+  assert.deepStrictEqual(ytdSheet.header, ['Période', 'Cumul annuel (YTD)']);
+  assert.deepStrictEqual(ytdSheet.rows, [['2025-01', 100], ['2025-02', 150], ['2026-01', 120]]);
+
+  // 'yoy' : deux colonnes (Valeur + N-1), N-1 manquant -> chaîne vide plutôt que `null`
+  const yoyTile = { id: 't2', title: 'Comparaison N-1', type: 'bar', measure: 'Montant', aggFn: 'sum', measureMode: 'yoy', dateColumn: 'Date' };
+  const yoySheet = await data.measureExportSheet(yoyTile, baseState, computeMeasureSeries);
+  assert.deepStrictEqual(yoySheet.header, ['Période', 'Valeur', 'N-1']);
+  assert.deepStrictEqual(yoySheet.rows, [['2025-01', 100, ''], ['2025-02', 50, ''], ['2026-01', 120, 100]]);
+  console.log('OK measureExportSheet (ytd : 1 colonne ; yoy : Valeur+N-1, N-1 manquant -> chaîne vide)');
+
+  // Échec du calcul (DuckDB indisponible/erreur SQL) -> message explicite PAR TUILE, pas un plantage
+  const failingCompute = async () => { throw new Error('DuckDB indisponible (simulé)'); };
+  const failedSheet = await data.measureExportSheet(ytdTile, baseState, failingCompute);
+  assert.deepStrictEqual(failedSheet.header, ['Info']);
+  assert.strictEqual(failedSheet.rows.length, 1);
+  console.log('OK measureExportSheet — échec du calcul : message explicite plutôt qu\'un plantage');
+
+  // buildWorkbookSheetsAsync : seule la tuile en mode mesure passe par computeMeasureSeries, les
+  // autres types de tuiles restent calculés en pur/synchrone (tileExportSheet, inchangé) — même
+  // classeur, même préfixage de page que buildWorkbookSheets.
+  const mixedState = {
+    rows: [{ Region: 'Nord', Montant: 10 }, { Region: 'Sud', Montant: 20 }],
+    activeFilters: [], advancedFilters: [], drillIns: {},
+    pages: [{ id: 'p1', name: 'Page 1', tiles: [
+      { id: 't1', type: 'bar', title: 'Montant par Région', dimension: 'Region', measure: 'Montant', aggFn: 'sum' },
+      ytdTile
+    ] }]
+  };
+  const mixedSheets = await data.buildWorkbookSheetsAsync(mixedState, computeMeasureSeries);
+  assert.deepStrictEqual(mixedSheets.map((s) => s.name), ['Montant par Région', 'Cumul annuel']);
+  assert.deepStrictEqual(mixedSheets[0].rows, [['Nord', 10], ['Sud', 20]]); // chemin synchrone inchangé
+  assert.deepStrictEqual(mixedSheets[1].rows, ytdSheet.rows); // chemin async, même valeurs que ci-dessus
+  console.log('OK buildWorkbookSheetsAsync (tuile mesure -> computeMeasureSeries injecté, le reste inchangé)');
+})().then(() => {
+  console.log('\nTous les tests data.js/state.js/demo-data.js/combobox.js/duckdb-engine.js/i18n.js sont passés.');
+}).catch((e) => {
+  console.error(e);
+  process.exitCode = 1;
+});
