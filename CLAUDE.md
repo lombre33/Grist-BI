@@ -57,9 +57,9 @@ suivants lisent `GristBI.i18n.t()` comme un global déjà prêt.
 | `js/data.js` | Cœur **pur JS, testable sous Node**, sans DOM ni Grist : conversion du format colonnaire Grist en lignes, filtrage (`matchesFilter`/`applyFilters`, types `eq`/`range`/`dateRange`/`relativeDate`/`contains`), agrégation (`groupByAggregate`, `aggregateSingle`, agrégateurs sum/avg/count/min/max), tendance KPI (`computeTrend`), échappement HTML, toute la logique d'export Excel (`rowsForTile`, `tileExportSheet`, `buildWorkbookSheets`, `sanitizeSheetName`, et leurs variantes async `measureExportSheet`/`buildWorkbookSheetsAsync` pour les tuiles en mode mesure Cumul/YTD/N-1, le calcul DuckDB étant injecté par `js/export.js` plutôt qu'importé ici — voir HYPOTHESES.md) partagée avec le rendu à l'écran, le data blending multi-tables (`blendRows` : LEFT JOIN en JS pur entre lignes principales et secondaires, colonnes secondaires préfixées `<table>.<colonne>` — voir §6/ROADMAP.md), et la dérivation Année/Trimestre/Mois pour le drill-down hiérarchique automatique (`deriveDateHierarchyColumns`, appelée pour chaque colonne date via `js/main.js:withDateHierarchies` — voir ROADMAP.md/HYPOTHESES.md). |
 | `js/state.js` | Store pub/sub **pur JS, testable sous Node** (`createStore()`) : pages (chacune avec son propre tableau de tuiles), filtres croisés et filtres avancés (globaux entre pages, volontairement), chemins de drill-down par tuile (`drillIns`), bookmarks, jointure de data blending courante (`blend`, propre à la table de travail comme les bookmarks). Expose `getState`/`subscribe` + mutateurs (`addTile`, `updateTile`, `toggleFilter`, `drillInto`/`drillUp`, `saveBookmark`, `setBlend`, etc.). |
 | `js/grist-api.js` | **Seul pont** entre le widget et l'hôte Grist. Voir §3. |
-| `js/duckdb-engine.js` | Moteur SQL **DuckDB-WASM**, fondation du Tier 2 de la roadmap. **Chargé paresseusement** (rien n'est téléchargé tant que `init()` n'est pas appelé explicitement) — voir §6/§7. **Aucune fonctionnalité UI ne l'utilise encore** (confirmé par recherche dans tout le dépôt : seuls `duckdb-engine.js` lui-même, `dev-tests/test-data.js` et `HYPOTHESES.md` le mentionnent). |
+| `js/duckdb-engine.js` | Moteur SQL **DuckDB-WASM** : `groupByAggregate`/`aggregateSingle`/`pivotTable` (équivalents SQL des fonctions pures de `js/data.js`) et `timeSeriesMeasures` (mesures façon DAX). **Chargé paresseusement** (rien n'est téléchargé tant que `init()` n'est pas appelé explicitement) — voir §6/§7. Depuis le 2026-10-21, `js/charts.js` l'utilise pour TOUTE tuile au-delà d'un seuil de volume (voir sa doc), plus seulement pour les mesures temporelles. |
 | `js/demo-data.js` | Génère l'unique jeu de données du widget, `BI_StressTest` (~47 040 lignes : 4 régions × 5 produits × 7 années × 12 mois × 28 jours fixes), avec des valeurs Quantité/Montant cohérentes entre elles (croissance +6 %/an), et les 4 tuiles par défaut. |
-| `js/charts.js` | Rendu ECharts pour les 6 types de tuiles (bar/pie/treemap/scatter/kpi/gauge), une instance ECharts par tuile mise en cache, gestionnaire de clic générique (drill-down vs cross-filter) qui relit l'état du store en direct à chaque clic plutôt que de capturer des variables au moment du rendu. |
+| `js/charts.js` | Rendu ECharts pour les 6 types de tuiles (bar/pie/treemap/scatter/kpi/gauge) + le pivot (table HTML), une instance ECharts par tuile mise en cache, gestionnaire de clic générique (drill-down vs cross-filter) qui relit l'état du store en direct à chaque clic plutôt que de capturer des variables au moment du rendu. Chaque fonction de rendu est **async** : au-delà de `DUCKDB_ROW_THRESHOLD` lignes, l'agrégation passe par `GristBI.duckdbEngine` plutôt que la version JS pure de `js/data.js` (repli silencieux si DuckDB échoue), avec un compteur de rendu par tuile (`renderSeq`/`bumpSeq`/`isStale`, partagé avec `renderMeasureChart`) qui abandonne le résultat d'un calcul devenu périmé. |
 | `js/combobox.js` | Composant d'autocomplétion réutilisable, DOM-agnostique pour sa logique de filtrage (`filterOptions`, `highlightMatch`) + câblage DOM (`attach`). Modes `strict` (doit correspondre à une option, comme un `<select>`) et non-strict (texte libre, suggestions seulement). |
 | `js/export.js` | Construit le classeur `.xlsx` (une feuille par tuile, toutes pages confondues) via SheetJS vendorisé (`window.XLSX`) et déclenche le téléchargement ; async depuis que les tuiles en mode mesure (Cumul/YTD/N-1) y exportent leurs vraies valeurs via `GristBI.duckdbEngine.timeSeriesMeasures`, injecté dans `GristBI.data.buildWorkbookSheetsAsync`. |
 | `js/pdf-export.js` | Export PDF (page actuellement affichée uniquement) via pdfmake, chargé depuis un CDN externe et non vendorisé (exception, voir §8) — capture l'image de chaque graphique déjà rendu (`GristBI.charts.getInstance`) plutôt que de recalculer, ce qui évite le mur asynchrone des tuiles en mode mesure DAX rencontré par l'export Excel. |
@@ -208,13 +208,17 @@ dépôt. Les tests se lancent manuellement (voir §5).
   valeur × risque de faisabilité :
   - **Tier 1** et **Tier 1.5** : ✅ entièrement terminés (2026-09-16).
   - **Tier 2** (chantiers structurants, toujours sans backend) : en cours. Le moteur SQL
-    DuckDB-WASM (`js/duckdb-engine.js`) est posé comme fondation, consommé depuis par les mesures
-    façon DAX (`timeSeriesMeasures`) et le tableau croisé — **le data blending, lui, n'en dépend
-    pas** (`js/data.js:blendRows`, LEFT JOIN en JS pur, voir §2). ✅ Faits (voir ROADMAP.md pour le
-    détail de chacun) : mesures façon DAX simplifié, tableau croisé dynamique, export PDF/PPT, data
-    blending multi-tables, drill-down hiérarchique automatique (temporel uniquement), commentaires
+    DuckDB-WASM (`js/duckdb-engine.js`) sert désormais les mesures façon DAX (`timeSeriesMeasures`)
+    ET, depuis le 2026-10-21, TOUTE tuile (bar/pie/treemap/scatter/kpi/gauge/pivot) au-delà d'un
+    seuil de volume (`js/charts.js:DUCKDB_ROW_THRESHOLD`, repli JS sous ce seuil ou en cas
+    d'échec) — voir §2. **Le data blending, lui, n'en dépend toujours pas**
+    (`js/data.js:blendRows`, LEFT JOIN en JS pur). ✅ Faits (voir ROADMAP.md pour le détail de
+    chacun) : mesures façon DAX simplifié, tableau croisé dynamique, export PDF/PPT/Excel (y
+    compris les tuiles en mode mesure, désormais avec leurs vraies valeurs), data blending
+    multi-tables, drill-down hiérarchique automatique (temporel uniquement), commentaires
     collaboratifs (PR #15, fusionnée le 2026-09-30 après le choix d'Antoine sur le lieu de
-    stockage — voir HYPOTHESES.md). Waterfall/Radar restent à faire, faible valeur.
+    stockage — voir HYPOTHESES.md), moteur DuckDB-WASM étendu à toute agrégation. Waterfall/Radar
+    restent à faire, faible valeur.
   - **Tier 3** : faisable seulement en sortant du widget (nécessite un service externe avec
     backend/cron — alertes email/SMS, rafraîchissement programmé réel, Q&A IA générative,
     embedding live hors Grist).

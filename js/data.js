@@ -251,25 +251,34 @@
     return out;
   }
 
-  // Tendance d'une carte KPI vs la période précédente : regroupe `rows` par `trendDimension`, ne
-  // garde que les groupes dont la clé est numérique (ex. Annee=2025/2026 ; une dimension texte
-  // comme "Mois" est ignorée plutôt que de produire un delta absurde), et compare les deux plus
-  // grandes clés numériques trouvées. Retourne null si la comparaison n'a pas de sens ici (moins de
-  // 2 groupes numériques présents - ex. déjà filtré sur une seule période - ou groupe précédent nul).
-  function computeTrend(rows, trendDimension, measureCol, aggFn) {
-    if (!trendDimension) return null;
-    const groups = groupByAggregate(rows, trendDimension, measureCol, aggFn)
+  // Cœur de computeTrend, extrait pour être réutilisable sur un résultat de groupByAggregate déjà
+  // obtenu PAR N'IMPORTE QUEL MOYEN (JS pur ci-dessous, ou DuckDB-WASM côté js/charts.js pour un
+  // gros volume — voir computeGroupBy/computeTrendAsync) : ne garde que les groupes dont la clé est
+  // numérique (ex. Annee=2025/2026 ; une dimension texte comme "Mois" est ignorée plutôt que de
+  // produire un delta absurde), et compare les deux plus grandes clés numériques trouvées. Retourne
+  // null si la comparaison n'a pas de sens ici (moins de 2 groupes numériques présents - ex. déjà
+  // filtré sur une seule période - ou groupe précédent nul).
+  function trendFromGroups(groups) {
+    const numericGroups = groups
       .map((g) => ({ key: Number(g.dimension), value: g.value }))
       .filter((g) => Number.isFinite(g.key))
       .sort((a, b) => b.key - a.key);
-    if (groups.length < 2) return null;
-    const [latest, previous] = groups;
+    if (numericGroups.length < 2) return null;
+    const [latest, previous] = numericGroups;
     if (!previous.value) return null; // évite une division par zéro / un delta infini
     return {
       latestKey: latest.key,
       previousKey: previous.key,
       deltaPct: ((latest.value - previous.value) / previous.value) * 100
     };
+  }
+
+  // Tendance d'une carte KPI vs la période précédente : regroupe `rows` par `trendDimension` en JS
+  // pur (voir trendFromGroups ci-dessus pour la logique de comparaison elle-même, partagée avec le
+  // chemin DuckDB de js/charts.js pour un gros volume).
+  function computeTrend(rows, trendDimension, measureCol, aggFn) {
+    if (!trendDimension) return null;
+    return trendFromGroups(groupByAggregate(rows, trendDimension, measureCol, aggFn));
   }
 
   // Libellé d'axe pour une période 'AAAA-MM-JJ' renvoyée par
@@ -582,7 +591,7 @@
   return {
     tableToRows, epochSecondsToIsoDate, applyFilters, matchesFilter, sameValue, parseDateValue,
     relativeDateRange, RELATIVE_DATE_PRESETS, groupByAggregate, aggregateSingle, pivotTable,
-    distinctColumnValues, computeTrend, periodLabel, measureSeriesForTile, escapeHtml,
+    distinctColumnValues, computeTrend, trendFromGroups, periodLabel, measureSeriesForTile, escapeHtml,
     tileDrillLevels, currentDimension, rowsForTile, tileExportSheet, tileExportKind,
     sanitizeSheetName, buildWorkbookSheets, measureExportSheet, buildWorkbookSheetsAsync,
     blendRows, deriveDateHierarchyColumns, commentsForTile, AGGREGATORS

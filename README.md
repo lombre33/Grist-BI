@@ -78,9 +78,12 @@ réellement (voir HYPOTHESES.md).
   cette colonne. « Cumul » = somme courante depuis le début de la série ; « Cumul annuel (YTD) » =
   la même somme mais qui repart à zéro à chaque nouvelle année ; « Comparaison N-1 » = 2 séries
   (valeur courante + valeur du même mois l'année précédente). Calculé via une vraie requête SQL
-  DuckDB-WASM (fonctions fenêtrées), la première feature de ce POC à consommer ce moteur — voir
-  ROADMAP.md/HYPOTHESES.md pour le détail technique et le périmètre volontairement réduit
-  (granularité mensuelle fixe, non configurable).
+  DuckDB-WASM (fonctions fenêtrées) — voir ROADMAP.md/HYPOTHESES.md pour le détail technique et le
+  périmètre volontairement réduit (granularité mensuelle fixe, non configurable). Depuis le
+  2026-10-21, ce même moteur DuckDB-WASM prend aussi le relais du calcul JS pur pour TOUTE tuile
+  (barres, camembert, treemap, nuage de points, KPI, jauge, tableau croisé) au-delà d'un certain
+  volume de lignes, avec repli automatique sur le calcul JS en dessous de ce seuil ou en cas
+  d'échec — voir HYPOTHESES.md.
 - **Autocomplétion partout où l'on choisit une colonne** : dimension, mesure, mesure Y, tendance
   KPI, chaque niveau de drill-down et la colonne du filtre avancé sont des champs avec
   autocomplétion (composant maison, `js/combobox.js`) plutôt que des menus déroulants bruts — on
