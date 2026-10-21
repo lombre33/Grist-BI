@@ -5,6 +5,27 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Grist BI Dashboard (POC) — Harness local</title>
 <!-- Remplace grist-plugin-api.js par le mock : mêmes fichiers applicatifs que index.html. -->
+<script>
+  // Simule un document Grist qui a DÉJÀ une table utilisateur ("Ventes") au moment où le widget
+  // s'ouvre — le cas réel depuis le retrait de la création automatique de BI_StressTest (voir
+  // CLAUDE.md §1/§7, js/grist-api.js) : ce widget ne crée plus jamais lui-même de table de
+  // données, il se connecte à la 1re table déjà présente dans le document (js/main.js:bootstrap).
+  // Sans ce préremplissage, un double-clic sur ce harnais afficherait un dashboard vide (aucune
+  // table), ce qui n'aide pas à un rendu visuel rapide. Volume volontairement modeste : ce
+  // harnais sert à vérifier le rendu, pas à un test de charge — voir dev-tests/README.md pour
+  // générer un volume réaliste via `__gristStubPreseed` + `js/demo-data.js` dans un script
+  // Playwright ad hoc.
+  window.__gristStubPreseed = {
+    Ventes: {
+      id: [1, 2, 3, 4, 5, 6, 7, 8],
+      Region: ['Nord', 'Nord', 'Sud', 'Sud', 'Est', 'Est', 'Ouest', 'Ouest'],
+      Produit: ['Widget A', 'Widget B', 'Widget A', 'Widget C', 'Widget B', 'Widget A', 'Widget C', 'Widget B'],
+      Mois: ['Janvier', 'Février', 'Janvier', 'Mars', 'Février', 'Mars', 'Janvier', 'Février'],
+      Montant: [1200, 950, 1800, 600, 1400, 1100, 700, 1600],
+      Quantite: [12, 8, 20, 5, 15, 10, 6, 14]
+    }
+  };
+</script>
 <script src="grist-stub.js"></script>
 <script src="../js/vendor/echarts/echarts.min.js"></script>
 <script src="../js/vendor/xlsx/xlsx.full.min.js"></script>
@@ -303,14 +324,11 @@
     autres tuiles (cumulable entre colonnes différentes ; recliquer retire le filtre). Une tuile
     avec un « Drill-down » se détaille au clic ; une carte KPI avec une « Tendance vs » affiche
     l'évolution par rapport à la période précédente.</span>
-    <br />
-    <button id="restore-default-tiles" type="button" class="btn-secondary" data-i18n="emptyState.restoreDefaults" hidden>Restaurer les tuiles par défaut</button>
   </p>
 
   <script src="../js/i18n.js"></script>
   <script src="../js/data.js"></script>
   <script src="../js/combobox.js"></script>
-  <script src="../js/demo-data.js"></script>
   <script src="../js/state.js"></script>
   <script src="../js/charts.js"></script>
   <script src="../js/export.js"></script>

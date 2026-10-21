@@ -1,29 +1,20 @@
 /*
  * Glue vers l'API Grist Custom Widget. Patterns repris (et simplifiés) du widget
  * publipostageGrist du même auteur : grist.ready({requiredAccess:'full'}) et des tables internes
- * cachées (préfixe "BI_") pour les données ET la config — même mécanisme que
- * Publipostage_Modeles/Publipostage_LiensTables, dont on sait qu'il fonctionne en Grist réel. Pas
- * de dépendance à grist.onRecords()/la table liée au widget dans la page (voir HYPOTHESES.md et
- * main.js:bootstrap). Voir HYPOTHESES.md pour ce qui reste à valider (ex. grist.setOptions() comme
- * alternative plus simple à la table de config, non testée ici).
+ * cachées (préfixe "BI_") pour la config/les commentaires/la détection d'auteur — même mécanisme que
+ * Publipostage_Modeles/Publipostage_LiensTables, dont on sait qu'il fonctionne en Grist réel. Ce
+ * widget ne crée en revanche AUCUNE table de données lui-même (demande explicite de l'utilisateur,
+ * 2026-09-19 — voir CLAUDE.md §1/§7) : il se connecte à la table de travail de l'utilisateur, qu'il
+ * s'agisse de la 1re table du document (connexion automatique au démarrage, voir main.js:bootstrap)
+ * ou d'une autre table choisie via le sélecteur. Pas de dépendance à grist.onRecords()/la table
+ * liée au widget dans la page (voir HYPOTHESES.md et main.js:bootstrap). Voir HYPOTHESES.md pour ce
+ * qui reste à valider (ex. grist.setOptions() comme alternative plus simple à la table de config,
+ * non testée ici).
  */
 (function (global) {
   const GristBI = global.GristBI || (global.GristBI = {});
 
   const CONFIG_TABLE = 'BI_Dashboard_Config';
-  // Nom FIXE, plus jamais suffixé par un numéro de schéma (demande explicite de l'utilisateur : une
-  // SEULE table de test traverse toute la vie du widget, jamais une nouvelle table pour un
-  // changement de schéma). Si `GristBI.demoData.COLUMNS_LARGE` gagne une colonne, `ensureColumnsUpToDate`
-  // (plus bas) ajoute cette colonne à la table déjà présente (`AddColumn`) et remplit les lignes déjà
-  // là avec de vraies valeurs calculées côté JS (`GristBI.demoData.deriveDateColumn`, PAS une formule
-  // Grist) — ce mécanisme reste la SEULE façon prévue de faire évoluer le schéma, y compris pour un
-  // futur ajout de colonne : jamais une table supplémentaire.
-  const STRESS_TABLE = 'BI_StressTest';
-  // Anciens noms suffixés par un numéro de version, créés par une version antérieure de ce widget
-  // avant l'adoption d'un nom fixe ci-dessus — voir `migrateLegacyTableName` : si l'un de ces noms
-  // existe encore et que le nom fixe n'existe pas, on le RENOMME (`RenameTable`) plutôt que de
-  // laisser une table orpheline en plus dans le document.
-  const LEGACY_STRESS_TABLE_NAMES = ['BI_StressTest_v2', 'BI_StressTest_v1'];
   // Table dédiée aux commentaires collaboratifs (ROADMAP.md Tier 2, 2026-09-29) : 1 LIGNE PAR
   // COMMENTAIRE, plutôt qu'un champ de plus dans le blob JSON de BI_Dashboard_Config — ce blob est
   // une seule ligne par table de travail, donc deux commentaires ajoutés en même temps par deux
@@ -63,9 +54,12 @@
   let _configRowIdByTable = {};
 
   // Ne s'appuie plus sur `grist.onRecords()`/la table liée au widget dans la page (voir
-  // HYPOTHESES.md) : le dashboard se connecte directement à sa propre table de test de charge au
-  // démarrage (voir main.js), même pattern que publipostageGrist qui gère ses propres tables
-  // internes sans dépendre d'une sélection de table faite par l'auteur de la page Grist.
+  // HYPOTHESES.md) : le dashboard se connecte directement, au démarrage, à la 1re table du document
+  // (voir main.js:bootstrap et GristBI.api.listAvailableTables/loadTable plus bas) — même pattern
+  // que publipostageGrist qui gère ses propres tables internes sans dépendre d'une sélection de
+  // table faite par l'auteur de la page Grist, mais sans plus jamais créer lui-même de table de
+  // données (demande explicite de l'utilisateur, 2026-09-19 — voir CLAUDE.md §1/§7, seules
+  // BI_Dashboard_Config/BI_Dashboard_Comments/BI_Dashboard_UserProbe restent créées par ce widget).
   async function init() {
     if (typeof grist === 'undefined') {
       console.warn('[GristBI] grist-plugin-api.js indisponible (widget ouvert hors Grist ?).');
@@ -110,9 +104,10 @@
   // de lignes dupliquées. Un second filet de sécurité INDÉPENDANT (voir `loadOrCreateTable` plus bas)
   // neutralise même le cas où CE budget s'avérerait malgré tout insuffisant.
   // `_raceGuardArmed` : cette revérification ne s'applique qu'au TOUT PREMIER contrôle d'existence de
-  // la session (celui de `BI_StressTest`, juste après `grist.ready()` — le seul moment où la
-  // négociation d'accès peut réellement être encore en cours) ; tous les contrôles suivants (ex.
-  // `BI_Dashboard_Config`, quelques instants plus tard) font confiance à un seul appel : le canal a
+  // la session (typiquement celui de `BI_Dashboard_Config`, juste après `grist.ready()` — le seul
+  // moment où la négociation d'accès peut réellement être encore en cours ; générique par ordre
+  // d'appel, pas câblé sur un nom de table précis) ; tous les contrôles suivants (ex.
+  // `BI_Dashboard_Comments`, quelques instants plus tard) font confiance à un seul appel : le canal a
   // déjà forcément été prouvé actif par au moins un aller-retour réussi entre-temps. Sans ce
   // désarmement, chaque contrôle paierait le budget complet même sans le moindre risque de course.
   const RACE_GUARD_RETRY_DELAYS_MS = [300, 600, 1200, 2400, 4800];
@@ -131,10 +126,10 @@
     // s'épuise SANS jamais avoir trouvé `tableId`, `_rawTables` reste ici sur le dernier tableau lu
     // pendant la boucle — qui peut lui-même être encore contaminé par la course si la négociation
     // d'accès n'a TOUJOURS pas fini au bout de ce budget déjà généreux (~9,3s). Comme `_raceGuardArmed`
-    // vient d'être définitivement désarmé, tout contrôle suivant de la session (ex. le nom LEGACY dans
-    // `migrateLegacyTableName`) ferait confiance à ce cache SANS le moindre nouvel appel réseau — le
-    // remettre à `null` force au moins UNE lecture fraîche pour ce contrôle suivant plutôt que de
-    // réutiliser un résultat déjà connu comme potentiellement obsolète. Ne résout pas le cas encore
+    // vient d'être définitivement désarmé, tout contrôle suivant de la session ferait confiance à ce
+    // cache SANS le moindre nouvel appel réseau — le remettre à `null` force au moins UNE lecture
+    // fraîche pour ce contrôle suivant plutôt que de réutiliser un résultat déjà connu comme
+    // potentiellement obsolète. Ne résout pas le cas encore
     // plus extrême où la négociation dépasse la totalité du budget (voir HYPOTHESES.md, point 13bis :
     // aucun mécanisme à délai borné ne peut couvrir un délai réseau non borné), mais referme la fenêtre
     // pour le cas, bien plus probable, où la négociation se termine PENDANT ce contrôle suivant.
@@ -181,8 +176,9 @@
   // tableau de tuiles, avant l'ajout des bookmarks), l'intermédiaire (`{tiles, bookmarks}`, avant
   // les pages) et le format courant (`{pages, currentPageId, bookmarks}`), pour ne pas casser la
   // lecture d'une config déjà sauvegardée par une version antérieure du widget - même classe de
-  // problème que l'évolution de schéma de `BI_StressTest` (voir `ensureColumnsUpToDate` plus bas),
-  // mais réglée ici en JS pur puisque ConfigJSON est un blob texte, pas des colonnes Grist typées.
+  // problème que l'évolution de schéma d'une table interne de ce widget (voir `ensureColumnsUpToDate`
+  // plus bas), mais réglée ici en JS pur puisque ConfigJSON est un blob texte, pas des colonnes
+  // Grist typées.
   // `blend` (data blending multi-tables, voir GristBI.data.blendRows/js/main.js) suit exactement la
   // même convention de compatibilité ascendante que `bookmarks` : absent des 3 formats historiques
   // (antérieurs à cette feature), donc toujours `null` ("aucune jointure") tant que l'utilisateur
@@ -247,60 +243,6 @@
     _configRowIdByTable[tableId] = rowId;
   }
 
-  // Si `tableId` (le nom fixe courant) n'existe pas encore mais qu'un ancien nom versionné existe
-  // (voir LEGACY_*_TABLE_NAMES), le renomme plutôt que de laisser une table orpheline en plus dans
-  // le document. `RenameTable` est un verbe déjà vérifié (voir ROADMAP.md). No-op si `tableId`
-  // existe déjà, ou si aucun ancien nom n'est présent (première installation : rien à migrer).
-  // [BUG TROUVÉ en construisant la matrice de tests croisés du garde-fou anti-course, voir
-  // HYPOTHESES.md] Cette fonction s'exécute AVANT `tableExistsConfirmed` dans `loadOrCreateTable`,
-  // dans exactement la même fenêtre de course que celle documentée plus haut. L'ancien raisonnement
-  // ("un faux négatif ici mène au pire à un RENOMMAGE inutile, pas à une duplication") ne couvrait que
-  // le cas où c'est `tableId` qui est faussement vu comme absent. Il manquait le cas inverse : si
-  // c'est le NOM LEGACY qui est faussement vu comme absent (alors que lui EXISTE réellement, avec ses
-  // propres dizaines de milliers de lignes) pendant que `tableId` est authentiquement absent, le
-  // renommage nécessaire est purement et simplement SAUTÉ — la table legacy reste orpheline sous son
-  // ancien nom, et `loadOrCreateTable` (juste après) crée et remplit un `tableId` tout neuf de zéro :
-  // deux tables contenant chacune le jeu de données complet, sans qu'aucune des deux n'ait été
-  // "doublée" au sens strict, mais avec la même conséquence concrète pour l'utilisateur. D'où
-  // `tableExistsConfirmed` ici aussi (au lieu du simple `tableExists` non protégé) : ce sera alors le
-  // tout premier contrôle d'existence de la session à consommer le budget d'attente généreux (voir sa
-  // documentation) — `loadOrCreateTable` juste après réutilise un canal déjà prouvé actif, comme prévu.
-  // [Trouvé par une revue adversariale du correctif de course ci-dessus, pas par l'utilisateur]
-  // `RenameTable` passe par EXACTEMENT le même mécanisme d'unicité que `AddTable`
-  // (`identifiers.pick_table_ident`, vérifié contre le moteur Grist réel — `sandbox/grist/
-  // useractions.py:_updateTableRecords`) : si `tableId` (la destination) existe déjà réellement au
-  // moment de l'appel, Grist ne lève PAS d'erreur, il suffixe silencieusement le nom réellement
-  // utilisé. Contrairement à `AddTable`, `RenameTable` ne renvoie AUCUNE info exploitable
-  // (`retValues` vaut `None` côté moteur) : impossible de détecter cette collision aussi
-  // déterministement qu'avec `actualAddTableId`. On se contente donc de CONSTATER après coup, avec un
-  // contrôle frais, que `tableId` existe désormais bien sous le nom exact attendu, et de le signaler
-  // bruyamment sinon plutôt que de continuer en silence sur une hypothèse fausse — même philosophie
-  // que le filet de sécurité `AddTable` (un échec visible vaut mieux qu'une corruption silencieuse),
-  // en reconnaissant que cette détection est un CONSTAT, pas une prévention : si la collision se
-  // produit, les données de `legacyName` sont déjà renommées sous un id imprévisible avant qu'on ne
-  // puisse s'en apercevoir. Nécessite un second acteur réellement concurrent créant `tableId` dans la
-  // fenêtre entre le contrôle ci-dessus et cet appel — une classe de course différente (deux onglets
-  // simultanés) de celle que ce correctif cible principalement (délai de négociation à l'ouverture),
-  // volontairement pas traitée plus en profondeur ici (voir HYPOTHESES.md).
-  async function migrateLegacyTableName(tableId, legacyNames) {
-    if (await tableExistsConfirmed(tableId)) return;
-    for (const legacyName of legacyNames) {
-      if (await tableExistsConfirmed(legacyName)) {
-        await grist.docApi.applyUserActions([['RenameTable', legacyName, tableId]]);
-        _rawTables = null; // le cache de listTables() doit être relu après un renommage
-        if (!(await tableExistsConfirmed(tableId))) {
-          console.error(
-            `[GristBI] RenameTable("${legacyName}" -> "${tableId}") n'a pas abouti au nom attendu ` +
-            '(collision de nom probable : une autre table utilisait déjà ce nom au moment du ' +
-            `renommage). Les données de "${legacyName}" ont probablement été renommées sous un id ` +
-            'différent et imprévisible — vérifier manuellement les tables du document dans Grist.'
-          );
-        }
-        return;
-      }
-    }
-  }
-
   // Envoie `actions` par lots de `ACTION_CHUNK_SIZE` plutôt qu'en un seul appel géant - voir la
   // justification au niveau d'ACTION_CHUNK_SIZE. `onProgress(phase, sent, total)` est appelé après
   // chaque lot (facultatif), pour afficher une progression réelle plutôt qu'un bouton figé.
@@ -329,22 +271,26 @@
   // qui a aussi demandé à ne plus jamais recréer de table pour un changement de schéma : ce
   // mécanisme d'ajout de colonne en place remplace définitivement la logique de versionnage de nom
   // de table utilisée avant). No-op si aucune colonne ne manque.
-  // Id des colonnes déclarées `Date` dans le schéma JS STATIQUE connu de ce widget (voir
-  // COLUMNS_LARGE/COMMENTS_COLUMNS) — utilisable sans le moindre appel réseau supplémentaire, mais
-  // limité aux deux seules tables que ce widget crée lui-même. Voir `realDateColumnIds` plus bas
-  // pour la version générale (n'importe quelle table du document, via les tables système Grist),
-  // dont le résultat est fusionné avec celui-ci partout où `tableToRows` est appelé.
+  // Id des colonnes déclarées `Date` dans le schéma JS STATIQUE d'une table interne de ce widget
+  // (aujourd'hui, seule `COMMENTS_COLUMNS` passe par `loadOrCreateTable`/ce chemin — voir plus bas ;
+  // reste générique au cas où une future colonne de ce type s'ajouterait à une table interne) —
+  // utilisable sans le moindre appel réseau supplémentaire. Voir `realDateColumnIds` plus bas pour la
+  // version générale (n'importe quelle table du document, y compris la table de travail de
+  // l'utilisateur, via les tables système Grist), dont le résultat est fusionné avec celui-ci partout
+  // où `tableToRows` est appelé.
   function dateColumnIdsFrom(columns) {
     return columns.filter((c) => c.type === 'Date').map((c) => c.id);
   }
 
   // Lit le VRAI type de chaque colonne de `tableId` via les tables système Grist
   // (`_grist_Tables`/`_grist_Tables_column`) — contrairement à `dateColumnIdsFrom` ci-dessus (limité
-  // au schéma JS statique de BI_StressTest/BI_Dashboard_Comments), fonctionne pour N'IMPORTE QUELLE
-  // table du document, y compris une table arbitraire choisie via le sélecteur (voir `loadTable`
-  // plus bas) : LE point aveugle réel relevé le 29/09/2026 (voir HYPOTHESES.md point 15/16 et
-  // CLAUDE.md §7 piège n°16) — Antoine choisira ses propres tables, avec ses propres colonnes Date,
-  // jamais couvertes par le schéma statique de ce widget. `_grist_Tables_column.parentId` relie
+  // au schéma JS statique d'une table interne de ce widget), fonctionne pour N'IMPORTE QUELLE table
+  // du document, y compris la table de travail de l'utilisateur (voir `loadTable` plus bas, le
+  // chemin par lequel ce widget se connecte désormais à TOUTE table, y compris la 1re table du
+  // document au démarrage — voir main.js:bootstrap) : LE point aveugle réel relevé le 29/09/2026
+  // (voir HYPOTHESES.md point 15/16 et CLAUDE.md §7 piège n°16) — Antoine choisira ses propres
+  // tables, avec ses propres colonnes Date, jamais couvertes par un schéma statique de ce widget.
+  // `_grist_Tables_column.parentId` relie
   // chaque ligne à la ligne de `_grist_Tables` dont l'`id` (l'id de ligne interne, PAS `tableId`)
   // correspond à la table visée — accessible avec l'accès `full` déjà demandé par ce widget (voir
   // §3 de CLAUDE.md), sans lecture supplémentaire à négocier ; simplement jamais tenté avant
@@ -386,7 +332,8 @@
 
   // Fusionne les deux sources de détection de colonnes Date (schéma JS statique + lecture réelle
   // des tables système, voir les deux fonctions ci-dessus) — un `Set` élimine les doublons pour
-  // BI_StressTest/BI_Dashboard_Comments, où les deux sources désignent normalement la même colonne.
+  // BI_Dashboard_Comments (si une future colonne Date s'y ajoutait), où les deux sources
+  // désigneraient alors normalement la même colonne.
   async function mergedDateColumnIds(tableId, columns) {
     return Array.from(new Set(dateColumnIdsFrom(columns).concat(await realDateColumnIds(tableId))));
   }
@@ -446,9 +393,11 @@
     await applyActionsInChunks('migrate', actions, onProgress);
   }
 
-  // Se connecte à la table de données de test de charge : la CRÉE et la REMPLIT seulement si elle
-  // n'existe pas encore ; si elle existe déjà, complète seulement les colonnes manquantes (voir
-  // `ensureColumnsUpToDate`) sans jamais renvoyer les lignes déjà présentes ni recréer la table.
+  // Se connecte à une table interne cachée (`BI_Dashboard_Config`/`BI_Dashboard_Comments`, voir leurs
+  // appelants plus bas — JAMAIS la table de données de travail de l'utilisateur, voir CLAUDE.md
+  // §1/§7) : la CRÉE et la REMPLIT seulement si elle n'existe pas encore ; si elle existe déjà,
+  // complète seulement les colonnes manquantes (voir `ensureColumnsUpToDate`) sans jamais renvoyer
+  // les lignes déjà présentes ni recréer la table.
   // Volontairement idempotent : un rechargement du widget ne doit pas renvoyer des dizaines de
   // milliers de lignes à Grist à chaque fois une fois que la table existe déjà. `alreadyExists` est
   // calculé UNE SEULE fois via `tableExistsConfirmed` (voir sa documentation, budget d'attente
@@ -470,8 +419,7 @@
   // projet, voir HYPOTHESES.md — un orphelin visible et inoffensif est préférable à un verbe de
   // suppression jamais éprouvé dans le chemin de code le plus critique du widget côté sécurité des
   // données).
-  async function loadOrCreateTable(tableId, legacyNames, columns, buildRows, deriveMissingColumns, onProgress) {
-    await migrateLegacyTableName(tableId, legacyNames);
+  async function loadOrCreateTable(tableId, columns, buildRows, deriveMissingColumns, onProgress) {
     let alreadyExists = await tableExistsConfirmed(tableId);
     if (!alreadyExists) {
       const result = await grist.docApi.applyUserActions([['AddTable', tableId, columns]]);
@@ -496,20 +444,14 @@
     return { tableId, rows: GristBI.data.tableToRows(table, await mergedDateColumnIds(tableId, columns)), created: !alreadyExists };
   }
 
-  function loadOrCreateStressData(onProgress) {
-    return loadOrCreateTable(
-      STRESS_TABLE, LEGACY_STRESS_TABLE_NAMES, GristBI.demoData.COLUMNS_LARGE,
-      GristBI.demoData.buildLargeSampleRows, GristBI.demoData.deriveDateColumn, onProgress
-    );
-  }
-
-  // Même mécanisme idempotent que loadOrCreateStressData (voir loadOrCreateTable ci-dessus,
-  // garde-fous anti-duplication inclus), mais SANS aucune ligne de départ (`() => []` : une table
-  // de commentaires neuve doit rester vide, contrairement à BI_StressTest qui se remplit de son
-  // jeu de données de démo) et sans colonne dérivée à recalculer pour l'instant (`() => ({})` —
-  // à réviser le jour où une colonne serait ajoutée à COMMENTS_COLUMNS).
+  // Même mécanisme idempotent que loadOrCreateTable (garde-fous anti-duplication inclus), mais SANS
+  // aucune ligne de départ (`() => []` : une table de commentaires neuve doit rester vide) et sans
+  // colonne dérivée à recalculer pour l'instant (`() => ({})` — à réviser le jour où une colonne
+  // serait ajoutée à COMMENTS_COLUMNS). Cette table reste créée par ce widget (contrairement à la
+  // table de données elle-même, voir CLAUDE.md §1/§7) : elle ne porte que les commentaires, jamais
+  // les données de travail de l'utilisateur.
   function loadOrCreateComments(onProgress) {
-    return loadOrCreateTable(COMMENTS_TABLE, [], COMMENTS_COLUMNS, () => [], () => ({}), onProgress);
+    return loadOrCreateTable(COMMENTS_TABLE, COMMENTS_COLUMNS, () => [], () => ({}), onProgress);
   }
 
   // Mémorisée pour toute la session (comme les commentaires, voir main.js:bootstrap) : l'identité de
@@ -533,8 +475,8 @@
     if (actualTableId && actualTableId !== USER_PROBE_TABLE) {
       // Même filet de sécurité que loadOrCreateTable : une collision prouve qu'un faux négatif a
       // échappé à tableExistsConfirmed — la table demandée existe déjà réellement, on l'utilise donc
-      // telle quelle (son schéma est fixe et identique, contrairement à BI_StressTest il n'y a jamais
-      // eu de ligne à perdre ici).
+      // telle quelle (son schéma est fixe et identique, et cette table ne porte aucune ligne à
+      // perdre : seule son existence compte, voir getCurrentUserEmail plus bas).
       console.error(
         `[GristBI] AddTable("${USER_PROBE_TABLE}") a créé "${actualTableId}" à la place (collision de nom).`
       );
@@ -582,36 +524,43 @@
     return Object.assign({ id: result.retValues[0] }, fields);
   }
 
-  // Toutes les tables du document, table de config interne exclue (jamais une donnée à visualiser)
-  // — pour le sélecteur de table (voir main.js). `_rawTables` remis à `null` avant de relire :
-  // volontairement une lecture FRAÎCHE à chaque appel (pas de cache ici, contrairement à
-  // `listAllTablesCached` utilisé ailleurs pour les vérifications d'existence internes) — la liste
-  // proposée à l'utilisateur doit refléter les tables les plus récentes du document, y compris une
-  // table créée dans Grist depuis le dernier chargement du widget.
+  // Toutes les tables du document, tables internes de ce widget exclues (jamais une donnée à
+  // visualiser, ni une table de travail valide pour la connexion automatique du démarrage — voir
+  // main.js:bootstrap, qui se connecte à la 1re table renvoyée ici) — pour le sélecteur de table
+  // (voir main.js). `COMMENTS_TABLE` est exclue pour la même raison que `CONFIG_TABLE`/
+  // `USER_PROBE_TABLE` : sans ce filtre, `BI_Dashboard_Comments` apparaîtrait dans la liste et
+  // pourrait même être choisie comme 1re table au démarrage, le widget se connectant alors par
+  // erreur à ses propres commentaires comme s'il s'agissait de données à visualiser. `_rawTables`
+  // remis à `null` avant de relire : volontairement une lecture FRAÎCHE à chaque appel (pas de
+  // cache ici, contrairement à `listAllTablesCached` utilisé ailleurs pour les vérifications
+  // d'existence internes) — la liste proposée à l'utilisateur doit refléter les tables les plus
+  // récentes du document, y compris une table créée dans Grist depuis le dernier chargement du
+  // widget.
   async function listAvailableTables() {
     _rawTables = null;
     const tables = await listAllTablesCached();
     return tables
       .map((t) => (typeof t === 'string' ? t : t.id))
-      .filter((id) => id !== CONFIG_TABLE && id !== USER_PROBE_TABLE);
+      .filter((id) => id !== CONFIG_TABLE && id !== USER_PROBE_TABLE && id !== COMMENTS_TABLE);
   }
 
-  // Lit une table déjà existante (choisie via le sélecteur de table, voir main.js) — contrairement
-  // à `loadOrCreateTable`, ne crée ni ne remplit jamais rien : la table doit déjà exister (elle vient
-  // de `listAvailableTables`), sinon `fetchTable` renverrait une table vide silencieusement. AUCUN
-  // schéma JS statique connu pour une table arbitraire (contrairement à BI_StressTest/
-  // BI_Dashboard_Comments) : `realDateColumnIds` (voir plus haut) est ici la SEULE source possible
-  // de détection des colonnes Date — c'était, avant cette fonction, le point aveugle réel relevé le
-  // 29/09/2026 (voir HYPOTHESES.md point 15/16) : une vraie colonne Date de la table choisie par
-  // l'utilisateur restait mal classée par `inferColumnKind` (js/main.js), cassant silencieusement le
-  // drill-down et les mesures façon DAX pour toute table hors BI_StressTest.
+  // Lit une table déjà existante (table de travail choisie via le sélecteur, voir main.js, OU la
+  // 1re table du document connectée automatiquement au démarrage — voir main.js:bootstrap, depuis
+  // que ce widget ne crée plus lui-même aucune table de données, CLAUDE.md §1/§7) — ne crée ni ne
+  // remplit jamais rien : la table doit déjà exister (elle vient de `listAvailableTables`), sinon
+  // `fetchTable` renverrait une table vide silencieusement. AUCUN schéma JS statique connu pour une
+  // table arbitraire de l'utilisateur : `realDateColumnIds` (voir plus haut) est ici la SEULE source
+  // possible de détection des colonnes Date — c'était, avant cette fonction, le point aveugle réel
+  // relevé le 29/09/2026 (voir HYPOTHESES.md point 15/16) : une vraie colonne Date de la table
+  // choisie par l'utilisateur restait mal classée par `inferColumnKind` (js/main.js), cassant
+  // silencieusement le drill-down et les mesures façon DAX pour toute table sans schéma JS statique.
   async function loadTable(tableId) {
     const table = await grist.docApi.fetchTable(tableId);
     return { tableId, rows: GristBI.data.tableToRows(table, await realDateColumnIds(tableId)) };
   }
 
   GristBI.api = {
-    init, loadConfig, saveConfig, loadOrCreateStressData,
+    init, loadConfig, saveConfig,
     listAvailableTables, loadTable, loadOrCreateComments, addComment, refColumnsForTable,
     getCurrentUserEmail
   };

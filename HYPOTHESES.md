@@ -2006,6 +2006,71 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     bloqué. À revérifier manuellement dans un vrai navigateur si un masque de chargement semble
     "collé" sur une tuile après un filtrage rapide.
 
+- **Retrait du code de création de table de données (`BI_StressTest`)** (2026-10-21, demande
+  explicite de l'utilisateur formulée le 2026-09-19 dans un autre fil — voir CLAUDE.md §1/§3/§7/§8).
+  - **Pourquoi** : ce POC avait été conçu, par commodité de démonstration, pour créer et remplir
+    lui-même sa table de travail (`BI_StressTest`, ~47 040 lignes) au premier démarrage. L'utilisateur
+    n'en a plus besoin — dans un usage réel, le widget doit se connecter à une table QUE l'UTILISATEUR
+    possède déjà dans son document, jamais créer la sienne.
+  - **Retiré de `js/grist-api.js`** : les constantes `STRESS_TABLE`/`LEGACY_STRESS_TABLE_NAMES`, la
+    fonction `loadOrCreateStressData` et tout le mécanisme de migration de nom legacy
+    (`migrateLegacyTableName`, qui n'existait que pour renommer un ancien `BI_StressTest_v1`/`_v2`
+    vers le nom fixe — sans raison d'être une fois la table elle-même retirée). `loadOrCreateTable`
+    perd son paramètre `legacyNames`, devenu inutile (son seul autre appelant, `loadOrCreateComments`,
+    l'appelait déjà avec `[]`). `listAvailableTables()` exclut désormais aussi `BI_Dashboard_Comments`
+    de la liste (en plus de `BI_Dashboard_Config`/`BI_Dashboard_UserProbe`, déjà exclues) — **bug
+    trouvé en relecture avant ce commit** : sans ce 3e filtre, `BI_Dashboard_Comments` pouvait
+    apparaître dans le sélecteur de table ET être choisie par erreur comme 1re table au démarrage
+    (voir plus bas), le widget se connectant alors à ses propres commentaires comme s'il s'agissait
+    de données à visualiser.
+  - **Retiré de `js/main.js`** : `defaultTableId`, le bouton "Restaurer les tuiles par défaut"
+    (`restoreDefaultTilesBtn`, et son écouteur de clic), le paramètre `seedTiles` de `switchTable`
+    (plus aucun jeu de tuiles par défaut connu d'une table). `bootstrap()` ne passe plus par
+    `loadOrCreateStressData` : il appelle `GristBI.api.listAvailableTables()` et se connecte à la
+    1re table renvoyée (`GristBI.api.loadTable`, simple lecture, jamais de création) ; si la liste
+    est vide, affiche `status.noTables` dans le bandeau plutôt que de créer quoi que ce soit. `render()`
+    affiche désormais ce même message (plutôt que "0 ligne(s)") tant qu'aucune table n'est connectée
+    (`currentTableId` nul) — pour qu'un changement de langue en cours d'état "pas de table" ne
+    bascule pas à tort sur un faux "0 ligne(s)".
+  - **Retiré de `index.html`/`dev-tests/harness.html`** : le bouton "Restaurer les tuiles par
+    défaut" dans `#empty-state`, et le `<script src="js/demo-data.js">` lui-même — ce fichier n'est
+    plus utilisé par AUCUN code chargé dans le navigateur (vérifié par recherche de `GristBI.demoData`
+    dans tout `js/` : plus aucune référence hors `dev-tests/test-data.js`, qui le `require()`
+    directement sous Node). `js/demo-data.js` reste dans le dépôt comme fixture de test Node pure
+    (génération/cohérence du jeu de données, dérivation de `Date`) — jamais chargé en production.
+  - **i18n** (`js/i18n.js`) : retrait des clés devenues orphelines (`emptyState.restoreDefaults`,
+    `status.migrating`/`status.creating`/`status.progress`, qui ne servaient qu'à la barre de
+    progression de remplissage de `BI_StressTest`) ; ajout de `status.noTables` (fr/en).
+  - **Testé sous Node** (`dev-tests/test-data.js`) : aucun changement de comportement attendu côté
+    `js/data.js`/`js/state.js`/`js/demo-data.js` (ce dernier reste exercé tel quel comme fixture) —
+    suite rejouée verte après ce retrait.
+  - **Testé en navigateur réel** (`dev-tests/harness.html`, servi en HTTP local, mock
+    `grist-stub.js`) :
+    - Ce harnais préremplit désormais le mock avec une petite table `Ventes` de démonstration
+      (`window.__gristStubPreseed`, 8 lignes) : au chargement, le widget s'y connecte automatiquement
+      sans la créer (confirmé : aucun appel `AddTable` observé pour `Ventes`), le sélecteur de table
+      la propose, et `BI_Dashboard_Config`/`BI_Dashboard_Comments`/`BI_Dashboard_UserProbe` restent
+      absentes de cette liste.
+    - Document SANS préremplissage (`__gristStubPreseed` non défini) : le bandeau affiche bien le
+      message "Aucune table dans ce document…" (`status.noTables`) au lieu de créer une table ; en
+      ajoutant ensuite une table via le mock (simulant l'utilisateur qui en crée une dans Grist) et en
+      ouvrant le sélecteur, elle apparaît et peut être choisie SANS recharger la page — confirme que
+      `beforeOpen: refreshTablePicker` (relecture fraîche, déjà existant) couvre bien ce cas.
+    - `BI_Dashboard_Comments`/`BI_Dashboard_UserProbe` : toujours créées sans erreur au bootstrap
+      (confirmé par les appels `AddTable` observés, un par table, aucun pour la table de travail
+      elle-même) — ces deux tables internes continuent d'être créées par le même `loadOrCreateTable`
+      (désormais sans paramètre `legacyNames`). Le flux complet (ajout d'un commentaire, détection
+      réelle de l'auteur) n'a pas été rejoué dans cette vérification ciblée, mais son code n'a subi
+      aucune modification par ce retrait.
+  - **Non vérifié depuis cette session** : le comportement réel sur un vrai document Grist qui
+    possédait déjà une table `BI_StressTest` créée par une version antérieure de ce widget — elle
+    n'est plus jamais recréée ni migrée (le mécanisme de migration de nom a été retiré avec elle),
+    mais elle n'est pas non plus supprimée automatiquement (`RemoveTable` toujours jamais utilisé,
+    voir CLAUDE.md §8) : une table orpheline resterait visible dans le document, et apparaîtrait
+    désormais dans le sélecteur de table comme n'importe quelle autre table de l'utilisateur
+    (plus aucun traitement spécial), ce qui est le comportement attendu mais n'a pas pu être
+    confirmé contre un vrai document portant déjà cette table.
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée

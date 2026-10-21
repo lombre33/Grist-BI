@@ -32,20 +32,23 @@ Architecture reprise de [publipostageGrist](https://github.com/lombre33/publipos
 auteur (Antoine, `lombre33`) : **page statique unique, aucune étape de build**. La configuration du
 dashboard est stockée dans une table Grist interne cachée (`BI_Dashboard_Config`).
 
-**Note du 2026-09-19 — à revérifier avant de s'appuyer dessus** : Antoine a indiqué dans un autre
-fil de discussion ne plus avoir besoin de code capable de créer une nouvelle table Grist. Cette
-décision n'est ni actée ni appliquée dans le code au moment de la rédaction de ce document — la
-section 3 ci-dessous décrit donc le mécanisme de création de table (`BI_StressTest`) tel qu'il
-existe encore aujourd'hui, avec toute sa robustesse contre la duplication de données, mais ce
-périmètre est en cours de réexamen. Vérifier l'état de cette discussion avant de considérer ce
-mécanisme comme un pilier acquis de l'architecture.
+**Mise à jour du 2026-10-21** : la note ci-dessous (2026-09-19) sur le retrait du code de création
+de table est désormais **actée et appliquée** — ce widget ne crée plus aucune table de DONNÉES
+(`BI_StressTest` a été retiré, voir §3/§7/§8). Il continue de créer `BI_Dashboard_Config`,
+`BI_Dashboard_Comments` et `BI_Dashboard_UserProbe`, trois tables internes qui ne portent jamais de
+données de l'utilisateur. Au démarrage, le widget se connecte désormais à la 1re table utilisateur
+du document (`main.js:bootstrap`), ou affiche un état explicite si le document n'en contient encore
+aucune.
 
 ## 2. Structure du dépôt et rôle de chaque fichier
 
 Pas de `package.json`, pas d'étape de build : `index.html` charge directement chaque script via
 `<script src="...">`, dans un ordre précis (voir la fin du `<body>` d'`index.html`) :
-`i18n.js → data.js → combobox.js → demo-data.js → state.js → charts.js → export.js →
-pdf-export.js → pptx-export.js → grist-api.js → duckdb-engine.js → main.js`. `i18n.js` est chargé en tout premier
+`i18n.js → data.js → combobox.js → state.js → charts.js → export.js →
+pdf-export.js → pptx-export.js → grist-api.js → duckdb-engine.js → main.js`. `js/demo-data.js`
+n'en fait plus partie depuis le retrait de `BI_StressTest` (2026-10-21, voir §3/§7/§8) : ce fichier
+reste dans le dépôt comme fixture de test Node pure (`dev-tests/test-data.js`), jamais chargé par
+`index.html`/`dev-tests/harness.html`. `i18n.js` est chargé en tout premier
 (depuis le 29/09/2026, bilingue fr/en — voir le tableau ci-dessous) pour que tous les scripts
 suivants lisent `GristBI.i18n.t()` comme un global déjà prêt.
 
@@ -58,7 +61,7 @@ suivants lisent `GristBI.i18n.t()` comme un global déjà prêt.
 | `js/state.js` | Store pub/sub **pur JS, testable sous Node** (`createStore()`) : pages (chacune avec son propre tableau de tuiles), filtres croisés et filtres avancés (globaux entre pages, volontairement), chemins de drill-down par tuile (`drillIns`), bookmarks, jointure de data blending courante (`blend`, propre à la table de travail comme les bookmarks). Expose `getState`/`subscribe` + mutateurs (`addTile`, `updateTile`, `toggleFilter`, `drillInto`/`drillUp`, `saveBookmark`, `setBlend`, etc.). |
 | `js/grist-api.js` | **Seul pont** entre le widget et l'hôte Grist. Voir §3. |
 | `js/duckdb-engine.js` | Moteur SQL **DuckDB-WASM** : `groupByAggregate`/`aggregateSingle`/`pivotTable` (équivalents SQL des fonctions pures de `js/data.js`) et `timeSeriesMeasures` (mesures façon DAX). **Chargé paresseusement** (rien n'est téléchargé tant que `init()` n'est pas appelé explicitement) — voir §6/§7. Depuis le 2026-10-21, `js/charts.js` l'utilise pour TOUTE tuile au-delà d'un seuil de volume (voir sa doc), plus seulement pour les mesures temporelles. |
-| `js/demo-data.js` | Génère l'unique jeu de données du widget, `BI_StressTest` (~47 040 lignes : 4 régions × 5 produits × 7 années × 12 mois × 28 jours fixes), avec des valeurs Quantité/Montant cohérentes entre elles (croissance +6 %/an), et les 4 tuiles par défaut. |
+| `js/demo-data.js` | **Fixture de test Node uniquement** (`dev-tests/test-data.js`), plus chargée par `index.html`/`dev-tests/harness.html` depuis le retrait de `BI_StressTest` (2026-10-21, voir §3/§7/§8) : génère un jeu de données de test de charge (~47 040 lignes : 4 régions × 5 produits × 7 années × 12 mois × 28 jours fixes), avec des valeurs Quantité/Montant cohérentes entre elles (croissance +6 %/an), et un jeu de tuiles de démonstration — plus jamais posées automatiquement sur une table réelle. |
 | `js/charts.js` | Rendu ECharts pour les 6 types de tuiles (bar/pie/treemap/scatter/kpi/gauge) + le pivot (table HTML), une instance ECharts par tuile mise en cache, gestionnaire de clic générique (drill-down vs cross-filter) qui relit l'état du store en direct à chaque clic plutôt que de capturer des variables au moment du rendu. Chaque fonction de rendu est **async** : au-delà de `DUCKDB_ROW_THRESHOLD` lignes, l'agrégation passe par `GristBI.duckdbEngine` plutôt que la version JS pure de `js/data.js` (repli silencieux si DuckDB échoue), avec un compteur de rendu par tuile (`renderSeq`/`bumpSeq`/`isStale`, partagé avec `renderMeasureChart`) qui abandonne le résultat d'un calcul devenu périmé. |
 | `js/combobox.js` | Composant d'autocomplétion réutilisable, DOM-agnostique pour sa logique de filtrage (`filterOptions`, `highlightMatch`) + câblage DOM (`attach`). Modes `strict` (doit correspondre à une option, comme un `<select>`) et non-strict (texte libre, suggestions seulement). |
 | `js/export.js` | Construit le classeur `.xlsx` (une feuille par tuile, toutes pages confondues) via SheetJS vendorisé (`window.XLSX`) et déclenche le téléchargement ; async depuis que les tuiles en mode mesure (Cumul/YTD/N-1) y exportent leurs vraies valeurs via `GristBI.duckdbEngine.timeSeriesMeasures`, injecté dans `GristBI.data.buildWorkbookSheetsAsync`. |
@@ -85,30 +88,45 @@ dépôt. Les tests se lancent manuellement (voir §5).
   La restriction fine des données doit passer par les Règles d'accès natives de Grist, pas par la
   configuration du widget.
 - **`grist.onRecords()` n'est jamais appelé** (décision délibérée, `grist-api.js` header) : le
-  widget ne s'appuie plus sur la table liée à la page hôte, il se connecte tout seul à sa propre
-  table de travail au démarrage.
+  widget ne s'appuie plus sur la table liée à la page hôte, il se connecte tout seul à une table de
+  travail au démarrage.
 - **Verbes Grist utilisés** : `grist.docApi.listTables()`, `grist.docApi.fetchTable()`,
   `grist.docApi.applyUserActions()` avec `AddTable`, `AddRecord`, `UpdateRecord`, `RenameTable`,
   `AddColumn`. **`RemoveTable` n'est jamais utilisé nulle part dans ce projet** — jugé verbe non
   éprouvé pour ce chemin critique de sécurité des données ; une table orpheline créée par une
   collision de nom est laissée en place plutôt que supprimée automatiquement.
+- **Ce widget ne crée plus aucune table de DONNÉES** (retiré le 2026-10-21, demande explicite de
+  l'utilisateur du 2026-09-19 — voir §7/§8) : `AddTable` ne sert plus qu'aux 3 tables internes
+  (`BI_Dashboard_Config`/`BI_Dashboard_Comments`/`BI_Dashboard_UserProbe`, jamais de données de
+  l'utilisateur). L'ancienne table de test de charge `BI_StressTest` (et son mécanisme de migration
+  de nom legacy, `migrateLegacyTableName`) ont été entièrement retirés, y compris de `js/demo-data.js`
+  côté câblage production (le fichier reste comme fixture de test Node, voir §2).
 - **Connexion par défaut** : au bootstrap (`main.js:bootstrap`, en bas du fichier), le widget se
-  connecte automatiquement à sa table de travail fixe **`BI_StressTest`** (nom qui ne change plus
-  jamais) via `loadOrCreateStressData()` → `loadOrCreateTable()`, de façon **idempotente** : si la
-  table existe déjà, elle est juste relue ; sinon elle est créée et remplie par lots de 2000
-  actions (`applyActionsInChunks`, `ACTION_CHUNK_SIZE = 2000`).
+  connecte automatiquement à la **1re table du document** renvoyée par `listAvailableTables()`
+  (lecture fraîche de `listTables()`, tables internes de ce widget exclues). Si le document n'a
+  encore AUCUNE table utilisateur, le dashboard affiche un état explicite (`status.noTables`) plutôt
+  que de créer quoi que ce soit — l'utilisateur crée sa table dans Grist, puis la choisit via le
+  sélecteur ci-dessous, sans recharger le widget. Contrairement à l'ancien comportement
+  (`BI_StressTest`), aucune tuile n'est jamais pré-configurée automatiquement : un dashboard neuf
+  démarre toujours vide, qu'il s'agisse de la connexion automatique du démarrage ou d'un changement
+  de table manuel.
 - **Évolution de schéma sans jamais recréer de table** : `ensureColumnsUpToDate(tableId, columns,
   deriveMissingColumns, onProgress)` diffuse les colonnes manquantes via `AddColumn` puis
   recalcule leur valeur **en JS** (jamais via une formule Grist — ce projet n'utilise aucun
   langage de formule Grist, par choix explicite) et les écrit via `UpdateRecord`. C'est le
   mécanisme retenu après une évolution de politique du projet (voir §7) : plus jamais de nouvelle
-  table pour un changement de schéma.
+  table pour un changement de schéma — ne s'applique plus qu'à `BI_Dashboard_Comments` (seule table
+  interne dont le schéma JS statique est connu à l'avance), depuis le retrait de `BI_StressTest`.
 - **Sélecteur de table** : `listAvailableTables()` (toujours une lecture fraîche, jamais en cache,
-  filtre `BI_Dashboard_Config` de la liste) et `loadTable(tableId)` (simple `fetchTable`, sans
+  filtre `BI_Dashboard_Config`/`BI_Dashboard_UserProbe`/`BI_Dashboard_Comments` de la liste — les 3
+  tables internes de ce widget, jamais une donnée à visualiser ni une candidate valide pour la
+  connexion automatique du démarrage ci-dessus) et `loadTable(tableId)` (simple `fetchTable`, sans
   création/remplissage) permettent de se reconnecter à n'importe quelle autre table du document —
   celle-ci démarre alors sur un dashboard vide.
 - **Garde-fous contre la duplication de données** — le bug le plus grave rencontré sur ce projet
-  (voir §7) a produit deux mécanismes de protection toujours actifs dans le code :
+  (voir §7) a produit deux mécanismes de protection toujours actifs dans le code, désormais au
+  service de `BI_Dashboard_Config`/`BI_Dashboard_Comments`/`BI_Dashboard_UserProbe` (les seules
+  tables encore créées par ce widget) plutôt que de `BI_StressTest` :
   1. `tableExistsConfirmed()` : au tout premier contrôle d'existence de la session, ré-interroge
      `listTables()` avec des délais croissants (`RACE_GUARD_RETRY_DELAYS_MS = [300,600,1200,2400,4800]` ms,
      ~9,3 s au pire) avant de conclure qu'une table n'existe vraiment pas.
@@ -269,7 +287,10 @@ Cette liste condense les bugs réels les plus instructifs (détail complet dans 
    lignes dans le document réel de l'utilisateur**. Remonté DEUX FOIS en conditions réelles ; un
    premier correctif à délai fixe (500 ms) s'est révélé insuffisant. Voir §3 pour les deux
    mécanismes de protection actuellement en place (`tableExistsConfirmed` + comparaison du
-   `table_id` réel retourné par `AddTable`).
+   `table_id` réel retourné par `AddTable`). **`BI_StressTest` elle-même a été retirée le
+   2026-10-21** (voir §3/§8) : les deux mécanismes de protection restent en place, désormais au
+   service de `BI_Dashboard_Config`/`BI_Dashboard_Comments`/`BI_Dashboard_UserProbe`, les seules
+   tables encore créées par ce widget.
 2. **`RenameTable` ne peut pas être protégé de la même façon** : contrairement à `AddTable`, il ne
    renvoie aucune valeur exploitable côté client en cas de collision de nom — seule une détection
    après coup (nouveau contrôle d'existence + `console.error`) est possible.
@@ -395,8 +416,13 @@ Cette liste condense les bugs réels les plus instructifs (détail complet dans 
 - **Aucun langage de formule Grist n'est utilisé** — tout calcul de colonne dérivée se fait
   côté JS (`deriveDateColumn`, etc.), par choix explicite et cohérent du projet.
 - **Jamais de nouvelle table créée pour faire évoluer un schéma** — `AddColumn` + backfill JS sur la
-  table existante (`ensureColumnsUpToDate`). `BI_StressTest` est la seule table que ce widget crée
-  (voir la note de la section 1 sur la réexamination de ce périmètre au 2026-09-19).
+  table existante (`ensureColumnsUpToDate`).
+- **Ce widget ne crée plus aucune table de données** (retiré le 2026-10-21, demande explicite de
+  l'utilisateur du 2026-09-19 — voir §1/§3/§7). `BI_Dashboard_Config`, `BI_Dashboard_Comments` et
+  `BI_Dashboard_UserProbe` restent les 3 SEULES tables créées par ce widget — toutes internes,
+  jamais une donnée de l'utilisateur. Le widget se connecte désormais à la table de travail de
+  l'utilisateur (1re table du document au démarrage, ou une autre via le sélecteur), sans jamais la
+  créer ni la remplir.
 - **`RemoveTable` n'est jamais utilisé** dans ce projet — jugé verbe non éprouvé pour ce chemin
   critique de sécurité des données ; une table orpheline est laissée en place plutôt que supprimée
   automatiquement.
