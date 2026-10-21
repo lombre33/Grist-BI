@@ -202,21 +202,42 @@ une feature "testée", vérifier qu'on s'est posé chacune de ces questions :
 
 ### `js/grist-api.js` + `js/main.js` — sélecteur de table (Roadmap Tier 1.5, Playwright contre `dev-tests/grist-stub.js`)
 
-- [x] Au démarrage, le sélecteur pointe sur `BI_StressTest` ; la table de config interne (`BI_Dashboard_Config`) n'apparaît JAMAIS dans la liste 🌐
+**Retrait de `BI_StressTest` (2026-10-21)** : le widget ne crée plus aucune table de données (voir
+HYPOTHESES.md/CLAUDE.md §1/§3/§7/§8) — au démarrage, il se connecte désormais en LECTURE SIMPLE à la
+1re table renvoyée par `listAvailableTables()`, jamais créée. Les 2 premiers cas ci-dessous sont
+adaptés en conséquence ; les suivants (persistance par table, cas `[BUG RÉEL]`) restent inchangés,
+`BI_StressTest` n'y étant qu'un exemple de table parmi d'autres.
+
+- [x] Au démarrage, le widget se connecte à la 1re table renvoyée par `listAvailableTables()`,
+  sans jamais la créer (`loadTable`, simple lecture) ; les 3 tables internes
+  (`BI_Dashboard_Config`/`BI_Dashboard_Comments`/`BI_Dashboard_UserProbe`) n'apparaissent JAMAIS dans
+  cette liste ni dans le sélecteur — **correctif apporté avec ce retrait** : `BI_Dashboard_Comments`
+  manquait du filtre d'exclusion de `listAvailableTables()` (seules Config/UserProbe l'étaient),
+  pouvant la faire apparaître dans le sélecteur et même être choisie par erreur comme 1re table au
+  démarrage 🌐
+- [x] Aucune table dans le document (hors tables internes) → bandeau affiche `status.noTables`
+  (message explicite, pas un plantage ni une table créée) ; une table ajoutée ensuite dans Grist est
+  atteignable via le sélecteur sans recharger la page (`beforeOpen: refreshTablePicker`, déjà
+  existant) 🌐
 - [x] `GristBI.api.listAvailableTables()` reflète TOUJOURS une table créée entre-temps (pas de cache figé), même sans repasser par le sélecteur UI 🌐
-- [x] Se reconnecter à une autre table via le sélecteur recharge les lignes et démarre sur un dashboard VIDE (pas de `seedTiles` hors `BI_StressTest`), les tuiles de l'ancienne table disparaissent 🌐
+- [x] Se reconnecter à une autre table via le sélecteur recharge les lignes et démarre sur un dashboard VIDE (plus aucune table n'a de `seedTiles`, retrait du bouton "Restaurer les tuiles par défaut" ci-dessous), les tuiles de l'ancienne table disparaissent 🌐
 - [x] Revenir sur une table déjà visitée restaure SA PROPRE configuration déjà sauvegardée (pages/tuiles), config par table 🌐
-- [x] Une tuile ajoutée sur une table quelconque (pas seulement `BI_StressTest`) est bien persistée et retrouvée en y revenant 🌐
+- [x] Une tuile ajoutée sur une table quelconque est bien persistée et retrouvée en y revenant 🌐
 - [x] [BUG RÉEL #12 ci-dessous] Revenir sur une table déjà visitée après un changement de table restaure bien ses tuiles (pas une config vide à cause d'une sauvegarde perdue) 🌐
 - [x] [BUG RÉEL #16 ci-dessous] Le sélecteur de table relit bien la liste à CHAQUE ouverture du menu (`beforeOpen`), pas seulement au démarrage/après un changement réussi : une table créée après le chargement du widget reste atteignable sans recharger la page 🌐
 
-### `js/main.js` + `js/demo-data.js` — bouton "Restaurer les tuiles par défaut" (demande explicite de l'utilisateur, Playwright)
+### `js/main.js` + `js/demo-data.js` — bouton "Restaurer les tuiles par défaut" (RETIRÉ 2026-10-21)
 
-- [x] Caché tant que la page courante a déjà des tuiles (au démarrage, `BI_StressTest` a ses 4 tuiles de démo) 🌐
-- [x] Apparaît une fois la page courante vidée, uniquement sur `BI_StressTest` (la seule table dont on connaît des tuiles par défaut) 🌐
-- [x] Cliquer restaure exactement les tuiles de `defaultLargeTiles()` (mêmes id), ajoutées à la page COURANTE (`store.addTile`, pas un reset de tout le dashboard) 🌐
-- [x] JAMAIS visible sur une table quelconque choisie via le sélecteur, même avec un dashboard vide (état normal pour ces tables, pas une anomalie) 🌐
-- [x] La restauration est bien persistée (config sauvegardée), retrouvée en changeant de table puis en y revenant 🌐
+Bouton retiré avec le reste du code de création de `BI_StressTest` (demande explicite de
+l'utilisateur formulée le 2026-09-19, voir HYPOTHESES.md/CLAUDE.md §1/§7/§8) : confirmé par relecture
+du diff, son seul usage était de réinjecter `GristBI.demoData.defaultLargeTiles()` (les 4 tuiles de
+démo de `BI_StressTest`) — `seedTiles` n'était jamais passé pour aucune autre table. Plus aucune
+table n'a de jeu de tuiles par défaut connu du widget, donc plus de bouton pour les restaurer. Les
+cas de test ci-dessous ont été retirés AVEC le code qu'ils testaient, pas juste désactivés (même
+traitement que la table de démo "rapide" retirée le 2026-09-16, voir plus bas) :
+caché tant que la page courante a des tuiles, apparition uniquement sur `BI_StressTest` une fois sa
+page vidée, clic réinjectant exactement `defaultLargeTiles()` sur la page courante, jamais visible
+sur une autre table, restauration persistée.
 
 ### `js/duckdb-engine.js` — fondation moteur SQL DuckDB-WASM (Roadmap Tier 2, Node pour la logique pure, Playwright pour le chargement/SQL réels)
 
@@ -305,9 +326,14 @@ officielle — voir sa doc dans le code.
 ### `js/demo-data.js` (Node, `dev-tests/test-data.js`)
 
 Table de démo "rapide" (`buildSampleRows`/`defaultTiles`/`COLUMNS`/`ANNEES`/`SEMAINES`) retirée
-(2026-09-16, demande explicite de l'utilisateur — voir HYPOTHESES.md) : `BI_StressTest` reste
-désormais la SEULE table que ce widget crée. Les cas de test ci-dessous ont été retirés AVEC le code
-qu'ils testaient, pas juste désactivés.
+(2026-09-16, demande explicite de l'utilisateur — voir HYPOTHESES.md) : `BI_StressTest` restait
+alors la SEULE table que ce widget créait. **Depuis le 2026-10-21, ce widget ne crée plus AUCUNE
+table de données** (`BI_StressTest` elle-même a été retirée de la production, voir plus haut/plus
+bas) — `js/demo-data.js` ne reste que comme fixture de test Node pure, jamais chargée par
+`index.html`/`dev-tests/harness.html`. Les cas de test ci-dessous restent valides TELS QUELS : ils
+exercent les fonctions pures du fichier (`buildLargeSampleRows`/`defaultLargeTiles`/
+`deriveDateColumn`), inchangées par ce retrait, seulement depuis `dev-tests/test-data.js` plutôt que
+depuis le widget réel.
 
 - [x] `buildLargeSampleRows` — volume exact (~47 040), colonnes complètes, valeurs positives ✅
 - [x] `buildLargeSampleRows` — perf de génération + 3 agrégations/filtrages combinés (garde-fou généreux, pas un budget de perf précis) ✅
@@ -331,6 +357,17 @@ qu'ils testaient, pas juste désactivés.
 
 ### `js/grist-api.js` — évolution de schéma SANS nouvelle table (`schema-migration-test.js`, Playwright, mock étendu avec `AddColumn`/`RenameTable`)
 
+**Historique, scénario de création/renommage RETIRÉ (2026-10-21)** : ces cas documentaient
+`loadOrCreateStressData` (création fraîche de `BI_StressTest`) et `migrateLegacyTableName`
+(renommage d'un ancien `BI_StressTest_v1`/`_v2` legacy) — les deux ont été retirés avec le reste du
+code de création de table de données (voir plus haut). **Ne pas confondre avec `normalizeConfig`**
+(section précédente, round-trip des 3 formats historiques de `BI_Dashboard_Config`) : c'est un
+mécanisme totalement distinct, qui lui n'a PAS été touché par ce retrait — un document avec un
+ancien format de configuration continue de se charger sans perte. Le mécanisme `ensureColumnsUpToDate`
++ `AddColumn` + backfill JS, lui, reste bien vivant : il continue de s'appliquer aux 3 tables
+internes que ce widget crée encore (`BI_Dashboard_Config`/`BI_Dashboard_Comments`/
+`BI_Dashboard_UserProbe`), seul le scénario "table de données versionnée" ci-dessous a disparu avec
+`BI_StressTest` :
 - [x] Première installation (aucune table) → création fraîche sous le nom FIXE (`BI_StressTest`, sans suffixe de version), toutes les colonnes présentes dès la génération 🌐
 - [x] Rechargement avec un schéma déjà à jour → relecture simple, aucune action `AddColumn`/`UpdateRecord` déclenchée 🌐
 - [x] Table déjà existante sous le nom fixe mais avec un schéma ANCIEN (colonne manquante) → `AddColumn` puis backfill exact des lignes déjà présentes via `UpdateRecord` (valeurs calculées par `deriveDateColumn`, PAS une formule Grist), aucune ligne perdue ni dupliquée, `result.created === false` 🌐
@@ -344,6 +381,16 @@ Matrice à **10 scénarios** (correctif v2, après qu'un premier correctif à d�
 révélé insuffisant en conditions réelles — bug remonté DEUX FOIS par l'utilisateur ; affinée ensuite
 par une revue adversariale via le Workflow tool, demande explicite de l'utilisateur de croiser
 davantage de scénarios — voir HYPOTHESES.md) :
+
+**Statut après le retrait de `BI_StressTest` (2026-10-21)** — ces entrées `[BUG RÉEL]` ne sont PAS
+supprimées (règle du projet, voir le process en tête de ce fichier), mais leur code sous-jacent a
+en partie changé : les DEUX mécanismes de garde (`tableExistsConfirmed`, et la comparaison du
+`table_id` réel après `AddTable`) sont toujours bien vivants et exercés — ils protègent désormais la
+création de `BI_Dashboard_Config`/`BI_Dashboard_Comments`/`BI_Dashboard_UserProbe` plutôt que celle
+de `BI_StressTest`, qui n'existe plus. Seul le scénario 7/10, qui portait spécifiquement sur le
+contrôle interne de `migrateLegacyTableName`, documente un mécanisme qui n'existe plus du tout
+(fonction retirée avec `BI_StressTest`) — gardé tel quel comme trace du bug réel trouvé à l'époque,
+plus rejouable depuis ce retrait.
 
 - [x] 1/10 Session sans course simulée : création normale d'une table qui n'existe pas encore, `created: true`, volume exact 🌐
 - [x] 2/10 Course résolue au 1er essai de rattrapage (~300ms) sur une table qui existe DÉJÀ (préremplie via `__gristStubPreseed`) : `created: false`, AUCUNE duplication 🌐

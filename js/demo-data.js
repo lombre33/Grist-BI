@@ -1,13 +1,15 @@
 /*
- * Génération du jeu de données de la table de travail du widget ("Ventes", ~47 040 lignes,
- * BI_StressTest, voir grist-api.js) : colonnes + lignes avec des valeurs qui se tiennent (prix de
- * base par produit, quantités et montants cohérents entre eux), pour pouvoir tester les tuiles/le
- * cross-filtering sans dépendre d'une vraie table Grist. Pur JS, testable sous Node comme
- * data.js/state.js — aucune dépendance à `grist`/au DOM. Anciennement aussi une table de démo
- * "rapide" séparée (BI_Demo_Ventes) : retirée (demande explicite de l'utilisateur, code mort en
- * dehors des tests) — BI_StressTest est désormais la SEULE table que ce widget crée, et le sera
- * pour tout futur ajout de colonne (AddColumn sur cette même table, voir deriveDateColumn/
- * ensureColumnsUpToDate, jamais une nouvelle table).
+ * Génère un jeu de données de test de charge ("Ventes", ~47 040 lignes) : colonnes + lignes avec
+ * des valeurs qui se tiennent (prix de base par produit, quantités et montants cohérents entre
+ * eux), pour exercer l'agrégation/le filtrage/la dérivation de colonnes sous Node
+ * (dev-tests/test-data.js) sans dépendre d'une vraie table Grist. Pur JS, testable sous Node comme
+ * data.js/state.js — aucune dépendance à `grist`/au DOM.
+ *
+ * N'est PLUS câblé à la production depuis le retrait de la table `BI_StressTest` (demande
+ * explicite de l'utilisateur, 2026-09-19, voir CLAUDE.md §1/§7) : ce widget ne crée plus aucune
+ * table de données lui-même, il se connecte à la table de travail de l'utilisateur. Ce fichier
+ * reste comme fixture de test Node pure (buildLargeSampleRows/deriveDateColumn/defaultLargeTiles),
+ * jamais `require()`-é ni chargé par index.html en dehors de dev-tests/.
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {

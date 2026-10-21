@@ -8,7 +8,8 @@ node dev-tests/test-data.js
 
 Teste `js/data.js` (agrégations, filtrage, tendance, échappement HTML), `js/state.js` (store :
 filtres croisés cumulables, drill-down, réorganisation, bookmarks, ajout/suppression/édition de
-tuile), `js/demo-data.js` (jeu de données de test de charge, cohérence avec les tuiles par défaut),
+tuile), `js/demo-data.js` (jeu de données de test de charge, cohérence avec les tuiles par défaut —
+fixture de test Node pure, plus chargée par `index.html`/`dev-tests/harness.html`, voir plus bas),
 `js/combobox.js` (filtrage/surlignage) et `js/duckdb-engine.js` (échappement CSV/validation des
 noms de colonne — la logique pure seulement, voir plus bas pour le moteur SQL réel) sans navigateur
 ni API Grist.
@@ -21,8 +22,13 @@ externe), mais remplace `grist-plugin-api.js` par `grist-stub.js` : un faux `win
 simule `docApi.listTables` / `fetchTable` / `applyUserActions`
 (`AddTable`/`AddRecord`/`UpdateRecord`/`RemoveRecord`/`AddColumn`/`RenameTable`) en mémoire, sans
 persister sur disque — un `page.reload()` y perd donc tout, contrairement à un vrai document Grist.
-Le widget se connecte automatiquement à sa table de test de charge au démarrage (`BI_StressTest`,
-~47 040 lignes, voir `js/grist-api.js`), pas de "table liée" figée.
+Le widget se connecte automatiquement à la 1re table du document au démarrage (voir
+`js/grist-api.js:listAvailableTables`/`js/main.js:bootstrap`) — il ne crée plus lui-même aucune
+table de données (retrait de `BI_StressTest`, 2026-10-21, voir CLAUDE.md §1/§3/§7/§8), pas de
+"table liée" figée. Ce harnais préremplit le mock avec une petite table `Ventes` de démonstration
+(`window.__gristStubPreseed` en tête de `harness.html`) pour qu'un simple double-clic affiche un
+dashboard non vide ; pour un volume réaliste (~47 000 lignes), préremplir soi-même via
+`js/demo-data.js` dans un script Playwright ad hoc (voir plus bas).
 
 Ouvrir `dev-tests/harness.html` directement dans un navigateur (double-clic) : pas de build, pas de
 serveur requis pour l'essentiel des tests. **Exception : `js/duckdb-engine.js`** (moteur SQL

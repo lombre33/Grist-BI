@@ -1,8 +1,9 @@
 /*
  * Bootstrap de l'UI : formulaire d'ajout/édition de tuile, rendu de la grille et des filtres
  * croisés actifs, câblage store <-> GristBI.api (connexion à la table de travail + persistance
- * config). Le widget se connecte automatiquement à sa table de test de charge au démarrage (voir
- * bootstrap() en bas de fichier) plutôt que d'attendre un clic ou une table liée dans la page.
+ * config). Le widget se connecte automatiquement à la 1re table du document au démarrage (voir
+ * bootstrap() en bas de fichier) plutôt que d'attendre un clic ou une table liée dans la page — il
+ * ne crée lui-même aucune table de données (CLAUDE.md §1/§7).
  */
 (function () {
   'use strict';
@@ -31,10 +32,6 @@
   }
 
   let currentTableId = null;
-  // Id réel de LA table de travail par défaut (BI_StressTest), capturé au bootstrap plutôt que
-  // codé en dur ici — c'est la SEULE table pour laquelle ce widget connaît des tuiles par défaut
-  // (GristBI.demoData.defaultLargeTiles), donc la seule sur laquelle proposer de les restaurer.
-  let defaultTableId = null;
   let commentsModalTileId = null; // tuile actuellement affichée dans #comments-modal, ou null si fermé
   // Email de l'utilisateur courant, détecté UNE SEULE fois au bootstrap via la table-sonde
   // BI_Dashboard_UserProbe (GristBI.api.getCurrentUserEmail(), js/grist-api.js) — `null` tant que la
@@ -68,7 +65,6 @@
 
   const tilesContainer = document.getElementById('tiles');
   const emptyState = document.getElementById('empty-state');
-  const restoreDefaultTilesBtn = document.getElementById('restore-default-tiles');
   const addTileForm = document.getElementById('add-tile-form');
   const tileTypeSelect = document.getElementById('tile-type');
   const dimensionField = document.getElementById('tile-dimension-field');
@@ -480,13 +476,8 @@
     });
 
     emptyState.hidden = state.tiles.length > 0;
-    // Visible seulement sur la table par défaut (la seule dont on connaît des tuiles toutes
-    // faites) ET quand la page courante est réellement vide — pas de sens sur une table choisie
-    // manuellement via le sélecteur (voir switchTable : dashboard vide par design dans ce cas).
-    restoreDefaultTilesBtn.hidden = state.tiles.length > 0 || currentTableId !== defaultTableId;
-    // Temps de rendu affiché dans le bandeau : utile pour repérer à l'œil un ralentissement sur le
-    // gros volume de la table de travail par défaut (~47 000 lignes, voir bootstrap() plus bas),
-    // sans devoir ouvrir les DevTools à chaque fois.
+    // Temps de rendu affiché dans le bandeau : utile pour repérer à l'œil un ralentissement sur une
+    // table de travail à fort volume, sans devoir ouvrir les DevTools à chaque fois.
     const renderStart = performance.now();
     for (const tile of state.tiles) GristBI.charts.renderTile(tile, state, tilesContainer);
     // Le nombre de tuiles change la largeur de chaque colonne de la grille CSS ; ECharts ne
@@ -501,7 +492,11 @@
     renderFilterBadges(state.activeFilters);
     renderAdvancedFilterBadges(state.advancedFilters);
     renderBookmarks(state.bookmarks);
-    rowCountEl.textContent = t('status.rowCount', { n: state.rows.length });
+    // `currentTableId` reste `null` tant qu'aucune table n'a pu être rejointe (document sans
+    // aucune table utilisateur, voir bootstrap()) : un rendu déclenché dans cet état (ex. un
+    // changement de langue) ne doit pas écraser le message "Aucune table..." par "0 ligne(s)",
+    // qui donnerait à tort l'impression qu'une table vide est connectée.
+    rowCountEl.textContent = currentTableId ? t('status.rowCount', { n: state.rows.length }) : t('status.noTables');
 
     // `pages`/`currentPageId`/`bookmarks` ne changent de référence/valeur que via leurs actions
     // dédiées (state.js) : un rendu déclenché par un simple rafraîchissement de données (setRows) ne
@@ -740,9 +735,9 @@
   // renderCommentsModal) plutôt qu'un instantané figé à l'ouverture, pour rester cohérente si un
   // filtre est posé/levé pendant qu'elle est ouverte. Colonnes = `Object.keys(rows[0])`, même
   // convention que `availableColumns()` (js/main.js) : la 1re ligne représente la forme commune.
-  // Plafonnée à DETAIL_MODAL_MAX_ROWS lignes affichées (jusqu'à 47 040 lignes possibles sur
-  // BI_StressTest) — un tableau HTML de cette taille sans pagination serait un coût DOM inutile
-  // pour une modale d'inspection ; l'export Excel reste la voie pour tout voir d'un coup.
+  // Plafonnée à DETAIL_MODAL_MAX_ROWS lignes affichées (une table de travail à fort volume peut en
+  // compter des dizaines de milliers) — un tableau HTML de cette taille sans pagination serait un
+  // coût DOM inutile pour une modale d'inspection ; l'export Excel reste la voie pour tout voir d'un coup.
   function renderDetailModal() {
     if (!detailModalTileId) return;
     const state = store.getState();
@@ -1185,13 +1180,12 @@
     }
   }
 
-  // Bascule l'affichage sur `tableId`/`rows`. `seedTiles()` ne sert que si aucune config n'a
-  // jamais été sauvegardée pour cette table. Met TOUJOURS à jour `currentPrimaryRows` (même hors
+  // Bascule l'affichage sur `tableId`/`rows`. Met TOUJOURS à jour `currentPrimaryRows` (même hors
   // changement de table : un futur rafraîchissement de la même table doit rejoindre les lignes
   // FRAÎCHES, pas rejouer la jointure sur un instantané périmé) puis délègue à `applyBlend` le
   // rafraîchissement des sélecteurs de colonne et `store.setRows` — jamais fait ici directement,
   // pour ne pas contourner la jointure en cours.
-  async function switchTable(tableId, rows, { seedTiles } = {}) {
+  async function switchTable(tableId, rows) {
     await flushPendingSave();
     const isNewTable = tableId !== currentTableId;
     currentTableId = tableId;
@@ -1201,12 +1195,7 @@
       store.clearAdvancedFilter();
       if (editingTileId) stopEditTile(); // le formulaire en cours d'édition référence une tuile de l'ancienne table
       const saved = await GristBI.api.loadConfig(tableId);
-      const hasAnyTile = saved.pages.some((p) => p.tiles.length > 0);
-      if (!hasAnyTile && seedTiles) {
-        store.setPages([{ id: GristBI.state.DEFAULT_PAGE_ID, name: 'Page 1', tiles: seedTiles() }], GristBI.state.DEFAULT_PAGE_ID);
-      } else {
-        store.setPages(saved.pages, saved.currentPageId);
-      }
+      store.setPages(saved.pages, saved.currentPageId);
       store.setBookmarks(saved.bookmarks);
       currentBlend = saved.blend;
       store.setBlend(currentBlend);
@@ -1333,20 +1322,12 @@
   blendPrimaryColumnInput.addEventListener('change', commitBlendFromForm);
   blendSecondaryColumnInput.addEventListener('change', commitBlendFromForm);
 
-  // Se sortir seul d'un dashboard vide sur la table par défaut (ex. une config sauvegardée vide),
-  // sans avoir à reconstruire les tuiles à la main ni à aller manipuler la table de config interne
-  // dans Grist — demande explicite de l'utilisateur. N'ajoute qu'à la page COURANTE (`addTile`, pas
-  // `setPages`) : ne touche jamais aux autres pages d'un dashboard multi-pages.
-  restoreDefaultTilesBtn.addEventListener('click', () => {
-    GristBI.demoData.defaultLargeTiles().forEach((tile) => store.addTile(tile));
-  });
-
-  // Reconnexion à une AUTRE table du document, choisie via le sélecteur (demande explicite de
-  // l'utilisateur : pas seulement la table de test de charge par défaut). Contrairement au
-  // chargement de démarrage, ne crée/ne remplit jamais rien (`GristBI.api.loadTable`, la table
-  // choisie existe forcément déjà — elle vient de `listAvailableTables`) et ne préconfigure aucune
-  // tuile (`seedTiles` omis) : une table quelconque du document démarre sur un dashboard VIDE à
-  // construire soi-même, contrairement à `BI_StressTest` qui a ses 4 tuiles de démonstration.
+  // Reconnexion à une AUTRE table du document, choisie via le sélecteur. Ne crée/ne remplit jamais
+  // rien (`GristBI.api.loadTable`, la table choisie existe forcément déjà — elle vient de
+  // `listAvailableTables`) et ne préconfigure aucune tuile : une table quelconque du document
+  // démarre sur un dashboard VIDE à construire soi-même, exactement comme la 1re table connectée
+  // automatiquement au démarrage (voir bootstrap plus bas) — ce widget ne connaît plus aucun jeu de
+  // tuiles par défaut depuis qu'il ne crée plus lui-même de table de données (CLAUDE.md §1/§7).
   tableSelectInput.addEventListener('change', async () => {
     const tableId = tableSelectInput.value;
     if (!tableId) return;
@@ -1361,31 +1342,31 @@
     }
   });
 
-  // Connexion automatique, au chargement, à la table de test de charge (~47 000 lignes) : c'est
-  // désormais LA table de travail par défaut du widget, plus besoin de cliquer sur un bouton pour
-  // avoir un dashboard à tester. Idempotent côté grist-api.js (loadOrCreateStressData) : ne
-  // recrée/renvoie les lignes que si la table n'existe pas encore dans le document, sinon se
-  // contente de la relire (quasi instantané). Si le schéma doit un jour se complexifier (colonnes
-  // en plus), `ensureColumnsUpToDate` (js/grist-api.js) ajoute la colonne manquante à la table déjà
-  // présente et remplit les lignes déjà là — jamais une nouvelle table à recréer. L'utilisateur peut
-  // ensuite se reconnecter à N'IMPORTE QUELLE AUTRE table du document via le sélecteur ci-dessus.
+  // Connexion automatique, au démarrage, à la 1re table du document (voir
+  // GristBI.api.listAvailableTables ci-dessus) — plus de table de données par défaut créée par ce
+  // widget depuis que la table de test de charge (`BI_StressTest`) a été retirée (demande explicite
+  // de l'utilisateur, 2026-09-19, voir CLAUDE.md §1/§7) : le dashboard démarre VIDE sur cette 1re
+  // table, exactement comme une reconnexion manuelle via le sélecteur (`tableSelectInput` ci-dessus)
+  // — aucune tuile pré-configurée à poser, ce widget ne connaît plus le schéma d'aucune table à
+  // l'avance. Si le document ne contient encore AUCUNE table (hors tables internes de ce widget),
+  // il n'y a rien à connecter automatiquement (voir `status.noTables`) : l'utilisateur peut créer
+  // une table dans Grist puis la choisir via le sélecteur ci-dessus SANS recharger le widget — son
+  // `beforeOpen` (`refreshTablePicker`) relit toujours la liste à la demande, jamais un instantané.
   async function bootstrap() {
     await GristBI.api.init();
     rowCountEl.textContent = t('status.connecting');
-    const onProgress = (phase, sent, total) => {
-      const pct = Math.round((sent / total) * 100);
-      const label = t(phase === 'migrate' ? 'status.migrating' : 'status.creating');
-      const locale = GristBI.i18n.getLang() === 'en' ? 'en-US' : 'fr-FR';
-      rowCountEl.textContent = t('status.progress', { label, pct, sent: sent.toLocaleString(locale), total: total.toLocaleString(locale) });
-    };
     try {
-      const { tableId, rows, created } = await GristBI.api.loadOrCreateStressData(onProgress);
-      console.log(`[GristBI] ${tableId} ${created ? 'créée' : 'déjà présente, réutilisée telle quelle'} (${rows.length} lignes).`);
-      defaultTableId = tableId;
-      await switchTable(tableId, rows, { seedTiles: GristBI.demoData.defaultLargeTiles });
-      await refreshTablePicker();
+      const tables = await GristBI.api.listAvailableTables();
+      if (tables.length) {
+        const tableId = tables[0];
+        const { rows } = await GristBI.api.loadTable(tableId);
+        await switchTable(tableId, rows);
+        await refreshTablePicker();
+      } else {
+        rowCountEl.textContent = t('status.noTables');
+      }
     } catch (e) {
-      console.error('[GristBI] échec de la connexion automatique au jeu de données de test de charge', e);
+      console.error('[GristBI] échec de la connexion automatique à la 1re table du document', e);
       rowCountEl.textContent = t('status.connectionFailed');
     }
     // Table dédiée, indépendante de la table de travail (voir js/state.js:comments) : chargée UNE

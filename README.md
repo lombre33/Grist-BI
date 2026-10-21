@@ -108,26 +108,24 @@ réellement (voir HYPOTHESES.md).
   concerné — voir HYPOTHESES.md.
 - Persistance de la configuration du dashboard (tuiles + vues sauvegardées) dans le document Grist
   (par table liée), donc conservée entre deux ouvertures du widget.
-- **Table de travail par défaut, connectée automatiquement** : au chargement, le widget se connecte
-  tout seul (`js/main.js:bootstrap`) à sa table de test de charge (`BI_StressTest`, ~47 040
-  lignes : 4 régions × 5 produits × 7 années × 12 mois × 28 jours) avec 4 tuiles pré-configurées
-  (dont une avec drill-down à 2 niveaux et cross-filtering activé). Si la table n'existe pas encore
-  dans le document, elle est créée et remplie (avec une progression affichée) ; si elle existe
-  déjà, le widget se contente de la relire — **aucune donnée n'est renvoyée à Grist au
-  rechargement suivant**. L'envoi initial se fait par lots de 2000 actions plutôt qu'en un seul appel géant.
-  Mesures locales : génération + agrégation en ~30ms, rendu des tuiles en 35-60ms (affiché dans le
-  bandeau, `#render-time`) — voir HYPOTHESES.md pour le détail et ce qui reste à confirmer en
-  conditions réelles (round-trip réseau vers un vrai document). **Le nom de cette table ne change
-  plus jamais** : si le schéma doit se complexifier plus tard (colonnes en plus),
-  `ensureColumnsUpToDate` (`js/grist-api.js`) ajoute la colonne manquante à la table déjà présente
-  (`AddColumn`) et remplit les lignes déjà là avec de vraies valeurs calculées côté JS —
-  jamais une nouvelle table à recréer (voir HYPOTHESES.md pour l'historique : ça a été le mécanisme
-  jusqu'à cette évolution, corrigée à la demande de l'utilisateur pour éviter les tables orphelines).
-  **`BI_StressTest` est la SEULE table que ce widget crée** — une ancienne table de démo "rapide"
-  séparée existait plus tôt dans le projet, retirée à la demande explicite de l'utilisateur (voir
-  HYPOTHESES.md). Si le dashboard de cette table se retrouve vide (ex. configuration sauvegardée
-  vide), un bouton "Restaurer les tuiles par défaut" apparaît pour la repeupler en un clic, sans
-  avoir à toucher aux tables internes de Grist.
+- **Connexion automatique à la première table du document** : au chargement, le widget appelle
+  `GristBI.api.listAvailableTables()` (`js/main.js:bootstrap`) et se connecte en lecture simple à la
+  première table renvoyée (jamais de création). Si le document n'a encore aucune table (hors les
+  tables internes de ce widget), le bandeau affiche un message explicite invitant à en créer une
+  dans Grist ou à en choisir une via le sélecteur une fois disponible — sans rien créer de son
+  propre chef. **Ce widget ne crée plus aucune table de données** : seules ses tables internes
+  (`BI_Dashboard_Config` pour la configuration du dashboard, `BI_Dashboard_Comments` pour les
+  commentaires collaboratifs, `BI_Dashboard_UserProbe` pour détecter l'utilisateur courant) sont
+  créées/complétées automatiquement, jamais la table de travail elle-même. **Jusqu'au 2026-10-21**,
+  ce widget créait et remplissait lui-même, au premier démarrage, sa propre table de test de charge
+  (`BI_StressTest`, ~47 040 lignes) avec 4 tuiles pré-configurées, et proposait un bouton "Restaurer
+  les tuiles par défaut" pour la repeupler si son dashboard se retrouvait vide ; ce mécanisme a été
+  retiré à la demande explicite de l'utilisateur (voir HYPOTHESES.md/ROADMAP.md) — l'utilisateur se
+  connecte désormais toujours à une table qu'il possède déjà dans son document. Si le schéma d'une
+  table interne doit se complexifier plus tard (colonnes en plus), `ensureColumnsUpToDate`
+  (`js/grist-api.js`) ajoute la colonne manquante à la table déjà présente (`AddColumn`) et remplit
+  les lignes déjà là avec de vraies valeurs calculées côté JS — jamais une nouvelle table à recréer
+  (voir HYPOTHESES.md pour l'historique de ce correctif, antérieur à ce retrait).
 - **Identité Grist Factory** : logo discret dans le bandeau du haut (juste à droite de « Réglages »)
   et panneau « Crédits » (Auteur / Site / Licence / Bio) accessible depuis ce même bouton — cadrage
   repris de [Publipostage+](https://github.com/lombre33/publipostagegrist), même éditeur pour tous

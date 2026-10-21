@@ -232,13 +232,12 @@
       fr: "Aucune tuile pour l'instant. Ajoutez-en une ci-dessus. Cliquer sur une barre/part filtre les autres tuiles (cumulable entre colonnes différentes ; recliquer retire le filtre). Une tuile avec un « Drill-down » se détaille au clic ; une carte KPI avec une « Tendance vs » affiche l'évolution par rapport à la période précédente.",
       en: 'No tile yet. Add one above. Clicking a bar/slice filters the other tiles (stackable across different columns; click again to remove the filter). A tile with a “Drill-down” expands on click; a KPI card with a “Trend vs” shows the change compared to the previous period.',
     },
-    'emptyState.restoreDefaults': { fr: 'Restaurer les tuiles par défaut', en: 'Restore default tiles' },
-
     // --- Connexion / statut (js/main.js:bootstrap) ---
     'status.connecting': { fr: 'Connexion…', en: 'Connecting…' },
-    'status.migrating': { fr: 'Mise à jour du schéma…', en: 'Updating schema…' },
-    'status.creating': { fr: 'Création…', en: 'Creating…' },
-    'status.progress': { fr: '{label} {pct}% ({sent}/{total})', en: '{label} {pct}% ({sent}/{total})' },
+    'status.noTables': {
+      fr: 'Aucune table dans ce document — choisissez-en une via le sélecteur ci-dessus, ou créez-en une dans Grist.',
+      en: 'No table in this document — pick one from the selector above, or create one in Grist.'
+    },
     'status.connectionFailed': { fr: 'Échec de la connexion aux données — voir la console (F12).', en: 'Failed to connect to the data — see the console (F12).' },
 
     // --- Graphiques (js/charts.js) ---
