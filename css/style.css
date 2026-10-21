@@ -167,6 +167,31 @@ body {
   resize: vertical;
 }
 .comment-form textarea { min-height: 44px; }
+/* Auteur reconnu automatiquement (js/main.js:openCommentsModal, detectedUserEmail) : même fond que
+   .comment-item pour signaler visuellement un champ verrouillé, pas une simple désactivation grisée
+   par défaut du navigateur qui suggérerait à tort un champ indisponible plutôt qu'une valeur fixe. */
+.comment-form input[readonly] { background: var(--surface-sunken); cursor: default; }
+
+/* Modale de détail (substitut du drillthrough, voir index.html) : nettement plus large/haute que
+   #settings-modal/#comments-modal (une grille de données, pas un formulaire court) — colonne
+   flexible pour que le tableau défile dans la modale plutôt que de la faire déborder de l'écran. */
+#detail-modal .detail-modal-content {
+  width: 720px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 64px);
+  display: flex;
+  flex-direction: column;
+}
+.detail-table-wrap { overflow: auto; flex: 1; min-height: 0; }
+.detail-table { width: 100%; border-collapse: collapse; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.detail-table th, .detail-table td {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  white-space: nowrap;
+  text-align: left;
+}
+.detail-table thead th { position: sticky; top: 0; background: var(--surface); z-index: 1; }
+.detail-modal-truncated { margin: 10px 0 0; font-size: 11.5px; color: var(--text-secondary); }
 
 .filter-badges { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 

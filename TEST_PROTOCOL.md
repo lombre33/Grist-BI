@@ -382,6 +382,17 @@ davantage de scénarios — voir HYPOTHESES.md) :
 - [x] `drillCrossFilter` : case à cocher visible seulement si niveau 1 choisi, préremplie à l'édition 🌐
 - [x] `drillCrossFilter` : décochée + sauvegardée → drill-down redevient purement local 🌐
 - [ ] Stress dataset (~47 040 lignes) : cross-filtering reste correct à ce volume ⬜ (couvert par un script scratch non maintenu, à réintégrer si le volume redevient un point de risque)
+- [x] Modale de détail (substitut du drillthrough) : bouton "Détail" visible sur chaque tuile, clic → lignes de `rowsForTile` affichées (titre avec le bon compte), tableau plafonné à 500 lignes + message de troncature au-delà, fermeture via le bouton 🌐
+- [x] Modale de détail : compte de lignes correct après un cross-filtre posé sur une AUTRE tuile (fermée puis rouverte) 🌐
+- [x] Modale de détail : titre retraduit après bascule de langue fr/en (pluriel correct des deux côtés) 🌐
+- [ ] Modale de détail : mise à jour EN DIRECT (sans fermer/rouvrir) quand un filtre change pendant qu'elle est ouverte ⬜ — garanti par construction (même rappel systématique `render() → renderDetailModal()` que pour `renderCommentsModal()`, déjà éprouvé), tentative Playwright non concluante (flakiness du clic répété sur un camembert plein, voir HYPOTHESES.md)
+- [x] Clés de jointure suggérées (data blending) : table secondaire reliée par une vraie colonne `Ref:` → les 2 comboboxes de clé se préremplissent automatiquement, jointure appliquée avec les bonnes colonnes secondaires 🌐
+- [x] Clés de jointure suggérées : une clé principale déjà choisie à la main est conservée au changement de table secondaire (jamais écrasée par la suggestion) 🌐
+- [x] Clés de jointure suggérées : repli sans suggestion (clés vides, `state.blend` à `null`) quand la table secondaire choisie n'a aucune relation `Ref:` connue avec la table principale 🌐
+- [x] Auteur des commentaires reconnu automatiquement : table-sonde `BI_Dashboard_UserProbe` créée une seule fois (2e appel réutilise la promesse mémorisée, pas de 2e table), round-trip `AddRecord`/`fetchTable`/`RemoveRecord` sans exception 🌐
+- [x] Auteur des commentaires : repli sur la saisie manuelle + mémorisation `localStorage` inchangés quand la détection échoue (systématique contre ce mock, qui ne simule pas le moteur de formules Grist) 🌐
+- [x] Auteur des commentaires : `index.html` (import map distinct de `dev-tests/harness.html`, piège historique #18) continue de charger sans erreur après ce changement 🌐
+- [ ] Auteur des commentaires : chemin de détection RÉUSSIE (`user.Email` réellement résolu par le moteur de formules Grist) ⬜ **[NON TESTABLE ICI]** — aucun mock de ce dépôt ne simule le moteur de formules Grist ni l'identité utilisateur côté serveur, voir HYPOTHESES.md
 - [ ] Redimensionnement réel du panneau Grist (ResizeObserver) ⬜ **[NON TESTABLE ICI]** — logique de coalescing vérifiée par lecture de code seulement
 - [ ] `window.resize` classique (hors ResizeObserver) ⬜
 - [x] [BUG RÉEL #17 ci-dessous] Aucun canvas ECharts ne déborde sous sa carte `.tile` (comparaison `getBoundingClientRect()`, pas une inspection visuelle), à l'état initial ET sur une tuile drillée avec fil d'Ariane à 2 niveaux réellement affiché (pire cas) 🌐
@@ -688,6 +699,6 @@ décisions d'Antoine (logo/Crédits/GPL accepté, Manrope refusé, bilingue dép
 
 - Round-trip réseau réel `applyUserActions`/`fetchTable` contre un vrai `grist.docApi` (latence, taille de payload, limites de débit).
 - Lecture de `_grist_Tables`/`_grist_Tables_column` (types de colonnes réels) — le mock `grist-stub.js` ne simule pas les tables système de Grist.
-- `getCurrentUserEmail`-style (probe table + formule déclenchée `user.Email`) — nécessite le moteur de formules Grist côté serveur, absent du mock.
+- `getCurrentUserEmail()` (`js/grist-api.js`, table-sonde `BI_Dashboard_UserProbe` + formule Grist déclenchée `user.Email`, implémentée le 2026-10-21 pour l'attribution automatique des commentaires) — le chemin de détection RÉUSSIE nécessite le moteur de formules Grist côté serveur et une vraie identité utilisateur, absents du mock ; seul le repli (détection échouée → saisie manuelle) est vérifiable ici.
 - Redimensionnement réel du panneau/iframe Grist dans la mise en page du document.
 - Comportement mobile réel (responsive du widget dans le Grist mobile).

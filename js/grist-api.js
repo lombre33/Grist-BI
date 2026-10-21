@@ -33,9 +33,24 @@
   const COMMENTS_COLUMNS = [
     { id: 'TableId', type: 'Text' }, // table de travail concernée, comme BI_Dashboard_Config
     { id: 'TileId', type: 'Text' }, // id de tuile déjà globalement unique dans ce widget (voir js/main.js)
-    { id: 'Author', type: 'Text' }, // saisi à la main (voir js/main.js) — PAS le pattern getCurrentUserEmail
+    { id: 'Author', type: 'Text' }, // rempli par getCurrentUserEmail() quand possible, sinon saisi à la main (voir js/main.js)
     { id: 'Text', type: 'Text' },
     { id: 'CreatedAt', type: 'Text' } // ISO 8601, calculé en JS au moment de l'ajout
+  ];
+  // Table-sonde dédiée à UNE SEULE formule Grist (ROADMAP.md, "Identité de l'utilisateur courant",
+  // pattern porté de publipostageGrist:getCurrentUserEmail()) — SEULE exception du projet à la règle
+  // "jamais de langage de formule Grist" (voir CLAUDE.md §8) : il n'existe aucun autre moyen pour du
+  // JS exécuté dans l'iframe du widget de connaître l'identité de l'utilisateur courant, alors que ce
+  // moteur de formules tourne côté serveur Grist et y a accès (`user.Email`). Colonne dédiée plutôt
+  // qu'ajoutée à BI_Dashboard_Comments : une formule Grist normale RECALCULE à chaque lecture par
+  // N'IMPORTE QUEL viewer du document, donc une valeur ainsi posée sur une ligne de commentaire
+  // existante changerait de signification au fil des ouvertures — inutilisable comme auteur figé.
+  // Au lieu de ça, `getCurrentUserEmail()` (plus bas) ajoute une ligne, lit la valeur calculée pour
+  // CET utilisateur juste après l'AddRecord qui déclenche son calcul, puis supprime aussitôt la ligne
+  // (RemoveRecord) : seul le round-trip compte, jamais une valeur relue plus tard sur cette table.
+  const USER_PROBE_TABLE = 'BI_Dashboard_UserProbe';
+  const USER_PROBE_COLUMNS = [
+    { id: 'Email', type: 'Text', isFormula: true, formula: 'user.Email' }
   ];
   // Nombre d'actions envoyées par appel à applyUserActions() lors d'une génération/suppression en
   // masse : un seul appel avec des dizaines de milliers d'actions est un pari risqué (timeout,
@@ -376,6 +391,45 @@
     return Array.from(new Set(dateColumnIdsFrom(columns).concat(await realDateColumnIds(tableId))));
   }
 
+  // Colonnes de RÉFÉRENCE SIMPLE (`Ref:<AutreTable>`) de `tableId`, avec la table ciblée par chacune
+  // — même mécanisme de lecture que `realDateColumnIds` ci-dessus (`_grist_Tables`/
+  // `_grist_Tables_column`, déjà confirmé lisible avec l'accès `full` sur un vrai Grist le
+  // 30/09/2026), réutilisé pour suggérer une clé de jointure de data blending (ROADMAP.md : "Auto-
+  // détection des clés via Ref:/RefList: délibérément pas tentée dans ce premier jet... piste
+  // future", voir aussi CLAUDE.md §6) plutôt que de laisser l'utilisateur deviner quelle colonne
+  // réfère quelle table. **`RefList:` est délibérément EXCLUE** : une telle colonne porte une LISTE
+  // d'ids, jamais une valeur scalaire — `GristBI.data.blendRows` ne fait qu'une égalité simple par
+  // ligne, inadaptée à une liste (joindre dessus donnerait silencieusement une jointure toujours
+  // fausse, jamais une vraie jointure 1-N). Le type d'une colonne Ref Grist encode directement la
+  // table ciblée après le préfixe (`Ref:NomTable`), pas besoin d'un second aller-retour. Repli sur
+  // `[]` en cas d'échec, même raison que `realDateColumnIds` (droits restreints, tables système
+  // absentes/renommées) : la suggestion disparaît simplement, l'utilisateur choisit ses clés à la
+  // main comme avant cette fonctionnalité.
+  async function refColumnsForTable(tableId) {
+    try {
+      const tablesMeta = await grist.docApi.fetchTable('_grist_Tables');
+      const columnsMeta = await grist.docApi.fetchTable('_grist_Tables_column');
+      const rowIdx = (tablesMeta.tableId || []).indexOf(tableId);
+      if (rowIdx < 0) return [];
+      const parentRowId = tablesMeta.id[rowIdx];
+      const result = [];
+      const n = (columnsMeta.id || []).length;
+      for (let i = 0; i < n; i++) {
+        const type = columnsMeta.type[i] || '';
+        if (columnsMeta.parentId[i] === parentRowId && type.startsWith('Ref:')) {
+          result.push({ colId: columnsMeta.colId[i], targetTableId: type.slice('Ref:'.length) });
+        }
+      }
+      return result;
+    } catch (e) {
+      console.warn(
+        '[GristBI] lecture des colonnes de référence (_grist_Tables_column) impossible pour ' +
+        `"${tableId}" — aucune clé de jointure ne sera suggérée pour le data blending`, e
+      );
+      return [];
+    }
+  }
+
   async function ensureColumnsUpToDate(tableId, columns, deriveMissingColumns, onProgress) {
     const table = await grist.docApi.fetchTable(tableId);
     const existingIds = new Set(Object.keys(table).filter((k) => k !== 'id'));
@@ -458,6 +512,66 @@
     return loadOrCreateTable(COMMENTS_TABLE, [], COMMENTS_COLUMNS, () => [], () => ({}), onProgress);
   }
 
+  // Mémorisée pour toute la session (comme les commentaires, voir main.js:bootstrap) : l'identité de
+  // l'utilisateur courant ne change pas en cours de session, inutile de refaire ce round-trip à
+  // chaque ouverture du panneau Commentaires. `null` = détection indisponible (widget ouvert hors
+  // Grist, mock de dev-tests/ qui ne simule PAS le moteur de formules — voir grist-stub.js — droits
+  // insuffisants pour créer BI_Dashboard_UserProbe, etc.) : main.js retombe alors sur la saisie
+  // manuelle existante, inchangée.
+  let _currentUserEmailPromise = null;
+
+  // AddTable sur BI_Dashboard_UserProbe suit le MÊME garde-fou anti-collision que loadOrCreateTable
+  // (tableExistsConfirmed + comparaison de l'actualTableId réellement créé) mais SANS jamais appeler
+  // loadOrCreateTable lui-même : ce dernier recourt à ensureColumnsUpToDate/deriveMissingColumns pour
+  // faire évoluer un schéma via de VRAIES valeurs calculées en JS puis écrites par UpdateRecord — un
+  // mécanisme délibérément incompatible avec une colonne à formule Grist (voir le commentaire sur
+  // USER_PROBE_COLUMNS plus haut), qu'il ne faut surtout pas laisser réécrire.
+  async function ensureUserProbeTableExists() {
+    if (await tableExistsConfirmed(USER_PROBE_TABLE)) return;
+    const result = await grist.docApi.applyUserActions([['AddTable', USER_PROBE_TABLE, USER_PROBE_COLUMNS]]);
+    const actualTableId = actualAddTableId(result);
+    if (actualTableId && actualTableId !== USER_PROBE_TABLE) {
+      // Même filet de sécurité que loadOrCreateTable : une collision prouve qu'un faux négatif a
+      // échappé à tableExistsConfirmed — la table demandée existe déjà réellement, on l'utilise donc
+      // telle quelle (son schéma est fixe et identique, contrairement à BI_StressTest il n'y a jamais
+      // eu de ligne à perdre ici).
+      console.error(
+        `[GristBI] AddTable("${USER_PROBE_TABLE}") a créé "${actualTableId}" à la place (collision de nom).`
+      );
+    }
+    _rawTables = null;
+  }
+
+  // Table-sonde à formule déclenchée (voir USER_PROBE_COLUMNS ci-dessus) : AddRecord déclenche le
+  // calcul de `user.Email` POUR L'UTILISATEUR COURANT, on relit la valeur fraîchement calculée via
+  // fetchTable, puis on supprime la ligne (RemoveRecord — jamais utilisé ailleurs dans ce projet,
+  // contrairement à RemoveTable qui reste délibérément évité partout, voir CLAUDE.md §3/§8 : ce verbe
+  // porte ici sur une ligne de table éphémère que ce widget vient tout juste de créer lui-même, pas
+  // sur une table ou une donnée de l'utilisateur). Repli sur `null` à la moindre étape en échec :
+  // jamais de blocage de l'ajout de commentaire pour cette seule fonctionnalité annexe.
+  async function getCurrentUserEmail() {
+    if (_currentUserEmailPromise) return _currentUserEmailPromise;
+    _currentUserEmailPromise = (async () => {
+      try {
+        await ensureUserProbeTableExists();
+        const addResult = await grist.docApi.applyUserActions([['AddRecord', USER_PROBE_TABLE, null, {}]]);
+        const rowId = addResult.retValues[0];
+        const table = await grist.docApi.fetchTable(USER_PROBE_TABLE);
+        const idx = table.id.indexOf(rowId);
+        const email = idx === -1 ? null : (table.Email[idx] || null);
+        await grist.docApi.applyUserActions([['RemoveRecord', USER_PROBE_TABLE, rowId]]);
+        return email;
+      } catch (e) {
+        console.error(
+          '[GristBI] échec de la détection automatique de l\'auteur courant (table-sonde ' +
+          `${USER_PROBE_TABLE}) — repli sur la saisie manuelle du nom de l'auteur`, e
+        );
+        return null;
+      }
+    })();
+    return _currentUserEmailPromise;
+  }
+
   // Ajoute UN commentaire (AddRecord isolé, même pattern que saveConfig ci-dessus) — jamais par
   // lot, un commentaire est toujours un geste utilisateur unique, pas un remplissage en masse.
   // Renvoie la ligne complète (avec son id Grist réel) pour un ajout optimiste côté store
@@ -479,7 +593,7 @@
     const tables = await listAllTablesCached();
     return tables
       .map((t) => (typeof t === 'string' ? t : t.id))
-      .filter((id) => id !== CONFIG_TABLE);
+      .filter((id) => id !== CONFIG_TABLE && id !== USER_PROBE_TABLE);
   }
 
   // Lit une table déjà existante (choisie via le sélecteur de table, voir main.js) — contrairement
@@ -498,6 +612,7 @@
 
   GristBI.api = {
     init, loadConfig, saveConfig, loadOrCreateStressData,
-    listAvailableTables, loadTable, loadOrCreateComments, addComment
+    listAvailableTables, loadTable, loadOrCreateComments, addComment, refColumnsForTable,
+    getCurrentUserEmail
   };
 })(window);

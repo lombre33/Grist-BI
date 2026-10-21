@@ -201,11 +201,25 @@
     'tile.remove.title': { fr: 'Supprimer la tuile', en: 'Delete tile' },
     'tile.comments.aria': { fr: 'Commentaires', en: 'Comments' },
     'tile.comments.title': { fr: 'Commentaires de la tuile', en: 'Tile comments' },
+    'tile.detail.aria': { fr: 'Détail', en: 'Detail' },
+    'tile.detail.title': { fr: 'Voir les lignes de données de la tuile', en: 'View the tile’s data rows' },
+
+    // --- Modale de détail (substitut du drillthrough Power BI, panneau ouvert depuis une tuile) ---
+    'detail.modal.title': { fr: 'Détail — {n} {n|ligne|lignes}', en: 'Detail — {n} {n|row|rows}' },
+    'detail.modal.empty': { fr: 'Aucune ligne pour l’instant.', en: 'No rows yet.' },
+    'detail.modal.truncated': {
+      fr: 'Affichage des {shown} premières lignes sur {total}. Exportez en Excel pour tout voir.',
+      en: 'Showing the first {shown} rows out of {total}. Export to Excel to see everything.'
+    },
 
     // --- Commentaires collaboratifs (panneau ouvert depuis une tuile) ---
     'comments.modal.title': { fr: 'Commentaires', en: 'Comments' },
     'comments.empty': { fr: 'Aucun commentaire pour l’instant.', en: 'No comments yet.' },
     'comments.author.placeholder': { fr: 'Votre nom', en: 'Your name' },
+    'comments.author.autoTitle': {
+      fr: 'Identifié automatiquement via votre session Grist quand c’est possible, sinon à saisir à la main.',
+      en: 'Automatically identified from your Grist session when possible, otherwise type it in by hand.'
+    },
     'comments.text.placeholder': { fr: 'Écrire un commentaire…', en: 'Write a comment…' },
     'comments.submit': { fr: 'Ajouter', en: 'Add' },
     'comments.count': { fr: '{n} {n|commentaire|commentaires}', en: '{n} {n|comment|comments}' },

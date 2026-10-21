@@ -1557,11 +1557,11 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     ascendante). Un blend incomplet (au moins un des 3 champs encore vide) équivaut à "aucune
     jointure", plus simple à raisonner qu'un état à moitié configuré et ça laisse l'utilisateur
     choisir les 3 champs dans n'importe quel ordre.
-  - **Auto-détection des clés de jointure (`Ref:`/`RefList:` via `_grist_Tables_column`)
-    délibérément pas tentée dans ce premier jet** : ce POC ne lit toujours pas les vrais types de
-    colonnes Grist (voir §6 de CLAUDE.md, correction technique du 2026-09-15) ; un sélecteur manuel
-    à 3 champs est plus simple, moins risqué et testable sans dépendre d'une API interne Grist
-    jamais encore exercée dans ce dépôt. Piste future à documenter dans ROADMAP.md, pas à deviner.
+  - **Auto-détection des clés de jointure via `Ref:` : FAIT le 2026-10-21** (à l'origine notée
+    « délibérément pas tentée dans ce premier jet » — ce POC ne lisait pas encore les vrais types de
+    colonnes Grist au moment du data blending initial ; corrigé depuis par `realDateColumnIds`
+    (PR #17, 29/09) pour les dates, et par l'entrée dédiée ci-dessous pour les clés de jointure). Voir
+    la nouvelle entrée "Clés de jointure suggérées" plus bas pour le détail complet.
   - **Testé sous Node** (`dev-tests/test-data.js`) : cas nominal (2 tables, clé texte), ligne sans
     correspondance (colonnes secondaires à `null`, forme de ligne préservée), table secondaire vide
     (identité), table principale vide, comparaison de clé insensible au type (nombre vs chaîne, côté
@@ -1578,6 +1578,45 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     `BI_StressTest`, basculer sur `Villes` — aucune jointure sauvegardée pour elle — puis revenir sur
     `BI_StressTest` : la jointure et les 3 comboboxes sont restaurées à l'identique depuis
     `BI_Dashboard_Config`). **Jamais testé dans un vrai document Grist** (voir §8 de CLAUDE.md).
+
+- **Clés de jointure suggérées pour le data blending** (`js/grist-api.js:refColumnsForTable`,
+  `js/main.js:suggestBlendJoinColumns`, 2026-10-21, Tier 2 ROADMAP.md — demande d'Antoine du
+  2026-10-21) : en choisissant une table secondaire, le widget propose désormais automatiquement la
+  paire de clés si une colonne `Ref:` relie les deux tables, au lieu de laisser l'utilisateur deviner
+  laquelle de ses colonnes numériques est en réalité une référence Grist.
+  - **Même mécanisme de lecture que `realDateColumnIds`** (`_grist_Tables`/`_grist_Tables_column`,
+    déjà confirmé lisible avec l'accès `full` sur un vrai Grist le 30/09/2026) : `refColumnsForTable`
+    renvoie, pour une table donnée, chaque colonne de type `Ref:<AutreTable>` avec la table qu'elle
+    cible. Repli sur `[]` en cas d'échec (droits restreints, tables système absentes), comme pour la
+    détection des colonnes Date — la suggestion disparaît simplement, rien ne casse.
+  - **`RefList:` délibérément EXCLUE** : une telle colonne porte une LISTE d'ids, jamais une valeur
+    scalaire — `blendRows` ne fait qu'une égalité simple par ligne, inadaptée à une liste (joindre
+    dessus donnerait une correspondance silencieusement toujours fausse). `type.startsWith('Ref:')`
+    suffit à l'exclure sans logique dédiée : le 4e caractère d'un type `RefList:...` (`L`) ne
+    correspond jamais au `:` attendu à cette position pour un simple `Ref:`.
+  - **Priorité PRINCIPALE → SECONDAIRE, puis repli SECONDAIRE → PRINCIPALE** : le cas le plus
+    fréquent est d'enrichir la table de travail avec une table de référence (ex. `Ventes.VilleRef`
+    → `Villes.id`) ; la relation inverse (une colonne `Ref:` côté table SECONDAIRE pointant vers la
+    PRINCIPALE) reste couverte en repli, avec `primaryColumn: 'id'`.
+  - **Respecte une clé principale déjà choisie à la main** : le listener de changement de table
+    secondaire préserve délibérément `blendPrimaryColumnInput.value` d'un choix précédent (voir le
+    commentaire déjà en place avant cette fonctionnalité) — la suggestion ne touche alors QUE la clé
+    secondaire, et seulement si cette colonne principale référence bien la nouvelle table secondaire ;
+    sinon, aucune suggestion n'est faite (l'utilisateur garde la main entière, comme avant).
+  - **Testé en Playwright** contre `dev-tests/harness.html` (script ad hoc, non committé, voir §5 de
+    CLAUDE.md), avec deux tables mock entièrement préremplies via `window.__gristStubPreseed`
+    (`Ventes` avec une colonne `VilleRef` de type `Ref:Villes`, `Villes` avec `Nom`/`Population`), y
+    compris leurs métadonnées système (`_grist_Tables`/`_grist_Tables_column`) : en basculant la
+    table de travail sur `Ventes` puis en choisissant `Villes` comme table secondaire, les deux
+    comboboxes de clé se remplissent automatiquement à `VilleRef`/`id`, `state.blend` reflète cette
+    paire, et la jointure produit bien `Villes.Nom`/`Villes.Population` pour chaque ligne. Repli
+    confirmé en basculant ensuite la table secondaire vers `BI_StressTest` (aucune relation `Ref:`
+    connue) : la clé principale déjà choisie (`VilleRef`) est conservée telle quelle (convention
+    existante), la clé secondaire reste vide, et `state.blend` redevient `null` (jointure incomplète)
+    — comportement identique à celui d'avant cette fonctionnalité. **Jamais testé dans un vrai
+    document Grist** (voir §8 de CLAUDE.md) : la forme exacte d'un type `Ref:` réel
+    (`_grist_Tables_column.type`) est affirmée par analogie avec `realDateColumnIds`, déjà vérifié
+    contre un vrai Grist pour les colonnes Date/DateTime, mais jamais spécifiquement pour `Ref:`.
 
 - **Drill-down hiérarchique automatique** (`js/data.js:deriveDateHierarchyColumns`, `js/main.js`,
   2026-09-29, Tier 2 ROADMAP.md) : périmètre volontairement limité aux hiérarchies TEMPORELLES,
@@ -1636,6 +1675,52 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     plus restreints — 4 trimestres puis seulement 3 mois affichés, cohérent avec le filtrage en
     cascade). **Jamais testé dans un vrai document Grist** (voir §8 de CLAUDE.md).
 
+- **Modale de détail** (substitut du drillthrough Power BI, `js/main.js:openDetailModal`/
+  `closeDetailModal`/`renderDetailModal`, `#detail-modal` dans `index.html`/`dev-tests/harness.html`,
+  2026-10-21, Tier 2 ROADMAP.md — demande d'Antoine du 2026-10-21, « afficher les lignes derrière un
+  point ou une barre cliquée ») : bouton "Détail" (icône loupe, `.tile-detail`) ajouté dans l'en-tête
+  de CHAQUE tuile (kpi/gauge/pivot compris, pas seulement bar/pie/treemap/scatter), à côté du bouton
+  Commentaires déjà existant — même gabarit `.settings-modal` que les panneaux Réglages/Commentaires
+  (élargi en CSS, `.detail-modal-content`), même convention d'ouverture/fermeture (`hidden` natif,
+  pas de fermeture au clic sur le fond).
+  - **Lignes affichées = `GristBI.data.rowsForTile(tile, state)`**, exactement le même pipeline de
+    filtrage que le rendu ECharts/l'export Excel (cross-filtres des AUTRES tuiles, filtres avancés,
+    propre chemin de drill-down de la tuile) — PAS seulement le segment précis cliqué : la tuile a
+    déjà été affinée par filtre/drill avant que l'utilisateur ne clique "Détail", le detail modal
+    montre donc "ce que cette tuile affiche en ce moment", cohérent avec ce qui est déjà à l'écran.
+  - **Colonnes = `Object.keys(rows[0])`**, même convention que `availableColumns()` (js/main.js) :
+    inclut les colonnes dérivées (ex. `Date.Annee`/`Date.Trimestre`/`Date.Mois`) et les colonnes de
+    data blending (`<table>.<colonne>`) si présentes, puisqu'elles font partie de la forme réelle de
+    la ligne.
+  - **Plafonné à 500 lignes affichées** (`DETAIL_MODAL_MAX_ROWS`), avec un message de troncature
+    explicite pointant vers l'export Excel pour tout voir d'un coup — un tableau HTML de 47 040
+    lignes sans pagination serait un coût DOM inutile pour une modale d'inspection ponctuelle (même
+    préoccupation que `.tile-chart { overflow: auto }` pour le tableau croisé).
+  - **Live, pas un instantané figé à l'ouverture** : `render()` rappelle `renderDetailModal()` à
+    chaque changement d'état (même mécanisme que `renderCommentsModal()` déjà en place pour le
+    panneau Commentaires), qui relit `store.getState()` et retrouve la tuile par id à chaque appel
+    (repli silencieux — ferme la modale — si la tuile a été supprimée entre-temps, même garde que le
+    gestionnaire de clic générique de `js/charts.js`).
+  - **Testé en Playwright** contre `dev-tests/harness.html` (script ad hoc, non committé, voir §5 de
+    CLAUDE.md), servi en HTTP local : bouton visible sur la 1re tuile par défaut, clic → modale
+    visible avec titre "Détail — 47040 lignes" (aucun filtre actif), tableau de 500 lignes/12
+    colonnes (8 colonnes déclarées de `BI_StressTest` + 3 colonnes dérivées Année/Trimestre/Mois +
+    `id`), message de troncature "Affichage des 500 premières lignes sur 47040." affiché. Fermeture
+    via le bouton confirmée. Un cross-filtre posé sur une AUTRE tuile PENDANT que la modale de la 1re
+    tuile est fermée, puis rouverte, fait bien tomber le compte à 9408 lignes — confirme le bon
+    pipeline de filtrage. Bascule de langue (fr → en, modale laissée ouverte entre temps) confirme la
+    retraduction réactive du titre ("Detail — 9408 rows", pluriel anglais correct). **Mise à jour en
+    direct SANS fermer/rouvrir la modale** : tentée en re-cliquant la même part de camembert pour
+    retirer le filtre pendant que la modale reste ouverte — non concluante en Playwright (clic
+    répété sur un camembert plein, dont le centre géométrique est un point dégénéré commun à toutes
+    les parts ; `activeFilters` lu directement via `window.GristBI.store.getState()` est resté
+    identique aux deux clics, donc le 2e clic n'a tout simplement pas été pris en compte comme un
+    nouveau toggle — même famille de flakiness déjà documentée pour les clics sur un nuage de points,
+    voir TEST_PROTOCOL.md, pas un bug produit). Le mécanisme lui-même (rappel systématique de
+    `renderDetailModal()` depuis `render()`) est garanti par construction, identique à celui déjà
+    éprouvé pour `renderCommentsModal()` — pas re-testé au pixel près pour cette raison. **Jamais
+    testé dans un vrai document Grist** (voir §8 de CLAUDE.md).
+
 - **Commentaires collaboratifs** (`js/grist-api.js:loadOrCreateComments`/`addComment`,
   `js/data.js:commentsForTile`, `js/state.js:comments`/`setComments`/`addCommentLocal`,
   2026-09-29, Tier 2 ROADMAP.md) : 3e table interne créée par ce widget,
@@ -1660,17 +1745,14 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     que soit la table de travail active, sans avoir besoin de connaître `TableId` pour ça. La
     colonne `TableId` existe malgré tout sur chaque ligne, pour qu'un humain lisant la table brute
     dans Grist puisse identifier la table de travail concernée sans remonter par l'id de tuile.
-  - **Attribution auteur EN SAISIE MANUELLE dans ce premier jet, PAS le pattern
-    `getCurrentUserEmail`** (table-sonde à formule Grist déclenchée, voir l'entrée "Correction
-    technique importante (2026-09-15)" plus haut et ROADMAP.md) : ce mécanisme reste "confirmé
-    faisable" mais volontairement non tenté ici — jamais utilisé dans ce dépôt (`RemoveRecord`
-    n'apparaît nulle part ailleurs), et c'est la SEULE exception envisagée dans tout ce projet à la
-    règle "aucune formule Grist" (CLAUDE.md §8), un changement d'architecture qui mérite sa propre
-    PR et sa propre discussion plutôt que d'être mélangé silencieusement à cette fonctionnalité.
-    Le nom saisi est mémorisé en `localStorage` (`gristbi_comment_author`, même garde
-    `typeof localStorage !== 'undefined'` + repli silencieux que `gristbi_lang`, voir
-    `js/i18n.js`) pour ne pas le retaper à chaque commentaire — persistance vérifiée en Playwright
-    à travers un rechargement complet de page.
+  - **Attribution auteur EN SAISIE MANUELLE dans ce premier jet.** Le nom saisi est mémorisé en
+    `localStorage` (`gristbi_comment_author`, même garde `typeof localStorage !== 'undefined'` +
+    repli silencieux que `gristbi_lang`, voir `js/i18n.js`) pour ne pas le retaper à chaque
+    commentaire — persistance vérifiée en Playwright à travers un rechargement complet de page.
+    **Remplacée depuis par une reconnaissance automatique quand c'est possible (21/10/2026)** : voir
+    la nouvelle entrée "Auteur des commentaires reconnu automatiquement" plus bas pour le détail
+    complet. Ce repli en saisie manuelle reste le comportement exact de ce premier jet dès que la
+    détection automatique échoue.
   - **Ajout optimiste, pas de re-fetch** : `addComment` (`js/grist-api.js`) renvoie la ligne
     complète (avec l'id Grist réel du nouveau commentaire) directement depuis la réponse
     d'`AddRecord`, `store.addCommentLocal` l'ajoute au tableau déjà en mémoire — jamais besoin de
@@ -1703,6 +1785,93 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     contre le vrai moteur Grist pour CETTE table précise (seulement `BI_StressTest`/
     `BI_Dashboard_Config`, voir "Validé en conditions réelles" plus loin) — même mécanisme
     générique, mais jamais essayé pour un 3e appelant.
+
+- **Auteur des commentaires reconnu automatiquement** (`js/grist-api.js:getCurrentUserEmail`,
+  2026-10-21, Tier 2 ROADMAP.md, "features visibles restantes") : remplace la saisie manuelle de
+  l'entrée "Commentaires collaboratifs" ci-dessus par le pattern `getCurrentUserEmail()` déjà décrit
+  comme "confirmé faisable" (porté de `publipostageGrist`, voir l'entrée "Correction technique
+  importante (2026-09-15)" plus haut et ROADMAP.md) — SEULE feature de ce projet à utiliser le
+  langage de formules Grist (CLAUDE.md §8), SEULE exception délibérée, documentée comme telle
+  partout où cette règle est énoncée.
+  - **Mécanisme retenu : une 4e table interne dédiée, `BI_Dashboard_UserProbe`**, PAS une colonne
+    ajoutée directement à `BI_Dashboard_Comments`, bien que le coordinateur du projet ait
+    initialement suggéré cette 2e option pour éviter "une table de plus". Raison technique du choix
+    inverse : une formule Grist normale RECALCULE sa valeur à chaque lecture, par N'IMPORTE QUEL
+    viewer du document qui ouvre `fetchTable` sur cette table — une colonne `Email` posée directement
+    sur une ligne de commentaire déjà existante changerait donc de signification à chaque nouvelle
+    ouverture du document par quelqu'un d'autre, inutilisable comme auteur figé à la création. La
+    table dédiée contourne entièrement ce problème SANS avoir besoin des réglages avancés de
+    recalcul de Grist (`recalcWhen`/`recalcDeps`, propres aux "formules déclenchées" permanentes,
+    jamais nécessaires ici) : une ligne y est ajoutée, sa valeur calculée est lue IMMÉDIATEMENT après
+    l'`AddRecord` qui déclenche son calcul (donc pour l'utilisateur courant, à cet instant précis),
+    puis la ligne est aussitôt supprimée — seul ce round-trip compte, la table ne conserve jamais
+    aucune valeur entre deux appels. Recherché et écarté en cours de session : une piste explorée via
+    le code source de `gristlabs/grist-core` (mentions de `recalcWhen: "never"/"allupdates"/""` et de
+    `recalcDeps` pour les formules dites "déclenchées" permanentes) se serait révélée une complexité
+    inutile pour ce besoin précis — une formule Grist ORDINAIRE (`isFormula: true, formula:
+    'user.Email'`, sans aucun réglage de recalcul particulier) suffit entièrement dès lors qu'on ne
+    relit sa valeur qu'une seule fois, juste après l'avoir déclenchée.
+  - **Schéma** : `USER_PROBE_COLUMNS = [{ id: 'Email', type: 'Text', isFormula: true, formula:
+    'user.Email' }]`. Créée de façon idempotente comme les 3 autres tables internes
+    (`tableExistsConfirmed` + comparaison de l'`actualTableId` réellement créé par `AddTable`, même
+    garde-fou anti-collision que `loadOrCreateTable`, CLAUDE.md §3/§7) mais SANS passer par
+    `loadOrCreateTable` elle-même : cette dernière recourt à `ensureColumnsUpToDate`/
+    `deriveMissingColumns` pour faire évoluer un schéma via de VRAIES valeurs calculées en JS puis
+    écrites par `UpdateRecord` — mécanisme délibérément incompatible avec une colonne à formule
+    Grist, qu'il ne faut surtout pas laisser réécrire. `ensureUserProbeTableExists` (dédiée,
+    `js/grist-api.js`) reproduit seulement la partie création/garde-fou anti-collision, jamais le
+    remplissage ni le backfill de colonnes.
+  - **`RemoveRecord` utilisé pour la première fois par le CODE de ce widget** (déjà mocké dans
+    `dev-tests/grist-stub.js` depuis l'origine, mais jamais exercé par `js/grist-api.js` avant cette
+    feature) — portée volontairement limitée à une ligne de table-sonde éphémère que ce widget vient
+    de créer lui-même l'instant d'avant, jamais à une table ou à une donnée appartenant à
+    l'utilisateur : ne change rien à la règle "jamais `RemoveTable`" (CLAUDE.md §3/§8, verbe distinct,
+    toujours évité).
+  - **Mémorisée pour toute la session** (`_currentUserEmailPromise`, `js/grist-api.js`) comme les
+    commentaires eux-mêmes (`js/main.js:bootstrap`) : l'identité ne change pas en cours de route,
+    inutile de refaire ce round-trip (AddTable éventuel + AddRecord + fetchTable + RemoveRecord) à
+    chaque ouverture du panneau Commentaires. Appelée une seule fois au bootstrap, dans son propre
+    `try/catch` séparé de celui des commentaires (même raison : un échec ici — widget ouvert hors
+    Grist, droits insuffisants, mock sans moteur de formules — ne doit jamais empêcher l'affichage du
+    dashboard lui-même).
+  - **UI (`js/main.js:openCommentsModal`)** : si la détection a abouti (`detectedUserEmail`
+    non `null`), le champ `#comment-author` est pré-rempli avec l'email détecté et VERROUILLÉ
+    (`readOnly = true`, fond grisé via `.comment-form input[readonly]`, voir `css/style.css`) —
+    cohérence garantie avec la véritable identité Grist plutôt qu'un nom retapé/modifiable à la main.
+    Sinon (repli), comportement STRICTEMENT inchangé par rapport au premier jet : champ éditable,
+    pré-rempli depuis `localStorage`, mémorisé à nouveau après chaque ajout. Un auteur auto-détecté
+    n'est PAS sauvegardé dans `localStorage` (inutile : il n'a jamais été retapé à la main, et
+    `detectedUserEmail` reste disponible pour toute la session de toute façon). Infobulle
+    bilingue (`data-i18n-title="comments.author.autoTitle"`) sur le champ dans les deux cas,
+    expliquant la détection automatique quand elle fonctionne.
+  - **Exclue du sélecteur de table** (`listAvailableTables`, `js/grist-api.js`) comme
+    `BI_Dashboard_Config` : une table-sonde à une seule colonne formule n'a aucun sens comme table de
+    travail à visualiser. `BI_Dashboard_Comments`, elle, n'était déjà PAS exclue avant cette feature
+    (lacune préexistante, non corrigée ici — hors périmètre de cette PR, voir le code de
+    `listAvailableTables` pour l'état exact).
+  - **Testé en Playwright** contre `dev-tests/grist-stub.js` (script ad hoc, non committé, voir §5 de
+    CLAUDE.md), servi en HTTP local : `getCurrentUserEmail()` renvoie `null` contre ce mock — **ce
+    mock ne simule PAS le moteur de formules Grist** (`cloneColumnar`/`AddRecord` : une colonne
+    `isFormula` déclarée à la création reste un tableau vide, jamais recalculée, voir
+    `dev-tests/grist-stub.js`), donc CE scénario est exactement "détection indisponible", vérifié
+    comme tel : la table `BI_Dashboard_UserProbe` est bien créée (une seule fois, confirmé par un 2e
+    appel qui réutilise la promesse mémorisée sans créer de 2e table ni ajouter/retirer de 2e ligne),
+    le round-trip `AddRecord`/`fetchTable`/`RemoveRecord` ne lève aucune exception, et le panneau
+    Commentaires retombe bien sur le champ éditable + la mémorisation `localStorage` existante (ajout
+    d'un commentaire par ce chemin de repli vérifié bout en bout). Vérifié aussi que `index.html`
+    (import map distinct de `dev-tests/harness.html`, voir CLAUDE.md §4 et piège historique #18)
+    continue de charger sans erreur après ce changement (attribut `data-i18n-title` ajouté sur
+    `#comment-author`).
+  - **Jamais testé dans un vrai document Grist** (voir §8/§9 de CLAUDE.md) : c'est, de toutes les
+    features de ce dépôt, celle dont le chemin PRINCIPAL (la détection réussissant réellement, pas
+    son repli) est structurellement le MOINS vérifiable depuis ce sandbox — ni `dev-tests/
+    grist-stub.js` ni aucun autre mock de ce dépôt ne simule le moteur de formules Grist ni
+    l'identité utilisateur côté serveur. Le format exact de `user.Email` (une adresse email simple ?
+    une chaîne vide pour un utilisateur anonyme/non connecté ? une exception plutôt qu'une valeur
+    dans ce cas ?) et le comportement réel d'un `RemoveRecord` juste après un `AddRecord` dans le
+    même document (latence de propagation ? confirmation immédiate ?) restent entièrement à
+    confirmer sur un vrai Grist — un premier clic réel sur le bouton Commentaires d'Antoine reste
+    l'unique vérification qui manque pour cette feature précise.
 
 - **Export Excel des tuiles en mode mesure (Cumul/YTD/N-1) — vraies valeurs (2026-10-21, Tier 2
   ROADMAP.md)** : jusqu'ici, `GristBI.data.tileExportSheet` remplaçait une tuile Barres en mode

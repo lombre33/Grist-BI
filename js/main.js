@@ -23,7 +23,8 @@
     chevronRight: '<path d="M6 3l5 5-5 5"/>',
     warning: '<path d="M8 2.2l6.5 11.6H1.5L8 2.2Z"/><path d="M8 6.6v3.2"/><path d="M8 11.9v.01"/>',
     settings: '<circle cx="8" cy="8" r="2.3"/><path d="M8 2v1.6M8 12.4V14M14 8h-1.6M3.6 8H2M12.24 3.76l-1.13 1.13M4.89 11.11l-1.13 1.13M12.24 12.24l-1.13-1.13M4.89 4.89L3.76 3.76"/>',
-    comment: '<path d="M2.5 3.5h11a1 1 0 0 1 1 1V10a1 1 0 0 1-1 1H6.5l-2.8 2.5V11H2.5a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z"/>'
+    comment: '<path d="M2.5 3.5h11a1 1 0 0 1 1 1V10a1 1 0 0 1-1 1H6.5l-2.8 2.5V11H2.5a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z"/>',
+    search: '<circle cx="6.8" cy="6.8" r="4.3"/><path d="M10 10l4 4"/>'
   };
   function icon(name) {
     return `<svg class="icon icon-${name}" viewBox="0 0 16 16" aria-hidden="true" focusable="false">${ICON_PATHS[name]}</svg>`;
@@ -35,6 +36,13 @@
   // (GristBI.demoData.defaultLargeTiles), donc la seule sur laquelle proposer de les restaurer.
   let defaultTableId = null;
   let commentsModalTileId = null; // tuile actuellement affichée dans #comments-modal, ou null si fermé
+  // Email de l'utilisateur courant, détecté UNE SEULE fois au bootstrap via la table-sonde
+  // BI_Dashboard_UserProbe (GristBI.api.getCurrentUserEmail(), js/grist-api.js) — `null` tant que la
+  // détection n'a pas abouti (mock de dev-tests/, widget hors Grist, droits insuffisants...), auquel
+  // cas openCommentsModal retombe sur la saisie manuelle existante (loadSavedCommentAuthor).
+  let detectedUserEmail = null;
+  let detailModalTileId = null; // tuile actuellement affichée dans #detail-modal, ou null si fermé
+  const DETAIL_MODAL_MAX_ROWS = 500; // voir renderDetailModal : au-delà, l'export Excel reste la voie pour tout voir
   let saveTimer = null;
   let pendingSave = null; // { tableId, pages, currentPageId, bookmarks, blend } en attente d'écriture, voir flushPendingSave()
   let lastRenderedPages = null; // référence, pour ne pas re-sauvegarder la config à chaque rafraîchissement de données
@@ -132,6 +140,12 @@
   const commentsListEl = document.getElementById('comments-list');
   const commentsEmptyEl = document.getElementById('comments-empty');
   const commentForm = document.getElementById('comment-form');
+  const detailModal = document.getElementById('detail-modal');
+  const detailCloseBtn = document.getElementById('detail-close');
+  const detailModalTitleEl = document.getElementById('detail-modal-title');
+  const detailModalEmptyEl = document.getElementById('detail-modal-empty');
+  const detailModalTableWrapEl = document.getElementById('detail-modal-table-wrap');
+  const detailModalTruncatedEl = document.getElementById('detail-modal-truncated');
   const commentAuthorInput = document.getElementById('comment-author');
   const commentTextInput = document.getElementById('comment-text');
 
@@ -500,6 +514,9 @@
     // changement de langue...) sans avoir à le refermer/rouvrir — no-op si fermé
     // (commentsModalTileId à null, voir sa définition).
     renderCommentsModal();
+    // Même principe pour la modale de détail : un filtre posé/levé pendant qu'elle est ouverte doit
+    // se refléter dans les lignes affichées, pas seulement au prochain clic sur le bouton Détail.
+    renderDetailModal();
   }
 
   // Une page ne se supprime jamais toute seule (state.js:removePage refuse de vider la dernière),
@@ -631,6 +648,7 @@
           <button class="tile-move-right" type="button" data-i18n-aria="tile.moveRight" data-i18n-title="tile.moveRight" aria-label="${escapeHtml(t('tile.moveRight'))}" title="${escapeHtml(t('tile.moveRight'))}">${icon('chevronRight')}</button>
           <button class="tile-edit" type="button" data-i18n-aria="tile.edit.aria" data-i18n-title="tile.edit.title" aria-label="${escapeHtml(t('tile.edit.aria'))}" title="${escapeHtml(t('tile.edit.title'))}">${icon('edit')}</button>
           <button class="tile-comments" type="button" data-i18n-aria="tile.comments.aria" data-i18n-title="tile.comments.title" aria-label="${escapeHtml(t('tile.comments.aria'))}" title="${escapeHtml(t('tile.comments.title'))}">${icon('comment')}<span class="tile-comments-count" hidden></span></button>
+          <button class="tile-detail" type="button" data-i18n-aria="tile.detail.aria" data-i18n-title="tile.detail.title" aria-label="${escapeHtml(t('tile.detail.aria'))}" title="${escapeHtml(t('tile.detail.title'))}">${icon('search')}</button>
           <button class="tile-remove" type="button" data-i18n-aria="tile.remove.aria" data-i18n-title="tile.remove.title" aria-label="${escapeHtml(t('tile.remove.aria'))}" title="${escapeHtml(t('tile.remove.title'))}">${icon('close')}</button>
         </span></div>`;
     el.innerHTML = tile.type === 'kpi'
@@ -649,6 +667,7 @@
     });
     el.querySelector('.tile-edit').addEventListener('click', () => startEditTile(tile));
     el.querySelector('.tile-comments').addEventListener('click', () => openCommentsModal(tile));
+    el.querySelector('.tile-detail').addEventListener('click', () => openDetailModal(tile));
     el.querySelector('.tile-move-left').addEventListener('click', () => store.moveTile(tile.id, -1));
     el.querySelector('.tile-move-right').addEventListener('click', () => store.moveTile(tile.id, 1));
     return el;
@@ -686,7 +705,16 @@
   function openCommentsModal(tile) {
     commentsModalTileId = tile.id;
     commentsModalTileEl.textContent = tile.title;
-    commentAuthorInput.value = loadSavedCommentAuthor();
+    // Auteur reconnu automatiquement quand la détection a abouti (voir detectedUserEmail
+    // ci-dessus) : champ pré-rempli et verrouillé, cohérence garantie avec la véritable identité
+    // Grist plutôt qu'un nom retapé/modifiable. Repli IDENTIQUE à avant cette fonctionnalité sinon.
+    if (detectedUserEmail) {
+      commentAuthorInput.value = detectedUserEmail;
+      commentAuthorInput.readOnly = true;
+    } else {
+      commentAuthorInput.value = loadSavedCommentAuthor();
+      commentAuthorInput.readOnly = false;
+    }
     commentTextInput.value = '';
     renderCommentsModal();
     commentsModal.hidden = false;
@@ -696,6 +724,54 @@
   function closeCommentsModal() {
     commentsModal.hidden = true;
     commentsModalTileId = null;
+  }
+
+  // Modale de détail (substitut du drillthrough, voir index.html/ROADMAP.md) : affiche les lignes
+  // BRUTES actuellement reçues par la tuile (GristBI.data.rowsForTile, même filtrage que le rendu
+  // ECharts/l'export Excel — cross-filtres des AUTRES tuiles, filtres avancés, et le propre chemin
+  // de drill-down de la tuile), pas seulement le segment cliqué : l'utilisateur a déjà affiné sa
+  // vue en filtrant/drillant avant de vouloir le détail. Relit l'état vivant à chaque rendu (comme
+  // renderCommentsModal) plutôt qu'un instantané figé à l'ouverture, pour rester cohérente si un
+  // filtre est posé/levé pendant qu'elle est ouverte. Colonnes = `Object.keys(rows[0])`, même
+  // convention que `availableColumns()` (js/main.js) : la 1re ligne représente la forme commune.
+  // Plafonnée à DETAIL_MODAL_MAX_ROWS lignes affichées (jusqu'à 47 040 lignes possibles sur
+  // BI_StressTest) — un tableau HTML de cette taille sans pagination serait un coût DOM inutile
+  // pour une modale d'inspection ; l'export Excel reste la voie pour tout voir d'un coup.
+  function renderDetailModal() {
+    if (!detailModalTileId) return;
+    const state = store.getState();
+    const tile = state.tiles.find((tl) => tl.id === detailModalTileId);
+    if (!tile) { closeDetailModal(); return; } // tuile supprimée entre-temps (voir charts.js, même garde)
+
+    const rows = GristBI.data.rowsForTile(tile, state);
+    detailModalTitleEl.textContent = t('detail.modal.title', { n: rows.length });
+    detailModalEmptyEl.hidden = rows.length > 0;
+
+    const shown = rows.slice(0, DETAIL_MODAL_MAX_ROWS);
+    if (!shown.length) {
+      detailModalTableWrapEl.innerHTML = '';
+    } else {
+      const columns = Object.keys(shown[0]);
+      const head = columns.map((c) => `<th>${escapeHtml(c)}</th>`).join('');
+      const body = shown.map((row) => `<tr>${columns.map((c) => `<td>${escapeHtml(row[c] == null ? '' : row[c])}</td>`).join('')}</tr>`).join('');
+      detailModalTableWrapEl.innerHTML = `<table class="detail-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+    }
+
+    detailModalTruncatedEl.hidden = rows.length <= DETAIL_MODAL_MAX_ROWS;
+    if (rows.length > DETAIL_MODAL_MAX_ROWS) {
+      detailModalTruncatedEl.textContent = t('detail.modal.truncated', { shown: shown.length, total: rows.length });
+    }
+  }
+
+  function openDetailModal(tile) {
+    detailModalTileId = tile.id;
+    renderDetailModal();
+    detailModal.hidden = false;
+  }
+
+  function closeDetailModal() {
+    detailModal.hidden = true;
+    detailModalTileId = null;
   }
 
   function updateFormFieldsForType() {
@@ -987,6 +1063,7 @@
   // #settings-modal ci-dessus (voir openCommentsModal/closeCommentsModal plus haut pour l'ouverture,
   // déclenchée depuis le bouton de CHAQUE tuile, pas un bouton de bandeau unique).
   if (commentsCloseBtn) commentsCloseBtn.addEventListener('click', closeCommentsModal);
+  if (detailCloseBtn) detailCloseBtn.addEventListener('click', closeDetailModal);
 
   // Ajout d'un commentaire : AddRecord côté Grist (js/grist-api.js:addComment), puis ajout
   // optimiste côté store (pas de re-fetch de toute la table) — la liste affichée se remet à jour
@@ -1000,7 +1077,10 @@
       const author = commentAuthorInput.value.trim();
       const text = commentTextInput.value.trim();
       if (!author || !text) return;
-      saveCommentAuthor(author);
+      // Pas la peine de mémoriser en localStorage un auteur qui n'a jamais été retapé à la main
+      // (voir openCommentsModal) : ça resterait un nom figé par la détection automatique d'une
+      // session passée, jamais relu tant que detectedUserEmail reste disponible de toute façon.
+      if (!detectedUserEmail) saveCommentAuthor(author);
       try {
         const comment = await GristBI.api.addComment(currentTableId, commentsModalTileId, author, text);
         store.addCommentLocal(comment);
@@ -1201,11 +1281,48 @@
     applyBlend(currentBlend);
   }
 
+  // Suggère une paire de clés de jointure à partir des colonnes de référence Grist RÉELLES
+  // (`Ref:`, jamais `RefList:` — voir GristBI.api.refColumnsForTable) plutôt que de laisser
+  // l'utilisateur deviner quelle colonne numérique réfère quelle table (ROADMAP.md : piste notée
+  // comme "pas tentée dans ce premier jet" au moment du data blending initial). Respecte un choix
+  // DÉJÀ fait côté table principale (`currentPrimaryColumn`, voir le commentaire du listener de
+  // changement de table secondaire ci-dessous, qui le préserve délibérément) : dans ce cas, ne
+  // suggère QUE la clé secondaire, et seulement si cette colonne réfère bien la nouvelle table
+  // secondaire — jamais une suggestion qui contredirait un choix explicite déjà en place. Sinon,
+  // cherche d'abord une référence PRINCIPALE -> SECONDAIRE (cas le plus courant : enrichir la table
+  // de travail avec une table de référence), puis seulement à défaut l'inverse (SECONDAIRE ->
+  // PRINCIPALE). Renvoie `null` si aucune référence ne relie les deux tables — l'utilisateur choisit
+  // alors ses clés à la main, exactement comme avant cette fonctionnalité.
+  async function suggestBlendJoinColumns(secondaryTableId, currentPrimaryColumn) {
+    if (!secondaryTableId) return null;
+    const [primaryRefCols, secondaryRefCols] = await Promise.all([
+      GristBI.api.refColumnsForTable(currentTableId),
+      GristBI.api.refColumnsForTable(secondaryTableId)
+    ]);
+    if (currentPrimaryColumn) {
+      const stillValid = primaryRefCols.some((c) => c.colId === currentPrimaryColumn && c.targetTableId === secondaryTableId);
+      return stillValid ? { primaryColumn: currentPrimaryColumn, secondaryColumn: 'id' } : null;
+    }
+    const primaryMatch = primaryRefCols.find((c) => c.targetTableId === secondaryTableId);
+    if (primaryMatch) return { primaryColumn: primaryMatch.colId, secondaryColumn: 'id' };
+    const secondaryMatch = secondaryRefCols.find((c) => c.targetTableId === currentTableId);
+    if (secondaryMatch) return { primaryColumn: 'id', secondaryColumn: secondaryMatch.colId };
+    return null;
+  }
+
   blendSecondaryTableInput.addEventListener('change', () => {
     // Changer de table secondaire invalide les clés déjà choisies (colonnes d'une autre table) :
     // on ne garde QUE la clé côté table principale, jamais la clé secondaire de l'ancien choix.
     blendSecondaryColumnInput.value = '';
-    refreshBlendSecondaryColumnPicker().then(commitBlendFromForm);
+    const secondaryTableId = blendSecondaryTableInput.value;
+    const keptPrimaryColumn = blendPrimaryColumnInput.value;
+    refreshBlendSecondaryColumnPicker().then(() => suggestBlendJoinColumns(secondaryTableId, keptPrimaryColumn)).then((suggestion) => {
+      if (suggestion) {
+        blendPrimaryColumnInput.value = suggestion.primaryColumn;
+        blendSecondaryColumnInput.value = suggestion.secondaryColumn;
+      }
+      commitBlendFromForm();
+    });
   });
   blendPrimaryColumnInput.addEventListener('change', commitBlendFromForm);
   blendSecondaryColumnInput.addEventListener('change', commitBlendFromForm);
@@ -1274,6 +1391,17 @@
       store.setComments(commentRows);
     } catch (e) {
       console.error('[GristBI] échec de la connexion à la table de commentaires collaboratifs (BI_Dashboard_Comments) — les commentaires resteront indisponibles pour cette session', e);
+    }
+    // Détection de l'auteur courant (table-sonde BI_Dashboard_UserProbe, voir js/grist-api.js) :
+    // UNE SEULE fois par session, comme les commentaires ci-dessus — l'identité ne change pas en
+    // cours de route. `detectedUserEmail` reste à `null` (repli sur la saisie manuelle inchangée,
+    // voir openCommentsModal) si cette détection échoue pour n'importe quelle raison (widget hors
+    // Grist, mock de dev-tests/ qui ne simule pas le moteur de formules, droits insuffisants...) —
+    // try/catch séparé pour la même raison que les commentaires : jamais bloquant pour le dashboard.
+    try {
+      detectedUserEmail = await GristBI.api.getCurrentUserEmail();
+    } catch (e) {
+      console.error('[GristBI] échec de la détection automatique de l\'auteur courant — repli sur la saisie manuelle', e);
     }
   }
 

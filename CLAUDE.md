@@ -130,6 +130,14 @@ dépôt. Les tests se lancent manuellement (voir §5).
   de tuile est déjà globalement unique dans ce widget. **Fusionné (PR #15, 2026-09-30)** : Antoine
   a répondu à la carte de décision sur le lieu de stockage en choisissant « Nouvelle table » (le
   choix déjà implémenté par la PR) — voir HYPOTHESES.md.
+  **Auteur reconnu automatiquement (21/10/2026)** : `grist-api.js:getCurrentUserEmail()` lit une
+  4e table interne dédiée, `BI_Dashboard_UserProbe` (1 colonne `Email`, formule Grist déclenchée
+  `user.Email` — SEULE exception de ce projet à la règle "aucune formule Grist", voir §8), via un
+  `AddRecord`/`fetchTable`/`RemoveRecord` qui ne lit la valeur calculée QUE pour la ligne qu'il vient
+  de créer, jamais relue plus tard. Détectée une seule fois par session comme les commentaires
+  eux-mêmes ; si la détection échoue (widget hors Grist, droits insuffisants, mock de `dev-tests/`
+  qui ne simule pas le moteur de formules), le champ auteur retombe sur la saisie manuelle mémorisée
+  en localStorage, exactement comme avant cette fonctionnalité.
 
 ## 4. Lancer et prévisualiser en local
 
@@ -228,12 +236,15 @@ dépôt. Les tests se lancent manuellement (voir §5).
   - Une correction technique importante du 2026-09-15 a révisé plusieurs affirmations initiales de
     la roadmap après vérification dans le code réel du widget frère `publipostageGrist` : le widget
     **peut** en réalité lire les vrais types de colonnes Grist (`_grist_Tables_column`) et obtenir
-    l'identité de l'utilisateur courant (pattern table-sonde à formule déclenchée). **Le premier de
-    ces deux points est désormais fait** (29/09/2026, PR #17, voir §7 piège n°16) :
+    l'identité de l'utilisateur courant (pattern table-sonde à formule déclenchée). **Les deux
+    points sont désormais faits** : le premier (29/09/2026, PR #17, voir §7 piège n°16) —
     `grist-api.js:realDateColumnIds` lit `_grist_Tables`/`_grist_Tables_column` pour détecter les
-    colonnes Date/DateTime de n'importe quelle table, avec repli silencieux en cas d'échec. Le
-    second (identité de l'utilisateur courant) reste non fait, plus considéré comme faisable que
-    bloqué.
+    colonnes Date/DateTime de n'importe quelle table, avec repli silencieux en cas d'échec — et le
+    second (21/10/2026) — `grist-api.js:getCurrentUserEmail()` utilise une table-sonde dédiée
+    (`BI_Dashboard_UserProbe`, 1 colonne `Email` à formule Grist déclenchée `user.Email` — SEULE
+    exception du projet à la règle "aucune formule Grist", voir §8) pour reconnaître automatiquement
+    l'auteur d'un commentaire, avec le même repli silencieux sur la saisie manuelle en cas d'échec
+    (voir §3, "Commentaires collaboratifs").
 - **`HYPOTHESES.md`** (~1285 lignes, dense) est le **journal de vérité** sur ce qui a vraiment été
   testé et où. Il documente, dans l'ordre chronologique, chaque feature livrée avec où/comment elle
   a été testée (Node, Playwright contre le mock, **jamais** un vrai document Grist), les bugs réels
