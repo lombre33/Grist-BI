@@ -265,6 +265,18 @@
         <ul class="combobox-list" hidden></ul>
       </div>
     </div>
+    <div class="field" id="tile-radar-mode-field" hidden>
+      <label for="tile-radar-mode" data-i18n="tileForm.radarMode.label">Axes du radar</label>
+      <select id="tile-radar-mode">
+        <option value="dimension" data-i18n="tileForm.radarMode.dimension">Une colonne catégorielle (classique)</option>
+        <option value="columns" data-i18n="tileForm.radarMode.columns">Plusieurs colonnes numériques (compétences)</option>
+      </select>
+    </div>
+    <div class="field" id="tile-radar-axes-field" hidden>
+      <label for="tile-radar-axis-1" data-i18n="tileForm.radarAxes.label">Axes (colonnes numériques)</label>
+      <div id="tile-radar-axes" class="drill-levels"></div>
+      <button type="button" id="tile-radar-axes-add" class="btn-secondary btn-tiny" data-i18n="tileForm.radarAxes.addAxis" hidden>+ Axe</button>
+    </div>
     <div class="field" id="tile-drill-field">
       <label for="tile-drill-dimension-1" data-i18n="tileForm.drill.label">Drill-down</label>
       <div id="tile-drill-levels" class="drill-levels"></div>
@@ -276,7 +288,7 @@
         <span data-i18n="tileForm.drill.crossFilter">Filtrer aussi les autres cartes en détaillant</span>
       </label>
     </div>
-    <div class="field">
+    <div class="field" id="tile-measure-field">
       <label for="tile-measure" id="tile-measure-label" data-i18n="tileForm.measure.label">Mesure</label>
       <div class="combobox">
         <input type="text" id="tile-measure" class="combobox-input" />
@@ -290,7 +302,7 @@
         <ul class="combobox-list" hidden></ul>
       </div>
     </div>
-    <div class="field">
+    <div class="field" id="tile-agg-field">
       <label for="tile-agg" data-i18n="tileForm.agg.label">Agrégat</label>
       <select id="tile-agg">
         <option value="sum" data-i18n="tileForm.agg.sum">Somme</option>

@@ -341,15 +341,25 @@
     const dimension = currentDimension(tile, drillPath);
     const instance = getOrCreateChartInstance(tile.id, el);
 
+    // Radar "compétences en colonnes" (tile.radarAxisMode === 'columns', voir ROADMAP.md : demande
+    // du forum Grist, un radar à partir de plusieurs colonnes numériques plutôt que d'une seule
+    // dimension catégorielle) : `tile.dimension`/`tile.measure` ne sont pas renseignés dans ce mode
+    // (voir js/main.js, champs masqués), donc computeGroupBy ci-dessous n'a rien de cohérent à
+    // regrouper — un axe par colonne choisie, valeur = moyenne de cette colonne sur `rows`.
+    const isRadarColumns = tile.type === 'radar' && tile.radarAxisMode === 'columns';
+    const radarAxesColumns = isRadarColumns ? (tile.radarAxes || []).filter(Boolean) : [];
+
     const seq = bumpSeq(tile.id);
     const usingDuckDb = rows.length >= DUCKDB_ROW_THRESHOLD;
     if (usingDuckDb) instance.showLoading('default', { text: t('chart.computing'), color: CATEGORICAL_PALETTE[0], maskColor: 'rgba(255, 255, 255, 0.6)' });
     // scatter a besoin de deux agrégations indépendantes (mesures X/Y) : lancées en parallèle, pas
     // en séquence, pour ne payer qu'une seule fois la latence du plus lent des deux chargements
-    // DuckDB — même raisonnement que renderKpi (valeur + tendance).
-    const [agg, aggY] = await Promise.all([
-      computeGroupBy(rows, dimension, tile.measure, tile.aggFn),
-      tile.type === 'scatter' ? computeGroupBy(rows, dimension, tile.measureY, tile.aggFn) : Promise.resolve(null)
+    // DuckDB — même raisonnement que renderKpi (valeur + tendance). Radar "colonnes" : une moyenne
+    // par axe, lancées en parallèle elles aussi, même raison.
+    const [agg, aggY, radarColumnValues] = await Promise.all([
+      isRadarColumns ? Promise.resolve(null) : computeGroupBy(rows, dimension, tile.measure, tile.aggFn),
+      tile.type === 'scatter' ? computeGroupBy(rows, dimension, tile.measureY, tile.aggFn) : Promise.resolve(null),
+      isRadarColumns ? Promise.all(radarAxesColumns.map((col) => computeAggregateSingle(rows, col, 'avg'))) : Promise.resolve(null)
     ]);
     if (isStale(tile.id, seq) || instance.isDisposed()) return; // rendu plus récent entre-temps
     // Inconditionnel, même raison que renderGauge ci-dessus : un rendu qui repasse sous le seuil
@@ -469,26 +479,33 @@
         ]
       };
     } else if (tile.type === 'radar') {
-      // Radar à UNE SEULE série (un "polygone"), un axe par valeur de la dimension (plutôt que le
-      // radar classique Power BI : plusieurs mesures en axes pour comparer quelques entités) — le
-      // choix retenu dans ce jeu de données reste cohérent avec le reste des types de tuiles (même
-      // dimension/measure/aggFn que bar/pie/treemap, aucun nouveau champ de formulaire), voir
-      // ROADMAP.md pour pourquoi un radar "classique multi-mesures" ne collait à aucun jeu de
-      // données démonstratif disponible ici. Même max PARTAGÉ par tous les axes (pas un max par
-      // axe, qui normaliserait chaque axe à 100% et rendrait toute comparaison de hauteur entre
-      // axes trompeuse) ; `min` partagé aussi, pour les mesures pouvant être négatives.
-      const values = agg.map((d) => d.value);
+      // Radar à UNE SEULE série (un "polygone"). Deux façons d'obtenir ses axes (tile.radarAxisMode,
+      // voir ROADMAP.md) :
+      // - 'dimension' (par défaut, comportement historique) : un axe par valeur de la dimension —
+      //   plutôt que le radar classique Power BI (plusieurs mesures en axes pour comparer quelques
+      //   entités), qui ne collait à aucun jeu de données démonstratif disponible au moment du
+      //   premier jet (voir HYPOTHESES.md).
+      // - 'columns' (compétences en colonnes, demande du forum Grist — entretiens d'orientation :
+      //   compétences déjà en colonnes, une ligne par élève) : un axe par colonne numérique choisie
+      //   (tile.radarAxes), valeur = moyenne de cette colonne sur `rows` (radarColumnValues
+      //   ci-dessus, déjà calculé en tenant compte du seuil DuckDB).
+      // Dans les deux cas, même max/min PARTAGÉ par tous les axes (pas un max par axe, qui
+      // normaliserait chaque axe à 100% et rendrait toute comparaison de hauteur entre axes
+      // trompeuse) ; `min` partagé aussi, pour les mesures pouvant être négatives.
+      const axisNames = isRadarColumns ? radarAxesColumns : agg.map((d) => String(d.dimension));
+      const values = isRadarColumns ? radarColumnValues : agg.map((d) => d.value);
+      const seriesName = isRadarColumns ? tile.title : tile.measure;
       const maxVal = Math.max(0, ...values);
       const minVal = Math.min(0, ...values);
       option = {
         color: CATEGORICAL_PALETTE,
         tooltip: { trigger: 'item' },
         radar: {
-          indicator: agg.map((d) => ({ name: String(d.dimension), max: maxVal || 1, min: minVal }))
+          indicator: axisNames.map((name) => ({ name: String(name), max: maxVal || 1, min: minVal }))
         },
         series: [{
           type: 'radar',
-          data: [{ name: tile.measure, value: values }]
+          data: [{ name: seriesName, value: values }]
         }]
       };
     } else {

@@ -2155,6 +2155,61 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     (plus aucun traitement spécial), ce qui est le comportement attendu mais n'a pas pu être
     confirmé contre un vrai document portant déjà cette table.
 
+- **Radar — mode "compétences en colonnes" (2026-11-02)**, suite à une idée du forum Grist relayée
+  par le porteur (entretiens d'orientation, ~400 élèves, compétences déjà en colonnes plutôt qu'en
+  lignes — https://forum.grist.libre.sh/t/2196) : un radar peut désormais tirer ses axes de
+  plusieurs colonnes numériques choisies (`tile.radarAxisMode === 'columns'`, `tile.radarAxes`),
+  en plus du mode "dimension" classique (une seule colonne catégorielle groupée, comportement
+  historique inchangé — c'est toujours le mode par défaut pour une tuile sans `radarAxisMode`).
+  - **Formulaire** (`js/main.js`) : nouveau champ "Axes du radar" (`#tile-radar-mode`, select
+    dimension/columns, visible seulement pour `type === 'radar'`) qui bascule entre les champs
+    dimension/mesure/agrégat existants (mode "dimension") et un nouveau sélecteur dynamique "Axes
+    (colonnes numériques)" (`#tile-radar-axes`, même pattern "+ Axe" que les niveaux de drill-down —
+    `createRadarAxisSelect`/`radarAxisSelects`/`MAX_RADAR_AXES = 8`), limité aux colonnes classées
+    "nombre" par `inferColumnKind` (`numericColumns`). Mesure/agrégat masqués en mode "columns" (la
+    valeur de chaque axe est TOUJOURS une moyenne de la colonne sur le groupe, pas un agrégat
+    configurable — une seule option sensée pour des notes/scores, pas besoin d'un sélecteur de plus).
+    Garde-fou identique au drill-down : une même colonne ne peut pas être choisie deux fois comme
+    axe (`tileForm.alert.radarAxesDuplicate`).
+  - **Rendu** (`js/charts.js:renderChart`) : en mode "columns", `computeGroupBy` (dimension/mesure
+    classiques) n'est PAS appelé (`tile.dimension`/`tile.measure` ne sont pas renseignés dans ce
+    mode) — à la place, une moyenne par colonne choisie via `computeAggregateSingle` (donc routée
+    vers DuckDB-WASM au-delà du seuil comme toute autre agrégation, voir CLAUDE.md §2/§6), les N
+    appels lancés en parallèle comme pour les deux mesures de "scatter". Même max/min PARTAGÉ entre
+    tous les axes qu'en mode "dimension" (raison inchangée, voir le commentaire déjà présent dans
+    `renderChart`).
+  - **Export Excel** (`js/data.js:tileExportSheet`) : nouvelle branche dédiée AVANT le calcul de
+    `currentDimension` (qui vaudrait `undefined` en mode "columns", un radar n'ayant de toute façon
+    jamais de drill-down) — un en-tête = les colonnes choisies, une seule ligne = la moyenne de
+    chaque colonne sur les lignes visibles (`aggregateSingle(rows, col, 'avg')`, jamais DuckDB : même
+    choix que le reste de cette fonction, volontairement pure/synchrone). Le mode "dimension" continue
+    de tomber dans la branche générique existante, AUCUN changement de comportement pour lui.
+  - **Testé sous Node** (`dev-tests/test-data.js`) : `tileExportSheet` en mode "columns" (moyenne
+    correcte par colonne, en-tête = les colonnes) et en mode "dimension"/classique (inchangé, même
+    fixture que le test `tileExportSheet` existant pour bar/pie/treemap).
+  - **Testé en navigateur réel** (`dev-tests/harness.html`, servi en HTTP local via Playwright, mock
+    `grist-stub.js`, table `Ventes` préremplie à 8 lignes/2 colonnes numériques Montant/Quantite —
+    voir l'entrée juste au-dessus) : bascule du formulaire dimension ↔ columns (champs
+    mesure/agrégat qui se masquent/réapparaissent correctement), ajout dynamique d'un 2e axe via
+    "+ Axe", soumission, rendu d'une tuile radar à 2 axes (Quantite/Montant) sans erreur console ;
+    PUIS un 2e radar en mode "dimension" classique (Region/Montant/Somme) soumis juste après dans la
+    même session de formulaire, pour confirmer l'absence de régression — les deux tuiles
+    coexistent et se rendent correctement (capture d'écran vérifiée). **[BUG RÉEL trouvé en testant
+    ce harnais]** : `dev-tests/harness.html` duplique entièrement le DOM du formulaire d'ajout de
+    tuile plutôt que de charger `index.html` (voir CLAUDE.md §4, "même DOM" y est trompeur — c'est
+    une COPIE manuelle, pas un partage) — les nouveaux champs ajoutés à `index.html` seul
+    (`#tile-radar-mode-field`, `#tile-radar-axes-field`, les id `#tile-measure-field`/
+    `#tile-agg-field`) étaient absents du harnais, provoquant un `TypeError` au chargement
+    (`addRadarAxisBtn.addEventListener` sur `null`) qui cassait silencieusement TOUT le reste de
+    l'initialisation de `js/main.js` (plus aucun champ du formulaire ne répondait). Corrigé en
+    répliquant les mêmes 3 modifications dans `dev-tests/harness.html`. Un rappel direct de la note
+    déjà présente en mémoire de projet : "le harnais ne prouve pas que `index.html` charge — le
+    vérifier lui-même".
+  - **Non testé** : rendu au-delà du seuil DuckDB (`DUCKDB_ROW_THRESHOLD = 5000`) pour le mode
+    "columns" — la table de démonstration du harnais n'a que 8 lignes ; le chemin DuckDB
+    (`computeAggregateSingle`) est le même que celui déjà exercé par les autres types de tuile
+    au-delà du seuil, mais pas revérifié spécifiquement pour ce nouvel appelant.
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée

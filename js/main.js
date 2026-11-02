@@ -62,6 +62,13 @@
   // de niveaux arbitraire) : au-delà, une tuile chaînant trop de niveaux sur un jeu de données trop
   // petit produit des paliers de drill quasi vides, voir ROADMAP.md.
   const MAX_DRILL_LEVELS = 5;
+  // <select> d'axes du radar en mode "compétences en colonnes" (tile-radar-mode = 'columns', voir
+  // ROADMAP.md : demande du forum Grist, un radar à partir de plusieurs colonnes numériques plutôt
+  // que d'une seule dimension catégorielle) — même pattern dynamique que drillLevelSelects
+  // ci-dessus ("+ Axe" plutôt que des champs figés), un axe = une colonne numérique.
+  let radarAxisSelects = [];
+  // Garde-fou d'ergonomie, même raison que MAX_DRILL_LEVELS : au-delà, un radar devient illisible.
+  const MAX_RADAR_AXES = 8;
 
   const tilesContainer = document.getElementById('tiles');
   const emptyState = document.getElementById('empty-state');
@@ -73,15 +80,22 @@
   const suggestDateHierarchyBtn = document.getElementById('tile-suggest-date-hierarchy');
   const columnDimensionField = document.getElementById('tile-column-dimension-field');
   const columnDimensionSelect = document.getElementById('tile-column-dimension');
+  const radarModeField = document.getElementById('tile-radar-mode-field');
+  const radarModeSelect = document.getElementById('tile-radar-mode');
+  const radarAxesField = document.getElementById('tile-radar-axes-field');
+  const radarAxesContainer = document.getElementById('tile-radar-axes');
+  const addRadarAxisBtn = document.getElementById('tile-radar-axes-add');
   const drillField = document.getElementById('tile-drill-field');
   const drillLevelsContainer = document.getElementById('tile-drill-levels');
   const addDrillLevelBtn = document.getElementById('tile-drill-add-level');
   const drillCrossFilterField = document.getElementById('tile-drill-crossfilter-field');
   const drillCrossFilterCheckbox = document.getElementById('tile-drill-crossfilter');
+  const measureField = document.getElementById('tile-measure-field');
   const measureLabel = document.getElementById('tile-measure-label');
   const measureSelect = document.getElementById('tile-measure');
   const measureYField = document.getElementById('tile-measure-y-field');
   const measureYSelect = document.getElementById('tile-measure-y');
+  const aggField = document.getElementById('tile-agg-field');
   const aggSelect = document.getElementById('tile-agg');
   const gaugeMinField = document.getElementById('tile-gauge-min-field');
   const gaugeMinInput = document.getElementById('tile-gauge-min');
@@ -204,6 +218,17 @@
     return Object.keys(rows[0]).filter((k) => k !== 'id');
   }
 
+  // Colonnes proposées comme axe d'un radar "compétences en colonnes" (voir tile-radar-axes) :
+  // seules les colonnes classées "nombre" par inferColumnKind ont un sens comme axe numérique — une
+  // colonne texte/date moyennée ne produirait qu'un agrégat sans signification. `rows` optionnel,
+  // même raison que pour updateAdvancedFilterFieldsForColumn/updateSuggestDateHierarchyVisibility :
+  // passé explicitement par refreshColumnSelects pendant un changement de table, où
+  // store.getState().rows n'est pas encore à jour.
+  function numericColumns(rows) {
+    rows = rows || store.getState().rows;
+    return availableColumns(rows).filter((col) => inferColumnKind(col, rows) === 'number');
+  }
+
   // Colonnes proposables comme CLÉ DE JOINTURE pour le data blending (voir applyBlend/
   // commitBlendFromForm plus bas) : `availableColumns` ci-dessus EXCLUT `id` (identifiant interne
   // Grist, jamais une vraie colonne à afficher dans un graphique) — mais c'est justement la clé
@@ -234,6 +259,8 @@
     fillCombobox(measureSelect, cols);
     fillCombobox(measureYSelect, cols);
     drillLevelSelects.forEach((select) => fillCombobox(select, cols, { blankLabel: t('tileForm.none.m') }));
+    const numCols = numericColumns(rows);
+    radarAxisSelects.forEach((select) => fillCombobox(select, numCols));
     fillCombobox(trendDimensionSelect, cols, { blankLabel: t('tileForm.none.f') });
     fillCombobox(dateColumnSelect, cols);
     fillCombobox(filterColumnSelect, cols);
@@ -338,9 +365,18 @@
   // voir ROADMAP.md "Mesures façon DAX simplifié") : l'axe est TOUJOURS le mois calculé depuis
   // `tile-date-column` (voir js/duckdb-engine.js:timeSeriesMeasures), la dimension/le drill-down du
   // formulaire n'ont donc pas de sens dans ce mode — même traitement que KPI/jauge.
+  //
+  // Un radar en mode "compétences en colonnes" (tile-radar-mode) non plus : ses axes viennent de
+  // plusieurs colonnes choisies (tile-radar-axes), pas d'une seule dimension catégorielle — demande
+  // du forum Grist (entretiens d'orientation, compétences déjà en colonnes plutôt qu'en lignes).
+  function isRadarColumnsMode() {
+    return tileTypeSelect.value === 'radar' && radarModeSelect.value === 'columns';
+  }
+
   function formHasNoDimension() {
     return typeHasNoDimension(tileTypeSelect.value)
-      || (tileTypeSelect.value === 'bar' && measureModeSelect.value && measureModeSelect.value !== 'brut');
+      || (tileTypeSelect.value === 'bar' && measureModeSelect.value && measureModeSelect.value !== 'brut')
+      || isRadarColumnsMode();
   }
 
   // Le pivot a DEUX dimensions (lignes + colonnes, voir tile-column-dimension-field) déjà
@@ -422,6 +458,69 @@
     const select = createDrillLevelSelect(0);
     drillLevelsContainer.appendChild(select.parentElement);
     drillLevelSelects.push(select);
+  })();
+
+  // Axes du radar en mode "compétences en colonnes" (tile-radar-mode = 'columns') : même pattern
+  // dynamique que createDrillLevelSelect ci-dessus (combobox créée à la demande, "+ Axe"), mais
+  // sur `radarAxisSelects`/`radarAxesContainer`/`addRadarAxisBtn`, et sans blankLabel : contrairement
+  // à un niveau de drill (où "(aucun)" veut dire "pas de niveau suivant"), un axe vide n'a pas de
+  // sens à conserver — vidé, il est retiré (voir truncateRadarAxesAfter) au lieu de devenir "(aucun)".
+  function createRadarAxisSelect(index) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'combobox';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.id = `tile-radar-axis-${index + 1}`;
+    input.className = 'combobox-input';
+    const list = document.createElement('ul');
+    list.className = 'combobox-list';
+    list.hidden = true;
+    wrapper.appendChild(input);
+    wrapper.appendChild(list);
+    GristBI.combobox.attach(input, list, { strict: true });
+    input.addEventListener('change', () => {
+      if (!input.value) truncateRadarAxesAfter(index);
+      updateRadarAxesUI();
+    });
+    return input;
+  }
+
+  function truncateRadarAxesAfter(index) {
+    while (radarAxisSelects.length > index + 1) {
+      radarAxisSelects.pop().parentElement.remove();
+    }
+  }
+
+  // Réaffiche "+ Axe" seulement si le dernier axe visible est rempli et que le plafond n'est pas
+  // atteint — même logique que updateDrillLevelsUI.
+  function updateRadarAxesUI() {
+    const isRadarColumns = tileTypeSelect.value === 'radar' && radarModeSelect.value === 'columns';
+    const lastSelect = radarAxisSelects[radarAxisSelects.length - 1];
+    addRadarAxisBtn.hidden = !isRadarColumns || !lastSelect || !lastSelect.value || radarAxisSelects.length >= MAX_RADAR_AXES;
+  }
+
+  addRadarAxisBtn.addEventListener('click', () => {
+    if (radarAxisSelects.length >= MAX_RADAR_AXES) return;
+    const select = createRadarAxisSelect(radarAxisSelects.length);
+    fillCombobox(select, numericColumns(store.getState().rows));
+    radarAxesContainer.appendChild(select.parentElement);
+    radarAxisSelects.push(select);
+    updateRadarAxesUI();
+  });
+
+  // Vide le formulaire de tous ses axes sauf le premier (toujours présent) — même rôle que
+  // resetDrillLevels.
+  function resetRadarAxes() {
+    truncateRadarAxesAfter(0);
+    if (radarAxisSelects[0]) radarAxisSelects[0].value = '';
+  }
+
+  // Axe 1 toujours présent dans le formulaire, comme le niveau 1 de drill-down — les suivants sont
+  // ajoutés dynamiquement au clic sur "+ Axe" ou lors du préremplissage en édition.
+  (function initFirstRadarAxis() {
+    const select = createRadarAxisSelect(0);
+    radarAxesContainer.appendChild(select.parentElement);
+    radarAxisSelects.push(select);
   })();
 
   // Désactive les contrôles qui n'ont de sens qu'avec une table de travail connectée (formulaire
@@ -812,6 +911,8 @@
     const isBar = type === 'bar';
     const hasMeasureMode = isBar && measureModeSelect.value && measureModeSelect.value !== 'brut';
     const isPivot = type === 'pivot';
+    const isRadar = type === 'radar';
+    const isRadarColumns = isRadarColumnsMode();
     // KPI/jauge/tuile "Barres" en mode de calcul temporel : pas de dimension de regroupement ni de
     // drill-down, juste un agrégat sur toute la sélection (le KPI peut en plus le comparer à une
     // période via "Tendance vs", la jauge le positionne sur un cadran Min/Max, la tuile Barres en
@@ -821,6 +922,13 @@
     dimensionField.hidden = formHasNoDimension();
     dimensionLabel.textContent = t(isPivot ? 'tileForm.dimension.labelRows' : 'tileForm.dimension.label');
     columnDimensionField.hidden = !isPivot;
+    // Radar "compétences en colonnes" : mesure/agrégat n'ont pas de sens (un axe = la moyenne
+    // d'une colonne, pas une agrégation configurable, voir js/data.js:radarSeriesForTile) — masqués
+    // comme dimensionField/drillField ci-dessus plutôt que laissés visibles mais ignorés.
+    radarModeField.hidden = !isRadar;
+    radarAxesField.hidden = !isRadarColumns;
+    measureField.hidden = isRadarColumns;
+    aggField.hidden = isRadarColumns;
     drillField.hidden = formHasNoDimension() || !supportsDrillDown(type);
     trendField.hidden = !isKpi;
     gaugeMinField.hidden = !isGauge;
@@ -830,6 +938,7 @@
     measureYField.hidden = !isScatter;
     measureLabel.textContent = t(isScatter ? 'tileForm.measure.labelX' : 'tileForm.measure.label');
     updateDrillLevelsUI();
+    updateRadarAxesUI();
     updateSuggestDateHierarchyVisibility();
   }
 
@@ -853,6 +962,24 @@
     updateDrillLevelsUI();
   }
 
+  // Même rôle que setDrillLevels ci-dessus, pour les axes du radar "compétences en colonnes"
+  // (tile-radar-axes) : préremplit depuis `tile.radarAxes` en édition, crée les comboboxes d'axe
+  // manquantes au besoin.
+  function setRadarAxes(axes) {
+    resetRadarAxes();
+    const cols = numericColumns(store.getState().rows);
+    (axes || []).forEach((col, i) => {
+      if (i >= radarAxisSelects.length) {
+        const select = createRadarAxisSelect(i);
+        fillCombobox(select, cols);
+        radarAxesContainer.appendChild(select.parentElement);
+        radarAxisSelects.push(select);
+      }
+      radarAxisSelects[i].value = col;
+    });
+    updateRadarAxesUI();
+  }
+
   function startEditTile(tile) {
     editingTileId = tile.id;
     tileTypeSelect.value = tile.type;
@@ -863,10 +990,13 @@
     measureYSelect.value = tile.measureY || '';
     gaugeMinInput.value = Number.isFinite(tile.gaugeMin) ? tile.gaugeMin : 0;
     gaugeMaxInput.value = Number.isFinite(tile.gaugeMax) ? tile.gaugeMax : 100;
-    // Avant updateFormFieldsForType() : elle lit measureModeSelect.value pour décider de la
-    // visibilité de dimensionField/drillField/dateColumnField (voir formHasNoDimension).
+    // Avant updateFormFieldsForType() : elle lit measureModeSelect.value/radarModeSelect.value
+    // pour décider de la visibilité de dimensionField/drillField/dateColumnField/radarAxesField
+    // (voir formHasNoDimension/isRadarColumnsMode).
     measureModeSelect.value = tile.measureMode || 'brut';
     dateColumnSelect.value = tile.dateColumn || '';
+    radarModeSelect.value = tile.radarAxisMode === 'columns' ? 'columns' : 'dimension';
+    setRadarAxes(tile.radarAxes);
     updateFormFieldsForType();
     measureSelect.value = tile.measure;
     aggSelect.value = tile.aggFn;
@@ -884,6 +1014,7 @@
 
   tileTypeSelect.addEventListener('change', updateFormFieldsForType);
   measureModeSelect.addEventListener('change', updateFormFieldsForType);
+  radarModeSelect.addEventListener('change', updateFormFieldsForType);
   dimensionSelect.addEventListener('change', () => updateSuggestDateHierarchyVisibility());
 
   // Applique la suggestion Année/Trimestre/Mois/Jour : bascule la dimension sur la colonne Année
@@ -910,17 +1041,26 @@
     const measureMode = (isBar && measureModeSelect.value && measureModeSelect.value !== 'brut') ? measureModeSelect.value : undefined;
     const dateColumn = measureMode ? dateColumnSelect.value : '';
     const isPivot = type === 'pivot';
+    const isRadarColumns = isRadarColumnsMode();
     const hasDimension = !formHasNoDimension();
     const dimension = dimensionSelect.value;
     const columnDimension = columnDimensionSelect.value;
     const measure = measureSelect.value;
     const aggFn = aggSelect.value;
-    if (!measure || (hasDimension && !dimension)) return;
+    // Radar "compétences en colonnes" : aucune mesure/dimension unique à valider (voir
+    // isRadarColumnsMode) — ses propres axes (radarAxes ci-dessous) jouent ce rôle à la place.
+    if (!isRadarColumns && (!measure || (hasDimension && !dimension))) return;
     if (isScatter && !measureYSelect.value) return; // 2e mesure obligatoire pour un nuage de points
     if (measureMode && !dateColumn) { alert(t('tileForm.alert.dateColumnRequired')); return; }
     if (isPivot && !columnDimension) return; // 2e dimension obligatoire pour un tableau croisé
     if (isPivot && columnDimension === dimension) {
       alert(t('tileForm.alert.pivotDimsDiffer'));
+      return;
+    }
+    const radarAxes = isRadarColumns ? radarAxisSelects.map((s) => s.value).filter(Boolean) : [];
+    if (isRadarColumns && !radarAxes.length) return; // au moins un axe requis
+    if (isRadarColumns && new Set(radarAxes).size !== radarAxes.length) {
+      alert(t('tileForm.alert.radarAxesDuplicate'));
       return;
     }
     let gaugeMin, gaugeMax;
@@ -942,6 +1082,7 @@
       return;
     }
     const title = isPivot ? `${measure} par ${dimension} × ${columnDimension}`
+      : isRadarColumns ? `Radar : ${radarAxes.join(', ')}`
       : hasDimension ? `${measure} par ${dimension}`
       : measureMode ? `${MEASURE_MODE_TITLES[measureMode]} : ${aggFn}(${measure})`
       : `${aggFn}(${measure})`;
@@ -960,6 +1101,8 @@
     tileData.measureMode = measureMode;
     tileData.dateColumn = measureMode ? dateColumn : undefined;
     tileData.columnDimension = isPivot ? columnDimension : undefined;
+    tileData.radarAxisMode = (type === 'radar') ? (isRadarColumns ? 'columns' : 'dimension') : undefined;
+    tileData.radarAxes = isRadarColumns ? radarAxes : undefined;
     if (editingTileId) {
       store.updateTile(editingTileId, tileData);
       stopEditTile();

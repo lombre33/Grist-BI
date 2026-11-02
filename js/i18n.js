@@ -153,6 +153,11 @@
     'tileForm.dimension.label': { fr: 'Dimension', en: 'Dimension' },
     'tileForm.dimension.labelRows': { fr: 'Dimension (lignes)', en: 'Dimension (rows)' },
     'tileForm.columnDimension.label': { fr: 'Dimension (colonnes)', en: 'Dimension (columns)' },
+    'tileForm.radarMode.label': { fr: 'Axes du radar', en: 'Radar axes' },
+    'tileForm.radarMode.dimension': { fr: 'Une colonne catégorielle (classique)', en: 'A single categorical column (classic)' },
+    'tileForm.radarMode.columns': { fr: 'Plusieurs colonnes numériques (compétences)', en: 'Several numeric columns (skills)' },
+    'tileForm.radarAxes.label': { fr: 'Axes (colonnes numériques)', en: 'Axes (numeric columns)' },
+    'tileForm.radarAxes.addAxis': { fr: '+ Axe', en: '+ Axis' },
     'tileForm.suggestDateHierarchy': { fr: 'Détailler par Année/Trimestre/Mois/Jour', en: 'Break down by Year/Quarter/Month/Day' },
     'tileForm.drill.label': { fr: 'Drill-down', en: 'Drill-down' },
     'tileForm.drill.addLevel': { fr: '+ Niveau', en: '+ Level' },
@@ -192,6 +197,10 @@
     'tileForm.alert.drillDuplicate': {
       fr: 'Une même colonne ne peut pas apparaître deux fois dans le drill-down, ni reprendre la dimension racine.',
       en: 'The same column cannot appear twice in the drill-down, nor repeat the root dimension.',
+    },
+    'tileForm.alert.radarAxesDuplicate': {
+      fr: 'Une même colonne ne peut pas apparaître deux fois parmi les axes du radar.',
+      en: 'The same column cannot appear twice among the radar axes.',
     },
 
     // --- Boutons d'action d'une tuile (js/main.js:buildTileElement) ---
