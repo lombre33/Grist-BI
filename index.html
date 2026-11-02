@@ -277,6 +277,26 @@
       <div id="tile-radar-axes" class="drill-levels"></div>
       <button type="button" id="tile-radar-axes-add" class="btn-secondary btn-tiny" data-i18n="tileForm.radarAxes.addAxis" hidden>+ Axe</button>
     </div>
+    <div class="field" id="tile-radar-entity-column-field" hidden>
+      <label for="tile-radar-entity-column" data-i18n="tileForm.radarEntity.columnLabel">Comparer une valeur (colonne)</label>
+      <div class="combobox">
+        <input type="text" id="tile-radar-entity-column" class="combobox-input" />
+        <ul class="combobox-list" hidden></ul>
+      </div>
+    </div>
+    <div class="field" id="tile-radar-entity-value-field" hidden>
+      <label for="tile-radar-entity-value" data-i18n="tileForm.radarEntity.valueLabel">Valeur à comparer</label>
+      <div class="combobox">
+        <input type="text" id="tile-radar-entity-value" class="combobox-input" />
+        <ul class="combobox-list" hidden></ul>
+      </div>
+    </div>
+    <div class="field field-checkbox" id="tile-radar-compare-average-field" hidden>
+      <label for="tile-radar-compare-average">
+        <input type="checkbox" id="tile-radar-compare-average" />
+        <span data-i18n="tileForm.radarEntity.compareAverage">Comparer aussi à la moyenne du groupe filtré</span>
+      </label>
+    </div>
     <div class="field" id="tile-drill-field">
       <label for="tile-drill-dimension-1" data-i18n="tileForm.drill.label">Drill-down</label>
       <div id="tile-drill-levels" class="drill-levels"></div>

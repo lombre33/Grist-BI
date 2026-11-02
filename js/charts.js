@@ -348,6 +348,15 @@
     // regrouper — un axe par colonne choisie, valeur = moyenne de cette colonne sur `rows`.
     const isRadarColumns = tile.type === 'radar' && tile.radarAxisMode === 'columns';
     const radarAxesColumns = isRadarColumns ? (tile.radarAxes || []).filter(Boolean) : [];
+    // Comparaison élève/moyenne du groupe filtré (ROADMAP.md, demande du forum Grist) : valable dans
+    // les DEUX modes d'axes du radar. `radarEntityRows` reste `null` hors radar/sans comparaison
+    // choisie — `hasRadarEntity` distingue "pas de comparaison" de "comparaison choisie mais aucune
+    // ligne ne correspond" (valeur orpheline après un changement de table, par ex.), qui retombe
+    // silencieusement sur l'affichage normal plutôt que sur une tuile vide.
+    const radarEntityRows = (tile.type === 'radar' && tile.radarEntityColumn && tile.radarEntityValue)
+      ? rows.filter((r) => sameValue(r[tile.radarEntityColumn], tile.radarEntityValue))
+      : null;
+    const hasRadarEntity = !!(radarEntityRows && radarEntityRows.length);
 
     const seq = bumpSeq(tile.id);
     const usingDuckDb = rows.length >= DUCKDB_ROW_THRESHOLD;
@@ -355,11 +364,15 @@
     // scatter a besoin de deux agrégations indépendantes (mesures X/Y) : lancées en parallèle, pas
     // en séquence, pour ne payer qu'une seule fois la latence du plus lent des deux chargements
     // DuckDB — même raisonnement que renderKpi (valeur + tendance). Radar "colonnes" : une moyenne
-    // par axe, lancées en parallèle elles aussi, même raison.
-    const [agg, aggY, radarColumnValues] = await Promise.all([
+    // par axe, lancées en parallèle elles aussi, même raison. Radar + comparaison : la série de
+    // l'entité comparée (ses propres lignes seulement) est elle aussi calculée en parallèle du
+    // reste plutôt qu'après coup.
+    const [agg, aggY, radarColumnValues, radarEntityColumnValues, radarEntityAgg] = await Promise.all([
       isRadarColumns ? Promise.resolve(null) : computeGroupBy(rows, dimension, tile.measure, tile.aggFn),
       tile.type === 'scatter' ? computeGroupBy(rows, dimension, tile.measureY, tile.aggFn) : Promise.resolve(null),
-      isRadarColumns ? Promise.all(radarAxesColumns.map((col) => computeAggregateSingle(rows, col, 'avg'))) : Promise.resolve(null)
+      isRadarColumns ? Promise.all(radarAxesColumns.map((col) => computeAggregateSingle(rows, col, 'avg'))) : Promise.resolve(null),
+      (isRadarColumns && hasRadarEntity) ? Promise.all(radarAxesColumns.map((col) => computeAggregateSingle(radarEntityRows, col, 'avg'))) : Promise.resolve(null),
+      (!isRadarColumns && tile.type === 'radar' && hasRadarEntity) ? computeGroupBy(radarEntityRows, dimension, tile.measure, tile.aggFn) : Promise.resolve(null)
     ]);
     if (isStale(tile.id, seq) || instance.isDisposed()) return; // rendu plus récent entre-temps
     // Inconditionnel, même raison que renderGauge ci-dessus : un rendu qui repasse sous le seuil
@@ -479,8 +492,8 @@
         ]
       };
     } else if (tile.type === 'radar') {
-      // Radar à UNE SEULE série (un "polygone"). Deux façons d'obtenir ses axes (tile.radarAxisMode,
-      // voir ROADMAP.md) :
+      // Radar à une ou DEUX séries (un ou deux "polygones"). Deux façons d'obtenir ses axes
+      // (tile.radarAxisMode, voir ROADMAP.md) :
       // - 'dimension' (par défaut, comportement historique) : un axe par valeur de la dimension —
       //   plutôt que le radar classique Power BI (plusieurs mesures en axes pour comparer quelques
       //   entités), qui ne collait à aucun jeu de données démonstratif disponible au moment du
@@ -489,23 +502,50 @@
       //   compétences déjà en colonnes, une ligne par élève) : un axe par colonne numérique choisie
       //   (tile.radarAxes), valeur = moyenne de cette colonne sur `rows` (radarColumnValues
       //   ci-dessus, déjà calculé en tenant compte du seuil DuckDB).
-      // Dans les deux cas, même max/min PARTAGÉ par tous les axes (pas un max par axe, qui
-      // normaliserait chaque axe à 100% et rendrait toute comparaison de hauteur entre axes
-      // trompeuse) ; `min` partagé aussi, pour les mesures pouvant être négatives.
       const axisNames = isRadarColumns ? radarAxesColumns : agg.map((d) => String(d.dimension));
-      const values = isRadarColumns ? radarColumnValues : agg.map((d) => d.value);
-      const seriesName = isRadarColumns ? tile.title : tile.measure;
-      const maxVal = Math.max(0, ...values);
-      const minVal = Math.min(0, ...values);
+      const groupValues = isRadarColumns ? radarColumnValues : agg.map((d) => d.value);
+      // Étiquette de la série "groupe" : `tile.measure` en mode dimension (inchangé, même valeur
+      // qu'avant la comparaison élève/moyenne ci-dessous) ; en mode colonnes, `tile.title` tant
+      // qu'aucune comparaison n'est affichée (comportement du premier jet de ce mode, inchangé),
+      // sinon un libellé explicite ("Moyenne du groupe") pour la distinguer de la série élève.
+      const groupLabel = isRadarColumns ? (hasRadarEntity ? t('chart.radar.groupAverage') : tile.title) : tile.measure;
+
+      // Comparaison élève/moyenne du groupe filtré (tile.radarEntityColumn/radarEntityValue/
+      // radarCompareAverage, voir ROADMAP.md) : une 2e série avec les mêmes axes, calculée sur les
+      // seules lignes de l'élève choisi. En mode dimension, ses propres valeurs peuvent ne pas
+      // couvrir tous les axes du groupe (ex. une note manquante pour une matière) — complétées à 0
+      // par nom d'axe plutôt que de décaler les valeurs par position.
+      let series;
+      if (hasRadarEntity) {
+        const entityValues = isRadarColumns
+          ? radarEntityColumnValues
+          : (() => {
+              const byName = new Map(radarEntityAgg.map((d) => [String(d.dimension), d.value]));
+              return axisNames.map((name) => (byName.has(name) ? byName.get(name) : 0));
+            })();
+        const entitySeries = { name: String(tile.radarEntityValue), value: entityValues };
+        series = tile.radarCompareAverage ? [entitySeries, { name: groupLabel, value: groupValues }] : [entitySeries];
+      } else {
+        series = [{ name: groupLabel, value: groupValues }];
+      }
+
+      // Même max/min PARTAGÉ par tous les axes ET toutes les séries affichées (pas un max par axe,
+      // qui normaliserait chaque axe à 100% et rendrait toute comparaison de hauteur trompeuse, ni
+      // un max par série, qui rendrait la comparaison élève/moyenne elle-même trompeuse) ; `min`
+      // partagé aussi, pour les mesures pouvant être négatives.
+      const allValues = series.reduce((acc, s) => acc.concat(s.value), []);
+      const maxVal = Math.max(0, ...allValues);
+      const minVal = Math.min(0, ...allValues);
       option = {
         color: CATEGORICAL_PALETTE,
         tooltip: { trigger: 'item' },
+        legend: series.length > 1 ? { top: 0, data: series.map((s) => s.name) } : undefined,
         radar: {
           indicator: axisNames.map((name) => ({ name: String(name), max: maxVal || 1, min: minVal }))
         },
         series: [{
           type: 'radar',
-          data: [{ name: seriesName, value: values }]
+          data: series
         }]
       };
     } else {

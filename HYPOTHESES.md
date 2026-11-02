@@ -2210,6 +2210,84 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     (`computeAggregateSingle`) est le même que celui déjà exercé par les autres types de tuile
     au-delà du seuil, mais pas revérifié spécifiquement pour ce nouvel appelant.
 
+- **Radar — comparaison élève/moyenne du groupe filtré (2026-11-02)**, même fil du forum que
+  l'entrée ci-dessus (https://forum.grist.libre.sh/t/2196, « superposer élève et moyenne de
+  classe ») : un radar (mode "columns" OU mode "dimension" classique) peut désormais superposer le
+  polygone d'UNE entité précise (`tile.radarEntityColumn`/`tile.radarEntityValue`, ex. une ligne
+  "Eleve = Dupont") à celui du groupe entier actuellement filtré pour la tuile (case "Comparer
+  aussi à la moyenne du groupe filtré", `tile.radarCompareAverage`), en 2 séries ECharts avec
+  légende. Sans entité choisie, comportement rigoureusement inchangé (une seule série, comme avant
+  cette feature) — vérifié par relecture des branches de repli (`hasRadarEntity` à `false` dans
+  `js/charts.js`/`js/data.js` retombe sur le code déjà existant, pas une nouvelle branche parallèle).
+  - **Formulaire** (`js/main.js`) : 2 nouveaux comboboxes "Comparer une valeur (colonne)"
+    (`#tile-radar-entity-column`, toutes colonnes, pas seulement numériques) et "Valeur à comparer"
+    (`#tile-radar-entity-value`, valeurs distinctes de la colonne choisie via
+    `GristBI.data.distinctColumnValues`, recalculées à chaque changement de colonne) + une case à
+    cocher "Comparer aussi à la moyenne du groupe filtré" (`#tile-radar-compare-average`) — tous les
+    3 visibles pour `type === 'radar'` dans les DEUX modes d'axes, masqués sinon. La case n'a d'effet
+    que si une entité est choisie (sinon elle est ignorée silencieusement, pas de validation
+    bloquante côté formulaire : une case cochée sans entité ne casse rien, elle ne fait juste rien).
+  - **Rendu** (`js/charts.js:renderChart`) : les lignes de l'entité sont isolées PARMI les lignes déjà
+    filtrées pour la tuile (`rows.filter(r => sameValue(r[tile.radarEntityColumn], tile.radarEntityValue))`
+    — donc après cross-filtres/filtres avancés/drill-down, jamais avant), avec `sameValue` comme
+    partout où une valeur de formulaire (string) est comparée à une valeur de ligne (voir piège n°7,
+    CLAUDE.md §7). En mode "columns", la valeur de l'entité par axe est sa propre moyenne sur CES
+    lignes (`computeAggregateSingle(radarEntityRows, col, 'avg')` — une moyenne même si l'entité n'a
+    qu'une seule ligne, pour rester cohérent avec la moyenne du groupe). En mode "dimension", l'axe
+    list AUTORITATIVE reste celle du groupe entier (`agg`, jamais celle, potentiellement plus
+    courte, de l'entité) ; les valeurs de l'entité sont reprojetées sur cette liste par nom via une
+    `Map`, un axe que l'entité n'a pas étant comblé à `0` plutôt que de raccourcir le polygone ou de
+    planter (ex. un élève sans note dans une matière). Libellé de la série "groupe" : "Moyenne du
+    groupe" (`chart.radar.groupAverage`, nouvelle clé i18n) en mode "columns" où il n'y a pas de nom
+    de mesure unique à réutiliser ; `tile.measure` en mode "dimension" (identique au libellé déjà
+    utilisé AVANT cette feature pour l'unique série d'un radar classique — choix délibéré de ne pas
+    renommer un libellé existant). Une valeur d'entité orpheline (absente des lignes filtrées, ex.
+    élève retiré par un cross-filtre) retombe silencieusement sur le rendu SANS entité (une seule
+    série, celle du groupe) — jamais un polygone vide ni une erreur.
+  - **Export Excel** (`js/data.js:tileExportSheet`) : même logique dupliquée en pur/synchrone
+    (jamais DuckDB, cohérent avec le reste de cette fonction) — 1 ligne par série plutôt que la ligne
+    unique existante, colonne "Série" en tête (nom de l'entité, puis "Moyenne" si la case est
+    cochée), 0 en comblement pour un axe manquant côté entité en mode "dimension", même repli
+    silencieux sur le format SANS entité pour une valeur orpheline.
+  - **Testé sous Node** (`dev-tests/test-data.js`, 5 nouveaux cas) : mode "columns" avec entité
+    seule, mode "columns" avec entité + moyenne, mode "dimension" avec entité + moyenne (axes =
+    valeurs du groupe, pas le nom de la colonne dimension — erreur commise puis corrigée en écrivant
+    ce test, voir le calcul à la main refait depuis la fixture), mode "dimension" avec une entité à
+    qui il manque un axe (comblé à 0, sans ligne "Moyenne" puisque la case n'était pas cochée dans ce
+    cas), et une valeur d'entité orpheline (repli identique au rendu sans entité). Les 82 lignes `OK`
+    passent, aucune régression sur les tests déjà existants.
+  - **Testé en navigateur réel** (`dev-tests/harness.html`, Playwright, jeu de données préremplifié
+    via `window.__gristStubPreseed` — PAS le mock par défaut de 8 lignes, bien plus réaliste : 400
+    "élèves" avec 5 colonnes de compétence numériques + une colonne "Classe" à 2 valeurs, directement
+    inspiré du cas du forum) : (1) tuile radar "columns" à 5 axes avec entité "Eleve 042" + case
+    "moyenne" cochée → 2 séries rendues, légende correcte, pentagone cohérent (l'élève proche du
+    centre sur un axe, au-dessus de la moyenne sur un autre) ; (2) tuile radar "dimension" classique
+    (Classe/Communication/Moyenne) avec entité "Eleve 007" + case cochée → 2 séries rendues
+    (dégénéré visuellement avec seulement 2 valeurs de Classe, normal pour ce mode, pas un bug de
+    cette feature) ; (3) édition de la 1re tuile → les 3 nouveaux champs (mode, colonne entité,
+    valeur entité, case moyenne) correctement préremplis par `startEditTile`. **Zéro erreur
+    console** sur l'ensemble du flux, y compris sur `index.html` lui-même testé séparément hors du
+    harnais (voir l'entrée ci-dessous sur ce point précis) — confirme que la leçon du bug du
+    harnais trouvé lors de la feature précédente (ci-dessus) n'a pas été reproduite ici : les mêmes
+    3 nouveaux champs HTML ont été répliqués dans `dev-tests/harness.html` dans le MÊME changement
+    que `index.html`, diffés immédiatement (`diff` de la section `<form id="add-tile-form">`,
+    "IDENTIQUE") avant toute autre étape.
+  - **`index.html` vérifié séparément de `dev-tests/harness.html`** (nouveau script Playwright ad
+    hoc, chargement direct de `http://localhost:8923/index.html`, PAS le mock) : les 7 ids de champ
+    radar (`tile-radar-mode-field`, `tile-radar-axes-field`, `tile-radar-entity-column-field`,
+    `tile-radar-entity-value-field`, `tile-radar-compare-average-field`, `tile-measure-field`,
+    `tile-agg-field`) sont bien présents dans le DOM statique, et aucune erreur de type
+    `TypeError`/`addEventListener sur null` (la signature du bug ci-dessus) n'apparaît — seules des
+    erreurs ATTENDUES et déjà documentées (`grist is not defined`, `ERR_TUNNEL_CONNECTION_FAILED`),
+    puisque `grist-plugin-api.js` réel ne peut par construction pas fonctionner hors d'un vrai
+    iframe Grist dans ce sandbox (voir CLAUDE.md §4, §9).
+  - **Non testé** : rendu au-delà du seuil DuckDB pour cette feature spécifiquement (même limite que
+    l'entrée ci-dessus — 400 lignes reste sous `DUCKDB_ROW_THRESHOLD = 5000`, le chemin DuckDB de
+    `computeAggregateSingle` est générique et déjà exercé ailleurs, mais pas par CET appelant
+    précis) ; le comportement réel d'un très grand nombre de valeurs distinctes dans le sélecteur
+    "Valeur à comparer" (combobox non virtualisé) sur un vrai document à plusieurs milliers de
+    lignes.
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée

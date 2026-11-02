@@ -392,6 +392,45 @@ const rows = [
   assert.deepStrictEqual(radarDimensionSheet.header, ['Region', 'Montant']);
   assert.deepStrictEqual(radarDimensionSheet.rows, [['Nord', 190], ['Sud', 150]]);
   console.log('OK tileExportSheet (radar "compétences en colonnes" : un axe par colonne, moyenne par colonne ; radar classique inchangé)');
+
+  // Comparaison élève/moyenne du groupe filtré (tile.radarEntityColumn/radarEntityValue/
+  // radarCompareAverage, ROADMAP.md — 2e idée du même fil forum) — mode "colonnes" : entité seule
+  // (pas de 2e ligne tant que radarCompareAverage n'est pas coché).
+  const radarColumnsEntityOnlyTile = Object.assign({}, radarColumnsTile, { radarEntityColumn: 'Eleve', radarEntityValue: 'Dupont' });
+  const radarColumnsEntityOnlySheet = data.tileExportSheet(radarColumnsEntityOnlyTile, radarColumnsState);
+  assert.deepStrictEqual(radarColumnsEntityOnlySheet.header, ['Série', 'Maths', 'Francais']);
+  assert.deepStrictEqual(radarColumnsEntityOnlySheet.rows, [['Dupont', 12, 16]]);
+
+  // Mode "colonnes" + radarCompareAverage : 2 lignes, élève puis "Moyenne" du groupe filtré entier.
+  const radarColumnsCompareTile = Object.assign({}, radarColumnsEntityOnlyTile, { radarCompareAverage: true });
+  const radarColumnsCompareSheet = data.tileExportSheet(radarColumnsCompareTile, radarColumnsState);
+  assert.deepStrictEqual(radarColumnsCompareSheet.header, ['Série', 'Maths', 'Francais']);
+  assert.deepStrictEqual(radarColumnsCompareSheet.rows, [['Dupont', 12, 16], ['Moyenne', 15, 12]]);
+
+  // Mode "dimension" (classique) + radarCompareAverage : les axes viennent du groupement par
+  // dimension (Region), l'entité (Produit = "Casque audio") a une ligne par région -> aucun axe
+  // manquant ici.
+  const radarDimensionCompareTile = Object.assign({}, radarDimensionTile, {
+    radarEntityColumn: 'Produit', radarEntityValue: 'Casque audio', radarCompareAverage: true
+  });
+  const radarDimensionCompareSheet = data.tileExportSheet(radarDimensionCompareTile, baseState);
+  assert.deepStrictEqual(radarDimensionCompareSheet.header, ['Série', 'Nord', 'Sud']); // axes = valeurs de Region, ordre de 1re apparition
+  assert.deepStrictEqual(radarDimensionCompareSheet.rows, [['Casque audio', 100, 150], ['Moyenne', 190, 150]]);
+
+  // Mode "dimension" + entité dont les lignes ne couvrent PAS tous les axes du groupe (Produit =
+  // "Clavier" n'existe qu'en région Nord) : l'axe manquant (Sud) est comblé à 0, pas décalé.
+  const radarDimensionMissingAxisTile = Object.assign({}, radarDimensionTile, { radarEntityColumn: 'Produit', radarEntityValue: 'Clavier' });
+  const radarDimensionMissingAxisSheet = data.tileExportSheet(radarDimensionMissingAxisTile, baseState);
+  assert.deepStrictEqual(radarDimensionMissingAxisSheet.header, ['Série', 'Nord', 'Sud']);
+  assert.deepStrictEqual(radarDimensionMissingAxisSheet.rows, [['Clavier', 90, 0]]); // pas de "Moyenne" : radarCompareAverage absent
+
+  // Valeur de comparaison orpheline (aucune ligne ne correspond, ex. après un changement de table) :
+  // repli silencieux sur le comportement SANS comparaison, identique à radarDimensionSheet ci-dessus.
+  const radarDimensionOrphanTile = Object.assign({}, radarDimensionTile, { radarEntityColumn: 'Produit', radarEntityValue: 'Inexistant' });
+  const radarDimensionOrphanSheet = data.tileExportSheet(radarDimensionOrphanTile, baseState);
+  assert.deepStrictEqual(radarDimensionOrphanSheet.header, ['Region', 'Montant']);
+  assert.deepStrictEqual(radarDimensionOrphanSheet.rows, [['Nord', 190], ['Sud', 150]]);
+  console.log('OK tileExportSheet (radar : comparaison élève/moyenne du groupe filtré, modes "colonnes" et "dimension", axe manquant comblé à 0, valeur orpheline sans effet)');
 }
 
 // sanitizeSheetName : caractères interdits Excel, troncature à 31, unicité dans le classeur

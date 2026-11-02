@@ -158,6 +158,9 @@
     'tileForm.radarMode.columns': { fr: 'Plusieurs colonnes numériques (compétences)', en: 'Several numeric columns (skills)' },
     'tileForm.radarAxes.label': { fr: 'Axes (colonnes numériques)', en: 'Axes (numeric columns)' },
     'tileForm.radarAxes.addAxis': { fr: '+ Axe', en: '+ Axis' },
+    'tileForm.radarEntity.columnLabel': { fr: 'Comparer une valeur (colonne)', en: 'Compare a value (column)' },
+    'tileForm.radarEntity.valueLabel': { fr: 'Valeur à comparer', en: 'Value to compare' },
+    'tileForm.radarEntity.compareAverage': { fr: 'Comparer aussi à la moyenne du groupe filtré', en: 'Also compare to the filtered group average' },
     'tileForm.suggestDateHierarchy': { fr: 'Détailler par Année/Trimestre/Mois/Jour', en: 'Break down by Year/Quarter/Month/Day' },
     'tileForm.drill.label': { fr: 'Drill-down', en: 'Drill-down' },
     'tileForm.drill.addLevel': { fr: '+ Niveau', en: '+ Level' },
@@ -258,6 +261,7 @@
     'chart.waterfall.base': { fr: 'Base (cumul)', en: 'Base (running total)' },
     'chart.waterfall.increase': { fr: 'Hausse', en: 'Increase' },
     'chart.waterfall.decrease': { fr: 'Baisse', en: 'Decrease' },
+    'chart.radar.groupAverage': { fr: 'Moyenne du groupe', en: 'Group average' },
   };
 
   let lang = (typeof localStorage !== 'undefined' && localStorage.getItem('gristbi_lang') === 'en') ? 'en' : 'fr';

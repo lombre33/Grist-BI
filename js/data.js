@@ -420,14 +420,32 @@
     if (tile.type === 'bar' && tile.measureMode && tile.measureMode !== 'brut') {
       return { name: title, header: ['Info'], rows: [['Export non disponible pour les tuiles avec un mode de calcul temporel (Cumul/YTD/N-1) — voir GristBI.data.buildWorkbookSheetsAsync.']] };
     }
+    // Comparaison élève/moyenne du groupe filtré (tile.radarEntityColumn/radarEntityValue/
+    // radarCompareAverage, voir js/charts.js) : lignes de l'entité choisie, calculées une seule fois
+    // ici puisque les deux modes d'axes du radar ci-dessous en ont besoin. `null` (pas juste un
+    // tableau vide) distingue "aucune comparaison choisie" de "comparaison choisie mais aucune ligne
+    // ne correspond" (valeur orpheline après un changement de table) — dans les deux cas, pas de
+    // 2e ligne, mais le sens diffère pour un futur lecteur de ce code.
+    const radarEntityRows = (tile.type === 'radar' && tile.radarEntityColumn && tile.radarEntityValue)
+      ? rows.filter((r) => sameValue(r[tile.radarEntityColumn], tile.radarEntityValue))
+      : null;
+    const hasRadarEntity = !!(radarEntityRows && radarEntityRows.length);
     // Radar "compétences en colonnes" (tile.radarAxisMode === 'columns', voir js/charts.js) : les
-    // axes sont des colonnes choisies, pas une dimension catégorielle groupée — une colonne par axe,
-    // une seule ligne (la moyenne de chaque colonne sur `rows`, même agrégat que le rendu écran).
+    // axes sont des colonnes choisies, pas une dimension catégorielle groupée — une colonne par axe.
     // AVANT `currentDimension` ci-dessous : un radar n'a jamais de drill-down (voir
     // supportsDrillDown côté js/main.js), donc `tile.dimension` resterait `undefined` dans ce mode.
     if (tile.type === 'radar' && tile.radarAxisMode === 'columns') {
       const axesColumns = (tile.radarAxes || []).filter(Boolean);
-      return { name: title, header: axesColumns, rows: [axesColumns.map((col) => aggregateSingle(rows, col, 'avg'))] };
+      // Sans comparaison : une seule ligne (la moyenne de chaque colonne sur `rows`), EXACTEMENT le
+      // format du premier jet de ce mode (pas de colonne "Série" en plus) — comportement inchangé.
+      if (!hasRadarEntity) {
+        return { name: title, header: axesColumns, rows: [axesColumns.map((col) => aggregateSingle(rows, col, 'avg'))] };
+      }
+      const exportRows = [[String(tile.radarEntityValue)].concat(axesColumns.map((col) => aggregateSingle(radarEntityRows, col, 'avg')))];
+      if (tile.radarCompareAverage) {
+        exportRows.push(['Moyenne'].concat(axesColumns.map((col) => aggregateSingle(rows, col, 'avg'))));
+      }
+      return { name: title, header: ['Série'].concat(axesColumns), rows: exportRows };
     }
     const drillPath = (state.drillIns && state.drillIns[tile.id]) || [];
     const dimension = currentDimension(tile, drillPath);
@@ -439,6 +457,21 @@
         header: [dimension, tile.measure, tile.measureY],
         rows: aggX.map((d) => [d.dimension, d.value, yByDimension.get(d.dimension)])
       };
+    }
+    // Radar "dimension" (classique) + comparaison active : même principe que ci-dessus, mais les
+    // axes viennent du groupement par dimension plutôt que de colonnes choisies. `groupAgg` sert
+    // deux fois (liste des axes ET valeurs de la série "Moyenne"), son ordre définissant celui des
+    // deux — jamais recalculé séparément. Sans comparaison (`!hasRadarEntity`), tombe directement
+    // dans la branche générique ci-dessous, comportement inchangé pour toute tuile radar classique.
+    if (tile.type === 'radar' && hasRadarEntity) {
+      const groupAgg = groupByAggregate(rows, dimension, tile.measure, tile.aggFn);
+      const axisNames = groupAgg.map((d) => String(d.dimension));
+      const entityByName = new Map(groupByAggregate(radarEntityRows, dimension, tile.measure, tile.aggFn).map((d) => [String(d.dimension), d.value]));
+      const exportRows = [[String(tile.radarEntityValue)].concat(axisNames.map((name) => (entityByName.has(name) ? entityByName.get(name) : 0)))];
+      if (tile.radarCompareAverage) {
+        exportRows.push(['Moyenne'].concat(groupAgg.map((d) => d.value)));
+      }
+      return { name: title, header: ['Série'].concat(axisNames), rows: exportRows };
     }
     const agg = groupByAggregate(rows, dimension, tile.measure, tile.aggFn);
     return { name: title, header: [dimension, tile.measure], rows: agg.map((d) => [d.dimension, d.value]) };
