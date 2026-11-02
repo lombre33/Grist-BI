@@ -420,6 +420,15 @@
     if (tile.type === 'bar' && tile.measureMode && tile.measureMode !== 'brut') {
       return { name: title, header: ['Info'], rows: [['Export non disponible pour les tuiles avec un mode de calcul temporel (Cumul/YTD/N-1) — voir GristBI.data.buildWorkbookSheetsAsync.']] };
     }
+    // Radar "compétences en colonnes" (tile.radarAxisMode === 'columns', voir js/charts.js) : les
+    // axes sont des colonnes choisies, pas une dimension catégorielle groupée — une colonne par axe,
+    // une seule ligne (la moyenne de chaque colonne sur `rows`, même agrégat que le rendu écran).
+    // AVANT `currentDimension` ci-dessous : un radar n'a jamais de drill-down (voir
+    // supportsDrillDown côté js/main.js), donc `tile.dimension` resterait `undefined` dans ce mode.
+    if (tile.type === 'radar' && tile.radarAxisMode === 'columns') {
+      const axesColumns = (tile.radarAxes || []).filter(Boolean);
+      return { name: title, header: axesColumns, rows: [axesColumns.map((col) => aggregateSingle(rows, col, 'avg'))] };
+    }
     const drillPath = (state.drillIns && state.drillIns[tile.id]) || [];
     const dimension = currentDimension(tile, drillPath);
     if (tile.type === 'scatter') {

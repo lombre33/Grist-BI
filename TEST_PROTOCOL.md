@@ -443,6 +443,11 @@ plus rejouable depuis ce retrait.
 - [x] Tuile Waterfall : création + rendu (canvas non vide), clic sur la 1re barre pose un cross-filter identique à une tuile "bar" sur les mêmes données 🌐
 - [x] Tuile Radar : création + rendu (canvas non vide), clic au centre NE pose AUCUN filtre (garde explicite, voir HYPOTHESES.md) 🌐
 - [x] Radar : `#tile-drill-field` masqué dans le formulaire (`supportsDrillDown`), contrairement à bar/waterfall où il reste visible 🌐
+- [x] Radar "compétences en colonnes" (`tile.radarAxisMode === 'columns'`) : `#tile-radar-mode` bascule `#tile-dimension-field`/`#tile-measure-field`/`#tile-agg-field` (mode "dimension") contre `#tile-radar-axes-field` (mode "columns") ; "+ Axe" apparaît seulement une fois le dernier axe rempli, limité à `MAX_RADAR_AXES` 🌐
+- [x] Radar "compétences en colonnes" : `#tile-radar-axes` ne propose que des colonnes numériques (`numericColumns`/`inferColumnKind`) ; une même colonne choisie deux fois comme axe est bloquée à la soumission (`tileForm.alert.radarAxesDuplicate`) ✅
+- [x] Radar "compétences en colonnes" : rendu d'un radar à N axes = la moyenne de chaque colonne choisie sur les lignes visibles (pas une agrégation configurable), soumis à côté d'un 2e radar en mode "dimension" classique dans la même session de formulaire sans régression sur ce dernier 🌐
+- [x] `tileExportSheet` en mode "columns" : en-tête = les colonnes choisies, une seule ligne = la moyenne de chaque colonne ; mode "dimension" inchangé (même branche générique qu'avant) ✅
+- [ ] Radar "compétences en colonnes" au-delà du seuil DuckDB (`DUCKDB_ROW_THRESHOLD`) ⬜ **[NON TESTABLE ICI]** — la table de démonstration du harnais n'a que 8 lignes, voir HYPOTHESES.md
 - [ ] Redimensionnement réel du panneau Grist (ResizeObserver) ⬜ **[NON TESTABLE ICI]** — logique de coalescing vérifiée par lecture de code seulement
 - [ ] `window.resize` classique (hors ResizeObserver) ⬜
 - [x] [BUG RÉEL #17 ci-dessous] Aucun canvas ECharts ne déborde sous sa carte `.tile` (comparaison `getBoundingClientRect()`, pas une inspection visuelle), à l'état initial ET sur une tuile drillée avec fil d'Ariane à 2 niveaux réellement affiché (pire cas) 🌐
@@ -732,6 +737,23 @@ délibérément laissé de côté (contenu généré par `js/data.js`/`js/demo-d
     le tableau de bord se stabilise de façon fiable, sans erreur console, après le budget de nouvelles
     tentatives (~9,3s, comportement attendu et déjà documenté par le bug #18 — pas quelque chose à
     "accélérer", seulement à sécuriser). Script Playwright ad hoc, non committé (voir §5 de CLAUDE.md).
+27. **`dev-tests/harness.html` duplique entièrement le DOM du formulaire d'ajout de tuile plutôt que de
+    charger `index.html`** [BUG RÉEL, trouvé en testant le radar "compétences en colonnes" du
+    2026-11-02 dans le harnais] — CLAUDE.md §4 décrit le harnais comme chargeant "exactement les
+    mêmes fichiers applicatifs" qu'`index.html` ("même DOM, même CSS, même chaîne de scripts JS"),
+    une formulation qui laisse penser à un DOM PARTAGÉ alors qu'il s'agit en réalité d'une copie
+    manuelle maintenue en parallèle. 3 champs ajoutés à `index.html` seul pour cette feature
+    (`#tile-radar-mode-field`, `#tile-radar-axes-field`, les id `#tile-measure-field`/
+    `#tile-agg-field` posés sur des `<div class="field">` jusque-là anonymes) étaient absents du
+    harnais — `js/main.js` faisait alors `document.getElementById('tile-radar-axes-add')
+    .addEventListener(...)` sur `null`, un `TypeError` qui interrompait l'exécution de TOUT le reste
+    du script d'initialisation (aucun champ du formulaire ne répondait plus du tout, pas seulement
+    les nouveaux). Corrigé en répliquant les 3 mêmes modifications dans `dev-tests/harness.html`.
+    Leçon directement actionnable, déjà présente en mémoire de projet mais reconfirmée ici : toute
+    modification de `index.html` qui touche à un id référencé par `js/main.js` doit être répliquée
+    dans `dev-tests/harness.html` dans le MÊME changement, et vérifiée en ouvrant RÉELLEMENT le
+    harnais (pas seulement `index.html`) — un test Node (`test-data.js`) ne peut pas détecter ce
+    genre de désynchronisation puisqu'il ne charge aucun DOM.
 
 ## Fragilité de test connue (PAS un bug produit — investiguée en profondeur, à ne pas re-diagnostiquer)
 

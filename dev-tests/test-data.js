@@ -366,6 +366,32 @@ const rows = [
   assert.deepStrictEqual(measureSheet.header, ['Info']);
   assert.strictEqual(measureSheet.rows.length, 1);
   console.log('OK tileExportSheet — tuile en mode de calcul temporel : message explicite plutôt qu\'un export incohérent');
+
+  // Radar "compétences en colonnes" (tile.radarAxisMode === 'columns', ROADMAP.md — demande du
+  // forum Grist, entretiens d'orientation : compétences déjà en colonnes plutôt qu'en lignes). Un
+  // axe par colonne choisie (tile.radarAxes), une seule ligne = la moyenne de chaque colonne sur
+  // les lignes visibles — ni dimension ni measure/aggFn ne sont utilisés dans ce mode.
+  const radarColumnsRows = [
+    { Eleve: 'Dupont', Maths: 12, Francais: 16 },
+    { Eleve: 'Martin', Maths: 18, Francais: 8 }
+  ];
+  const radarColumnsState = { rows: radarColumnsRows, activeFilters: [], advancedFilters: [], drillIns: {} };
+  const radarColumnsTile = {
+    id: 't5', type: 'radar', title: 'Radar : Maths, Francais',
+    radarAxisMode: 'columns', radarAxes: ['Maths', 'Francais']
+  };
+  const radarColumnsSheet = data.tileExportSheet(radarColumnsTile, radarColumnsState);
+  assert.deepStrictEqual(radarColumnsSheet.header, ['Maths', 'Francais']);
+  assert.deepStrictEqual(radarColumnsSheet.rows, [[15, 12]]); // avg(12,18)=15, avg(16,8)=12
+
+  // Radar classique (dimension/measure/aggFn, radarAxisMode absent ou 'dimension') : comportement
+  // INCHANGÉ, même branche générique que bar/pie/treemap ci-dessus.
+  const radarDimensionTile = { id: 't6', type: 'bar', title: 'Montant par Région', dimension: 'Region', measure: 'Montant', aggFn: 'sum' };
+  radarDimensionTile.type = 'radar';
+  const radarDimensionSheet = data.tileExportSheet(radarDimensionTile, baseState);
+  assert.deepStrictEqual(radarDimensionSheet.header, ['Region', 'Montant']);
+  assert.deepStrictEqual(radarDimensionSheet.rows, [['Nord', 190], ['Sud', 150]]);
+  console.log('OK tileExportSheet (radar "compétences en colonnes" : un axe par colonne, moyenne par colonne ; radar classique inchangé)');
 }
 
 // sanitizeSheetName : caractères interdits Excel, troncature à 31, unicité dans le classeur
