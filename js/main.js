@@ -85,6 +85,12 @@
   const radarAxesField = document.getElementById('tile-radar-axes-field');
   const radarAxesContainer = document.getElementById('tile-radar-axes');
   const addRadarAxisBtn = document.getElementById('tile-radar-axes-add');
+  const radarEntityColumnField = document.getElementById('tile-radar-entity-column-field');
+  const radarEntityColumnSelect = document.getElementById('tile-radar-entity-column');
+  const radarEntityValueField = document.getElementById('tile-radar-entity-value-field');
+  const radarEntityValueSelect = document.getElementById('tile-radar-entity-value');
+  const radarCompareAverageField = document.getElementById('tile-radar-compare-average-field');
+  const radarCompareAverageCheckbox = document.getElementById('tile-radar-compare-average');
   const drillField = document.getElementById('tile-drill-field');
   const drillLevelsContainer = document.getElementById('tile-drill-levels');
   const addDrillLevelBtn = document.getElementById('tile-drill-add-level');
@@ -163,7 +169,8 @@
   // (demande explicite de l'utilisateur, voir js/combobox.js) — en mode strict : la valeur doit
   // rester l'une des colonnes réellement chargées, comme un <select>. `.nextElementSibling` est le
   // <ul class="combobox-list"> voisin dans le même wrapper `.combobox` (voir index.html/harness.html).
-  [dimensionSelect, columnDimensionSelect, measureSelect, measureYSelect, trendDimensionSelect, dateColumnSelect, filterColumnSelect].forEach((input) => {
+  [dimensionSelect, columnDimensionSelect, measureSelect, measureYSelect, trendDimensionSelect, dateColumnSelect, filterColumnSelect,
+   radarEntityColumnSelect, radarEntityValueSelect].forEach((input) => {
     GristBI.combobox.attach(input, input.nextElementSibling, { strict: true });
   });
 
@@ -262,10 +269,27 @@
     const numCols = numericColumns(rows);
     radarAxisSelects.forEach((select) => fillCombobox(select, numCols));
     fillCombobox(trendDimensionSelect, cols, { blankLabel: t('tileForm.none.f') });
+    fillCombobox(radarEntityColumnSelect, cols, { blankLabel: t('tileForm.none.f') });
+    updateRadarEntityValueOptions(rows);
     fillCombobox(dateColumnSelect, cols);
     fillCombobox(filterColumnSelect, cols);
     updateAdvancedFilterFieldsForColumn(rows);
     updateSuggestDateHierarchyVisibility(rows);
+  }
+
+  // Valeurs proposées pour "Valeur à comparer" (comparaison élève/moyenne du radar, voir
+  // ROADMAP.md) : dépend de la colonne choisie juste au-dessus (`tile-radar-entity-column`), même
+  // principe que `updateAdvancedFilterFieldsForColumn`/`distinctColumnValues` pour les suggestions
+  // de valeurs du filtre avancé "contient" — sauf qu'ici la valeur DOIT être l'une des valeurs
+  // réellement présentes (`strict: true`, comme un `<select>`), pas une simple suggestion de texte
+  // libre : comparer "Dupont" alors que personne ne s'appelle ainsi dans la colonne choisie n'aurait
+  // aucun sens. `rows` optionnel, même raison que les fonctions voisines : passé explicitement par
+  // `refreshColumnSelects` pendant un changement de table, où `store.getState().rows` n'est pas
+  // encore à jour.
+  function updateRadarEntityValueOptions(rows) {
+    rows = rows || store.getState().rows;
+    const column = radarEntityColumnSelect.value;
+    fillCombobox(radarEntityValueSelect, column ? GristBI.data.distinctColumnValues(rows, column) : [], { blankLabel: t('tileForm.none.f') });
   }
 
   // Devine le "type" d'une colonne en inspectant une VALEUR réelle plutôt qu'un nom de colonne
@@ -923,12 +947,17 @@
     dimensionLabel.textContent = t(isPivot ? 'tileForm.dimension.labelRows' : 'tileForm.dimension.label');
     columnDimensionField.hidden = !isPivot;
     // Radar "compétences en colonnes" : mesure/agrégat n'ont pas de sens (un axe = la moyenne
-    // d'une colonne, pas une agrégation configurable, voir js/data.js:radarSeriesForTile) — masqués
+    // d'une colonne, pas une agrégation configurable, voir js/charts.js:renderChart) — masqués
     // comme dimensionField/drillField ci-dessus plutôt que laissés visibles mais ignorés.
     radarModeField.hidden = !isRadar;
     radarAxesField.hidden = !isRadarColumns;
     measureField.hidden = isRadarColumns;
     aggField.hidden = isRadarColumns;
+    // Comparaison élève/moyenne du groupe filtré : valable dans les DEUX modes d'axes (dimension ET
+    // columns), voir ROADMAP.md — contrairement au bloc ci-dessus, pas de dépendance à isRadarColumns.
+    radarEntityColumnField.hidden = !isRadar;
+    radarEntityValueField.hidden = !isRadar;
+    radarCompareAverageField.hidden = !isRadar;
     drillField.hidden = formHasNoDimension() || !supportsDrillDown(type);
     trendField.hidden = !isKpi;
     gaugeMinField.hidden = !isGauge;
@@ -997,6 +1026,10 @@
     dateColumnSelect.value = tile.dateColumn || '';
     radarModeSelect.value = tile.radarAxisMode === 'columns' ? 'columns' : 'dimension';
     setRadarAxes(tile.radarAxes);
+    radarEntityColumnSelect.value = tile.radarEntityColumn || '';
+    updateRadarEntityValueOptions();
+    radarEntityValueSelect.value = tile.radarEntityValue || '';
+    radarCompareAverageCheckbox.checked = !!tile.radarCompareAverage;
     updateFormFieldsForType();
     measureSelect.value = tile.measure;
     aggSelect.value = tile.aggFn;
@@ -1015,6 +1048,12 @@
   tileTypeSelect.addEventListener('change', updateFormFieldsForType);
   measureModeSelect.addEventListener('change', updateFormFieldsForType);
   radarModeSelect.addEventListener('change', updateFormFieldsForType);
+  // Changer de colonne de comparaison invalide la valeur déjà choisie (elle appartenait à l'ANCIENNE
+  // colonne) : vidée plutôt que laissée incohérente, même principe que `truncateDrillLevelsAfter`.
+  radarEntityColumnSelect.addEventListener('change', () => {
+    radarEntityValueSelect.value = '';
+    updateRadarEntityValueOptions();
+  });
   dimensionSelect.addEventListener('change', () => updateSuggestDateHierarchyVisibility());
 
   // Applique la suggestion Année/Trimestre/Mois/Jour : bascule la dimension sur la colonne Année
@@ -1103,6 +1142,13 @@
     tileData.columnDimension = isPivot ? columnDimension : undefined;
     tileData.radarAxisMode = (type === 'radar') ? (isRadarColumns ? 'columns' : 'dimension') : undefined;
     tileData.radarAxes = isRadarColumns ? radarAxes : undefined;
+    // Comparaison élève/moyenne du groupe filtré (voir ROADMAP.md) : valable dans les deux modes
+    // d'axes, donc indépendante d'isRadarColumns. radarEntityValue n'a de sens que si une colonne de
+    // comparaison est aussi choisie (sinon ce serait une valeur orpheline, comparée à rien).
+    const radarEntityColumn = (type === 'radar') ? radarEntityColumnSelect.value : '';
+    tileData.radarEntityColumn = radarEntityColumn ? radarEntityColumn : undefined;
+    tileData.radarEntityValue = (radarEntityColumn && radarEntityValueSelect.value) ? radarEntityValueSelect.value : undefined;
+    tileData.radarCompareAverage = (type === 'radar') ? radarCompareAverageCheckbox.checked : undefined;
     if (editingTileId) {
       store.updateTile(editingTileId, tileData);
       stopEditTile();
