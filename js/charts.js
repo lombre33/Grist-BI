@@ -198,57 +198,318 @@
     }, true);
   }
 
+  // Logique de clic (drill-down vs filtre croisé) PARTAGÉE par l'instance ECharts générique
+  // (getOrCreateChartInstance, bar/pie/treemap/scatter/waterfall/radar/nuage de mots en mode "une
+  // entrée par ligne") et le <canvas> maison du nuage de mots en mode découpage
+  // (getOrCreateWordCloudCanvas, voir renderWordCloud — depuis le 03/11/2026, d3-cloud ne fait que
+  // le placement, pas le clic). Ne PAS capturer `tile` du rendu courant dans une closure : un appel
+  // peut arriver bien après le rendu qui l'a câblé (édition de tuile, drill-down — voir
+  // HYPOTHESES.md) ; on relit l'état vivant à chaque clic, en ne fixant que l'id de la tuile (stable
+  // tout au long de sa vie).
+  function handleTileClick(tileId, name) {
+    const liveState = GristBI.store.getState();
+    const currentTile = liveState.tiles.find((t) => t.id === tileId);
+    if (!currentTile) return; // tuile supprimée entre-temps
+    // Mode mesure temporelle (voir renderMeasureChart) : un point est un mois CALCULÉ (bucket
+    // DuckDB), pas une vraie valeur de la dimension d'origine — rien de cohérent à filtrer/driller.
+    if (currentTile.type === 'bar' && currentTile.measureMode && currentTile.measureMode !== 'brut') return;
+    // Radar (voir renderChart) : une seule série/un seul "polygone" couvrant TOUTES les valeurs de
+    // la dimension à la fois (un axe par valeur) — le nom reçu au clic est alors celui de CE
+    // polygone (tile.measure), jamais celui d'un axe précis cliqué individuellement. ECharts ne
+    // distingue pas l'axe survolé/cliqué au clic sur un radar (seulement au survol, dans le
+    // tooltip) : aucune valeur de dimension cohérente à driller/filtrer ici, contrairement à
+    // bar/pie/treemap/scatter/waterfall qui restent tous sur un axe catégoriel classique. Repli
+    // silencieux (aucune action) plutôt qu'un filtre posé par erreur sur "tile.measure".
+    if (currentTile.type === 'radar') return;
+    // Nuage de mots en mode "découpage de cellule" : un mot issu du découpage d'une cellule (ex.
+    // "génétique") n'est jamais une valeur de colonne telle quelle (la cellule d'origine vaut
+    // "génétique, cohorte, adolescent") — un filtre par égalité stricte sur ce mot
+    // (toggleFilter/matchesFilter, type 'eq') ne correspondrait à AUCUNE ligne, vidant
+    // silencieusement la tuile au clic plutôt que de filtrer quoi que ce soit de cohérent. Ce
+    // widget n'a pas de filtre de type "contient" branché sur le clic (seulement sur le champ de
+    // recherche texte des filtres avancés, voir matchesFilter) : repli silencieux (aucune action),
+    // même traitement que le radar ci-dessus. En pratique, le <canvas> du nuage de mots neutralise
+    // déjà lui-même le clic dans ce mode (voir getOrCreateWordCloudCanvas) — ce garde-fou reste ici
+    // par cohérence/défense en profondeur, inchangé depuis la version ECharts de ce code.
+    if (currentTile.type === 'wordcloud' && currentTile.wordCloudSplit) return;
+    const livePath = (liveState.drillIns && liveState.drillIns[currentTile.id]) || [];
+    const dim = currentDimension(currentTile, livePath);
+    const levels = tileDrillLevels(currentTile);
+    if (livePath.length < levels.length) {
+      GristBI.store.drillInto(currentTile.id, dim, name);
+    } else {
+      GristBI.store.toggleFilter(dim, name, currentTile.id);
+    }
+  }
+
   // Instance ECharts partagée par renderChart/renderMeasureChart pour une même tuile : une tuile
   // peut passer de l'un à l'autre au fil des éditions (mode mesure activé/désactivé), il ne faut
   // donc PAS que le gestionnaire de clic ne soit attaché que par un seul des deux chemins de rendu
   // — sinon une tuile d'abord créée en mode mesure, puis éditée pour repasser en "Brut", garderait
   // une instance déjà en cache sans aucun clic câblé (le `if (!instance...)` de création ne se
-  // redéclencherait jamais). Ne PAS capturer `tile` du rendu courant dans cette closure : elle n'est
-  // créée qu'une fois (instance mise en cache), donc resterait périmée après une édition de tuile
-  // (cf. HYPOTHESES.md) ou un drill-down — on relit l'état vivant à chaque clic à la place, en ne
-  // fixant que l'id de la tuile (stable, lui, tout au long de sa vie).
+  // redéclencherait jamais).
   function getOrCreateChartInstance(tileId, el) {
     let instance = chartInstances.get(tileId);
     if (instance && !instance.isDisposed()) return instance;
     instance = echarts.init(el);
     chartInstances.set(tileId, instance);
-    instance.on('click', (params) => {
-      const liveState = GristBI.store.getState();
-      const currentTile = liveState.tiles.find((t) => t.id === tileId);
-      if (!currentTile) return; // tuile supprimée entre-temps
-      // Mode mesure temporelle (voir renderMeasureChart) : un point est un mois CALCULÉ (bucket
-      // DuckDB), pas une vraie valeur de la dimension d'origine — rien de cohérent à filtrer/driller.
-      if (currentTile.type === 'bar' && currentTile.measureMode && currentTile.measureMode !== 'brut') return;
-      // Radar (voir renderChart) : une seule série/un seul "polygone" couvrant TOUTES les valeurs de
-      // la dimension à la fois (un axe par valeur) — params.name sur un clic est alors le nom de CE
-      // polygone (tile.measure), jamais celui d'un axe précis cliqué individuellement. ECharts ne
-      // distingue pas l'axe survolé/cliqué au clic sur un radar (seulement au survol, dans le
-      // tooltip) : aucune valeur de dimension cohérente à driller/filtrer ici, contrairement à
-      // bar/pie/treemap/scatter/waterfall qui restent tous sur un axe catégoriel classique. Repli
-      // silencieux (aucune action) plutôt qu'un filtre posé par erreur sur "tile.measure".
-      if (currentTile.type === 'radar') return;
-      // Nuage de mots en mode "découpage de cellule" (voir renderChart plus bas) : `params.name` est
-      // UN mot issu du découpage d'une cellule (ex. "génétique"), jamais une valeur de colonne telle
-      // quelle (la cellule d'origine vaut "génétique, cohorte, adolescent") — un filtre par égalité
-      // stricte sur ce mot (toggleFilter/matchesFilter, type 'eq') ne correspondrait à AUCUNE ligne,
-      // vidant silencieusement la tuile au clic plutôt que de filtrer quoi que ce soit de cohérent.
-      // Ce widget n'a pas de filtre de type "contient" branché sur le clic (seulement sur le champ de
-      // recherche texte des filtres avancés, voir matchesFilter) : repli silencieux (aucune action),
-      // même traitement que le radar ci-dessus, plutôt qu'un filtre posé par erreur. Le mode "une
-      // entrée par ligne" (wordCloudSplit falsy) n'est PAS concerné : chaque mot y est alors
-      // exactement la valeur de la cellule d'origine, le clic reste cohérent comme pour bar/pie.
-      if (currentTile.type === 'wordcloud' && currentTile.wordCloudSplit) return;
-      const livePath = (liveState.drillIns && liveState.drillIns[currentTile.id]) || [];
-      const dim = currentDimension(currentTile, livePath);
-      const levels = tileDrillLevels(currentTile);
-      if (livePath.length < levels.length) {
-        GristBI.store.drillInto(currentTile.id, dim, params.name);
-      } else {
-        GristBI.store.toggleFilter(dim, params.name, currentTile.id);
-      }
-    });
+    instance.on('click', (params) => handleTileClick(tileId, params.name));
     return instance;
   }
+
+  // === Nuage de mots (d3-cloud) ==============================================================
+  // Choix du 03/11/2026 (remplace echarts-wordcloud, écarté par Antoine pour défaut de maintenance
+  // — dépôt amont sans commit de code depuis fin 2022, voir GFS-ETAT.md et HYPOTHESES.md) :
+  // d3-cloud 2.0.0, réécrit le 30/10/2026, zéro dépendance, publié avec tests + types + guide de
+  // migration. Contrepartie assumée : d3-cloud ne fait QUE le calcul de placement des mots (voir
+  // son README, "your application renders the results with canvas, SVG, or another renderer") —
+  // ni rendu ni détection de clic/survol intégrés, contrairement à echarts-wordcloud qui les aurait
+  // obtenus gratuitement d'ECharts. Ce widget dessine donc lui-même sur un <canvas> dédié
+  // (getOrCreateWordCloudCanvas) et fait sa propre détection de clic/survol (hitTestWordCloud) —
+  // bien plus de code que les autres types de tuile, qui délèguent tout cela à ECharts.
+  //
+  // Chargement paresseux via import() dynamique d'un spécificateur NU ("d3-cloud"), résolu par
+  // l'`importmap` d'index.html (voir js/vendor/apache-arrow, flatbuffers, tslib pour le même
+  // mécanisme) — absent de cet importmap tant que GFS n'a pas ajouté la bibliothèque (voir
+  // GFS-ETAT.md "Demandes à GFS", protocole du 03/11/2026 : plus aucune lib chargée en dur par
+  // l'app elle-même). Sans entrée dans l'importmap, le navigateur rejette IMMÉDIATEMENT cet
+  // import() (spécificateur non résolu) — aucune requête réseau, donc rien à voir avec le piège
+  // silencieux `typeof echarts === 'undefined'` (CLAUDE.md §7 n°4) : ici l'échec est explicite
+  // (promesse rejetée), juste intercepté pour afficher le même message qu'avant plutôt que de
+  // laisser une exception non gérée remonter jusqu'au rendu de la tuile.
+  let _d3CloudPromise = null;
+  function loadD3Cloud() {
+    if (!_d3CloudPromise) {
+      _d3CloudPromise = import('d3-cloud').catch((e) => {
+        console.warn('[GristBI] d3-cloud indisponible (bibliothèque pas encore fournie par GFS)', e);
+        return null;
+      });
+    }
+    return _d3CloudPromise;
+  }
+
+  // Même plage que l'ancien `sizeRange: [14, 48]` d'echarts-wordcloud.
+  function wordCloudSizeFor(value, minV, maxV) {
+    if (maxV === minV) return 28; // toutes les valeurs égales : taille médiane plutôt qu'une
+      // division par zéro
+    return 14 + ((value - minV) / (maxV - minV)) * (48 - 14);
+  }
+
+  // Même esprit que l'ancien `rotationRange: [-45, 45]` / `rotationStep: 15`, mais assignée par
+  // index plutôt qu'aléatoirement : un mot garde le même angle à chaque re-rendu (filtre, resize),
+  // pas de scintillement visuel — même principe déjà appliqué à la couleur par index ci-dessous.
+  const WORD_CLOUD_ROTATIONS = [-45, -30, -15, 0, 15, 30, 45];
+  const WORD_CLOUD_FONT = 'sans-serif'; // police système, pas de police tierce (Manrope refusée
+    // par Antoine le 29/09/2026, CLAUDE.md §8 — vaut pour tout le chrome ET les graphiques)
+
+  // Calcule le placement des mots via d3-cloud (bibliothèque de LAYOUT seule, voir plus haut) :
+  // les plus grands d'abord pour que `place()` remplisse mieux l'espace (recommandation de son
+  // README), un sprite préparé puis placé par mot (API par classe de d3-cloud 2.x — voir son
+  // MIGRATING.md pour la différence avec l'ancienne API événementielle 1.x). `dim` reproduit
+  // exactement l'estompage de filtre croisé des autres types de tuile (voir renderChart) :
+  // inchangé depuis la version ECharts de ce code, y compris pour le mode découpage (un filtre
+  // posé sur CETTE colonne depuis une AUTRE tuile ne correspondra jamais à un mot découpé via
+  // `sameValue`, donc tout le nuage s'estompe uniformément dans ce cas précis — déjà le
+  // comportement de la version fusionnée dans la PR #38, pas un changement introduit ici).
+  function placeWordCloud(CloudLayout, wordCloudAgg, dim, cssWidth, cssHeight) {
+    const values = wordCloudAgg.map((d) => d.value);
+    const minV = Math.min(...values);
+    const maxV = Math.max(...values);
+    const layout = new CloudLayout().size([cssWidth, cssHeight]).overflow(false);
+    const measureCtx = document.createElement('canvas').getContext('2d');
+    const sorted = wordCloudAgg.slice().sort((a, b) => b.value - a.value);
+    const placed = [];
+    sorted.forEach((d, i) => {
+      const size = wordCloudSizeFor(d.value, minV, maxV);
+      const rotate = WORD_CLOUD_ROTATIONS[i % WORD_CLOUD_ROTATIONS.length];
+      const sprite = layout.getSprite(String(d.dimension), { size, font: WORD_CLOUD_FONT, padding: 2, rotate });
+      if (!sprite) return; // taille <1px : ne devrait jamais arriver (un comptage vaut toujours
+        // au moins 1, voir wordFrequency/groupByAggregate), repli silencieux par cohérence
+      const word = layout.place(sprite);
+      if (!word) return; // n'a pas pu être placé dans l'espace disponible (trop de mots/trop
+        // grands pour cette tuile) : nuage incomplet plutôt qu'une erreur JS, même esprit que le
+        // message "chart.wordCloudUnavailable" plus bas
+      const style = dim(d.dimension);
+      measureCtx.font = `${word.size}px ${WORD_CLOUD_FONT}`;
+      placed.push({
+        text: word.text,
+        value: d.value,
+        x: word.x,
+        y: word.y,
+        rotate: word.rotate,
+        size: word.size,
+        width: measureCtx.measureText(word.text).width,
+        color: CATEGORICAL_PALETTE[i % CATEGORICAL_PALETTE.length],
+        opacity: style ? style.opacity : 1
+      });
+    });
+    return placed;
+  }
+
+  // Dessine les mots déjà placés (coordonnées centrées sur [0,0], voir le README de d3-cloud,
+  // section "Rendering Placed Words") sur un canvas dimensionné en pixels CSS × devicePixelRatio
+  // (texte net sur les écrans à forte densité — même raison que `pixelRatio: 2` passé à
+  // `instance.getDataURL` pour les exports PDF/PPTX des autres types de tuile, voir plus bas).
+  function drawWordCloud(canvas, placedWords, cssWidth, cssHeight) {
+    const ratio = window.devicePixelRatio || 1;
+    canvas.width = Math.max(1, Math.round(cssWidth * ratio));
+    canvas.height = Math.max(1, Math.round(cssHeight * ratio));
+    canvas.style.width = `${cssWidth}px`;
+    canvas.style.height = `${cssHeight}px`;
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    // Fond blanc explicite : cohérent avec le fond des autres tuiles ET nécessaire pour un export
+    // PNG lisible (canvas.toDataURL ne compose pas sur un fond — un PNG transparent serait illisible
+    // sur fond sombre dans certains lecteurs/diapositives, contrairement à l'ancien
+    // `backgroundColor: '#ffffff'` passé à ECharts pour les autres types de tuile).
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, cssWidth, cssHeight);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    placedWords.forEach((w) => {
+      ctx.save();
+      ctx.globalAlpha = w.opacity;
+      ctx.translate(cssWidth / 2 + w.x, cssHeight / 2 + w.y);
+      ctx.rotate((w.rotate * Math.PI) / 180);
+      ctx.font = `${w.size}px ${WORD_CLOUD_FONT}`;
+      ctx.fillStyle = w.color;
+      ctx.fillText(w.text, 0, 0);
+      ctx.restore();
+    });
+  }
+
+  // Détection de clic/survol : inverse exactement la transformation appliquée au dessin (translation
+  // au centre du mot puis rotation) pour ramener le point cliqué dans le repère LOCAL, non tourné,
+  // du mot — où sa boîte englobante (largeur mesurée au placement, hauteur approximée depuis la
+  // ligne de base comme une ascendante/descendante de police classique) est un simple rectangle
+  // aligné aux axes. Approximatif par nature (pas le contour exact du glyphe, comme la détection de
+  // clic native d'echarts-wordcloud ne l'était pas non plus) : suffisant pour un clic/survol, pas
+  // pour un rendu.
+  function hitTestWordCloud(placedWords, x, y) {
+    const rad = Math.PI / 180;
+    for (let i = placedWords.length - 1; i >= 0; i -= 1) {
+      const w = placedWords[i];
+      const dx = x - w.x;
+      const dy = y - w.y;
+      const angle = -w.rotate * rad;
+      const localX = dx * Math.cos(angle) - dy * Math.sin(angle);
+      const localY = dx * Math.sin(angle) + dy * Math.cos(angle);
+      if (localX >= -w.width / 2 && localX <= w.width / 2 && localY >= -w.size * 0.8 && localY <= w.size * 0.3) {
+        return w;
+      }
+    }
+    return null;
+  }
+
+  // Crée (ou réutilise) le <canvas> dédié au nuage de mots d'une tuile. Objet adapté au même
+  // contrat minimal qu'une instance ECharts partout ailleurs dans ce fichier
+  // (isDisposed/dispose/resize/getDataURL, voir resizeAll/disposeTile/js/pdf-export.js/
+  // js/pptx-export.js) et mis en cache dans la MÊME Map (`chartInstances`, marquée
+  // `isWordCloudCanvas`) : aucun de ces appelants n'a besoin de savoir qu'il ne s'agit pas d'ECharts
+  // pour cette tuile précise.
+  function getOrCreateWordCloudCanvas(tileId, el) {
+    const existing = chartInstances.get(tileId);
+    if (existing && existing.isWordCloudCanvas && !existing.isDisposed()) return existing;
+    // Une instance ECharts peut être restée en cache pour cette tuile si son type vient de changer
+    // (un autre type -> nuage de mots) : jamais mélanger les deux mondes (voir le symétrique dans
+    // renderChart pour le sens inverse).
+    if (existing && !existing.isDisposed()) existing.dispose();
+    el.innerHTML = '';
+    const canvas = document.createElement('canvas');
+    canvas.className = 'tile-wordcloud-canvas';
+    el.appendChild(canvas);
+    let disposed = false;
+    let placedWords = [];
+    let isSplit = false;
+
+    function hitAt(evt) {
+      const rect = canvas.getBoundingClientRect();
+      return hitTestWordCloud(placedWords, evt.clientX - rect.left - rect.width / 2, evt.clientY - rect.top - rect.height / 2);
+    }
+
+    canvas.addEventListener('mousemove', (evt) => {
+      const hit = hitAt(evt);
+      canvas.title = hit ? `${hit.text} (${formatNumber(hit.value)})` : '';
+      canvas.style.cursor = hit && !isSplit ? 'pointer' : 'default';
+    });
+    canvas.addEventListener('click', (evt) => {
+      if (isSplit) return; // voir handleTileClick : un mot découpé ne correspond à aucune valeur
+        // de colonne exacte, rien de cohérent à filtrer/driller
+      const hit = hitAt(evt);
+      if (hit) handleTileClick(tileId, hit.text);
+    });
+
+    const instance = {
+      isWordCloudCanvas: true,
+      isDisposed: () => disposed,
+      dispose() { disposed = true; canvas.remove(); },
+      resize() {
+        // Redessine à la taille ACTUELLE du conteneur à partir du placement déjà calculé, sans
+        // relancer tout le layout d3-cloud à chaque redimensionnement continu de fenêtre (déjà
+        // debounced côté main.js) : un léger décalage du placement par rapport à la nouvelle taille
+        // est accepté (POC) — le prochain rendu complet (filtre, drill-down...) recalculera de toute
+        // façon le placement pour la taille alors en vigueur.
+        if (!placedWords.length) return;
+        drawWordCloud(canvas, placedWords, el.clientWidth || 1, el.clientHeight || 1);
+      },
+      getDataURL() { return canvas.toDataURL('image/png'); }, // voir js/pdf-export.js/js/pptx-export.js
+      showUnavailable(message) {
+        placedWords = [];
+        const old = el.querySelector('.tile-wordcloud-message');
+        if (old) old.remove();
+        const msg = document.createElement('p');
+        msg.className = 'tile-wordcloud-message';
+        msg.textContent = message;
+        el.appendChild(msg);
+      },
+      render(words, cssWidth, cssHeight, split) {
+        const old = el.querySelector('.tile-wordcloud-message');
+        if (old) old.remove();
+        placedWords = words;
+        isSplit = split;
+        drawWordCloud(canvas, words, cssWidth, cssHeight);
+      }
+    };
+    chartInstances.set(tileId, instance);
+    return instance;
+  }
+
+  // Point d'entrée du rendu "Nuage de mots" (voir renderChart, qui y redirige avant toute logique
+  // ECharts). Reprend les deux modes existants (tile.wordCloudSplit, voir js/data.js:
+  // wordFrequency) à l'identique de la version ECharts fusionnée dans la PR #38 : le mode
+  // "découpage de cellule" reste pur JS quel que soit le volume de lignes (même raisonnement que le
+  // data blending, `blendRows` — voir ROADMAP.md : "n'en dépend toujours pas").
+  async function renderWordCloud(tile, rows, state, el) {
+    const seq = bumpSeq(tile.id);
+    const instance = getOrCreateWordCloudCanvas(tile.id, el);
+    const dimension = tile.dimension;
+    const isSplit = !!tile.wordCloudSplit;
+    const wordCloudAgg = isSplit ? wordFrequency(rows, dimension, true) : await computeGroupBy(rows, dimension, tile.measure, tile.aggFn);
+    if (isStale(tile.id, seq) || instance.isDisposed()) return; // rendu plus récent entre-temps
+
+    const mod = await loadD3Cloud();
+    if (isStale(tile.id, seq) || instance.isDisposed()) return; // périmé pendant le chargement de la lib
+    if (!mod) {
+      instance.showUnavailable(t('chart.wordCloudUnavailable'));
+      return;
+    }
+    const CloudLayout = mod.default || mod.CloudLayout;
+
+    if (!wordCloudAgg.length) {
+      instance.render([], el.clientWidth || 1, el.clientHeight || 1, isSplit);
+      return;
+    }
+
+    const activeOnThisDimension = state.activeFilters.find((f) => f.column === dimension);
+    const dim = (d) => (activeOnThisDimension && !sameValue(activeOnThisDimension.value, d) ? { opacity: 0.3 } : undefined);
+
+    const cssWidth = el.clientWidth || 1;
+    const cssHeight = el.clientHeight || 1;
+    const placedWords = placeWordCloud(CloudLayout, wordCloudAgg, dim, cssWidth, cssHeight);
+    if (isStale(tile.id, seq) || instance.isDisposed()) return; // rendu plus récent entre-temps
+    instance.render(placedWords, cssWidth, cssHeight, isSplit);
+  }
+  // ============================================================================================
 
   // Tableau croisé dynamique : rendu en table HTML plutôt qu'en graphique ECharts (aucune série
   // ECharts adaptée à une grille lignes × colonnes, voir ROADMAP.md). Pas de gestion d'instance
@@ -342,6 +603,23 @@
     const el = container.querySelector(`[data-tile-id="${tile.id}"] .tile-chart`);
     if (!el) return;
     renderBreadcrumb(tile, drillPath, container);
+
+    // Nuage de mots : chemin de rendu entièrement séparé depuis le 03/11/2026 (passage à d3-cloud,
+    // voir renderWordCloud ci-dessous et la discussion avec Antoine ce jour-là) — PAS une instance
+    // ECharts, donc rien du reste de cette fonction (getOrCreateChartInstance, l'option ECharts
+    // construite plus bas, instance.setOption) ne s'applique à ce type de tuile.
+    if (tile.type === 'wordcloud') {
+      return renderWordCloud(tile, rows, state, el);
+    }
+    // Une instance "nuage de mots" (canvas maison, voir getOrCreateWordCloudCanvas) peut être
+    // restée en cache pour cette tuile si son type vient de changer (nuage de mots -> un autre
+    // type) : jamais la laisser traîner pour qu'ECharts réutilise le même <canvas> à sa place.
+    const staleWordCloud = chartInstances.get(tile.id);
+    if (staleWordCloud && staleWordCloud.isWordCloudCanvas && !staleWordCloud.isDisposed()) {
+      staleWordCloud.dispose();
+      chartInstances.delete(tile.id);
+    }
+
     if (typeof echarts === 'undefined') {
       // Pas d'erreur JS ici : sans ce message, la tuile resterait juste vide sans indice (voir le
       // bandeau #echarts-warning dans main.js pour le diagnostic complet).
@@ -368,12 +646,6 @@
       ? rows.filter((r) => sameValue(r[tile.radarEntityColumn], tile.radarEntityValue))
       : null;
     const hasRadarEntity = !!(radarEntityRows && radarEntityRows.length);
-    // Nuage de mots en mode "découpage de cellule" (tile.wordCloudSplit, voir js/data.js:
-    // wordFrequency) : une fréquence de mots cumulée sur TOUTES les lignes, pas un groupement par
-    // dimension — computeGroupBy/DuckDB ci-dessous ne conviendrait pas (DuckDB n'a pas cette
-    // tokenisation). Reste pur JS quel que soit le volume de lignes, même philosophie que le data
-    // blending (`blendRows`, voir ROADMAP.md : "n'en dépend toujours pas").
-    const isWordCloudSplit = tile.type === 'wordcloud' && tile.wordCloudSplit;
 
     const seq = bumpSeq(tile.id);
     const usingDuckDb = rows.length >= DUCKDB_ROW_THRESHOLD;
@@ -385,17 +657,13 @@
     // l'entité comparée (ses propres lignes seulement) est elle aussi calculée en parallèle du
     // reste plutôt qu'après coup.
     const [agg, aggY, radarColumnValues, radarEntityColumnValues, radarEntityAgg] = await Promise.all([
-      (isRadarColumns || isWordCloudSplit) ? Promise.resolve(null) : computeGroupBy(rows, dimension, tile.measure, tile.aggFn),
+      isRadarColumns ? Promise.resolve(null) : computeGroupBy(rows, dimension, tile.measure, tile.aggFn),
       tile.type === 'scatter' ? computeGroupBy(rows, dimension, tile.measureY, tile.aggFn) : Promise.resolve(null),
       isRadarColumns ? Promise.all(radarAxesColumns.map((col) => computeAggregateSingle(rows, col, 'avg'))) : Promise.resolve(null),
       (isRadarColumns && hasRadarEntity) ? Promise.all(radarAxesColumns.map((col) => computeAggregateSingle(radarEntityRows, col, 'avg'))) : Promise.resolve(null),
       (!isRadarColumns && tile.type === 'radar' && hasRadarEntity) ? computeGroupBy(radarEntityRows, dimension, tile.measure, tile.aggFn) : Promise.resolve(null)
     ]);
     if (isStale(tile.id, seq) || instance.isDisposed()) return; // rendu plus récent entre-temps
-    // Synchrone, pur JS (voir plus haut) : calculé après le Promise.all (rien d'autre à attendre
-    // pour cette tuile) plutôt que dedans, pour ne pas alourdir sa signature pour un cas qui n'a
-    // jamais besoin d'être parallélisé avec autre chose.
-    const wordCloudAgg = isWordCloudSplit ? wordFrequency(rows, dimension, true) : agg;
     // Inconditionnel, même raison que renderGauge ci-dessus : un rendu qui repasse sous le seuil
     // pendant qu'un rendu précédent (au-dessus du seuil) pour cette même tuile est encore en vol
     // doit quand même lever le masque que CE DERNIER a affiché, même si CE rendu-ci (le gagnant)
@@ -567,41 +835,6 @@
         series: [{
           type: 'radar',
           data: series
-        }]
-      };
-    } else if (tile.type === 'wordcloud') {
-      // Nécessite l'extension ECharts "echarts-wordcloud", demandée à GFS (voir GFS-ETAT.md
-      // "Demandes à GFS" — décision d'Antoine du 03/11/2026 : toute bibliothèque d'extension passe
-      // désormais par GFS, jamais chargée en dur par l'app elle-même). Son build UMD pose un global
-      // détectable à l'enregistrement, `window['echarts-wordcloud']` (vérifié dans son propre
-      // bundle : c'est la branche `root["echarts-wordcloud"] = factory(root["echarts"])` de son
-      // wrapper webpack quand ni CommonJS ni AMD ne s'appliquent, exactement le cas d'un simple
-      // `<script src>`) — tant qu'elle n'est pas chargée, ECharts ne lève AUCUNE exception sur un
-      // type de série `wordCloud` inconnu, juste un avertissement en console et aucun rendu : même
-      // piège silencieux que `typeof echarts === 'undefined'` plus haut (CLAUDE.md §7 piège n°4), un
-      // message explicite est donc affiché plutôt que d'appeler `setOption` à l'aveugle.
-      if (typeof global['echarts-wordcloud'] === 'undefined') {
-        el.textContent = t('chart.wordCloudUnavailable');
-        return;
-      }
-      option = {
-        tooltip: { show: true },
-        series: [{
-          type: 'wordCloud',
-          shape: 'circle',
-          sizeRange: [14, 48],
-          rotationRange: [-45, 45],
-          rotationStep: 15,
-          gridSize: 6,
-          // Couleur par index plutôt qu'aléatoire : un re-rendu (filtre, resize) garde la même
-          // couleur par mot plutôt qu'un scintillement visuel à chaque appel de setOption — même
-          // palette catégorielle colorblind-safe que bar/pie/treemap (CATEGORICAL_PALETTE).
-          textStyle: { color: (params) => CATEGORICAL_PALETTE[params.dataIndex % CATEGORICAL_PALETTE.length] },
-          data: wordCloudAgg.map((d) => ({
-            name: String(d.dimension),
-            value: d.value,
-            textStyle: dim(d.dimension)
-          }))
         }]
       };
     } else {

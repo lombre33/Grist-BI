@@ -2308,58 +2308,96 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     que de filtrer quoi que ce soit de cohérent (le widget n'a pas de filtre de clic de type
     "contient"). Même traitement que le clic neutralisé sur un radar (guard dans
     `getOrCreateChartInstance`, js/charts.js).
-  - **Dépend d'une bibliothèque d'extension non chargée par ce dépôt** : `echarts-wordcloud` (paquet
-    npm officiel `ecomfe/echarts-wordcloud`, même organisation GitHub que ECharts), demandée à GFS
-    plutôt que vendorisée/chargée en CDN par l'app elle-même — décision d'Antoine du 03/11/2026 (fil
-    "Importer des fichiers Power BI", en réponse à une question sur une tout autre bibliothèque
-    risquée pour l'import PBIX, mais formulée sans réserve de périmètre : « c'est lui [GFS] qui gère
-    les extension/lib » désormais). Protocole suivi tel que documenté dans
-    `lombre33/grist-widget-GFS` (`consignes/LISEZ-MOI.md`, `docs/guide-des-apps.md` règle 9 de la
-    section 1.1 "à respecter dès maintenant", sans attendre l'intégration complète à GFS) : demande
-    écrite dans `GFS-ETAT.md` (section "Demandes à GFS", avec le fichier exact du paquet voulu —
-    `dist/echarts-wordcloud.min.js` — et un signalement explicite que le dépôt amont n'a plus reçu de
-    commit de code depuis 2022-11-24, pour qu'Antoine/GFS tranchent eux-mêmes au regard du critère
-    "sûre, documentée, maintenue"). Tant que la bibliothèque n'est pas fournie, `js/charts.js` affiche
-    un message explicite (`chart.wordCloudUnavailable`) plutôt qu'un graphique vide — détection par un
-    global que le propre bundle UMD de la bibliothèque pose à son enregistrement
-    (`window['echarts-wordcloud']`, confirmé en lisant le code source téléchargé depuis le registre
-    npm : `root["echarts-wordcloud"] = factory(root["echarts"])` dans son wrapper webpack, exactement
-    le cas d'un chargement par un simple `<script>`), PAS une tentative/`try`-`catch` autour de
-    `setOption` — ECharts ne lève aucune exception sur un type de série inconnu, juste un avertissement
-    console sans rendu (même piège silencieux que `typeof echarts === 'undefined'`, CLAUDE.md §7
-    piège n°4).
-  - **Testé sous Node** (`dev-tests/test-data.js`) : `wordFrequency` dans ses deux modes (égalité avec
-    `groupByAggregate` en mode "une entrée par ligne" ; comptage/casse/graphie/mots courts ignorés en
-    mode "découpage de cellule"), et `tileExportSheet` pour les deux modes (export identique à "bar"
-    pour le 1er ; fréquence triée par ordre décroissant, en-tête "Occurrences", pour le 2e). Suite
-    complète (plus de 150 clés i18n, tous les autres modules) toujours verte après ce changement.
-  - **Testé en navigateur réel** (`dev-tests/harness.html`, Playwright, servi en HTTP comme requis par
-    ce harnais — PAS `file://`) : le nouveau champ "Découper chaque cellule…" apparaît/disparaît
-    correctement selon le type choisi ; en mode "découpage de cellule", les champs Mesure/Agrégat/
-    Drill-down se masquent bien (`updateFormFieldsForType`) ; une tuile des DEUX modes se crée bien
-    sans erreur de validation ; la tuile créée affiche bien le message de repli explicite
-    (`chart.wordCloudUnavailable`), confirmant que la détection d'absence de bibliothèque fonctionne
-    EXACTEMENT comme en production actuelle (la bibliothèque n'étant pas encore fournie par GFS) ;
-    **zéro erreur console imputable à cette feature** (seule une 404 `favicon.ico`, confirmée
-    préexistante et sans rapport en la reproduisant sur `harness.html` sans aucune interaction).
+  - **Changement de bibliothèque le même jour (03/11/2026, 2e lot)** : la bibliothèque
+    `echarts-wordcloud` choisie dans le 1er lot (voir ci-dessus, paquet npm officiel
+    `ecomfe/echarts-wordcloud`) a été écartée après qu'Antoine a demandé de vérifier s'il existait
+    une lib plus récente/mieux maintenue — son dépôt amont n'a plus reçu de commit de code depuis
+    2022-11-24. Recherche faite (registre npm + GitHub, dates de publication réelles comparées) :
+    `d3-cloud` (`jasondavies/d3-cloud`) a publié une réécriture complète (2.0.0, ESM-only, zéro
+    dépendance, tests + types + guide de migration, licence BSD-3-Clause) le **2026-10-30, soit 4
+    jours avant cette vérification** — nettement le candidat le mieux maintenu des options
+    comparées (`wordcloud`/wordcloud2.js : dernière version 2024-11-14 ; `chartjs-chart-wordcloud` :
+    nécessite Chart.js, un second moteur de graphiques pour ce seul type de tuile, écarté pour cette
+    raison architecturale plutôt que pour sa maintenance). Soumis à Antoine par une carte de
+    décision (3 options, dont "garder echarts-wordcloud") : il a choisi d3-cloud.
+  - **Contrepartie assumée de ce choix** : contrairement à `echarts-wordcloud`, `d3-cloud` ne fait
+    QUE le calcul de placement des mots (voir son README : "your application renders the results
+    with canvas, SVG, or another renderer") — ni rendu ni détection de clic/survol intégrés. Ce
+    dépôt dessine donc lui-même sur un `<canvas>` dédié par tuile (`js/charts.js:drawWordCloud`,
+    `getOrCreateWordCloudCanvas`) et fait sa propre détection de clic/survol
+    (`hitTestWordCloud` — inverse la rotation appliquée au dessin pour ramener le point cliqué dans
+    le repère local, non tourné, du mot) : nettement plus de code que pour les autres types de
+    tuile, qui délèguent tout cela à ECharts. La logique de clic (drill-down vs filtre croisé,
+    exclusions radar/mesure DAX/découpage de cellule) a été extraite dans `handleTileClick`,
+    partagée par le gestionnaire de clic ECharts générique ET le `<canvas>` du nuage de mots — pas
+    de duplication entre les deux chemins.
+  - **Dépend toujours d'une bibliothèque demandée à GFS plutôt que vendorisée/chargée en CDN par
+    l'app elle-même** (même protocole que le 1er lot, voir `GFS-ETAT.md` "Demandes à GFS" — demande
+    mise à jour, pas dupliquée) : `d3-cloud` 2.0.0, dont le build navigateur (`build/d3-cloud.js`,
+    champs `unpkg`/`jsdelivr` de son `package.json`) est un module ES **sans aucun build UMD** (ce
+    lot de version l'a explicitement retiré, voir son CHANGELOG) — `js/charts.js` en fait un
+    `import('d3-cloud')` (spécificateur NU, même mécanisme déjà utilisé par ce dépôt pour
+    `apache-arrow`/`flatbuffers`/`tslib` via l'`importmap` d'`index.html`), absent de cet importmap
+    tant que GFS n'a pas ajouté l'entrée correspondante. Sans elle, l'import échoue IMMÉDIATEMENT
+    (spécificateur non résolu, aucune requête réseau — contrairement à `typeof
+    global['echarts-wordcloud'] === 'undefined'` qui vérifiait un global après chargement) ;
+    l'échec est intercepté (mémoïsé, comme `GristBI.duckdbEngine.init()`) pour afficher le même
+    message explicite qu'avant (`chart.wordCloudUnavailable`) plutôt qu'une exception non gérée.
+  - **Testé sous Node** (`dev-tests/test-data.js`, inchangé par ce 2e lot) : `wordFrequency` dans ses
+    deux modes (égalité avec `groupByAggregate` en mode "une entrée par ligne" ; comptage/casse/
+    graphie/mots courts ignorés en mode "découpage de cellule"), et `tileExportSheet` pour les deux
+    modes — ce lot ne touche que le RENDU (`js/charts.js`), jamais `js/data.js`. Suite complète
+    toujours verte après ce changement.
+  - **Testé en navigateur réel avec un STUB écrit à la main** (`dev-tests/harness.html`, Playwright,
+    servi en HTTP) — jamais le vrai paquet `d3-cloud`, dont l'exécution dans un navigateur a été
+    refusée par le classificateur de sécurité de cette session cloud ("Code from External", même
+    garde-fou que pour l'extension DuckDB-WASM tierce de l'import PBIX et qu'`echarts-wordcloud`
+    dans le 1er lot) : un petit module ES, écrit par cette session, reproduisant l'API documentée de
+    `d3-cloud` 2.0.0 (`index.d.ts` du paquet — constructeur `CloudLayout`, `.size()`/`.overflow()`
+    chaînables, `.getSprite()`/`.place()` avec un placement déterministe en grille plutôt que le
+    vrai algorithme de packing), injecté via une entrée temporaire d'`importmap` sur une copie
+    jetable de `harness.html` (jamais committée, supprimée après coup — `git status` revérifié
+    propre). Confirmé avec ce stub : le canvas contient bien des pixels non blancs après rendu (le
+    texte est dessiné) ; `getInstance(tileId).getDataURL()` renvoie un PNG valide (compatibilité
+    avec `js/pdf-export.js`/`js/pptx-export.js`, inchangés) ; un clic sur un mot placé pose
+    correctement un filtre croisé (`{column, value, sourceTileId}` dans le store) ; le survol remplit
+    `canvas.title` avec "mot (valeur)" et bascule le curseur en `pointer` ; en basculant la MÊME
+    tuile en mode "découpage de cellule" (via édition), le même clic ne pose plus aucun filtre et le
+    curseur reste `default` — la neutralisation du clic fonctionne pour le `<canvas>` maison comme
+    elle fonctionnait pour la série ECharts du 1er lot. Également vérifié (sans stub, juste le
+    message de repli puisque la lib reste indisponible) : le champ "Découper chaque cellule…"
+    apparaît/disparaît toujours correctement ; une tuile des deux modes se crée sans erreur ; le
+    message `chart.wordCloudUnavailable` s'affiche bien ; un redimensionnement de fenêtre
+    (`resize()`) et une bascule de type de tuile dans les deux sens (nuage de mots ↔ barres, exerçant
+    `dispose()` sur l'ancienne instance avant de créer la nouvelle, canvas ↔ ECharts et
+    inversement) ne produisent aucune exception ; **zéro erreur console/exception JS imputable à
+    cette feature** sur l'ensemble de ces scénarios. Non-régression vérifiée sur bar/pie/kpi/
+    treemap/scatter/radar (création + clic → filtre croisé toujours posé) : l'extraction de
+    `handleTileClick` n'a rien changé au comportement de ces types. **Un bug PRÉEXISTANT, sans
+    rapport avec ce changement**, a été repéré au passage et confirmé comme tel en le reproduisant
+    identique sur le code d'avant ce lot (`git stash`) : un clic sur une tuile camembert déclenche
+    parfois `TypeError: Cannot set properties of null (setting 'innerHTML')` dans le code interne
+    d'ECharts (`_showTooltipContent`), probablement un artefact du rendu headless Playwright sur la
+    tooltip native d'ECharts — hors périmètre de ce lot, non corrigé ici.
     `index.html`/`dev-tests/harness.html` revérifiés IDENTIQUES sur toute la section
-    `<form id="add-tile-form">` (comparaison programmatique des deux blocs, même précaution que
-    l'entrée radar du 2026-11-02 ci-dessus, après le bug réel qui avait motivé cette habitude).
-  - **Non vérifié, et volontairement pas tenté dans ce sandbox** : le rendu RÉEL du nuage de mots
-    (disposition en spirale, rotation, couleurs, clic) avec la bibliothèque `echarts-wordcloud`
-    effectivement chargée. Le paquet a été téléchargé depuis le registre npm pour lire son code source
-    (confirmer le global `window['echarts-wordcloud']` et `visualStyleAccessPath: 'textStyle'`, qui
-    détermine `textStyle` plutôt que `itemStyle` pour la couleur/l'opacité par mot dans
-    `js/charts.js`), mais l'EXÉCUTER dans un navigateur (même temporairement, hors du dépôt) a été
-    refusé par le classificateur de sécurité de cette session cloud ("Code from External") — même
-    famille de garde-fou que celle rencontrée le même jour sur l'extension DuckDB-WASM tierce pour
-    l'import PBIX (voir le fil correspondant), ici sur une bibliothèque JS lisible plutôt qu'un binaire
-    compilé, mais la même prudence s'applique : pas de contournement tenté. La correction de ce point
-    reviendra naturellement une fois que GFS aura ajouté la bibliothèque (son propre processus de
-    vérification, `TESTER-AVEC-GFS.md`, couvre justement ce cas). Également non vérifié : le volume
-    réel au-delà de quelques mots (lisibilité/chevauchement à l'échelle d'une vraie colonne Keywords),
-    et le comportement du mode "découpage de cellule" sur une colonne Reference/numérique (cas limite
-    non prévu par le formulaire, qui n'exclut pas ces types de colonne pour ce champ).
+    `<form id="add-tile-form">` (inchangée par ce 2e lot, qui ne touche que `js/charts.js`/
+    `css/style.css`).
+  - **Non vérifié, et volontairement pas tenté dans ce sandbox** : le comportement RÉEL de l'algorithme
+    de packing de `d3-cloud` (disposition, densité, cas où des mots ne peuvent pas être placés) —
+    seul le CODE de ce dépôt qui l'appelle a été vérifié, via le stub ci-dessus, pas la bibliothèque
+    elle-même. La correction de ce point reviendra naturellement une fois que GFS aura ajouté la
+    bibliothèque (son propre processus de vérification, `TESTER-AVEC-GFS.md`, couvre justement ce
+    cas). Également non vérifié, inchangé depuis le 1er lot : le volume réel au-delà de quelques mots
+    (lisibilité/chevauchement à l'échelle d'une vraie colonne Keywords — la détection de collision de
+    `d3-cloud` en mode `overflow(false)` laissera simplement tomber les mots qui ne tiennent pas,
+    repli silencieux déjà codé dans `placeWordCloud`, mais jamais vu en vrai), et le comportement du
+    mode "découpage de cellule" sur une colonne Reference/numérique (cas limite non prévu par le
+    formulaire, qui n'exclut pas ces types de colonne pour ce champ). Nouveau point non vérifié
+    propre au `<canvas>` maison : l'exactitude pixel près de la détection de clic/survol
+    (`hitTestWordCloud` utilise une boîte englobante approximée depuis la ligne de base de la police,
+    pas le contour exact du glyphe — approximatif par nature, comme la détection de clic
+    d'`echarts-wordcloud` ne l'était pas non plus de façon garantie, mais jamais mesuré contre un
+    rendu réel faute de pouvoir exécuter la bibliothèque, voir plus haut).
 
 - **Mots-clés automatiques sur les publications (chantier en cours, démarré 03/11/2026)** — suite
   à la demande d'Antoine du fil "Recherche sémantique sur publications" (21/10 : rester
