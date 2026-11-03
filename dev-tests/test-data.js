@@ -1513,6 +1513,93 @@ const SAMPLE_TIME_SERIES = [
     assert.deepStrictEqual(kpiSuggestion.missingFields, ['Colonne Inconnue']);
     console.log('OK pbixLayout.suggestTiles (correspondance tolérante + colonnes manquantes détectées)');
   }
+
+  // extractVisuals + suggestTiles : waterfallChart — même forme que "bar" (1 dimension + 1 mesure,
+  // voir js/charts.js:renderChart qui calcule la cascade à partir du même groupByAggregate).
+  {
+    const layoutJson = {
+      sections: [{
+        displayName: 'Page 1',
+        visualContainers: [{
+          config: JSON.stringify({
+            name: 'visualW',
+            singleVisual: {
+              visualType: 'waterfallChart',
+              prototypeQuery: {
+                Select: [
+                  { Column: { Property: 'Mois' }, Name: 'Table.Mois', NativeReferenceName: 'Mois' },
+                  { Measure: { Property: 'Variation' }, Name: 'Measures.Variation', NativeReferenceName: 'Variation' },
+                ],
+              },
+            },
+          }),
+        }],
+      }],
+    };
+    const visuals = pbixLayout.extractVisuals(layoutJson);
+    assert.strictEqual(visuals[0].tileType, 'waterfall');
+    const suggestions = pbixLayout.suggestTiles(visuals, ['Mois', 'Variation']);
+    assert.deepStrictEqual(suggestions[0].tileData, { type: 'waterfall', measure: 'Variation', aggFn: 'sum', title: 'Variation par Mois', dimension: 'Mois' });
+    console.log('OK pbixLayout.extractVisuals/suggestTiles — waterfallChart (même forme que bar)');
+  }
+
+  // extractVisuals + suggestTiles : scatterChart — DEUX mesures (X et Y) désambiguïsées via
+  // `projections` (rolesByQueryRef), jamais par position dans `Select`. Ce fixture met
+  // volontairement, dans `Select`, la mesure Y puis une mesure "Taille" (bulle, sans rôle X/Y) puis
+  // la mesure X dans cet ordre : une lecture purement positionnelle donnerait Y puis Taille (faux),
+  // alors que la lecture par rôle donne X puis Y (correct).
+  {
+    const layoutJson = {
+      sections: [{
+        displayName: 'Page 1',
+        visualContainers: [{
+          config: JSON.stringify({
+            name: 'visualS',
+            singleVisual: {
+              visualType: 'scatterChart',
+              prototypeQuery: {
+                Select: [
+                  { Column: { Property: 'Region' }, Name: 'Table.Region', NativeReferenceName: 'Région' },
+                  { Measure: { Property: 'Revenue' }, Name: 'Measures.Revenue', NativeReferenceName: "Chiffre d'affaires" },
+                  { Measure: { Property: 'Volume' }, Name: 'Measures.Volume', NativeReferenceName: 'Volume' },
+                  { Measure: { Property: 'Cost' }, Name: 'Measures.Cost', NativeReferenceName: 'Coût' },
+                ],
+              },
+              projections: {
+                Category: [{ queryRef: 'Table.Region' }],
+                Y: [{ queryRef: 'Measures.Revenue' }],
+                Size: [{ queryRef: 'Measures.Volume' }],
+                X: [{ queryRef: 'Measures.Cost' }],
+              },
+            },
+          }),
+        }],
+      }],
+    };
+    const visuals = pbixLayout.extractVisuals(layoutJson);
+    assert.strictEqual(visuals[0].tileType, 'scatter');
+    const suggestions = pbixLayout.suggestTiles(visuals, ['Region', 'Revenue', 'Volume', 'Cost']);
+    assert.deepStrictEqual(suggestions[0].tileData, {
+      type: 'scatter', measure: 'Cost', aggFn: 'sum', title: 'Cost par Region', dimension: 'Region', measureY: 'Revenue',
+    });
+    console.log('OK pbixLayout.extractVisuals/suggestTiles — scatterChart (X/Y désambiguïsés via projections, pas par position)');
+  }
+
+  // suggestTiles : scatterChart sans `projections` (fichier/variante qui ne le fournit pas) — repli
+  // sur la position dans `Select` plutôt que de bloquer la suggestion.
+  {
+    const visuals = [{
+      visualId: 'v3', visualType: 'scatterChart', tileType: 'scatter', title: null,
+      fields: [
+        { isMeasure: false, property: 'Region', displayName: 'Région', role: null },
+        { isMeasure: true, property: 'Cost', displayName: 'Coût', role: null },
+        { isMeasure: true, property: 'Revenue', displayName: "Chiffre d'affaires", role: null },
+      ],
+    }];
+    const suggestions = pbixLayout.suggestTiles(visuals, ['Region', 'Cost', 'Revenue']);
+    assert.deepStrictEqual(suggestions[0].tileData, { type: 'scatter', measure: 'Cost', aggFn: 'sum', title: 'Cost par Region', dimension: 'Region', measureY: 'Revenue' });
+    console.log('OK pbixLayout.suggestTiles — scatterChart sans projections (repli positionnel)');
+  }
 })().then(() => {
   console.log('\nTous les tests data.js/state.js/demo-data.js/combobox.js/duckdb-engine.js/i18n.js sont passés.');
 }).catch((e) => {

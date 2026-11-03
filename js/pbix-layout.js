@@ -126,11 +126,17 @@
   }
 
   // Type de visuel Power BI -> type de tuile Grist BI, limité aux correspondances directes et sans
-  // ambiguïté. Volontairement absents (pas d'équivalent à 1 dimension + 1 mesure, ou logique trop
-  // différente pour une suggestion automatique fiable) : table/matrix (-> notre "pivot" a 2
-  // dimensions, pas 1), scatterChart (2 mesures), lineChart/areaChart/comboChart/map/
-  // shapeMap/filledMap/decompositionTree/keyInfluencers/qnaVisual (aucun équivalent), slicer (c'est
-  // un filtre, pas une tuile), textbox/image/shape/actionButton (pas un visuel de données).
+  // ambiguïté. `scatterChart` (nuage de points, 2 mesures X/Y désambiguïsées via `projections` —
+  // voir rolesByQueryRef ci-dessous) et `waterfallChart` (cascade, même forme que "bar" : 1
+  // dimension + 1 mesure) ajoutés le 03/11/2026 à la demande d'Antoine. Volontairement absents
+  // (pas d'équivalent à 1 dimension + 1 mesure, ou logique trop différente pour une suggestion
+  // automatique fiable) : table/matrix (-> notre "pivot" a 2 dimensions, avec des rôles
+  // lignes/colonnes/valeurs distincts à extraire séparément, plus de travail que scatter — voir
+  // ROADMAP.md), lineChart/areaChart/comboChart/map/shapeMap/filledMap/decompositionTree/
+  // keyInfluencers/qnaVisual (aucun équivalent chez nous), radar (Power BI n'a pas de radar natif,
+  // seulement des extensions tierces du marketplace dont le type de visuel n'est pas un nom stable
+  // à détecter), slicer (c'est un filtre, pas une tuile), textbox/image/shape/actionButton (pas un
+  // visuel de données).
   const VISUAL_TYPE_TO_TILE_TYPE = {
     barChart: 'bar',
     clusteredBarChart: 'bar',
@@ -144,7 +150,35 @@
     card: 'kpi',
     multiRowCard: 'kpi',
     gauge: 'gauge',
+    scatterChart: 'scatter',
+    waterfallChart: 'waterfall',
   };
+
+  // `projections` associe un nom de rôle interne du visuel (ex. "X"/"Y" pour un nuage de points) à
+  // un ou plusieurs `queryRef`, qui désignent chacun une entrée de `prototypeQuery.Select` par son
+  // champ `Name` — JAMAIS par position dans le tableau (aucun ordre garanti entre rôles). Pas eu
+  // besoin jusqu'ici (bar/pie/kpi/gauge/waterfall n'ont qu'un champ de chaque genre, l'ordre naturel
+  // de `Select` suffisait) ; devient nécessaire pour un nuage de points, qui a DEUX mesures (X et Y)
+  // à distinguer l'une de l'autre — une mesure "Taille" (bulles) ou "Légende" peut aussi apparaître
+  // dans `Select` sans être X ni Y, donc `measureFields[0]/[1]` par position serait incorrect.
+  function rolesByQueryRef(projections) {
+    const map = new Map();
+    if (!projections) return map;
+    for (const role of Object.keys(projections)) {
+      for (const entry of projections[role] || []) {
+        if (entry && entry.queryRef) map.set(entry.queryRef, role);
+      }
+    }
+    return map;
+  }
+
+  // Premier champ (parmi tous les champs du visuel, mesure ou non) dont le rôle vaut `role`, ou
+  // `null` si aucun champ de `Select` n'a ce rôle dans `projections` (visuel sans ce rôle rempli, ou
+  // fichier dont `projections` est absent/vide — repli vers la logique positionnelle existante dans
+  // suggestTiles, pas une erreur).
+  function fieldByRole(fields, role) {
+    return fields.find((f) => f.role === role) || null;
+  }
 
   function literalTitle(singleVisual) {
     try {
@@ -175,6 +209,7 @@
         const sv = config.singleVisual;
         if (!sv || !sv.visualType) continue;
         const select = (sv.prototypeQuery && sv.prototypeQuery.Select) || [];
+        const roleByQueryRef = rolesByQueryRef(sv.projections);
         const fields = select.map((item) => {
           const isMeasure = !!item.Measure;
           const ref = item.Column || item.Measure || {};
@@ -183,6 +218,7 @@
             property: ref.Property || null,
             displayName: item.NativeReferenceName || ref.Property || null,
             fullName: item.Name || null,
+            role: (item.Name && roleByQueryRef.get(item.Name)) || null,
           };
         });
         visuals.push({
@@ -234,10 +270,17 @@
       const dimensionFields = visual.fields.filter((f) => !f.isMeasure);
       const measureFields = visual.fields.filter((f) => f.isMeasure);
       const needsDimension = visual.tileType !== 'kpi' && visual.tileType !== 'gauge';
+      // Nuage de points uniquement : une 2e mesure (axe Y, voir js/charts.js — computeGroupBy est
+      // appelé 2 fois, une par mesure) en plus de la mesure "X" ci-dessous.
+      const needsSecondMeasure = visual.tileType === 'scatter';
       const missingFields = [];
 
       let dimension = null;
       if (needsDimension) {
+        // Un nuage de points n'a en pratique qu'un seul champ non-mesure (le champ de regroupement
+        // des points, X et Y étant tous deux des mesures) : la position suffit, pas besoin du rôle
+        // "Category" ici (contrairement à X/Y ci-dessous, qui ont chacun besoin de rolesByQueryRef
+        // pour ne pas confondre avec une mesure "Taille"/bulle au même rang).
         const field = dimensionFields[0];
         if (!field) missingFields.push('(dimension manquante dans le visuel)');
         else {
@@ -247,17 +290,29 @@
       }
 
       let measure = null;
-      const measureField = measureFields[0] || dimensionFields[needsDimension ? 1 : 0];
+      const measureField = (needsSecondMeasure && fieldByRole(visual.fields, 'X'))
+        || measureFields[0] || dimensionFields[needsDimension ? 1 : 0];
       if (!measureField) missingFields.push('(mesure manquante dans le visuel)');
       else {
         measure = matchColumn(measureField, availableColumnIds, columnKeyIndex);
         if (!measure) missingFields.push(measureField.displayName || measureField.property);
       }
 
+      let measureY = null;
+      if (needsSecondMeasure) {
+        const fieldY = fieldByRole(visual.fields, 'Y') || measureFields[1];
+        if (!fieldY) missingFields.push('(2e mesure manquante dans le visuel)');
+        else {
+          measureY = matchColumn(fieldY, availableColumnIds, columnKeyIndex);
+          if (!measureY) missingFields.push(fieldY.displayName || fieldY.property);
+        }
+      }
+
       const title = visual.title || [measure, dimension].filter(Boolean).join(' par ') || visual.visualType;
       const tileData = missingFields.length ? null : Object.assign(
         { type: visual.tileType, measure, aggFn: 'sum', title },
-        needsDimension ? { dimension } : { dimension: '' }
+        needsDimension ? { dimension } : { dimension: '' },
+        needsSecondMeasure ? { measureY } : {}
       );
 
       return { visual, tileType: visual.tileType, title, missingFields, tileData };

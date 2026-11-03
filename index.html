@@ -153,6 +153,9 @@
       <p data-i18n="pbixImport.intro">Lit les visuels d'un fichier .pbix ou .pbit (type de graphique, colonnes utilisées, titre) et
         propose des tuiles correspondantes sur la table de travail actuelle. Les données du fichier Power BI
         ne sont pas importées par ce chemin.</p>
+      <p class="pbix-import-hint" data-i18n="pbixImport.dataHint">Pour les vraies données du fichier (pas seulement sa mise en page) : exportez-les depuis Power BI
+        (clic droit sur un visuel → « Exporter les données », ou « Analyser dans Excel »), puis importez le fichier
+        obtenu dans Grist via son import natif. Les tuiles ci-dessous retrouveront alors les bonnes colonnes.</p>
       <input type="file" id="pbix-import-file" accept=".pbix,.pbit" />
       <p id="pbix-import-status" class="pbix-import-status"></p>
       <ul id="pbix-import-results" class="pbix-import-results"></ul>
