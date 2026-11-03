@@ -594,9 +594,32 @@
     return { tableId, rows: GristBI.data.tableToRows(table, await realDateColumnIds(tableId)) };
   }
 
+  // Crée une NOUVELLE table de DONNÉES dans le document, à partir de lignes déjà prêtes (ex. un CSV
+  // exporté de Power BI, lu et parsé dans le navigateur par js/csv-import.js — voir
+  // js/main.js:handleCsvImportConfirm) — à la différence de `loadOrCreateTable` ci-dessus (tables
+  // INTERNES à ce widget, un nom FIXE représentant toujours la MÊME table conceptuelle d'une
+  // session à l'autre), ce chemin crée une vraie table de données, sous un nom choisi par
+  // l'utilisateur, après la pop-up de confirmation qu'il voit dans la modale d'import — exception
+  // PONCTUELLE à la règle habituelle "ce widget ne crée aucune table de données" (CLAUDE.md
+  // §1/§3/§7/§8), accordée par Antoine le 03/11/2026 spécifiquement pour l'import Power BI.
+  // Appelée seulement sur un clic explicite de l'utilisateur, bien après `grist.ready()` — jamais
+  // au bootstrap — donc sans le risque de course qui justifie le budget d'attente de
+  // `tableExistsConfirmed` (voir sa documentation) : seul le filet de sécurité INDÉPENDANT reste
+  // pertinent ici (comparaison de `actualAddTableId`), pour PRÉVENIR l'utilisateur plutôt que le
+  // cacher si Grist a dû renommer silencieusement en cas de collision avec une table déjà
+  // existante (ex. un second import sous le même nom) — contrairement à `loadOrCreateTable`, une
+  // collision ici ne doit jamais faire taire l'appelant : main.js affiche le nom réellement créé.
+  async function createTableFromRows(tableId, columns, rows, onProgress) {
+    const result = await grist.docApi.applyUserActions([['AddTable', tableId, columns]]);
+    const actualTableId = actualAddTableId(result) || tableId;
+    _rawTables = null; // la nouvelle table doit apparaître au prochain listAvailableTables()
+    await fillTable(actualTableId, rows, columns, onProgress);
+    return actualTableId;
+  }
+
   GristBI.api = {
     init, loadConfig, saveConfig,
     listAvailableTables, loadTable, loadOrCreateComments, addComment, refColumnsForTable,
-    getCurrentUserEmail
+    getCurrentUserEmail, createTableFromRows
   };
 })(window);
