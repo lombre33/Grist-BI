@@ -11,6 +11,7 @@ const combobox = require('../js/combobox.js');
 const duckdbEngine = require('../js/duckdb-engine.js');
 const i18n = require('../js/i18n.js');
 const pbixLayout = require('../js/pbix-layout.js');
+const csvImport = require('../js/csv-import.js');
 const keywords = require('../js/keywords.js');
 const pdfText = require('../js/pdf-text.js');
 
@@ -1787,6 +1788,116 @@ const SAMPLE_TIME_SERIES = [
     assert.strictEqual(suggestions[0].tileData, null);
     assert.ok(suggestions[0].missingFields.includes('(dimension colonne identique à la dimension ligne)'));
     console.log('OK pbixLayout.suggestTiles — matrix avec lignes = colonnes (refusé, pas une tuile pivot valide)');
+  }
+
+  // --- Import d'un CSV exporté depuis Power BI (js/csv-import.js) ---------------------------
+
+  // detectDelimiter : fichier virgule (locale EN), fichier point-virgule (locale FR — le cas réel
+  // d'Antoine, voir l'en-tête de js/csv-import.js), fichier tabulation, et une virgule DANS un
+  // champ guillemeté qui ne doit jamais fausser la détection d'un fichier réellement point-virgule.
+  {
+    assert.strictEqual(csvImport.detectDelimiter('Region,Montant\nNord,100\nSud,30\n'), ',');
+    assert.strictEqual(csvImport.detectDelimiter('Region;Montant\nNord;100\nSud;30\n'), ';');
+    assert.strictEqual(csvImport.detectDelimiter('Region\tMontant\nNord\t100\nSud\t30\n'), '\t');
+    assert.strictEqual(
+      csvImport.detectDelimiter('Region;Note\n"Dupont, Jean";1\n"Martin, Paul";2\n'), ';'
+    );
+    console.log('OK csvImport.detectDelimiter — EN/FR/tabulation, virgule interne ignorée');
+  }
+
+  // parseCsv : champs guillemetés (virgule interne, retour à la ligne interne, guillemet doublé
+  // ""->"), CRLF et LF mélangés, BOM UTF-8 en tête — parseCsvFile (plus bas) passe par-dessus, ce
+  // bloc teste directement l'automate à états.
+  {
+    const text = 'Nom,Ville\r\n"Dupont, Jean","Paris\nFrance"\n"Il dit ""bonjour""",Lyon\n';
+    const { headers, rows: r } = csvImport.parseCsv(text, ',');
+    assert.deepStrictEqual(headers, ['Nom', 'Ville']);
+    assert.deepStrictEqual(r, [
+      ['Dupont, Jean', 'Paris\nFrance'],
+      ['Il dit "bonjour"', 'Lyon']
+    ]);
+    console.log('OK csvImport.parseCsv — champs guillemetés, CRLF/LF, guillemet doublé');
+  }
+
+  // parseLocaleNumber : virgule décimale FR (avec espace en séparateur de milliers), point décimal
+  // EN (avec virgule en séparateur de milliers), entier simple, texte non numérique -> null, chaîne
+  // vide -> null (jamais 0, voir l'en-tête de js/csv-import.js).
+  {
+    assert.strictEqual(csvImport.parseLocaleNumber('1 234,56'), 1234.56);
+    assert.strictEqual(csvImport.parseLocaleNumber('1234,56'), 1234.56);
+    assert.strictEqual(csvImport.parseLocaleNumber('1,234.56'), 1234.56);
+    assert.strictEqual(csvImport.parseLocaleNumber('1234.56'), 1234.56);
+    assert.strictEqual(csvImport.parseLocaleNumber('-42'), -42);
+    assert.strictEqual(csvImport.parseLocaleNumber('Nord'), null);
+    assert.strictEqual(csvImport.parseLocaleNumber(''), null);
+    console.log('OK csvImport.parseLocaleNumber — virgule FR, point EN, jamais 0 par défaut');
+  }
+
+  // parseLocaleDate : ISO, JJ/MM/AAAA (export FR le plus courant), JJ-MM-AAAA, date invalide
+  // (31 février) -> null, format non reconnu -> null.
+  {
+    assert.strictEqual(csvImport.parseLocaleDate('2026-03-05'), '2026-03-05');
+    assert.strictEqual(csvImport.parseLocaleDate('05/03/2026'), '2026-03-05');
+    assert.strictEqual(csvImport.parseLocaleDate('5/3/2026'), '2026-03-05');
+    assert.strictEqual(csvImport.parseLocaleDate('05-03-2026'), '2026-03-05');
+    assert.strictEqual(csvImport.parseLocaleDate('31/02/2026'), null);
+    assert.strictEqual(csvImport.parseLocaleDate('pas une date'), null);
+    console.log('OK csvImport.parseLocaleDate — ISO, JJ/MM/AAAA, date invalide rejetée');
+  }
+
+  // inferColumnType : colonne entièrement numérique -> Numeric, entièrement date FR -> Date,
+  // texte -> Text, colonne À PRÉDOMINANCE numérique mais avec UNE valeur texte -> Text en entier
+  // (jamais une coercition partielle qui perdrait silencieusement cette valeur), colonne vide ->
+  // Text (repli neutre).
+  {
+    assert.strictEqual(csvImport.inferColumnType(['100', '1 234,56', '-3']), 'Numeric');
+    assert.strictEqual(csvImport.inferColumnType(['05/03/2026', '2026-03-06']), 'Date');
+    assert.strictEqual(csvImport.inferColumnType(['Nord', 'Sud']), 'Text');
+    assert.strictEqual(csvImport.inferColumnType(['100', 'N/A', '30']), 'Text');
+    assert.strictEqual(csvImport.inferColumnType(['', '', '']), 'Text');
+    console.log('OK csvImport.inferColumnType — Numeric/Date/Text, repli intégral sur Text si une seule valeur ne correspond pas');
+  }
+
+  // sanitizeColumnId : accents/espaces/ponctuation -> identifiant valide, en-tête commençant par un
+  // chiffre -> préfixé, deux en-têtes qui se réduisent au même identifiant -> suffixés (jamais un
+  // doublon silencieux qui écraserait une colonne sur l'autre).
+  {
+    const used = new Set();
+    assert.strictEqual(csvImport.sanitizeColumnId('Région', used), 'Region');
+    assert.strictEqual(csvImport.sanitizeColumnId('Montant €', used), 'Montant');
+    assert.strictEqual(csvImport.sanitizeColumnId('2026 Ventes', used), 'c_2026_Ventes');
+    assert.strictEqual(csvImport.sanitizeColumnId('Montant €', used), 'Montant_2');
+    console.log('OK csvImport.sanitizeColumnId — accents/espaces/collision, jamais un identifiant invalide ou dupliqué');
+  }
+
+  // parseCsvFile : bout-en-bout sur un CSV FR réaliste (point-virgule, virgule décimale, dates
+  // JJ/MM/AAAA, en-têtes accentués) — vérifie que columns/rows sont directement exploitables par
+  // GristBI.api.createTableFromRows (js/grist-api.js, colonne par colonne).
+  {
+    const csv = 'Région;Montant;Date de vente\n'
+      + 'Nord;1 234,56;05/03/2026\n'
+      + 'Sud;987,65;06/03/2026\n';
+    const { columns, rows: r, rowCount } = csvImport.parseCsvFile(csv);
+    assert.deepStrictEqual(columns, [
+      { id: 'Region', type: 'Text', label: 'Région' },
+      { id: 'Montant', type: 'Numeric', label: 'Montant' },
+      { id: 'Date_de_vente', type: 'Date', label: 'Date de vente' }
+    ]);
+    assert.strictEqual(rowCount, 2);
+    assert.deepStrictEqual(r, [
+      { Region: 'Nord', Montant: 1234.56, Date_de_vente: '2026-03-05' },
+      { Region: 'Sud', Montant: 987.65, Date_de_vente: '2026-03-06' }
+    ]);
+    console.log('OK csvImport.parseCsvFile — CSV FR bout-en-bout (point-virgule, virgule décimale, dates JJ/MM/AAAA)');
+  }
+
+  // parseCsvFile : valeur manquante dans une colonne Numeric/Date -> null (jamais 0 ni une chaîne
+  // vide qui vaudrait un 1/1/1970 ou un zéro silencieux, voir l'en-tête de js/csv-import.js).
+  {
+    const csv = 'Région,Montant\nNord,100\nSud,\n';
+    const { rows: r } = csvImport.parseCsvFile(csv);
+    assert.strictEqual(r[1].Montant, null);
+    console.log('OK csvImport.parseCsvFile — valeur numérique manquante -> null, jamais 0');
   }
 })().then(() => {
   console.log('\nTous les tests data.js/state.js/demo-data.js/combobox.js/duckdb-engine.js/i18n.js sont passés.');

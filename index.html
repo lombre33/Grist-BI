@@ -154,12 +154,31 @@
         propose des tuiles correspondantes sur la table de travail actuelle. Les données du fichier Power BI
         ne sont pas importées par ce chemin.</p>
       <p class="pbix-import-hint" data-i18n="pbixImport.dataHint">Pour les vraies données du fichier (pas seulement sa mise en page) : exportez-les depuis Power BI
-        (clic droit sur un visuel → « Exporter les données », ou « Analyser dans Excel »), puis importez le fichier
-        obtenu dans Grist via son import natif. Les tuiles ci-dessous retrouveront alors les bonnes colonnes.</p>
+        (clic droit sur un visuel → « Exporter les données », ou « Analyser dans Excel »), puis déposez le CSV obtenu
+        ci-dessous — ou importez-le via l'import natif de Grist. Les tuiles ci-dessus retrouveront alors les bonnes colonnes.</p>
       <input type="file" id="pbix-import-file" accept=".pbix,.pbit" />
       <p id="pbix-import-status" class="pbix-import-status"></p>
       <ul id="pbix-import-results" class="pbix-import-results"></ul>
       <button id="pbix-import-create" type="button" class="btn-primary" data-i18n="pbixImport.createSelected" hidden>Créer les tuiles sélectionnées</button>
+
+      <hr class="pbix-import-divider" />
+      <h4 data-i18n="pbixImport.csvTitle">Données (CSV exporté de Power BI)</h4>
+      <p data-i18n="pbixImport.csvIntro">Déposez ici le CSV exporté depuis Power BI (clic droit sur un visuel → « Exporter les données », ou
+        « Analyser dans Excel » puis enregistrement en CSV). Le widget détecte les colonnes et leur type et vous montre
+        un aperçu ; la table n'est créée dans votre document Grist qu'après votre confirmation explicite.</p>
+      <input type="file" id="csv-import-file" accept=".csv" />
+      <p id="csv-import-status" class="pbix-import-status"></p>
+      <div id="csv-import-preview" class="csv-import-preview" hidden>
+        <label for="csv-import-table-name" data-i18n="pbixImport.csvTableName">Nom de la table</label>
+        <input type="text" id="csv-import-table-name" />
+        <ul id="csv-import-columns" class="csv-import-columns"></ul>
+        <button id="csv-import-create" type="button" class="btn-primary" data-i18n="pbixImport.csvCreate">Créer la table</button>
+      </div>
+      <div id="csv-import-confirm" class="csv-import-confirm" hidden>
+        <p id="csv-import-confirm-text"></p>
+        <button id="csv-import-confirm-yes" type="button" class="btn-primary" data-i18n="pbixImport.csvConfirmYes">Confirmer la création</button>
+        <button id="csv-import-confirm-no" type="button" class="btn-secondary" data-i18n="pbixImport.csvConfirmNo">Annuler</button>
+      </div>
     </div>
   </div>
 
@@ -411,6 +430,7 @@
   <script src="js/i18n.js"></script>
   <script src="js/data.js"></script>
   <script src="js/pbix-layout.js"></script>
+  <script src="js/csv-import.js"></script>
   <script src="js/combobox.js"></script>
   <script src="js/state.js"></script>
   <script src="js/charts.js"></script>

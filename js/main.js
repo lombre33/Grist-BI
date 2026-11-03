@@ -173,6 +173,16 @@
   const pbixImportStatusEl = document.getElementById('pbix-import-status');
   const pbixImportResultsEl = document.getElementById('pbix-import-results');
   const pbixImportCreateBtn = document.getElementById('pbix-import-create');
+  const csvImportFileInput = document.getElementById('csv-import-file');
+  const csvImportStatusEl = document.getElementById('csv-import-status');
+  const csvImportPreviewEl = document.getElementById('csv-import-preview');
+  const csvImportTableNameInput = document.getElementById('csv-import-table-name');
+  const csvImportColumnsEl = document.getElementById('csv-import-columns');
+  const csvImportCreateBtn = document.getElementById('csv-import-create');
+  const csvImportConfirmEl = document.getElementById('csv-import-confirm');
+  const csvImportConfirmTextEl = document.getElementById('csv-import-confirm-text');
+  const csvImportConfirmYesBtn = document.getElementById('csv-import-confirm-yes');
+  const csvImportConfirmNoBtn = document.getElementById('csv-import-confirm-no');
 
   // Tous les champs qui référencent une COLONNE deviennent des comboboxes avec autocomplétion
   // (demande explicite de l'utilisateur, voir js/combobox.js) — en mode strict : la valeur doit
@@ -1038,6 +1048,120 @@
     pbixImportFileInput.value = '';
   }
 
+  // --- Import des DONNÉES d'un CSV exporté depuis Power BI --------------------------------------
+  // Complète l'import de mise en page ci-dessus : js/csv-import.js (pur, testé Node) détecte le
+  // délimiteur/les types de colonnes et convertit déjà les valeurs — tout ce qui suit est la glue
+  // navigateur (lecture de fichier, DOM, création de la table dans Grist), jamais testée sous Node
+  // pour cette raison, même convention que le reste de cette modale. Contrairement à l'import de
+  // mise en page ci-dessus, CE chemin crée une VRAIE table de données dans le document —
+  // exception ponctuelle à la règle habituelle "ce widget ne crée aucune table de données"
+  // (CLAUDE.md §1/§3/§7/§8), accordée par Antoine le 03/11/2026 spécifiquement pour l'import Power
+  // BI, et gardée derrière une pop-up de confirmation explicite (voir handleCsvImportConfirmYes)
+  // avant le moindre AddTable.
+  let csvImportParsed = null; // { columns, rows, rowCount } de la dernière lecture réussie
+  let csvImportPendingTableName = null; // nom proposé à l'utilisateur sur la pop-up de confirmation
+
+  function renderCsvImportColumns(columns) {
+    csvImportColumnsEl.innerHTML = columns.map((c) => `
+      <li class="csv-import-column">
+        <span class="csv-import-col-label">${escapeHtml(c.label)}</span>
+        <span class="csv-import-col-type">${escapeHtml(c.type)}</span>
+      </li>
+    `).join('');
+  }
+
+  // Nom de table proposé par défaut (modifiable avant confirmation) : nom de fichier sans
+  // extension, assaini en identifiant Grist valide — même règles que
+  // GristBI.csvImport.sanitizeColumnId (lettre/underscore en tête, puis lettres/chiffres/
+  // underscores), jamais vide.
+  function suggestTableNameFromFile(file) {
+    const base = file.name.replace(/\.csv$/i, '').trim();
+    const sanitized = base.replace(/[^A-Za-z0-9_]+/g, '_').replace(/^_+|_+$/g, '') || 'Import';
+    return /^[0-9]/.test(sanitized) ? 'T_' + sanitized : sanitized;
+  }
+
+  async function handleCsvImportFile(file) {
+    csvImportParsed = null;
+    csvImportPreviewEl.hidden = true;
+    csvImportConfirmEl.hidden = true;
+    if (!file) { csvImportStatusEl.textContent = ''; return; }
+    csvImportStatusEl.textContent = t('pbixImport.csvReading');
+    try {
+      const text = await file.text();
+      const parsed = GristBI.csvImport.parseCsvFile(text);
+      if (!parsed.rowCount || !parsed.columns.length) {
+        csvImportStatusEl.textContent = t('pbixImport.csvEmpty');
+        return;
+      }
+      csvImportParsed = parsed;
+      csvImportTableNameInput.value = suggestTableNameFromFile(file);
+      renderCsvImportColumns(parsed.columns);
+      csvImportStatusEl.textContent = t('pbixImport.csvFound', { columns: parsed.columns.length, rows: parsed.rowCount });
+      csvImportPreviewEl.hidden = false;
+    } catch (e) {
+      console.error('[GristBI] échec de la lecture du fichier CSV', e);
+      csvImportStatusEl.textContent = t('pbixImport.csvReadFailed');
+    }
+  }
+
+  // Ouvre la pop-up de confirmation (jamais d'AddTable direct depuis "Créer la table" — voir
+  // l'en-tête de cette section) avec le nom de table et le volume EXACTS qui seront créés.
+  function handleCsvImportCreateClick() {
+    if (!csvImportParsed) return;
+    const tableName = csvImportTableNameInput.value.trim();
+    if (!tableName) { alert(t('pbixImport.csvNameRequired')); return; }
+    csvImportPendingTableName = tableName;
+    csvImportConfirmTextEl.textContent = t('pbixImport.csvConfirmText', {
+      table: tableName, columns: csvImportParsed.columns.length, rows: csvImportParsed.rowCount
+    });
+    csvImportConfirmEl.hidden = false;
+  }
+
+  function handleCsvImportConfirmNo() {
+    csvImportConfirmEl.hidden = true;
+    csvImportPendingTableName = null;
+  }
+
+  // Seul chemin qui appelle réellement GristBI.api.createTableFromRows (AddTable) — après ce
+  // dernier clic explicite de confirmation. Reconnecte ensuite le widget à la table créée (comme
+  // un changement manuel via le sélecteur, voir switchTable) puis, si un .pbix a déjà été lu dans
+  // cette même ouverture de la modale (pbixImportSuggestions non vide, mise en page pas encore
+  // créée), ré-essaie immédiatement la correspondance de colonnes : le CSV vient du MÊME fichier
+  // Power BI que ce .pbix, ses en-têtes de colonnes portent donc vraisemblablement les mêmes noms,
+  // sans que l'utilisateur ait à relire son .pbix une seconde fois.
+  async function handleCsvImportConfirmYes() {
+    if (!csvImportParsed || !csvImportPendingTableName) return;
+    csvImportConfirmEl.hidden = true;
+    csvImportCreateBtn.disabled = true;
+    csvImportStatusEl.textContent = t('pbixImport.csvCreating');
+    try {
+      const actualTableId = await GristBI.api.createTableFromRows(
+        csvImportPendingTableName, csvImportParsed.columns, csvImportParsed.rows,
+        (phase, sent, total) => { csvImportStatusEl.textContent = t('pbixImport.csvCreatingProgress', { sent, total }); }
+      );
+      const rowCount = csvImportParsed.rowCount;
+      csvImportStatusEl.textContent = t('pbixImport.csvCreated', { table: actualTableId, rows: rowCount });
+      const { rows } = await GristBI.api.loadTable(actualTableId);
+      await switchTable(actualTableId, rows);
+      await refreshTablePicker();
+      if (pbixImportSuggestions.length) {
+        pbixImportSuggestions = GristBI.pbixLayout.suggestTiles(
+          pbixImportSuggestions.map((s) => s.visual), availableColumns(rows)
+        );
+        renderPbixImportResults();
+      }
+      csvImportParsed = null;
+      csvImportPendingTableName = null;
+      csvImportPreviewEl.hidden = true;
+      csvImportFileInput.value = '';
+    } catch (e) {
+      console.error('[GristBI] échec de la création de la table depuis le CSV importé', e);
+      csvImportStatusEl.textContent = t('pbixImport.csvCreateFailed');
+    } finally {
+      csvImportCreateBtn.disabled = false;
+    }
+  }
+
   function updateFormFieldsForType() {
     const type = tileTypeSelect.value;
     const isKpi = type === 'kpi';
@@ -1425,6 +1549,12 @@
       pbixImportStatusEl.textContent = '';
       pbixImportCreateBtn.hidden = true;
       pbixImportFileInput.value = '';
+      csvImportParsed = null;
+      csvImportPendingTableName = null;
+      csvImportStatusEl.textContent = '';
+      csvImportPreviewEl.hidden = true;
+      csvImportConfirmEl.hidden = true;
+      csvImportFileInput.value = '';
       pbixImportModal.hidden = false;
     });
     pbixImportCloseBtn.addEventListener('click', () => { pbixImportModal.hidden = true; });
@@ -1433,6 +1563,12 @@
     pbixImportFileInput.addEventListener('change', () => handlePbixImportFile(pbixImportFileInput.files[0]));
   }
   if (pbixImportCreateBtn) pbixImportCreateBtn.addEventListener('click', handlePbixImportCreate);
+  if (csvImportFileInput) {
+    csvImportFileInput.addEventListener('change', () => handleCsvImportFile(csvImportFileInput.files[0]));
+  }
+  if (csvImportCreateBtn) csvImportCreateBtn.addEventListener('click', handleCsvImportCreateClick);
+  if (csvImportConfirmYesBtn) csvImportConfirmYesBtn.addEventListener('click', handleCsvImportConfirmYes);
+  if (csvImportConfirmNoBtn) csvImportConfirmNoBtn.addEventListener('click', handleCsvImportConfirmNo);
 
   // Ajout d'un commentaire : AddRecord côté Grist (js/grist-api.js:addComment), puis ajout
   // optimiste côté store (pas de re-fetch de toute la table) — la liste affichée se remet à jour
