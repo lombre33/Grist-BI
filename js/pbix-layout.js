@@ -126,17 +126,20 @@
   }
 
   // Type de visuel Power BI -> type de tuile Grist BI, limité aux correspondances directes et sans
-  // ambiguïté. `scatterChart` (nuage de points, 2 mesures X/Y désambiguïsées via `projections` —
-  // voir rolesByQueryRef ci-dessous) et `waterfallChart` (cascade, même forme que "bar" : 1
-  // dimension + 1 mesure) ajoutés le 03/11/2026 à la demande d'Antoine. Volontairement absents
-  // (pas d'équivalent à 1 dimension + 1 mesure, ou logique trop différente pour une suggestion
-  // automatique fiable) : table/matrix (-> notre "pivot" a 2 dimensions, avec des rôles
-  // lignes/colonnes/valeurs distincts à extraire séparément, plus de travail que scatter — voir
-  // ROADMAP.md), lineChart/areaChart/comboChart/map/shapeMap/filledMap/decompositionTree/
-  // keyInfluencers/qnaVisual (aucun équivalent chez nous), radar (Power BI n'a pas de radar natif,
-  // seulement des extensions tierces du marketplace dont le type de visuel n'est pas un nom stable
-  // à détecter), slicer (c'est un filtre, pas une tuile), textbox/image/shape/actionButton (pas un
-  // visuel de données).
+  // ambiguïté. `scatterChart` (nuage de points, 2 mesures X/Y) et `waterfallChart` (cascade, même
+  // forme que "bar") ajoutés le 03/11/2026 ; `matrix`/`pivotTable` (tableau croisé Power BI, rôles
+  // "Rows"/"Columns"/"Values" — confirmés par une lecture indépendante de fichiers réels, voir
+  // https://github.com/d0nk3yhm/pbix-mcp, pas seulement la doc publique) ajoutés le même jour,
+  // toujours à la demande d'Antoine — voir rolesByQueryRef ci-dessous pour la désambiguïsation par
+  // rôle plutôt que par position, nécessaire dès qu'un visuel a plusieurs champs du même genre.
+  // Volontairement absents (pas d'équivalent à 1 dimension + 1 mesure, ou logique trop différente
+  // pour une suggestion automatique fiable) : table/tableEx (liste plate de colonnes, sans
+  // distinction lignes/colonnes — contrairement à `matrix`, ne correspond pas à notre "pivot"),
+  // lineChart/areaChart/comboChart/map/shapeMap/filledMap/decompositionTree/keyInfluencers/
+  // qnaVisual (aucun équivalent chez nous), radar (Power BI n'a pas de radar natif, seulement des
+  // extensions tierces du marketplace dont le type de visuel n'est pas un nom stable à détecter),
+  // slicer (c'est un filtre, pas une tuile), textbox/image/shape/actionButton (pas un visuel de
+  // données).
   const VISUAL_TYPE_TO_TILE_TYPE = {
     barChart: 'bar',
     clusteredBarChart: 'bar',
@@ -152,6 +155,8 @@
     gauge: 'gauge',
     scatterChart: 'scatter',
     waterfallChart: 'waterfall',
+    matrix: 'pivot',
+    pivotTable: 'pivot',
   };
 
   // `projections` associe un nom de rôle interne du visuel (ex. "X"/"Y" pour un nuage de points) à
@@ -257,8 +262,9 @@
 
   // Construit, pour chaque visuel dont le type est pris en charge (voir VISUAL_TYPE_TO_TILE_TYPE),
   // une suggestion de tuile Grist BI prête à ajouter via `store.addTile` (voir js/main.js) — UNE
-  // dimension + UNE mesure (bar/pie/treemap) ou juste UNE mesure (kpi/gauge), les mêmes champs que
-  // le formulaire "+ Ajouter la tuile" construit à la main. Un visuel dont une colonne requise ne
+  // dimension + UNE mesure (bar/pie/treemap/waterfall), juste UNE mesure (kpi/gauge), UNE dimension
+  // + DEUX mesures (scatter) ou DEUX dimensions + UNE mesure (pivot) — les mêmes champs que le
+  // formulaire "+ Ajouter la tuile" construit à la main. Un visuel dont une colonne requise ne
   // trouve aucune correspondance dans `availableColumnIds` (table de travail actuellement
   // connectée) a `tileData: null` et liste ses `missingFields` — à afficher à l'utilisateur plutôt
   // qu'à importer en silence une tuile pointant vers une colonne qui n'existe pas.
@@ -273,15 +279,19 @@
       // Nuage de points uniquement : une 2e mesure (axe Y, voir js/charts.js — computeGroupBy est
       // appelé 2 fois, une par mesure) en plus de la mesure "X" ci-dessous.
       const needsSecondMeasure = visual.tileType === 'scatter';
+      // Tableau croisé (matrix Power BI) uniquement : une 2e dimension (colonnes), en plus de la
+      // dimension "lignes" ci-dessous — voir js/main.js (tile-column-dimension-field), qui exige
+      // elle aussi que les deux dimensions soient différentes (vérifié plus bas, même contrainte
+      // que le formulaire manuel).
+      const needsColumnDimension = visual.tileType === 'pivot';
       const missingFields = [];
 
       let dimension = null;
       if (needsDimension) {
-        // Un nuage de points n'a en pratique qu'un seul champ non-mesure (le champ de regroupement
-        // des points, X et Y étant tous deux des mesures) : la position suffit, pas besoin du rôle
-        // "Category" ici (contrairement à X/Y ci-dessous, qui ont chacun besoin de rolesByQueryRef
-        // pour ne pas confondre avec une mesure "Taille"/bulle au même rang).
-        const field = dimensionFields[0];
+        // Rôle "Rows" nécessaire seulement pour un tableau croisé (sinon la ligne ET la colonne
+        // pourraient toutes deux matcher le premier champ non-mesure trouvé) ; les autres types
+        // n'ont en pratique qu'un seul champ non-mesure candidat, la position suffit.
+        const field = (needsColumnDimension && fieldByRole(visual.fields, 'Rows')) || dimensionFields[0];
         if (!field) missingFields.push('(dimension manquante dans le visuel)');
         else {
           dimension = matchColumn(field, availableColumnIds, columnKeyIndex);
@@ -289,8 +299,20 @@
         }
       }
 
+      let columnDimension = null;
+      if (needsColumnDimension) {
+        const fieldCol = fieldByRole(visual.fields, 'Columns');
+        if (!fieldCol) missingFields.push('(dimension colonne manquante dans le visuel)');
+        else {
+          columnDimension = matchColumn(fieldCol, availableColumnIds, columnKeyIndex);
+          if (!columnDimension) missingFields.push(fieldCol.displayName || fieldCol.property);
+          else if (dimension && columnDimension === dimension) missingFields.push('(dimension colonne identique à la dimension ligne)');
+        }
+      }
+
       let measure = null;
       const measureField = (needsSecondMeasure && fieldByRole(visual.fields, 'X'))
+        || (needsColumnDimension && fieldByRole(visual.fields, 'Values'))
         || measureFields[0] || dimensionFields[needsDimension ? 1 : 0];
       if (!measureField) missingFields.push('(mesure manquante dans le visuel)');
       else {
@@ -308,11 +330,16 @@
         }
       }
 
-      const title = visual.title || [measure, dimension].filter(Boolean).join(' par ') || visual.visualType;
+      const title = visual.title
+        || (needsColumnDimension && measure && dimension && columnDimension
+          ? `${measure} par ${dimension} × ${columnDimension}`
+          : [measure, dimension].filter(Boolean).join(' par '))
+        || visual.visualType;
       const tileData = missingFields.length ? null : Object.assign(
         { type: visual.tileType, measure, aggFn: 'sum', title },
         needsDimension ? { dimension } : { dimension: '' },
-        needsSecondMeasure ? { measureY } : {}
+        needsSecondMeasure ? { measureY } : {},
+        needsColumnDimension ? { columnDimension } : {}
       );
 
       return { visual, tileType: visual.tileType, title, missingFields, tileData };
