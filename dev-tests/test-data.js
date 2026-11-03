@@ -53,6 +53,40 @@ const rows = [
   console.log('OK groupByAggregate préserve l\'ordre de première apparition (pas alphabétique)');
 }
 
+// wordFrequency — mode "une entrée par ligne" : strictement délégué à groupByAggregate.
+{
+  const authorRows = [
+    { Auteur: 'Alla F', Citations: 12 },
+    { Auteur: 'Soubran C', Citations: 4 },
+    { Auteur: 'Alla F', Citations: 7 }
+  ];
+  const agg = data.wordFrequency(authorRows, 'Auteur', false, 'Citations', 'sum');
+  assert.deepStrictEqual(agg, data.groupByAggregate(authorRows, 'Auteur', 'Citations', 'sum'));
+  console.log('OK wordFrequency (mode une entrée par ligne) = groupByAggregate');
+}
+
+// wordFrequency — mode "découpage de cellule" : fréquence cumulée sur toutes les lignes,
+// insensible à la casse, graphie de la première occurrence conservée, mots de moins de 2
+// caractères ignorés (ponctuation isolée issue du split).
+{
+  const keywordRows = [
+    { Keywords: 'Santé, cohorte, génétique' },
+    { Keywords: 'santé cohorte' },
+    { Keywords: 'Mortality a' },
+    { Keywords: null },
+    { Keywords: '' }
+  ];
+  const agg = data.wordFrequency(keywordRows, 'Keywords', true);
+  const byLabel = Object.fromEntries(agg.map((d) => [d.dimension.toLowerCase(), d.value]));
+  assert.strictEqual(byLabel['santé'], 2);
+  assert.strictEqual(byLabel['cohorte'], 2);
+  assert.strictEqual(byLabel['génétique'], 1);
+  assert.strictEqual(byLabel['mortality'], 1);
+  assert.strictEqual('a' in byLabel, false); // mot d'une seule lettre ignoré
+  assert.strictEqual(agg.find((d) => d.dimension === 'Santé') !== undefined, true); // 1re graphie
+  console.log('OK wordFrequency (mode découpage de cellule)');
+}
+
 // applyFilters (ET entre tous les filtres passés)
 {
   const filtered = data.applyFilters(rows, [{ column: 'Region', value: 'Sud' }]);
@@ -312,6 +346,23 @@ const rows = [
   assert.strictEqual(barSheet.name, 'Montant par Région');
   assert.deepStrictEqual(barSheet.header, ['Region', 'Montant']);
   assert.deepStrictEqual(barSheet.rows, [['Nord', 190], ['Sud', 150]]);
+
+  // Nuage de mots, mode "une entrée par ligne" (wordCloudSplit falsy) : export identique à "bar"
+  // (même header/mêmes lignes), voir js/data.js:tileExportSheet — c'est délibérément le MÊME chemin
+  // de code que barTile ci-dessus, pas une branche dédiée.
+  const wordCloudTile = { id: 't1b', type: 'wordcloud', title: 'Nuage de mots : Region', dimension: 'Region', measure: 'Montant', aggFn: 'sum' };
+  const wordCloudSheet = data.tileExportSheet(wordCloudTile, baseState);
+  assert.deepStrictEqual(wordCloudSheet.header, ['Region', 'Montant']);
+  assert.deepStrictEqual(wordCloudSheet.rows, [['Nord', 190], ['Sud', 150]]);
+
+  // Nuage de mots, mode "découpage de cellule" (wordCloudSplit vrai) : fréquence de mots sur la
+  // colonne Produit (ici "Casque audio" x2, "Clavier" x1), triée par fréquence décroissante — measure/
+  // aggFn ignorés (undefined, comme le fait js/main.js côté formulaire).
+  const wordCloudSplitTile = { id: 't1c', type: 'wordcloud', title: 'Nuage de mots : Produit', dimension: 'Produit', wordCloudSplit: true, measure: undefined, aggFn: undefined };
+  const wordCloudSplitSheet = data.tileExportSheet(wordCloudSplitTile, baseState);
+  assert.deepStrictEqual(wordCloudSplitSheet.header, ['Produit', 'Occurrences']);
+  assert.deepStrictEqual(wordCloudSplitSheet.rows, [['Casque', 2], ['audio', 2], ['Clavier', 1]]);
+  console.log('OK tileExportSheet (nuage de mots : mode "une entrée par ligne" = export bar ; mode "découpage de cellule" = fréquence triée)');
 
   const kpiTile = { id: 't2', type: 'kpi', measure: 'Montant', aggFn: 'sum' };
   const kpiSheet = data.tileExportSheet(kpiTile, baseState);
