@@ -164,6 +164,13 @@
   const detailModalTruncatedEl = document.getElementById('detail-modal-truncated');
   const commentAuthorInput = document.getElementById('comment-author');
   const commentTextInput = document.getElementById('comment-text');
+  const openPbixImportBtn = document.getElementById('open-pbix-import');
+  const pbixImportModal = document.getElementById('pbix-import-modal');
+  const pbixImportCloseBtn = document.getElementById('pbix-import-close');
+  const pbixImportFileInput = document.getElementById('pbix-import-file');
+  const pbixImportStatusEl = document.getElementById('pbix-import-status');
+  const pbixImportResultsEl = document.getElementById('pbix-import-results');
+  const pbixImportCreateBtn = document.getElementById('pbix-import-create');
 
   // Tous les champs qui référencent une COLONNE deviennent des comboboxes avec autocomplétion
   // (demande explicite de l'utilisateur, voir js/combobox.js) — en mode strict : la valeur doit
@@ -927,6 +934,98 @@
     detailModalTileId = null;
   }
 
+  // id de tuile unique parmi celles créées dans la même milliseconde (ex. import Power BI en lot,
+  // voir handlePbixImportCreate plus bas) : l'horodatage seul ne suffit pas dans ce cas, `suffix`
+  // (index dans le lot) lève l'ambiguïté avant même la part aléatoire.
+  function genTileId(suffix) {
+    return 'tile_' + Date.now().toString(36) + (suffix != null ? '_' + suffix : '') + Math.random().toString(36).slice(2, 6);
+  }
+
+  // --- Import de la MISE EN PAGE d'un fichier Power BI (.pbix/.pbit) --------------------------
+  // Partie pure (parsing ZIP, décodage Report/Layout, extraction des visuels, correspondance de
+  // colonnes) dans js/pbix-layout.js, testée sous Node — tout ce qui suit est la glue navigateur
+  // (lecture de fichier, DOM), jamais testée sous Node pour cette raison (voir TEST_PROTOCOL.md).
+  // Importe UNIQUEMENT la mise en page (quels visuels, quel type, quelles colonnes) vers des
+  // tuiles sur la table de travail DÉJÀ connectée — jamais les données du fichier Power BI, jamais
+  // de table créée par ce chemin (voir CLAUDE.md, étude de faisabilité du 2026-11-03 : le format de
+  // stockage des données, VertiPaq, est propriétaire et non documenté officiellement).
+  let pbixImportSuggestions = []; // dernière liste affichée dans la modale, relue par "Créer les tuiles sélectionnées"
+
+  // Décompresse une entrée ZIP DEFLATE via l'API navigateur native (`DecompressionStream`), sans la
+  // moindre nouvelle dépendance — disponible dans tous les navigateurs évergreens visés par ce
+  // widget (Chrome/Edge 80+, Firefox 97+, Safari 16.4+). Seule l'entrée Report/Layout (quelques Ko
+  // à dizaines de Ko) passe par ici ; `DataModel`, bien plus gros, est stocké NON compressé au
+  // niveau ZIP (voir l'en-tête de js/pbix-layout.js) et n'est de toute façon jamais lu par ce
+  // chemin.
+  async function inflateRawBrowser(bytes) {
+    const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  }
+
+  // Un visuel sans tuile équivalente n'arrive déjà plus jusqu'ici (GristBI.pbixLayout.suggestTiles
+  // filtre sur les types reconnus) : une suggestion affichée ici est donc toujours soit prête à
+  // créer (`tileData` rempli), soit bloquée UNIQUEMENT par des colonnes introuvables
+  // (`missingFields` forcément non vide dans ce cas, voir js/pbix-layout.js).
+  function renderPbixImportResults() {
+    pbixImportResultsEl.innerHTML = pbixImportSuggestions.map((s, i) => {
+      const disabled = !s.tileData;
+      const meta = disabled
+        ? t('pbixImport.missingColumns', { columns: s.missingFields.join(', ') })
+        : s.visual.visualType;
+      return `<li class="pbix-import-result${disabled ? ' pbix-import-result-disabled' : ''}">
+        <label>
+          <input type="checkbox" data-pbix-index="${i}" ${disabled ? 'disabled' : 'checked'} />
+          <span>
+            <span class="pbix-import-result-title">${escapeHtml(s.title)}</span><br>
+            <span class="pbix-import-result-meta">${escapeHtml(meta)}</span>
+          </span>
+        </label>
+      </li>`;
+    }).join('');
+    pbixImportCreateBtn.hidden = !pbixImportSuggestions.some((s) => s.tileData);
+  }
+
+  async function handlePbixImportFile(file) {
+    pbixImportSuggestions = [];
+    pbixImportResultsEl.innerHTML = '';
+    pbixImportCreateBtn.hidden = true;
+    if (!file) { pbixImportStatusEl.textContent = ''; return; }
+    pbixImportStatusEl.textContent = t('pbixImport.reading');
+    try {
+      const buf = new Uint8Array(await file.arrayBuffer());
+      const entries = GristBI.pbixLayout.parseZipCentralDirectory(buf);
+      const layoutEntry = entries.find((e) => e.name === 'Report/Layout');
+      if (!layoutEntry) { pbixImportStatusEl.textContent = t('pbixImport.noLayout'); return; }
+      const layoutBytes = await GristBI.pbixLayout.readZipEntryBytes(buf, layoutEntry, inflateRawBrowser);
+      const layoutJson = GristBI.pbixLayout.decodeLayoutJson(layoutBytes);
+      const visuals = GristBI.pbixLayout.extractVisuals(layoutJson);
+      pbixImportSuggestions = GristBI.pbixLayout.suggestTiles(visuals, availableColumns(store.getState().rows));
+      if (!pbixImportSuggestions.length) { pbixImportStatusEl.textContent = t('pbixImport.noVisual'); return; }
+      const n = pbixImportSuggestions.filter((s) => s.tileData).length;
+      pbixImportStatusEl.textContent = t('pbixImport.found', { n, total: pbixImportSuggestions.length });
+      renderPbixImportResults();
+    } catch (e) {
+      console.error('[GristBI] échec de la lecture du fichier Power BI', e);
+      pbixImportStatusEl.textContent = t('pbixImport.readFailed');
+    }
+  }
+
+  function handlePbixImportCreate() {
+    const checked = pbixImportResultsEl.querySelectorAll('input[type="checkbox"]:checked:not(:disabled)');
+    let created = 0;
+    checked.forEach((cb) => {
+      const suggestion = pbixImportSuggestions[Number(cb.dataset.pbixIndex)];
+      if (!suggestion || !suggestion.tileData) return;
+      store.addTile(Object.assign({ id: genTileId(created) }, suggestion.tileData));
+      created++;
+    });
+    pbixImportStatusEl.textContent = t('pbixImport.created', { n: created });
+    pbixImportSuggestions = [];
+    pbixImportResultsEl.innerHTML = '';
+    pbixImportCreateBtn.hidden = true;
+    pbixImportFileInput.value = '';
+  }
+
   function updateFormFieldsForType() {
     const type = tileTypeSelect.value;
     const isKpi = type === 'kpi';
@@ -1153,7 +1252,7 @@
       store.updateTile(editingTileId, tileData);
       stopEditTile();
     } else {
-      tileData.id = 'tile_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      tileData.id = genTileId();
       store.addTile(tileData);
     }
   });
@@ -1283,6 +1382,25 @@
   // déclenchée depuis le bouton de CHAQUE tuile, pas un bouton de bandeau unique).
   if (commentsCloseBtn) commentsCloseBtn.addEventListener('click', closeCommentsModal);
   if (detailCloseBtn) detailCloseBtn.addEventListener('click', closeDetailModal);
+
+  // Panneau Import Power BI : même convention hidden natif/pas de fermeture au clic sur le fond
+  // que les autres modales ci-dessus. Réinitialisé à chaque ouverture (pas de résultat d'un import
+  // précédent qui traîne si l'utilisateur change de fichier ou rouvre le panneau).
+  if (openPbixImportBtn && pbixImportModal && pbixImportCloseBtn) {
+    openPbixImportBtn.addEventListener('click', () => {
+      pbixImportSuggestions = [];
+      pbixImportResultsEl.innerHTML = '';
+      pbixImportStatusEl.textContent = '';
+      pbixImportCreateBtn.hidden = true;
+      pbixImportFileInput.value = '';
+      pbixImportModal.hidden = false;
+    });
+    pbixImportCloseBtn.addEventListener('click', () => { pbixImportModal.hidden = true; });
+  }
+  if (pbixImportFileInput) {
+    pbixImportFileInput.addEventListener('change', () => handlePbixImportFile(pbixImportFileInput.files[0]));
+  }
+  if (pbixImportCreateBtn) pbixImportCreateBtn.addEventListener('click', handlePbixImportCreate);
 
   // Ajout d'un commentaire : AddRecord côté Grist (js/grist-api.js:addComment), puis ajout
   // optimiste côté store (pas de re-fetch de toute la table) — la liste affichée se remet à jour
