@@ -641,6 +641,16 @@ td.pivot-cell:not(.pivot-cell-empty):not(.pivot-total-cell):hover { background: 
 .pivot-grand-total { color: var(--accent); }
 .pivot-empty { color: var(--muted); text-align: center; margin: 0; padding: 16px 0; }
 
+/* Nuage de mots (js/charts.js:renderWordCloud, depuis le 03/11/2026 : d3-cloud ne fait que le
+   placement, ce widget dessine lui-même sur ce <canvas>) : `display: block` explicite — un canvas
+   est en `inline-block` par défaut, ce qui ajoute quelques pixels d'espace parasite sous l'élément
+   (artefact d'alignement sur la ligne de base, pas une marge) ; ce projet a déjà un bug réel
+   documenté sur un débordement de quelques pixels du canvas ECharts sous la carte (voir le
+   commentaire de `.tile-chart` ci-dessus) — pas la peine d'en rouvrir un équivalent ici. Largeur/
+   hauteur CSS posées directement en JS (voir drawWordCloud), pile à la taille de `.tile-chart`. */
+.tile-wordcloud-canvas { display: block; }
+.tile-wordcloud-message { color: var(--muted); text-align: center; margin: 0; padding: 16px 0; }
+
 .tile-kpi {
   flex: 1;
   display: flex;
