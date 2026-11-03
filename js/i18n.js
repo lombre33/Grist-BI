@@ -246,6 +246,10 @@
       fr: "Lit les visuels d'un fichier .pbix ou .pbit (type de graphique, colonnes utilisées, titre) et propose des tuiles correspondantes sur la table de travail actuelle. Les données du fichier Power BI ne sont pas importées par ce chemin.",
       en: 'Reads the visuals of a .pbix or .pbit file (chart type, columns used, title) and suggests matching tiles on the current working table. The Power BI file’s data is not imported through this path.'
     },
+    'pbixImport.dataHint': {
+      fr: 'Pour les vraies données du fichier (pas seulement sa mise en page) : exportez-les depuis Power BI (clic droit sur un visuel → « Exporter les données », ou « Analyser dans Excel »), puis importez le fichier obtenu dans Grist via son import natif. Les tuiles ci-dessous retrouveront alors les bonnes colonnes.',
+      en: 'For the file’s actual data (not just its layout): export it from Power BI (right-click a visual → "Export data", or "Analyze in Excel"), then import the resulting file into Grist via its native import. The tiles below will then find the matching columns.'
+    },
     'pbixImport.reading': { fr: 'Lecture du fichier…', en: 'Reading the file…' },
     'pbixImport.noLayout': {
       fr: "Aucune mise en page trouvée dans ce fichier (entrée « Report/Layout » absente) — est-ce bien un .pbix/.pbit ?",
