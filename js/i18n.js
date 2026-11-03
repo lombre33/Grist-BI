@@ -150,6 +150,7 @@
     'tileForm.type.pivot': { fr: 'Tableau croisé', en: 'Pivot table' },
     'tileForm.type.waterfall': { fr: 'Cascade (waterfall)', en: 'Waterfall' },
     'tileForm.type.radar': { fr: 'Radar', en: 'Radar' },
+    'tileForm.type.wordcloud': { fr: 'Nuage de mots', en: 'Word cloud' },
     'tileForm.dimension.label': { fr: 'Dimension', en: 'Dimension' },
     'tileForm.dimension.labelRows': { fr: 'Dimension (lignes)', en: 'Dimension (rows)' },
     'tileForm.columnDimension.label': { fr: 'Dimension (colonnes)', en: 'Dimension (columns)' },
@@ -161,6 +162,7 @@
     'tileForm.radarEntity.columnLabel': { fr: 'Comparer une valeur (colonne)', en: 'Compare a value (column)' },
     'tileForm.radarEntity.valueLabel': { fr: 'Valeur à comparer', en: 'Value to compare' },
     'tileForm.radarEntity.compareAverage': { fr: 'Comparer aussi à la moyenne du groupe filtré', en: 'Also compare to the filtered group average' },
+    'tileForm.wordCloudSplit.label': { fr: 'Découper chaque cellule en plusieurs mots (ex. mots-clés séparés par des virgules)', en: 'Split each cell into several words (e.g. comma-separated keywords)' },
     'tileForm.suggestDateHierarchy': { fr: 'Détailler par Année/Trimestre/Mois/Jour', en: 'Break down by Year/Quarter/Month/Day' },
     'tileForm.drill.label': { fr: 'Drill-down', en: 'Drill-down' },
     'tileForm.drill.addLevel': { fr: '+ Niveau', en: '+ Level' },
@@ -316,6 +318,7 @@
 
     // --- Graphiques (js/charts.js) ---
     'chart.unavailable': { fr: 'ECharts indisponible — voir le bandeau en haut de page.', en: 'ECharts unavailable — see the banner at the top of the page.' },
+    'chart.wordCloudUnavailable': { fr: 'Nuage de mots indisponible pour le moment (extension en attente d’ajout).', en: 'Word cloud unavailable for now (extension pending approval).' },
     'chart.measureFailed': { fr: 'Échec du calcul de la mesure — voir la console (F12).', en: 'Measure calculation failed — see the console (F12).' },
     'chart.computing': { fr: 'Calcul…', en: 'Computing…' },
     'chart.pivot.total': { fr: 'Total', en: 'Total' },

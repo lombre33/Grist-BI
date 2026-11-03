@@ -78,6 +78,8 @@
   const dimensionLabel = document.getElementById('tile-dimension-label');
   const dimensionSelect = document.getElementById('tile-dimension');
   const suggestDateHierarchyBtn = document.getElementById('tile-suggest-date-hierarchy');
+  const wordCloudSplitField = document.getElementById('tile-wordcloud-split-field');
+  const wordCloudSplitCheckbox = document.getElementById('tile-wordcloud-split');
   const columnDimensionField = document.getElementById('tile-column-dimension-field');
   const columnDimensionSelect = document.getElementById('tile-column-dimension');
   const radarModeField = document.getElementById('tile-radar-mode-field');
@@ -412,6 +414,16 @@
   // du forum Grist (entretiens d'orientation, compétences déjà en colonnes plutôt qu'en lignes).
   function isRadarColumnsMode() {
     return tileTypeSelect.value === 'radar' && radarModeSelect.value === 'columns';
+  }
+
+  // Nuage de mots en mode "découpage de cellule" (tile-wordcloud-split) : chaque mot vient du
+  // découpage d'UNE cellule, pas d'un groupement par dimension — mesure/agrégat n'ont pas de sens
+  // (voir GristBI.data.wordFrequency, le compte d'occurrences est la seule valeur possible) et un
+  // clic n'a aucune valeur de dimension cohérente à driller/filtrer (voir js/charts.js). Contrairement
+  // à isRadarColumnsMode, la dimension (colonne à découper) reste toujours requise dans ce mode —
+  // seuls mesure/agrégat/drill-down en sont absents, voir formHasNoDimension ci-dessous.
+  function isWordCloudSplitMode() {
+    return tileTypeSelect.value === 'wordcloud' && wordCloudSplitCheckbox.checked;
   }
 
   function formHasNoDimension() {
@@ -1160,6 +1172,8 @@
     const isPivot = type === 'pivot';
     const isRadar = type === 'radar';
     const isRadarColumns = isRadarColumnsMode();
+    const isWordCloud = type === 'wordcloud';
+    const isWordCloudSplit = isWordCloudSplitMode();
     // KPI/jauge/tuile "Barres" en mode de calcul temporel : pas de dimension de regroupement ni de
     // drill-down, juste un agrégat sur toute la sélection (le KPI peut en plus le comparer à une
     // période via "Tendance vs", la jauge le positionne sur un cadran Min/Max, la tuile Barres en
@@ -1169,19 +1183,23 @@
     dimensionField.hidden = formHasNoDimension();
     dimensionLabel.textContent = t(isPivot ? 'tileForm.dimension.labelRows' : 'tileForm.dimension.label');
     columnDimensionField.hidden = !isPivot;
-    // Radar "compétences en colonnes" : mesure/agrégat n'ont pas de sens (un axe = la moyenne
-    // d'une colonne, pas une agrégation configurable, voir js/charts.js:renderChart) — masqués
+    wordCloudSplitField.hidden = !isWordCloud;
+    // Radar "compétences en colonnes" ET nuage de mots "découpage de cellule" : mesure/agrégat n'ont
+    // pas de sens dans les deux cas (un axe radar = la moyenne d'une colonne ; un mot du nuage = un
+    // compte d'occurrences, voir js/charts.js:renderChart / js/data.js:wordFrequency) — masqués
     // comme dimensionField/drillField ci-dessus plutôt que laissés visibles mais ignorés.
     radarModeField.hidden = !isRadar;
     radarAxesField.hidden = !isRadarColumns;
-    measureField.hidden = isRadarColumns;
-    aggField.hidden = isRadarColumns;
+    measureField.hidden = isRadarColumns || isWordCloudSplit;
+    aggField.hidden = isRadarColumns || isWordCloudSplit;
     // Comparaison élève/moyenne du groupe filtré : valable dans les DEUX modes d'axes (dimension ET
     // columns), voir ROADMAP.md — contrairement au bloc ci-dessus, pas de dépendance à isRadarColumns.
     radarEntityColumnField.hidden = !isRadar;
     radarEntityValueField.hidden = !isRadar;
     radarCompareAverageField.hidden = !isRadar;
-    drillField.hidden = formHasNoDimension() || !supportsDrillDown(type);
+    // Nuage de mots "découpage de cellule" : pas de drill-down non plus (voir isWordCloudSplitMode
+    // et js/charts.js, clic neutralisé pour ce mode précisément).
+    drillField.hidden = formHasNoDimension() || !supportsDrillDown(type) || isWordCloudSplit;
     trendField.hidden = !isKpi;
     gaugeMinField.hidden = !isGauge;
     gaugeMaxField.hidden = !isGauge;
@@ -1249,6 +1267,7 @@
     dateColumnSelect.value = tile.dateColumn || '';
     radarModeSelect.value = tile.radarAxisMode === 'columns' ? 'columns' : 'dimension';
     setRadarAxes(tile.radarAxes);
+    wordCloudSplitCheckbox.checked = !!tile.wordCloudSplit;
     radarEntityColumnSelect.value = tile.radarEntityColumn || '';
     updateRadarEntityValueOptions();
     radarEntityValueSelect.value = tile.radarEntityValue || '';
@@ -1271,6 +1290,7 @@
   tileTypeSelect.addEventListener('change', updateFormFieldsForType);
   measureModeSelect.addEventListener('change', updateFormFieldsForType);
   radarModeSelect.addEventListener('change', updateFormFieldsForType);
+  wordCloudSplitCheckbox.addEventListener('change', updateFormFieldsForType);
   // Changer de colonne de comparaison invalide la valeur déjà choisie (elle appartenait à l'ANCIENNE
   // colonne) : vidée plutôt que laissée incohérente, même principe que `truncateDrillLevelsAfter`.
   radarEntityColumnSelect.addEventListener('change', () => {
@@ -1304,14 +1324,20 @@
     const dateColumn = measureMode ? dateColumnSelect.value : '';
     const isPivot = type === 'pivot';
     const isRadarColumns = isRadarColumnsMode();
+    const isWordCloudSplit = isWordCloudSplitMode();
     const hasDimension = !formHasNoDimension();
     const dimension = dimensionSelect.value;
     const columnDimension = columnDimensionSelect.value;
     const measure = measureSelect.value;
     const aggFn = aggSelect.value;
-    // Radar "compétences en colonnes" : aucune mesure/dimension unique à valider (voir
-    // isRadarColumnsMode) — ses propres axes (radarAxes ci-dessous) jouent ce rôle à la place.
-    if (!isRadarColumns && (!measure || (hasDimension && !dimension))) return;
+    // Radar "compétences en colonnes" et nuage de mots "découpage de cellule" : aucune mesure à
+    // valider (voir isRadarColumnsMode/isWordCloudSplitMode) — ses propres axes (radarAxes
+    // ci-dessous) ou le simple compte d'occurrences (js/data.js:wordFrequency) en tiennent lieu. La
+    // dimension, elle, reste requise dans les deux cas sauf radar "colonnes" (seul mode sans aucune
+    // dimension unique, voir formHasNoDimension) — vérifiée séparément, plus seulement sous la garde
+    // `!isRadarColumns` d'origine (équivalente ici puisque isRadarColumns implique hasDimension faux).
+    if (!isRadarColumns && !isWordCloudSplit && !measure) return;
+    if (hasDimension && !dimension) return;
     if (isScatter && !measureYSelect.value) return; // 2e mesure obligatoire pour un nuage de points
     if (measureMode && !dateColumn) { alert(t('tileForm.alert.dateColumnRequired')); return; }
     if (isPivot && !columnDimension) return; // 2e dimension obligatoire pour un tableau croisé
@@ -1334,7 +1360,7 @@
         return;
       }
     }
-    const drillDimensions = supportsDrillDown(type) ? drillLevelSelects.map((s) => s.value).filter(Boolean) : [];
+    const drillDimensions = (supportsDrillDown(type) && !isWordCloudSplit) ? drillLevelSelects.map((s) => s.value).filter(Boolean) : [];
     // Garde-fou : une même colonne ne peut pas apparaître deux fois dans le chemin de drill (ni
     // reprendre la dimension racine) — un cas non gardé auparavant, repéré en généralisant à N
     // niveaux (voir ROADMAP.md, cluster "Hiérarchies & drill-down").
@@ -1345,10 +1371,16 @@
     }
     const title = isPivot ? `${measure} par ${dimension} × ${columnDimension}`
       : isRadarColumns ? `Radar : ${radarAxes.join(', ')}`
+      : isWordCloudSplit ? `Nuage de mots : ${dimension}`
       : hasDimension ? `${measure} par ${dimension}`
       : measureMode ? `${MEASURE_MODE_TITLES[measureMode]} : ${aggFn}(${measure})`
       : `${aggFn}(${measure})`;
     const tileData = { type, dimension, measure, aggFn, title };
+    // Nuage de mots "découpage de cellule" : mesure/agrégat ignorés par le rendu (voir
+    // js/charts.js), effacés ici plutôt que laissés à une valeur fantôme du formulaire — même
+    // principe que les champs spécifiques à un type plus bas.
+    if (isWordCloudSplit) { tileData.measure = undefined; tileData.aggFn = undefined; }
+    tileData.wordCloudSplit = (type === 'wordcloud') ? wordCloudSplitCheckbox.checked : undefined;
     // Champs spécifiques à un type explicitement mis à `undefined` quand non pertinents (plutôt que
     // simplement omis) : `store.updateTile` fusionne le patch via Object.assign, qui ne fait QUE
     // écraser les clés présentes dans l'objet — omettre une clé laisserait une ancienne valeur

@@ -2288,6 +2288,109 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     "Valeur à comparer" (combobox non virtualisé) sur un vrai document à plusieurs milliers de
     lignes.
 
+- **Nuage de mots (2026-11-03)**, suite à une capture Power BI partagée par Antoine (mots-clés/auteurs
+  de publications, taille = fréquence, rotation, couleurs variées). Nouveau type de tuile
+  (`js/charts.js`, série ECharts `type: 'wordCloud'`), deux modes (`tile.wordCloudSplit`, case à
+  cocher du formulaire) :
+  - **"Une entrée par ligne"** (défaut) : chaque valeur de la dimension est UN mot, taille = compte ou
+    mesure choisie — `js/data.js:wordFrequency` délègue alors STRICTEMENT à `groupByAggregate`
+    (même chemin de code que "bar", vérifié par un test Node qui compare les deux résultats avec
+    `assert.deepStrictEqual`). Cliquable comme bar/pie (cross-filter/drill-down), puisque chaque mot
+    correspond exactement à une valeur de colonne.
+  - **"Découpage de cellule"** : une colonne comme Keywords, avec plusieurs mots-clés dans une même
+    cellule (séparés par virgule/espace/autre ponctuation), fréquence cumulée sur TOUTES les lignes
+    (`wordFrequency(rows, column, true)`, tokenisation par regex Unicode `[^\p{L}\p{N}'-]+`,
+    insensible à la casse, graphie de la 1re occurrence conservée, mots d'1 caractère ignorés).
+    Mesure/agrégat masqués dans le formulaire (n'ont pas de sens ici, voir `isWordCloudSplitMode`).
+    **Clic neutralisé pour ce mode précisément** : un mot issu du découpage (ex. "génétique") ne
+    correspond à AUCUNE valeur de colonne exacte (la cellule d'origine vaut "génétique, cohorte,
+    adolescent") — un filtre par égalité stricte sur ce mot viderait silencieusement la tuile plutôt
+    que de filtrer quoi que ce soit de cohérent (le widget n'a pas de filtre de clic de type
+    "contient"). Même traitement que le clic neutralisé sur un radar (guard dans
+    `getOrCreateChartInstance`, js/charts.js).
+  - **Dépend d'une bibliothèque d'extension non chargée par ce dépôt** : `echarts-wordcloud` (paquet
+    npm officiel `ecomfe/echarts-wordcloud`, même organisation GitHub que ECharts), demandée à GFS
+    plutôt que vendorisée/chargée en CDN par l'app elle-même — décision d'Antoine du 03/11/2026 (fil
+    "Importer des fichiers Power BI", en réponse à une question sur une tout autre bibliothèque
+    risquée pour l'import PBIX, mais formulée sans réserve de périmètre : « c'est lui [GFS] qui gère
+    les extension/lib » désormais). Protocole suivi tel que documenté dans
+    `lombre33/grist-widget-GFS` (`consignes/LISEZ-MOI.md`, `docs/guide-des-apps.md` règle 9 de la
+    section 1.1 "à respecter dès maintenant", sans attendre l'intégration complète à GFS) : demande
+    écrite dans `GFS-ETAT.md` (section "Demandes à GFS", avec le fichier exact du paquet voulu —
+    `dist/echarts-wordcloud.min.js` — et un signalement explicite que le dépôt amont n'a plus reçu de
+    commit de code depuis 2022-11-24, pour qu'Antoine/GFS tranchent eux-mêmes au regard du critère
+    "sûre, documentée, maintenue"). Tant que la bibliothèque n'est pas fournie, `js/charts.js` affiche
+    un message explicite (`chart.wordCloudUnavailable`) plutôt qu'un graphique vide — détection par un
+    global que le propre bundle UMD de la bibliothèque pose à son enregistrement
+    (`window['echarts-wordcloud']`, confirmé en lisant le code source téléchargé depuis le registre
+    npm : `root["echarts-wordcloud"] = factory(root["echarts"])` dans son wrapper webpack, exactement
+    le cas d'un chargement par un simple `<script>`), PAS une tentative/`try`-`catch` autour de
+    `setOption` — ECharts ne lève aucune exception sur un type de série inconnu, juste un avertissement
+    console sans rendu (même piège silencieux que `typeof echarts === 'undefined'`, CLAUDE.md §7
+    piège n°4).
+  - **Testé sous Node** (`dev-tests/test-data.js`) : `wordFrequency` dans ses deux modes (égalité avec
+    `groupByAggregate` en mode "une entrée par ligne" ; comptage/casse/graphie/mots courts ignorés en
+    mode "découpage de cellule"), et `tileExportSheet` pour les deux modes (export identique à "bar"
+    pour le 1er ; fréquence triée par ordre décroissant, en-tête "Occurrences", pour le 2e). Suite
+    complète (plus de 150 clés i18n, tous les autres modules) toujours verte après ce changement.
+  - **Testé en navigateur réel** (`dev-tests/harness.html`, Playwright, servi en HTTP comme requis par
+    ce harnais — PAS `file://`) : le nouveau champ "Découper chaque cellule…" apparaît/disparaît
+    correctement selon le type choisi ; en mode "découpage de cellule", les champs Mesure/Agrégat/
+    Drill-down se masquent bien (`updateFormFieldsForType`) ; une tuile des DEUX modes se crée bien
+    sans erreur de validation ; la tuile créée affiche bien le message de repli explicite
+    (`chart.wordCloudUnavailable`), confirmant que la détection d'absence de bibliothèque fonctionne
+    EXACTEMENT comme en production actuelle (la bibliothèque n'étant pas encore fournie par GFS) ;
+    **zéro erreur console imputable à cette feature** (seule une 404 `favicon.ico`, confirmée
+    préexistante et sans rapport en la reproduisant sur `harness.html` sans aucune interaction).
+    `index.html`/`dev-tests/harness.html` revérifiés IDENTIQUES sur toute la section
+    `<form id="add-tile-form">` (comparaison programmatique des deux blocs, même précaution que
+    l'entrée radar du 2026-11-02 ci-dessus, après le bug réel qui avait motivé cette habitude).
+  - **Non vérifié, et volontairement pas tenté dans ce sandbox** : le rendu RÉEL du nuage de mots
+    (disposition en spirale, rotation, couleurs, clic) avec la bibliothèque `echarts-wordcloud`
+    effectivement chargée. Le paquet a été téléchargé depuis le registre npm pour lire son code source
+    (confirmer le global `window['echarts-wordcloud']` et `visualStyleAccessPath: 'textStyle'`, qui
+    détermine `textStyle` plutôt que `itemStyle` pour la couleur/l'opacité par mot dans
+    `js/charts.js`), mais l'EXÉCUTER dans un navigateur (même temporairement, hors du dépôt) a été
+    refusé par le classificateur de sécurité de cette session cloud ("Code from External") — même
+    famille de garde-fou que celle rencontrée le même jour sur l'extension DuckDB-WASM tierce pour
+    l'import PBIX (voir le fil correspondant), ici sur une bibliothèque JS lisible plutôt qu'un binaire
+    compilé, mais la même prudence s'applique : pas de contournement tenté. La correction de ce point
+    reviendra naturellement une fois que GFS aura ajouté la bibliothèque (son propre processus de
+    vérification, `TESTER-AVEC-GFS.md`, couvre justement ce cas). Également non vérifié : le volume
+    réel au-delà de quelques mots (lisibilité/chevauchement à l'échelle d'une vraie colonne Keywords),
+    et le comportement du mode "découpage de cellule" sur une colonne Reference/numérique (cas limite
+    non prévu par le formulaire, qui n'exclut pas ces types de colonne pour ce champ).
+
+- **Mots-clés automatiques sur les publications (chantier en cours, démarré 03/11/2026)** — suite
+  à la demande d'Antoine du fil "Recherche sémantique sur publications" (21/10 : rester
+  zéro-backend ; 02/11 : mots-clés manuels ET automatiques à l'ajout d'un document, pour indexer
+  richement) :
+  - `js/keywords.js` : extraction de mots-clés façon RAKE (Rose et al., 2010 — degree/freq,
+    phrases candidates coupées aux mots vides/ponctuation, PAS à un simple espace). Tokenisation
+    via `Intl.Segmenter` natif (vérifié sous Node 22 et dans les navigateurs cibles) plutôt qu'une
+    bibliothèque comme `wink-nlp` envisagée au départ : une fois la contrainte GFS posée par
+    Antoine le 03/11 ("sûre/documentée/maintenue", voir GFS-ETAT.md), éviter une
+    dépendance quand une API native suffit est strictement mieux. **100% JS vanilla, zéro nouvelle
+    dépendance pour ce module**, testé sous Node (`dev-tests/test-data.js`) : phrase multi-mots
+    mieux classée qu'un mot isolé, ex-aequo départagé par l'ordre de première apparition (jamais
+    alphabétique, même prudence que le piège n°14 du CLAUDE.md), découpage défensif des phrases
+    candidates trop longues (`maxPhraseWords`, garde-fou contre un texte sans aucun mot vide sur
+    une longue plage — ex. tableau mal extrait d'un PDF).
+  - `js/pdf-text.js` : extraction du texte d'un PDF (pièce jointe Grist) pour alimenter
+    `keywords.js`. Codé CONTRE l'API de PDF.js (`window.pdfjsLib`) sans jamais la charger ni la
+    référencer dans `index.html`/l'import map — `isAvailable()` renvoie `false` et
+    `extractTextFromPdf` rejette avec un code clair (`PDFJS_NOT_AVAILABLE`) tant que GFS n'a pas
+    traité la demande (voir GFS-ETAT.md, section "Demandes à GFS"). Fonctions pures de jointure
+    (`joinTextItems`/`joinPages`) testées sous Node ; le reste (chargement réel d'un PDF) a besoin
+    d'un vrai PDF.js, donc d'un navigateur — même limite que le moteur SQL de `duckdb-engine.js`.
+  - **Non fait à ce stade** : le branchement Grist lui-même (colonne mots-clés manuels + auto via
+    `ensureColumnsUpToDate`, UI de déclenchement à l'ajout d'un document, lecture de la pièce
+    jointe via `grist.docApi.getAccessToken`) et le plan de rattrapage des publications déjà
+    existantes (backlog) — question posée à Antoine, réponse pas encore reçue au moment de ce
+    commit. Voir ROADMAP.md.
+  - **Non testable depuis ce sandbox** : le round-trip réel PDF.js une fois GFS la fournie (CDN
+    réel, taille du fichier worker, timing sur un PDF de plusieurs centaines de pages).
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée
