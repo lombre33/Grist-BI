@@ -268,6 +268,39 @@
     'pbixImport.createSelected': { fr: 'Créer les tuiles sélectionnées', en: 'Create selected tiles' },
     'pbixImport.created': { fr: '{n} {n|tuile créée|tuiles créées}.', en: '{n} {n|tile created|tiles created}.' },
 
+    // --- Import des DONNÉES d'un CSV exporté depuis Power BI (complète l'import ci-dessus) ---
+    'pbixImport.csvTitle': { fr: 'Données (CSV exporté de Power BI)', en: 'Data (CSV exported from Power BI)' },
+    'pbixImport.csvIntro': {
+      fr: 'Déposez ici le CSV exporté depuis Power BI (clic droit sur un visuel → « Exporter les données », ou « Analyser dans Excel » puis enregistrement en CSV). Le widget détecte les colonnes et leur type et vous montre un aperçu ; la table n’est créée dans votre document Grist qu’après votre confirmation explicite.',
+      en: 'Drop here the CSV exported from Power BI (right-click a visual → "Export data", or "Analyze in Excel" then save as CSV). The widget detects the columns and their type and shows you a preview; the table is only created in your Grist document after your explicit confirmation.'
+    },
+    'pbixImport.csvReading': { fr: 'Lecture du fichier…', en: 'Reading the file…' },
+    'pbixImport.csvEmpty': {
+      fr: 'Aucune ligne de données trouvée dans ce fichier — est-ce bien un CSV avec un en-tête de colonnes ?',
+      en: 'No data row found in this file — is this really a CSV with a column header?'
+    },
+    'pbixImport.csvReadFailed': { fr: 'Échec de la lecture du fichier CSV — voir la console (F12).', en: 'Failed to read the CSV file — see the console (F12).' },
+    'pbixImport.csvFound': {
+      fr: 'Aperçu : {columns} {columns|colonne|colonnes}, {rows} {rows|ligne|lignes}.',
+      en: 'Preview: {columns} {columns|column|columns}, {rows} {rows|row|rows}.'
+    },
+    'pbixImport.csvTableName': { fr: 'Nom de la table', en: 'Table name' },
+    'pbixImport.csvCreate': { fr: 'Créer la table', en: 'Create table' },
+    'pbixImport.csvNameRequired': { fr: 'Choisissez un nom de table.', en: 'Choose a table name.' },
+    'pbixImport.csvConfirmText': {
+      fr: 'Créer la table « {table} » avec {columns} {columns|colonne|colonnes} et {rows} {rows|ligne|lignes} dans ce document Grist ?',
+      en: 'Create the table "{table}" with {columns} {columns|column|columns} and {rows} {rows|row|rows} in this Grist document?'
+    },
+    'pbixImport.csvConfirmYes': { fr: 'Confirmer la création', en: 'Confirm creation' },
+    'pbixImport.csvConfirmNo': { fr: 'Annuler', en: 'Cancel' },
+    'pbixImport.csvCreating': { fr: 'Création de la table…', en: 'Creating the table…' },
+    'pbixImport.csvCreatingProgress': { fr: 'Création de la table… ({sent}/{total} lignes)', en: 'Creating the table… ({sent}/{total} rows)' },
+    'pbixImport.csvCreated': {
+      fr: 'Table « {table} » créée avec {rows} {rows|ligne|lignes} — widget reconnecté à cette table.',
+      en: 'Table "{table}" created with {rows} {rows|row|rows} — widget reconnected to this table.'
+    },
+    'pbixImport.csvCreateFailed': { fr: 'Échec de la création de la table — voir la console (F12).', en: 'Failed to create the table — see the console (F12).' },
+
     // --- État vide ---
     'emptyState.hint': {
       fr: "Aucune tuile pour l'instant. Ajoutez-en une ci-dessus. Cliquer sur une barre/part filtre les autres tuiles (cumulable entre colonnes différentes ; recliquer retire le filtre). Une tuile avec un « Drill-down » se détaille au clic ; une carte KPI avec une « Tendance vs » affiche l'évolution par rapport à la période précédente.",
