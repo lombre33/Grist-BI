@@ -138,12 +138,35 @@
     </div>
   </div>
 
+  <!-- Import de la MISE EN PAGE d'un fichier Power BI (.pbix/.pbit) : lit les visuels (type,
+       colonnes/mesures utilisées, titre) via js/pbix-layout.js et propose des tuiles à créer sur la
+       table de travail déjà connectée — jamais de données importées ni de table créée par ce chemin
+       (voir CLAUDE.md, étude de faisabilité). Même gabarit que les autres modales (hidden natif). -->
+  <div id="pbix-import-modal" class="settings-modal" hidden>
+    <div class="settings-modal-content detail-modal-content">
+      <div class="settings-modal-header">
+        <h3 data-i18n="pbixImport.title">Importer un fichier Power BI</h3>
+        <button id="pbix-import-close" type="button" class="settings-close" data-i18n-title="settings.close" data-i18n-aria="settings.close" title="Fermer" aria-label="Fermer">
+          <svg class="icon icon-close" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+        </button>
+      </div>
+      <p data-i18n="pbixImport.intro">Lit les visuels d'un fichier .pbix ou .pbit (type de graphique, colonnes utilisées, titre) et
+        propose des tuiles correspondantes sur la table de travail actuelle. Les données du fichier Power BI
+        ne sont pas importées par ce chemin.</p>
+      <input type="file" id="pbix-import-file" accept=".pbix,.pbit" />
+      <p id="pbix-import-status" class="pbix-import-status"></p>
+      <ul id="pbix-import-results" class="pbix-import-results"></ul>
+      <button id="pbix-import-create" type="button" class="btn-primary" data-i18n="pbixImport.createSelected" hidden>Créer les tuiles sélectionnées</button>
+    </div>
+  </div>
+
   <div class="table-bar">
     <label for="table-select" data-i18n="table.label">Table de travail</label>
     <div class="combobox">
       <input type="text" id="table-select" class="combobox-input" />
       <ul class="combobox-list" hidden></ul>
     </div>
+    <button id="open-pbix-import" type="button" class="btn-secondary" data-i18n="pbixImport.button">Importer Power BI</button>
   </div>
 
   <div class="table-bar blend-bar" id="blend-bar">
@@ -377,6 +400,7 @@
 
   <script src="js/i18n.js"></script>
   <script src="js/data.js"></script>
+  <script src="js/pbix-layout.js"></script>
   <script src="js/combobox.js"></script>
   <script src="js/state.js"></script>
   <script src="js/charts.js"></script>

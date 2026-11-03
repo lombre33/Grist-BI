@@ -193,6 +193,20 @@ body {
 .detail-table thead th { position: sticky; top: 0; background: var(--surface); z-index: 1; }
 .detail-modal-truncated { margin: 10px 0 0; font-size: 11.5px; color: var(--text-secondary); }
 
+/* Import de la mise en page Power BI (.pbix/.pbit, voir js/pbix-layout.js) : même gabarit de
+   modale que #detail-modal (plus large qu'un simple formulaire, liste de tuiles proposées à
+   défiler). */
+#pbix-import-modal .detail-modal-content { width: 480px; max-height: calc(100vh - 64px); display: flex; flex-direction: column; }
+.pbix-import-status { margin: 8px 0; font-size: 12.5px; color: var(--text-secondary); }
+.pbix-import-results { list-style: none; margin: 0 0 12px; padding: 0; max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.pbix-import-result { padding: 8px 10px; background: var(--surface-sunken); border-radius: var(--radius-sm); display: flex; align-items: flex-start; gap: 8px; }
+.pbix-import-result label { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; width: 100%; }
+.pbix-import-result input[type="checkbox"] { margin-top: 3px; }
+.pbix-import-result-title { font-size: 12.5px; color: var(--text); font-weight: 600; }
+.pbix-import-result-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.pbix-import-result.pbix-import-result-disabled { opacity: 0.6; }
+.pbix-import-result.pbix-import-result-disabled label { cursor: default; }
+
 .filter-badges { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 
 .filter-chip {

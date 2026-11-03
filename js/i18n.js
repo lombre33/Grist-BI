@@ -239,6 +239,31 @@
     'comments.count': { fr: '{n} {n|commentaire|commentaires}', en: '{n} {n|comment|comments}' },
     'comments.addFailed': { fr: "Échec de l'ajout du commentaire — voir la console (F12).", en: 'Failed to add the comment — see the console (F12).' },
 
+    // --- Import de la mise en page d'un fichier Power BI (.pbix/.pbit) ---
+    'pbixImport.button': { fr: 'Importer Power BI', en: 'Import Power BI' },
+    'pbixImport.title': { fr: 'Importer un fichier Power BI', en: 'Import a Power BI file' },
+    'pbixImport.intro': {
+      fr: "Lit les visuels d'un fichier .pbix ou .pbit (type de graphique, colonnes utilisées, titre) et propose des tuiles correspondantes sur la table de travail actuelle. Les données du fichier Power BI ne sont pas importées par ce chemin.",
+      en: 'Reads the visuals of a .pbix or .pbit file (chart type, columns used, title) and suggests matching tiles on the current working table. The Power BI file’s data is not imported through this path.'
+    },
+    'pbixImport.reading': { fr: 'Lecture du fichier…', en: 'Reading the file…' },
+    'pbixImport.noLayout': {
+      fr: "Aucune mise en page trouvée dans ce fichier (entrée « Report/Layout » absente) — est-ce bien un .pbix/.pbit ?",
+      en: 'No layout found in this file (missing "Report/Layout" entry) — is this really a .pbix/.pbit?'
+    },
+    'pbixImport.readFailed': { fr: 'Échec de la lecture du fichier — voir la console (F12).', en: 'Failed to read the file — see the console (F12).' },
+    'pbixImport.noVisual': {
+      fr: "Aucun visuel pris en charge trouvé dans ce fichier (types comme carte/tableau croisé/ligne/aire ne sont pas convertis automatiquement).",
+      en: 'No supported visual found in this file (types like map/matrix/line/area are not converted automatically).'
+    },
+    'pbixImport.found': { fr: '{n} {n|tuile proposée|tuiles proposées} sur {total} {total|visuel lu|visuels lus}.', en: '{n} {n|tile proposed|tiles proposed} out of {total} {total|visual read|visuals read}.' },
+    'pbixImport.missingColumns': {
+      fr: 'Colonnes introuvables dans la table connectée : {columns}',
+      en: 'Columns not found in the connected table: {columns}'
+    },
+    'pbixImport.createSelected': { fr: 'Créer les tuiles sélectionnées', en: 'Create selected tiles' },
+    'pbixImport.created': { fr: '{n} {n|tuile créée|tuiles créées}.', en: '{n} {n|tile created|tiles created}.' },
+
     // --- État vide ---
     'emptyState.hint': {
       fr: "Aucune tuile pour l'instant. Ajoutez-en une ci-dessus. Cliquer sur une barre/part filtre les autres tuiles (cumulable entre colonnes différentes ; recliquer retire le filtre). Une tuile avec un « Drill-down » se détaille au clic ; une carte KPI avec une « Tendance vs » affiche l'évolution par rapport à la période précédente.",
