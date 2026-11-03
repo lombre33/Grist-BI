@@ -254,6 +254,7 @@
         <option value="scatter" data-i18n="tileForm.type.scatter">Nuage de points</option>
         <option value="waterfall" data-i18n="tileForm.type.waterfall">Cascade (waterfall)</option>
         <option value="radar" data-i18n="tileForm.type.radar">Radar</option>
+        <option value="wordcloud" data-i18n="tileForm.type.wordcloud">Nuage de mots</option>
         <option value="kpi" data-i18n="tileForm.type.kpi">Carte KPI</option>
         <option value="gauge" data-i18n="tileForm.type.gauge">Jauge</option>
         <option value="pivot" data-i18n="tileForm.type.pivot">Tableau croisé</option>
@@ -266,6 +267,12 @@
         <ul class="combobox-list" hidden></ul>
       </div>
       <button type="button" id="tile-suggest-date-hierarchy" class="btn-secondary btn-tiny" data-i18n="tileForm.suggestDateHierarchy" hidden>Détailler par Année/Trimestre/Mois/Jour</button>
+    </div>
+    <div class="field field-checkbox" id="tile-wordcloud-split-field" hidden>
+      <label for="tile-wordcloud-split">
+        <input type="checkbox" id="tile-wordcloud-split" />
+        <span data-i18n="tileForm.wordCloudSplit.label">Découper chaque cellule en plusieurs mots (ex. mots-clés séparés par des virgules)</span>
+      </label>
     </div>
     <div class="field" id="tile-column-dimension-field" hidden>
       <label for="tile-column-dimension" data-i18n="tileForm.columnDimension.label">Dimension (colonnes)</label>

@@ -8,7 +8,7 @@
   const GristBI = global.GristBI || (global.GristBI = {});
   const {
     groupByAggregate, sameValue, aggregateSingle, pivotTable, trendFromGroups, measureSeriesForTile,
-    waterfallSeries, escapeHtml, tileDrillLevels, currentDimension, rowsForTile
+    waterfallSeries, escapeHtml, tileDrillLevels, currentDimension, rowsForTile, wordFrequency
   } = GristBI.data;
   const { t } = GristBI.i18n;
 
@@ -227,6 +227,17 @@
       // bar/pie/treemap/scatter/waterfall qui restent tous sur un axe catégoriel classique. Repli
       // silencieux (aucune action) plutôt qu'un filtre posé par erreur sur "tile.measure".
       if (currentTile.type === 'radar') return;
+      // Nuage de mots en mode "découpage de cellule" (voir renderChart plus bas) : `params.name` est
+      // UN mot issu du découpage d'une cellule (ex. "génétique"), jamais une valeur de colonne telle
+      // quelle (la cellule d'origine vaut "génétique, cohorte, adolescent") — un filtre par égalité
+      // stricte sur ce mot (toggleFilter/matchesFilter, type 'eq') ne correspondrait à AUCUNE ligne,
+      // vidant silencieusement la tuile au clic plutôt que de filtrer quoi que ce soit de cohérent.
+      // Ce widget n'a pas de filtre de type "contient" branché sur le clic (seulement sur le champ de
+      // recherche texte des filtres avancés, voir matchesFilter) : repli silencieux (aucune action),
+      // même traitement que le radar ci-dessus, plutôt qu'un filtre posé par erreur. Le mode "une
+      // entrée par ligne" (wordCloudSplit falsy) n'est PAS concerné : chaque mot y est alors
+      // exactement la valeur de la cellule d'origine, le clic reste cohérent comme pour bar/pie.
+      if (currentTile.type === 'wordcloud' && currentTile.wordCloudSplit) return;
       const livePath = (liveState.drillIns && liveState.drillIns[currentTile.id]) || [];
       const dim = currentDimension(currentTile, livePath);
       const levels = tileDrillLevels(currentTile);
@@ -357,6 +368,12 @@
       ? rows.filter((r) => sameValue(r[tile.radarEntityColumn], tile.radarEntityValue))
       : null;
     const hasRadarEntity = !!(radarEntityRows && radarEntityRows.length);
+    // Nuage de mots en mode "découpage de cellule" (tile.wordCloudSplit, voir js/data.js:
+    // wordFrequency) : une fréquence de mots cumulée sur TOUTES les lignes, pas un groupement par
+    // dimension — computeGroupBy/DuckDB ci-dessous ne conviendrait pas (DuckDB n'a pas cette
+    // tokenisation). Reste pur JS quel que soit le volume de lignes, même philosophie que le data
+    // blending (`blendRows`, voir ROADMAP.md : "n'en dépend toujours pas").
+    const isWordCloudSplit = tile.type === 'wordcloud' && tile.wordCloudSplit;
 
     const seq = bumpSeq(tile.id);
     const usingDuckDb = rows.length >= DUCKDB_ROW_THRESHOLD;
@@ -368,13 +385,17 @@
     // l'entité comparée (ses propres lignes seulement) est elle aussi calculée en parallèle du
     // reste plutôt qu'après coup.
     const [agg, aggY, radarColumnValues, radarEntityColumnValues, radarEntityAgg] = await Promise.all([
-      isRadarColumns ? Promise.resolve(null) : computeGroupBy(rows, dimension, tile.measure, tile.aggFn),
+      (isRadarColumns || isWordCloudSplit) ? Promise.resolve(null) : computeGroupBy(rows, dimension, tile.measure, tile.aggFn),
       tile.type === 'scatter' ? computeGroupBy(rows, dimension, tile.measureY, tile.aggFn) : Promise.resolve(null),
       isRadarColumns ? Promise.all(radarAxesColumns.map((col) => computeAggregateSingle(rows, col, 'avg'))) : Promise.resolve(null),
       (isRadarColumns && hasRadarEntity) ? Promise.all(radarAxesColumns.map((col) => computeAggregateSingle(radarEntityRows, col, 'avg'))) : Promise.resolve(null),
       (!isRadarColumns && tile.type === 'radar' && hasRadarEntity) ? computeGroupBy(radarEntityRows, dimension, tile.measure, tile.aggFn) : Promise.resolve(null)
     ]);
     if (isStale(tile.id, seq) || instance.isDisposed()) return; // rendu plus récent entre-temps
+    // Synchrone, pur JS (voir plus haut) : calculé après le Promise.all (rien d'autre à attendre
+    // pour cette tuile) plutôt que dedans, pour ne pas alourdir sa signature pour un cas qui n'a
+    // jamais besoin d'être parallélisé avec autre chose.
+    const wordCloudAgg = isWordCloudSplit ? wordFrequency(rows, dimension, true) : agg;
     // Inconditionnel, même raison que renderGauge ci-dessus : un rendu qui repasse sous le seuil
     // pendant qu'un rendu précédent (au-dessus du seuil) pour cette même tuile est encore en vol
     // doit quand même lever le masque que CE DERNIER a affiché, même si CE rendu-ci (le gagnant)
@@ -546,6 +567,41 @@
         series: [{
           type: 'radar',
           data: series
+        }]
+      };
+    } else if (tile.type === 'wordcloud') {
+      // Nécessite l'extension ECharts "echarts-wordcloud", demandée à GFS (voir GFS-ETAT.md
+      // "Demandes à GFS" — décision d'Antoine du 03/11/2026 : toute bibliothèque d'extension passe
+      // désormais par GFS, jamais chargée en dur par l'app elle-même). Son build UMD pose un global
+      // détectable à l'enregistrement, `window['echarts-wordcloud']` (vérifié dans son propre
+      // bundle : c'est la branche `root["echarts-wordcloud"] = factory(root["echarts"])` de son
+      // wrapper webpack quand ni CommonJS ni AMD ne s'appliquent, exactement le cas d'un simple
+      // `<script src>`) — tant qu'elle n'est pas chargée, ECharts ne lève AUCUNE exception sur un
+      // type de série `wordCloud` inconnu, juste un avertissement en console et aucun rendu : même
+      // piège silencieux que `typeof echarts === 'undefined'` plus haut (CLAUDE.md §7 piège n°4), un
+      // message explicite est donc affiché plutôt que d'appeler `setOption` à l'aveugle.
+      if (typeof global['echarts-wordcloud'] === 'undefined') {
+        el.textContent = t('chart.wordCloudUnavailable');
+        return;
+      }
+      option = {
+        tooltip: { show: true },
+        series: [{
+          type: 'wordCloud',
+          shape: 'circle',
+          sizeRange: [14, 48],
+          rotationRange: [-45, 45],
+          rotationStep: 15,
+          gridSize: 6,
+          // Couleur par index plutôt qu'aléatoire : un re-rendu (filtre, resize) garde la même
+          // couleur par mot plutôt qu'un scintillement visuel à chaque appel de setOption — même
+          // palette catégorielle colorblind-safe que bar/pie/treemap (CATEGORICAL_PALETTE).
+          textStyle: { color: (params) => CATEGORICAL_PALETTE[params.dataIndex % CATEGORICAL_PALETTE.length] },
+          data: wordCloudAgg.map((d) => ({
+            name: String(d.dimension),
+            value: d.value,
+            textStyle: dim(d.dimension)
+          }))
         }]
       };
     } else {

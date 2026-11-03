@@ -183,6 +183,38 @@
     return aggregator(rows.map((r) => r[measureCol]));
   }
 
+  // Fréquence des mots d'une colonne texte pour la tuile "Nuage de mots" — deux modes
+  // (`tile.wordCloudSplit`, voir js/main.js) :
+  //  - `splitCells` falsy (défaut) : une entrée par ligne, la cellule entière est UN mot (ex. une
+  //    colonne Auteurs où chaque ligne porte déjà un seul nom) — strictement équivalent à
+  //    `groupByAggregate(rows, column, measureCol, aggFn)`, exposé ici pour que l'appelant n'ait
+  //    pas à choisir entre deux fonctions selon le mode de la tuile.
+  //  - `splitCells` vrai : la cellule est découpée en plusieurs mots (ex. une colonne Keywords
+  //    "génétique, cohorte, adolescent") et chaque mot obtenu compte pour lui-même, cumulé sur
+  //    TOUTES les lignes. `measureCol`/`aggFn` sont ignorés dans ce mode : pondérer un mot
+  //    individuel par une mesure portée par sa ligne n'aurait pas de sens univoque dès qu'une
+  //    cellule contient plusieurs mots — seul le compte d'occurrences est utilisé. Comptage
+  //    insensible à la casse (une cellule "Santé" et une cellule "santé" sont le même mot), la
+  //    graphie affichée est celle de la première occurrence rencontrée. Pas d'ordre de première
+  //    apparition imposé ici (contrairement à `groupByAggregate`) : le rendu nuage de mots trie par
+  //    fréquence, pas par ordre d'apparition — à la charge de l'appelant.
+  function wordFrequency(rows, column, splitCells, measureCol, aggFn) {
+    if (!splitCells) return groupByAggregate(rows, column, measureCol, aggFn);
+    const counts = new Map(); // mot en minuscule -> { label, count }
+    for (const row of (rows || [])) {
+      const raw = row[column];
+      if (raw == null || raw === '') continue;
+      const tokens = String(raw).split(/[^\p{L}\p{N}'-]+/u).filter((w) => w.length >= 2);
+      for (const token of tokens) {
+        const key = token.toLowerCase();
+        const entry = counts.get(key);
+        if (entry) entry.count += 1;
+        else counts.set(key, { label: token, count: 1 });
+      }
+    }
+    return Array.from(counts.values()).map((e) => ({ dimension: e.label, value: e.count }));
+  }
+
   // Tableau croisé dynamique : regroupe `rows` par DEUX dimensions (`rowDim` en lignes, `colDim` en
   // colonnes) plutôt qu'une seule (voir groupByAggregate) et agrège `measureCol` à chaque
   // intersection. `rowKeys`/`colKeys` dans l'ordre de première apparition (même convention que
@@ -473,6 +505,17 @@
       }
       return { name: title, header: ['Série'].concat(axisNames), rows: exportRows };
     }
+    // Nuage de mots en mode "découpage de cellule" (tile.wordCloudSplit, voir js/charts.js) :
+    // fréquence de mots, pas un groupement par dimension — `groupByAggregate` ci-dessous ne
+    // conviendrait pas (il grouperait des cellules entières, jamais découpées). Trié par fréquence
+    // décroissante pour l'export, comme le nuage de mots affiché à l'écran met en avant les mots les
+    // plus fréquents en premier (pas un ordre de première apparition, qui n'aurait aucun sens ici).
+    // En-tête 'Occurrences' en dur (pas de clé i18n) : même convention que 'Mesure'/'Valeur'/'Total'
+    // plus haut dans cette fonction — contenu généré, hors périmètre i18n (voir js/i18n.js).
+    if (tile.type === 'wordcloud' && tile.wordCloudSplit) {
+      const freq = wordFrequency(rows, dimension, true).slice().sort((a, b) => b.value - a.value);
+      return { name: title, header: [dimension, 'Occurrences'], rows: freq.map((d) => [d.dimension, d.value]) };
+    }
     const agg = groupByAggregate(rows, dimension, tile.measure, tile.aggFn);
     return { name: title, header: [dimension, tile.measure], rows: agg.map((d) => [d.dimension, d.value]) };
   }
@@ -656,7 +699,7 @@
 
   return {
     tableToRows, epochSecondsToIsoDate, applyFilters, matchesFilter, sameValue, parseDateValue,
-    relativeDateRange, RELATIVE_DATE_PRESETS, groupByAggregate, aggregateSingle, pivotTable,
+    relativeDateRange, RELATIVE_DATE_PRESETS, groupByAggregate, aggregateSingle, wordFrequency, pivotTable,
     distinctColumnValues, computeTrend, trendFromGroups, periodLabel, measureSeriesForTile,
     waterfallSeries, escapeHtml,
     tileDrillLevels, currentDimension, rowsForTile, tileExportSheet, tileExportKind,
