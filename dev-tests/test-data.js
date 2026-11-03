@@ -11,6 +11,8 @@ const combobox = require('../js/combobox.js');
 const duckdbEngine = require('../js/duckdb-engine.js');
 const i18n = require('../js/i18n.js');
 const pbixLayout = require('../js/pbix-layout.js');
+const keywords = require('../js/keywords.js');
+const pdfText = require('../js/pdf-text.js');
 
 const rows = [
   { id: 1, Region: 'Nord', Montant: 100 },
@@ -1512,6 +1514,67 @@ const SAMPLE_TIME_SERIES = [
     assert.strictEqual(kpiSuggestion.tileData, null);
     assert.deepStrictEqual(kpiSuggestion.missingFields, ['Colonne Inconnue']);
     console.log('OK pbixLayout.suggestTiles (correspondance tolérante + colonnes manquantes détectées)');
+  }
+
+  // extractCandidatePhrases : un espace seul ne coupe PAS la phrase candidate (sinon chaque mot
+  // deviendrait sa propre phrase d'un seul mot) ; un mot vide ou de la ponctuation, si.
+  {
+    const phrases = keywords.extractCandidatePhrases(
+      'Analyse sémantique de publications, et recherche automatique.',
+      keywords.buildStopwordSet('fr'),
+      2
+    );
+    assert.deepStrictEqual(phrases, [['analyse', 'sémantique'], ['publications'], ['recherche', 'automatique']]);
+    console.log('OK keywords.extractCandidatePhrases (espace neutre, ponctuation/mot vide coupent)');
+  }
+
+  // extractKeywords : une phrase de plusieurs mots pleins doit surclasser un mot isolé (score RAKE
+  // = degree/freq, degree inclut la co-occurrence avec les autres mots de la phrase).
+  {
+    const text = 'Analyse sémantique des publications de chercheurs. Ce widget propose une '
+      + 'recherche par mots clés automatique, sans backend, pour indexer des documents PDF volumineux.';
+    const results = keywords.extractKeywords(text, { maxKeywords: 4 });
+    assert.strictEqual(results[0].phrase, 'mots clés automatique'); // ex-aequo avec "documents pdf
+    // volumineux" (3 mots pleins chacune, score 9) : départagé par l'ordre de première apparition.
+    assert.ok(results[0].score > results[results.length - 1].score);
+    assert.strictEqual(results.length, 4);
+    console.log('OK keywords.extractKeywords (phrase multi-mots mieux classée qu\'un mot isolé)');
+  }
+
+  // extractKeywords : ex-aequo tranché par l'ordre de première apparition, jamais alphabétique
+  // (même prudence que groupByAggregate, voir CLAUDE.md §7 piège n°14).
+  {
+    const results = keywords.extractKeywords('Zèbre. Chat. Alpaga. Chat.', { maxKeywords: 10, minWordLength: 1 });
+    assert.deepStrictEqual(results.map((r) => r.phrase), ['zèbre', 'chat', 'alpaga']); // "chat" dédoublonné
+    console.log('OK keywords.extractKeywords (ex-aequo dans l\'ordre d\'apparition)');
+  }
+
+  // extractKeywords : un texte sans aucun mot vide sur une longue plage (ex. liste à puces mal
+  // extraite d'un PDF) est découpé en tronçons par maxPhraseWords, pour ne pas laisser une seule
+  // "phrase" géante dominer le classement par un degree artificiellement énorme.
+  {
+    const longRun = Array.from({ length: 20 }, (_, i) => `motunique${i}`).join(' ');
+    const phrases = keywords.extractCandidatePhrases(longRun, keywords.buildStopwordSet('fr'), 2);
+    assert.strictEqual(phrases[0].length, 20); // pas encore découpé à ce stade (fait par extractKeywords)
+    const results = keywords.extractKeywords(longRun, { maxKeywords: 50, maxPhraseWords: 5 });
+    assert.ok(results.every((r) => r.phrase.split(' ').length <= 5));
+    console.log('OK keywords.extractKeywords (découpage défensif des phrases trop longues)');
+  }
+
+  // pdfText : fonctions pures de jointure, testables sans PDF.js ni navigateur.
+  {
+    assert.strictEqual(pdfText.joinTextItems([{ str: 'Bonjour' }, { str: 'le' }, { str: 'monde' }]), 'Bonjour le monde');
+    assert.strictEqual(pdfText.joinTextItems([]), '');
+    assert.strictEqual(pdfText.joinPages(['page un', 'page deux']), 'page un\npage deux');
+    console.log('OK pdfText.joinTextItems/joinPages');
+  }
+
+  // pdfText : tant que GFS n'a pas ajouté PDF.js (voir GFS-ETAT.md), isAvailable() est false et
+  // extractTextFromPdf rejette avec un code clair — jamais un échec silencieux.
+  {
+    assert.strictEqual(pdfText.isAvailable(), false);
+    await assert.rejects(pdfText.extractTextFromPdf(new ArrayBuffer(0)), (e) => e.code === 'PDFJS_NOT_AVAILABLE');
+    console.log('OK pdfText.extractTextFromPdf (rejette clairement sans PDF.js)');
   }
 })().then(() => {
   console.log('\nTous les tests data.js/state.js/demo-data.js/combobox.js/duckdb-engine.js/i18n.js sont passés.');
