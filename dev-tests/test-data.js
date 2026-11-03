@@ -3,12 +3,16 @@
  * js/demo-data.js, js/combobox.js et js/i18n.js. Lancer avec: node dev-tests/test-data.js
  */
 const assert = require('assert');
+const zlib = require('zlib');
 const data = require('../js/data.js');
 const state = require('../js/state.js');
 const demoData = require('../js/demo-data.js');
 const combobox = require('../js/combobox.js');
 const duckdbEngine = require('../js/duckdb-engine.js');
 const i18n = require('../js/i18n.js');
+const pbixLayout = require('../js/pbix-layout.js');
+const keywords = require('../js/keywords.js');
+const pdfText = require('../js/pdf-text.js');
 
 const rows = [
   { id: 1, Region: 'Nord', Montant: 100 },
@@ -1401,6 +1405,389 @@ const SAMPLE_TIME_SERIES = [
   assert.deepStrictEqual(mixedSheets[0].rows, [['Nord', 10], ['Sud', 20]]); // chemin synchrone inchangé
   assert.deepStrictEqual(mixedSheets[1].rows, ytdSheet.rows); // chemin async, même valeurs que ci-dessus
   console.log('OK buildWorkbookSheetsAsync (tuile mesure -> computeMeasureSeries injecté, le reste inchangé)');
+
+  // --- js/pbix-layout.js : lecture de la mise en page d'un fichier Power BI (.pbix/.pbit) ---
+  // Construit une archive ZIP minimale mais VALIDE en mémoire (en-têtes locaux + répertoire
+  // central + fin de répertoire central), sans aucune dépendance de dézippage — exactement ce que
+  // parseZipCentralDirectory/readZipEntryBytes doivent savoir lire. `entries`: [{name, data:
+  // Buffer, method}]. Fixture maison, pas un vrai fichier Power BI tiers (jamais redistribué ici).
+  function buildTestZip(entries) {
+    const localParts = [];
+    const centralParts = [];
+    let offset = 0;
+    for (const entry of entries) {
+      const nameBuf = Buffer.from(entry.name, 'utf-8');
+      const stored = entry.method === pbixLayout.ZIP_METHOD_DEFLATE
+        ? zlib.deflateRawSync(entry.data)
+        : entry.data;
+      const localHeader = Buffer.alloc(30);
+      localHeader.writeUInt32LE(0x04034b50, 0);
+      localHeader.writeUInt16LE(20, 4); // version needed
+      localHeader.writeUInt16LE(0, 6); // flags
+      localHeader.writeUInt16LE(entry.method, 8);
+      localHeader.writeUInt16LE(0, 10); // mod time
+      localHeader.writeUInt16LE(0, 12); // mod date
+      localHeader.writeUInt32LE(0, 14); // crc32 (non vérifié par nos fonctions de lecture)
+      localHeader.writeUInt32LE(stored.length, 18);
+      localHeader.writeUInt32LE(entry.data.length, 22);
+      localHeader.writeUInt16LE(nameBuf.length, 26);
+      localHeader.writeUInt16LE(0, 28); // extra length
+      localParts.push(localHeader, nameBuf, stored);
+
+      const centralHeader = Buffer.alloc(46);
+      centralHeader.writeUInt32LE(0x02014b50, 0);
+      centralHeader.writeUInt16LE(20, 4); // version made by
+      centralHeader.writeUInt16LE(20, 6); // version needed
+      centralHeader.writeUInt16LE(0, 8); // flags
+      centralHeader.writeUInt16LE(entry.method, 10);
+      centralHeader.writeUInt16LE(0, 12); // mod time
+      centralHeader.writeUInt16LE(0, 14); // mod date
+      centralHeader.writeUInt32LE(0, 16); // crc32
+      centralHeader.writeUInt32LE(stored.length, 20);
+      centralHeader.writeUInt32LE(entry.data.length, 24);
+      centralHeader.writeUInt16LE(nameBuf.length, 28);
+      centralHeader.writeUInt16LE(0, 30); // extra length
+      centralHeader.writeUInt16LE(0, 32); // comment length
+      centralHeader.writeUInt16LE(0, 34); // disk number
+      centralHeader.writeUInt16LE(0, 36); // internal attrs
+      centralHeader.writeUInt32LE(0, 38); // external attrs
+      centralHeader.writeUInt32LE(offset, 42); // local header offset
+      centralParts.push(centralHeader, nameBuf);
+
+      offset += localHeader.length + nameBuf.length + stored.length;
+    }
+    const centralDirStart = offset;
+    const centralDir = Buffer.concat(centralParts);
+    const eocd = Buffer.alloc(22);
+    eocd.writeUInt32LE(0x06054b50, 0);
+    eocd.writeUInt16LE(0, 4);
+    eocd.writeUInt16LE(0, 6);
+    eocd.writeUInt16LE(entries.length, 8);
+    eocd.writeUInt16LE(entries.length, 10);
+    eocd.writeUInt32LE(centralDir.length, 12);
+    eocd.writeUInt32LE(centralDirStart, 16);
+    eocd.writeUInt16LE(0, 20);
+    return Buffer.concat(localParts.concat([centralDir, eocd]));
+  }
+
+  const inflateRawForNode = (bytes) => zlib.inflateRawSync(Buffer.from(bytes));
+
+  {
+    const storedContent = Buffer.from('contenu stocké tel quel');
+    const deflateContent = Buffer.from('contenu compressé en DEFLATE, répété répété répété répété');
+    const zip = buildTestZip([
+      { name: 'Version', data: Buffer.from('1.0'), method: pbixLayout.ZIP_METHOD_STORED },
+      { name: 'Report/Layout', data: deflateContent, method: pbixLayout.ZIP_METHOD_DEFLATE },
+      { name: 'DataModel', data: storedContent, method: pbixLayout.ZIP_METHOD_STORED },
+    ]);
+    const entries = pbixLayout.parseZipCentralDirectory(zip);
+    assert.deepStrictEqual(entries.map((e) => e.name), ['Version', 'Report/Layout', 'DataModel']);
+    const layoutEntry = entries.find((e) => e.name === 'Report/Layout');
+    const dataModelEntry = entries.find((e) => e.name === 'DataModel');
+    assert.strictEqual((await pbixLayout.readZipEntryBytes(zip, layoutEntry, inflateRawForNode)).toString(), deflateContent.toString());
+    assert.strictEqual((await pbixLayout.readZipEntryBytes(zip, dataModelEntry, inflateRawForNode)).toString(), storedContent.toString());
+    console.log('OK pbixLayout.parseZipCentralDirectory/readZipEntryBytes (STORED et DEFLATE, fixture ZIP maison)');
+  }
+
+  // decodeLayoutJson : UTF-16LE AVEC BOM en premier (encodage réel observé sur de vrais fichiers
+  // .pbix/.pbit, voir l'en-tête de js/pbix-layout.js), UTF-8 accepté en repli.
+  {
+    const payload = { id: 0, sections: [{ displayName: 'Page 1', visualContainers: [] }] };
+    const utf16Buf = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(JSON.stringify(payload), 'utf16le')]);
+    assert.deepStrictEqual(pbixLayout.decodeLayoutJson(utf16Buf), payload);
+    const utf8Buf = Buffer.from(JSON.stringify(payload), 'utf-8');
+    assert.deepStrictEqual(pbixLayout.decodeLayoutJson(utf8Buf), payload);
+    console.log('OK pbixLayout.decodeLayoutJson (UTF-16LE avec BOM, repli UTF-8)');
+  }
+
+  // extractVisuals : structure reprise fidèlement d'un vrai Report/Layout (barChart avec dimension +
+  // mesure, visuel non pris en charge ignoré, config JSON cassée ignorée sans faire échouer les
+  // autres visuels de la section).
+  {
+    const layoutJson = {
+      sections: [{
+        displayName: 'Page 1',
+        visualContainers: [
+          {
+            config: JSON.stringify({
+              name: 'visual1',
+              singleVisual: {
+                visualType: 'barChart',
+                vcObjects: { title: [{ properties: { text: { expr: { Literal: { Value: "'Ventes par Région'" } } } } }] },
+                prototypeQuery: {
+                  Select: [
+                    { Column: { Property: 'Region' }, Name: 'Table.Region', NativeReferenceName: 'Région' },
+                    { Measure: { Property: 'SalesAmount' }, Name: 'Measures.SalesAmount', NativeReferenceName: 'Sales Amount' },
+                  ],
+                },
+              },
+            }),
+          },
+          { config: JSON.stringify({ name: 'visual2', singleVisual: { visualType: 'slicer', prototypeQuery: { Select: [] } } }) },
+          { config: 'ceci n\'est pas du JSON valide' },
+        ],
+      }],
+    };
+    const visuals = pbixLayout.extractVisuals(layoutJson);
+    assert.strictEqual(visuals.length, 2); // le visuel au config cassé est ignoré
+    const bar = visuals.find((v) => v.visualId === 'visual1');
+    assert.strictEqual(bar.tileType, 'bar');
+    assert.strictEqual(bar.title, 'Ventes par Région');
+    assert.strictEqual(bar.fields.length, 2);
+    assert.strictEqual(bar.fields[0].isMeasure, false);
+    assert.strictEqual(bar.fields[1].isMeasure, true);
+    const slicer = visuals.find((v) => v.visualId === 'visual2');
+    assert.strictEqual(slicer.tileType, null); // slicer : pas de tuile équivalente
+    console.log('OK pbixLayout.extractVisuals (dimension+mesure, type non pris en charge, config cassée ignorée)');
+  }
+
+  // suggestTiles : correspondance tolérante des noms de colonnes (espaces/casse ignorés), et
+  // tileData à null + missingFields rempli quand une colonne n'existe pas dans la table connectée.
+  {
+    const visuals = [
+      {
+        visualId: 'v1', visualType: 'barChart', tileType: 'bar', title: 'Ventes par Région',
+        fields: [
+          { isMeasure: false, property: 'Region', displayName: 'Région' },
+          { isMeasure: true, property: 'SalesAmount', displayName: 'Sales Amount' },
+        ],
+      },
+      {
+        visualId: 'v2', visualType: 'card', tileType: 'kpi', title: null,
+        fields: [{ isMeasure: true, property: 'Inconnue', displayName: 'Colonne Inconnue' }],
+      },
+    ];
+    const suggestions = pbixLayout.suggestTiles(visuals, ['Region', 'SalesAmount', 'Montant']);
+    const barSuggestion = suggestions.find((s) => s.visual.visualId === 'v1');
+    assert.deepStrictEqual(barSuggestion.missingFields, []);
+    assert.deepStrictEqual(barSuggestion.tileData, { type: 'bar', measure: 'SalesAmount', aggFn: 'sum', title: 'Ventes par Région', dimension: 'Region' });
+    const kpiSuggestion = suggestions.find((s) => s.visual.visualId === 'v2');
+    assert.strictEqual(kpiSuggestion.tileData, null);
+    assert.deepStrictEqual(kpiSuggestion.missingFields, ['Colonne Inconnue']);
+    console.log('OK pbixLayout.suggestTiles (correspondance tolérante + colonnes manquantes détectées)');
+  }
+
+  // extractCandidatePhrases : un espace seul ne coupe PAS la phrase candidate (sinon chaque mot
+  // deviendrait sa propre phrase d'un seul mot) ; un mot vide ou de la ponctuation, si.
+  {
+    const phrases = keywords.extractCandidatePhrases(
+      'Analyse sémantique de publications, et recherche automatique.',
+      keywords.buildStopwordSet('fr'),
+      2
+    );
+    assert.deepStrictEqual(phrases, [['analyse', 'sémantique'], ['publications'], ['recherche', 'automatique']]);
+    console.log('OK keywords.extractCandidatePhrases (espace neutre, ponctuation/mot vide coupent)');
+  }
+
+  // extractKeywords : une phrase de plusieurs mots pleins doit surclasser un mot isolé (score RAKE
+  // = degree/freq, degree inclut la co-occurrence avec les autres mots de la phrase).
+  {
+    const text = 'Analyse sémantique des publications de chercheurs. Ce widget propose une '
+      + 'recherche par mots clés automatique, sans backend, pour indexer des documents PDF volumineux.';
+    const results = keywords.extractKeywords(text, { maxKeywords: 4 });
+    assert.strictEqual(results[0].phrase, 'mots clés automatique'); // ex-aequo avec "documents pdf
+    // volumineux" (3 mots pleins chacune, score 9) : départagé par l'ordre de première apparition.
+    assert.ok(results[0].score > results[results.length - 1].score);
+    assert.strictEqual(results.length, 4);
+    console.log('OK keywords.extractKeywords (phrase multi-mots mieux classée qu\'un mot isolé)');
+  }
+
+  // extractKeywords : ex-aequo tranché par l'ordre de première apparition, jamais alphabétique
+  // (même prudence que groupByAggregate, voir CLAUDE.md §7 piège n°14).
+  {
+    const results = keywords.extractKeywords('Zèbre. Chat. Alpaga. Chat.', { maxKeywords: 10, minWordLength: 1 });
+    assert.deepStrictEqual(results.map((r) => r.phrase), ['zèbre', 'chat', 'alpaga']); // "chat" dédoublonné
+    console.log('OK keywords.extractKeywords (ex-aequo dans l\'ordre d\'apparition)');
+  }
+
+  // extractKeywords : un texte sans aucun mot vide sur une longue plage (ex. liste à puces mal
+  // extraite d'un PDF) est découpé en tronçons par maxPhraseWords, pour ne pas laisser une seule
+  // "phrase" géante dominer le classement par un degree artificiellement énorme.
+  {
+    const longRun = Array.from({ length: 20 }, (_, i) => `motunique${i}`).join(' ');
+    const phrases = keywords.extractCandidatePhrases(longRun, keywords.buildStopwordSet('fr'), 2);
+    assert.strictEqual(phrases[0].length, 20); // pas encore découpé à ce stade (fait par extractKeywords)
+    const results = keywords.extractKeywords(longRun, { maxKeywords: 50, maxPhraseWords: 5 });
+    assert.ok(results.every((r) => r.phrase.split(' ').length <= 5));
+    console.log('OK keywords.extractKeywords (découpage défensif des phrases trop longues)');
+  }
+
+  // pdfText : fonctions pures de jointure, testables sans PDF.js ni navigateur.
+  {
+    assert.strictEqual(pdfText.joinTextItems([{ str: 'Bonjour' }, { str: 'le' }, { str: 'monde' }]), 'Bonjour le monde');
+    assert.strictEqual(pdfText.joinTextItems([]), '');
+    assert.strictEqual(pdfText.joinPages(['page un', 'page deux']), 'page un\npage deux');
+    console.log('OK pdfText.joinTextItems/joinPages');
+  }
+
+  // pdfText : tant que GFS n'a pas ajouté PDF.js (voir GFS-ETAT.md), isAvailable() est false et
+  // extractTextFromPdf rejette avec un code clair — jamais un échec silencieux.
+  {
+    assert.strictEqual(pdfText.isAvailable(), false);
+    await assert.rejects(pdfText.extractTextFromPdf(new ArrayBuffer(0)), (e) => e.code === 'PDFJS_NOT_AVAILABLE');
+    console.log('OK pdfText.extractTextFromPdf (rejette clairement sans PDF.js)');
+  }
+
+  // extractVisuals + suggestTiles : waterfallChart — même forme que "bar" (1 dimension + 1 mesure,
+  // voir js/charts.js:renderChart qui calcule la cascade à partir du même groupByAggregate).
+  {
+    const layoutJson = {
+      sections: [{
+        displayName: 'Page 1',
+        visualContainers: [{
+          config: JSON.stringify({
+            name: 'visualW',
+            singleVisual: {
+              visualType: 'waterfallChart',
+              prototypeQuery: {
+                Select: [
+                  { Column: { Property: 'Mois' }, Name: 'Table.Mois', NativeReferenceName: 'Mois' },
+                  { Measure: { Property: 'Variation' }, Name: 'Measures.Variation', NativeReferenceName: 'Variation' },
+                ],
+              },
+            },
+          }),
+        }],
+      }],
+    };
+    const visuals = pbixLayout.extractVisuals(layoutJson);
+    assert.strictEqual(visuals[0].tileType, 'waterfall');
+    const suggestions = pbixLayout.suggestTiles(visuals, ['Mois', 'Variation']);
+    assert.deepStrictEqual(suggestions[0].tileData, { type: 'waterfall', measure: 'Variation', aggFn: 'sum', title: 'Variation par Mois', dimension: 'Mois' });
+    console.log('OK pbixLayout.extractVisuals/suggestTiles — waterfallChart (même forme que bar)');
+  }
+
+  // extractVisuals + suggestTiles : scatterChart — DEUX mesures (X et Y) désambiguïsées via
+  // `projections` (rolesByQueryRef), jamais par position dans `Select`. Ce fixture met
+  // volontairement, dans `Select`, la mesure Y puis une mesure "Taille" (bulle, sans rôle X/Y) puis
+  // la mesure X dans cet ordre : une lecture purement positionnelle donnerait Y puis Taille (faux),
+  // alors que la lecture par rôle donne X puis Y (correct).
+  {
+    const layoutJson = {
+      sections: [{
+        displayName: 'Page 1',
+        visualContainers: [{
+          config: JSON.stringify({
+            name: 'visualS',
+            singleVisual: {
+              visualType: 'scatterChart',
+              prototypeQuery: {
+                Select: [
+                  { Column: { Property: 'Region' }, Name: 'Table.Region', NativeReferenceName: 'Région' },
+                  { Measure: { Property: 'Revenue' }, Name: 'Measures.Revenue', NativeReferenceName: "Chiffre d'affaires" },
+                  { Measure: { Property: 'Volume' }, Name: 'Measures.Volume', NativeReferenceName: 'Volume' },
+                  { Measure: { Property: 'Cost' }, Name: 'Measures.Cost', NativeReferenceName: 'Coût' },
+                ],
+              },
+              projections: {
+                Category: [{ queryRef: 'Table.Region' }],
+                Y: [{ queryRef: 'Measures.Revenue' }],
+                Size: [{ queryRef: 'Measures.Volume' }],
+                X: [{ queryRef: 'Measures.Cost' }],
+              },
+            },
+          }),
+        }],
+      }],
+    };
+    const visuals = pbixLayout.extractVisuals(layoutJson);
+    assert.strictEqual(visuals[0].tileType, 'scatter');
+    const suggestions = pbixLayout.suggestTiles(visuals, ['Region', 'Revenue', 'Volume', 'Cost']);
+    assert.deepStrictEqual(suggestions[0].tileData, {
+      type: 'scatter', measure: 'Cost', aggFn: 'sum', title: 'Cost par Region', dimension: 'Region', measureY: 'Revenue',
+    });
+    console.log('OK pbixLayout.extractVisuals/suggestTiles — scatterChart (X/Y désambiguïsés via projections, pas par position)');
+  }
+
+  // suggestTiles : scatterChart sans `projections` (fichier/variante qui ne le fournit pas) — repli
+  // sur la position dans `Select` plutôt que de bloquer la suggestion.
+  {
+    const visuals = [{
+      visualId: 'v3', visualType: 'scatterChart', tileType: 'scatter', title: null,
+      fields: [
+        { isMeasure: false, property: 'Region', displayName: 'Région', role: null },
+        { isMeasure: true, property: 'Cost', displayName: 'Coût', role: null },
+        { isMeasure: true, property: 'Revenue', displayName: "Chiffre d'affaires", role: null },
+      ],
+    }];
+    const suggestions = pbixLayout.suggestTiles(visuals, ['Region', 'Cost', 'Revenue']);
+    assert.deepStrictEqual(suggestions[0].tileData, { type: 'scatter', measure: 'Cost', aggFn: 'sum', title: 'Cost par Region', dimension: 'Region', measureY: 'Revenue' });
+    console.log('OK pbixLayout.suggestTiles — scatterChart sans projections (repli positionnel)');
+  }
+
+  // extractVisuals + suggestTiles : matrix (tableau croisé Power BI) — rôles "Rows"/"Columns"/
+  // "Values" (confirmés par une lecture indépendante de fichiers réels, voir pbix-layout.js), Select
+  // volontairement dans le désordre pour prouver que c'est le rôle qui compte, pas la position.
+  {
+    const layoutJson = {
+      sections: [{
+        displayName: 'Page 1',
+        visualContainers: [{
+          config: JSON.stringify({
+            name: 'visualM',
+            singleVisual: {
+              visualType: 'matrix',
+              prototypeQuery: {
+                Select: [
+                  { Measure: { Property: 'SalesAmount' }, Name: 'Measures.SalesAmount', NativeReferenceName: 'Sales Amount' },
+                  { Column: { Property: 'Product' }, Name: 'Table.Product', NativeReferenceName: 'Produit' },
+                  { Column: { Property: 'Region' }, Name: 'Table.Region', NativeReferenceName: 'Région' },
+                ],
+              },
+              projections: {
+                Rows: [{ queryRef: 'Table.Region' }],
+                Columns: [{ queryRef: 'Table.Product' }],
+                Values: [{ queryRef: 'Measures.SalesAmount' }],
+              },
+            },
+          }),
+        }],
+      }],
+    };
+    const visuals = pbixLayout.extractVisuals(layoutJson);
+    assert.strictEqual(visuals[0].tileType, 'pivot');
+    const suggestions = pbixLayout.suggestTiles(visuals, ['Region', 'Product', 'SalesAmount']);
+    assert.deepStrictEqual(suggestions[0].tileData, {
+      type: 'pivot', measure: 'SalesAmount', aggFn: 'sum', title: 'SalesAmount par Region × Product', dimension: 'Region', columnDimension: 'Product',
+    });
+    console.log('OK pbixLayout.extractVisuals/suggestTiles — matrix (Rows/Columns/Values désambiguïsés via projections)');
+  }
+
+  // suggestTiles : matrix sans rôle "Columns" (matrix réduite à un tableau plat, voir le
+  // commentaire de rolesByQueryRef) — pas une tuile pivot exploitable, tileData à null plutôt
+  // qu'une tuile à une seule dimension qui ne serait pas ce que l'utilisateur a vu dans Power BI.
+  {
+    const visuals = [{
+      visualId: 'vFlat', visualType: 'matrix', tileType: 'pivot', title: null,
+      fields: [
+        { isMeasure: false, property: 'Region', displayName: 'Région', role: 'Rows' },
+        { isMeasure: true, property: 'SalesAmount', displayName: 'Sales Amount', role: 'Values' },
+      ],
+    }];
+    const suggestions = pbixLayout.suggestTiles(visuals, ['Region', 'SalesAmount']);
+    assert.strictEqual(suggestions[0].tileData, null);
+    assert.deepStrictEqual(suggestions[0].missingFields, ['(dimension colonne manquante dans le visuel)']);
+    console.log('OK pbixLayout.suggestTiles — matrix sans colonnes (tableau plat, pas une tuile pivot)');
+  }
+
+  // suggestTiles : matrix dont les rôles "Rows" et "Columns" désignent la MÊME colonne Grist réelle
+  // (ex. deux noms Power BI différents qui normalisent vers le même id) — refusé plutôt que de
+  // créer une tuile pivot aux deux dimensions identiques, qui violerait la même contrainte que le
+  // formulaire manuel (voir js/main.js, tileForm.alert.pivotDimsDiffer).
+  {
+    const visuals = [{
+      visualId: 'vDup', visualType: 'matrix', tileType: 'pivot', title: null,
+      fields: [
+        { isMeasure: false, property: 'Region', displayName: 'Région', role: 'Rows' },
+        { isMeasure: false, property: 'Region', displayName: 'Region ', role: 'Columns' },
+        { isMeasure: true, property: 'SalesAmount', displayName: 'Sales Amount', role: 'Values' },
+      ],
+    }];
+    const suggestions = pbixLayout.suggestTiles(visuals, ['Region', 'SalesAmount']);
+    assert.strictEqual(suggestions[0].tileData, null);
+    assert.ok(suggestions[0].missingFields.includes('(dimension colonne identique à la dimension ligne)'));
+    console.log('OK pbixLayout.suggestTiles — matrix avec lignes = colonnes (refusé, pas une tuile pivot valide)');
+  }
 })().then(() => {
   console.log('\nTous les tests data.js/state.js/demo-data.js/combobox.js/duckdb-engine.js/i18n.js sont passés.');
 }).catch((e) => {

@@ -2361,6 +2361,36 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     et le comportement du mode "découpage de cellule" sur une colonne Reference/numérique (cas limite
     non prévu par le formulaire, qui n'exclut pas ces types de colonne pour ce champ).
 
+- **Mots-clés automatiques sur les publications (chantier en cours, démarré 03/11/2026)** — suite
+  à la demande d'Antoine du fil "Recherche sémantique sur publications" (21/10 : rester
+  zéro-backend ; 02/11 : mots-clés manuels ET automatiques à l'ajout d'un document, pour indexer
+  richement) :
+  - `js/keywords.js` : extraction de mots-clés façon RAKE (Rose et al., 2010 — degree/freq,
+    phrases candidates coupées aux mots vides/ponctuation, PAS à un simple espace). Tokenisation
+    via `Intl.Segmenter` natif (vérifié sous Node 22 et dans les navigateurs cibles) plutôt qu'une
+    bibliothèque comme `wink-nlp` envisagée au départ : une fois la contrainte GFS posée par
+    Antoine le 03/11 ("sûre/documentée/maintenue", voir GFS-ETAT.md), éviter une
+    dépendance quand une API native suffit est strictement mieux. **100% JS vanilla, zéro nouvelle
+    dépendance pour ce module**, testé sous Node (`dev-tests/test-data.js`) : phrase multi-mots
+    mieux classée qu'un mot isolé, ex-aequo départagé par l'ordre de première apparition (jamais
+    alphabétique, même prudence que le piège n°14 du CLAUDE.md), découpage défensif des phrases
+    candidates trop longues (`maxPhraseWords`, garde-fou contre un texte sans aucun mot vide sur
+    une longue plage — ex. tableau mal extrait d'un PDF).
+  - `js/pdf-text.js` : extraction du texte d'un PDF (pièce jointe Grist) pour alimenter
+    `keywords.js`. Codé CONTRE l'API de PDF.js (`window.pdfjsLib`) sans jamais la charger ni la
+    référencer dans `index.html`/l'import map — `isAvailable()` renvoie `false` et
+    `extractTextFromPdf` rejette avec un code clair (`PDFJS_NOT_AVAILABLE`) tant que GFS n'a pas
+    traité la demande (voir GFS-ETAT.md, section "Demandes à GFS"). Fonctions pures de jointure
+    (`joinTextItems`/`joinPages`) testées sous Node ; le reste (chargement réel d'un PDF) a besoin
+    d'un vrai PDF.js, donc d'un navigateur — même limite que le moteur SQL de `duckdb-engine.js`.
+  - **Non fait à ce stade** : le branchement Grist lui-même (colonne mots-clés manuels + auto via
+    `ensureColumnsUpToDate`, UI de déclenchement à l'ajout d'un document, lecture de la pièce
+    jointe via `grist.docApi.getAccessToken`) et le plan de rattrapage des publications déjà
+    existantes (backlog) — question posée à Antoine, réponse pas encore reçue au moment de ce
+    commit. Voir ROADMAP.md.
+  - **Non testable depuis ce sandbox** : le round-trip réel PDF.js une fois GFS la fournie (CDN
+    réel, taille du fichier worker, timing sur un PDF de plusieurs centaines de pages).
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée
