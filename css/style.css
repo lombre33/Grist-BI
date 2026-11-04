@@ -4,34 +4,65 @@
  * ≥8), pas choisis à l'œil. Rayons/ombres/espacements sur une échelle cohérente plutôt que des
  * valeurs éparses. AUCUN sélecteur fonctionnel renommé (tout id/classe lu par js/*.js ou par les
  * scripts Playwright reste identique) — uniquement des valeurs de style affinées.
+ *
+ * Jetons de la charte GFS (consigne 004, guide des apps règle 15) : les noms ci-dessous qui
+ * correspondent à un jeton de couleur/forme de `kit/js/ambiance-message.js` (COLOR_TOKENS/
+ * SHAPE_TOKENS) sont ceux que `Ambiance.start()` (js/main.js) pose directement sur `<html>` par le
+ * CSSOM quand une ambiance GFS est choisie — un style en ligne sur l'élément qui porte ce `:root`
+ * l'emporte alors sur les valeurs ci-dessous, qui restent le repli de ce widget seul (et de tout
+ * jeton qu'une ambiance ne redit pas). `--accent-solid`, `--accent-solid-hover`, `--accent-ink`,
+ * `--accent-soft-border` n'ont pas de valeur propre à ce widget : ils sont dérivés de `--accent`
+ * par `color-mix()`, donc déjà corrects quelle que soit la couleur (celle de ce widget ou celle
+ * posée par une ambiance) sans qu'il faille les répéter dans le bloc sombre plus bas — `var()` se
+ * résout contre la valeur EN VIGUEUR de `--accent`/`--accent-solid` sur l'élément, jamais contre
+ * celle lue au moment où CETTE règle a été écrite.
+ * Exceptions délibérées, jamais posées par une ambiance (règle 15 : « les couleurs qui disent
+ * quelque chose restent les tiennes ») : `--good`/`--critical`/`--warning-*` (état : succès, erreur,
+ * avertissement) et `--text-secondary` (une 3e nuance de gris entre `--text` et `--text-muted`,
+ * sans équivalent dans les 19 jetons de couleur de la charte — reste fixe plutôt que de forcer un
+ * calcul qui risquerait de dégrader le contraste colorblind-safe validé ci-dessus).
  */
 :root {
   color-scheme: light;
-  --page-bg: #f9f9f7;
+  --bg: #f9f9f7;
   --surface: #fcfcfb;
   --surface-sunken: #f3f2ef;
   --border: rgba(11, 11, 11, 0.10);
   --border-strong: #e1e0d9;
   --text: #0b0b0b;
   --text-secondary: #52514e;
-  --muted: #898781;
+  --text-muted: #898781;
   --accent: #2a78d6;
-  --accent-contrast: #ffffff;
-  --accent-wash: rgba(42, 120, 214, 0.08);
-  --accent-wash-strong: rgba(42, 120, 214, 0.14);
+  --on-accent: #ffffff;
+  --accent-solid: var(--accent);
+  /* Mélangé vers `--text` plutôt que vers le noir/blanc : `--text` est sombre en clair et clair en
+     sombre, donc cette seule formule fonce le survol en clair et l'éclaircit en sombre — exactement
+     ce que faisaient les deux valeurs #2569bf/#4a94ea codées en dur avant ce lot, sans dupliquer la
+     formule dans le bloc sombre plus bas. */
+  --accent-solid-hover: color-mix(in srgb, var(--accent-solid) 85%, var(--text));
+  --accent-ink: var(--accent);
+  --accent-soft: color-mix(in srgb, var(--accent) 8%, transparent);
+  --accent-soft-strong: color-mix(in srgb, var(--accent) 16%, transparent);
+  --accent-soft-border: color-mix(in srgb, var(--accent) 24%, transparent);
   --good: #0ca30c;
   --critical: #d03b3b;
   --warning-bg: #fdf3d8;
   --warning-text: #7a5b00;
   --warning-border: #f1d27a;
+  --bw: 1px;
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-pill: 999px;
-  --shadow-xs: 0 1px 2px rgba(11, 11, 11, 0.04);
-  --shadow-sm: 0 1px 3px rgba(11, 11, 11, 0.05), 0 1px 1px rgba(11, 11, 11, 0.04);
-  --shadow-md: 0 6px 16px rgba(11, 11, 11, 0.07), 0 1px 3px rgba(11, 11, 11, 0.05);
+  --shadow-ctl: 0 1px 2px rgba(11, 11, 11, 0.04);
+  --shadow-panel: 0 1px 3px rgba(11, 11, 11, 0.05), 0 1px 1px rgba(11, 11, 11, 0.04);
+  --shadow-float: 0 6px 16px rgba(11, 11, 11, 0.07), 0 1px 3px rgba(11, 11, 11, 0.05);
   --ease: cubic-bezier(0.2, 0, 0, 1);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-head: var(--font-ui);
+  --font-label: var(--font-ui);
+  --fill: var(--accent-solid);
+  --fill-hover: var(--accent-solid-hover);
+  font-family: var(--font-ui);
 }
 
 * { box-sizing: border-box; }
@@ -39,7 +70,13 @@
 body {
   margin: 0;
   padding: 16px;
-  background: var(--page-bg);
+  min-height: 100vh;
+  background-color: var(--bg);
+  /* `--wash` (le décor d'une ambiance, un dégradé radial chez Pop par exemple) : `none` par défaut,
+     posé en `background-image` sur ce même fond — jamais `--main-bg` (celui de la carte de GFS,
+     `transparent` chez Néon : voir le commentaire de `:root` plus haut). */
+  background-image: var(--wash, none);
+  background-size: var(--wash-size, auto);
   color: var(--text);
   font-size: 13px;
   line-height: 1.5;
@@ -56,9 +93,11 @@ body {
 }
 
 .topbar h1 {
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  font-family: var(--font-head, inherit);
+  font-size: var(--fs-head, 15px);
+  font-weight: var(--fw-head, 600);
+  letter-spacing: var(--ls-head, -0.01em);
+  text-transform: var(--tt-head, none);
   margin: 0;
   display: flex;
   align-items: center;
@@ -71,7 +110,7 @@ body {
   letter-spacing: 0.05em;
   text-transform: uppercase;
   background: var(--surface-sunken);
-  color: var(--muted);
+  color: var(--text-muted);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 2px 6px;
@@ -79,7 +118,7 @@ body {
 
 .topbar-info { display: flex; align-items: center; gap: 12px; }
 .row-count { color: var(--text-secondary); font-weight: 500; }
-.render-time { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.render-time { color: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 
 /* Bouton Réglages + logo Grist Factory : ajoutés en dernier dans .topbar-info (jamais entre des
    contrôles existants) pour ne rien déplacer — non-régression, cadrage identité §1. */
@@ -89,7 +128,7 @@ body {
   justify-content: center;
   background: none;
   border: none;
-  color: var(--muted);
+  color: var(--text-muted);
   cursor: pointer;
   padding: 4px 5px;
   border-radius: var(--radius-sm);
@@ -112,18 +151,18 @@ body {
   max-width: calc(100vw - 32px);
   background: var(--surface);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-float);
   padding: 16px 18px;
 }
 .settings-modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-.settings-modal-header h3 { margin: 0; font-size: 14px; font-weight: 700; color: var(--text); }
+.settings-modal-header h3 { margin: 0; font-family: var(--font-head, inherit); font-size: 14px; font-weight: var(--fw-head, 700); color: var(--text); }
 .settings-close {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   background: none;
   border: none;
-  color: var(--muted);
+  color: var(--text-muted);
   cursor: pointer;
   padding: 3px;
   border-radius: 50%;
@@ -133,13 +172,13 @@ body {
 .settings-credits-list { display: grid; grid-template-columns: auto 1fr; gap: 7px 14px; margin: 0; font-size: 12.5px; }
 .settings-credits-list dt { font-weight: 700; color: var(--text-secondary); }
 .settings-credits-list dd { margin: 0; color: var(--text); line-height: 1.5; }
-.settings-credits-list a { color: var(--accent); }
+.settings-credits-list a { color: var(--accent-ink); }
 
 /* Sections du panneau Réglages (Langue, Crédits) : une langue choisie une fois est mémorisée
    (localStorage), pas besoin d'une place permanente dans le bandeau — voir #settings-lang-fr/en,
    même placement de référence que Publipostage+ (js/settings.js). */
 .settings-section + .settings-section { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
-.settings-section h4 { margin: 0 0 8px; font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.02em; }
+.settings-section h4 { margin: 0 0 8px; font-family: var(--font-label, inherit); font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: var(--ls-label, 0.02em); }
 .settings-radio-row { display: flex; gap: 16px; }
 .settings-radio-row label { display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--text); cursor: pointer; }
 .settings-radio-row input[type="radio"] { cursor: pointer; }
@@ -153,14 +192,14 @@ body {
 .comment-item { padding: 8px 10px; background: var(--surface-sunken); border-radius: var(--radius-sm); }
 .comment-meta { display: flex; align-items: baseline; gap: 6px; margin-bottom: 3px; }
 .comment-meta strong { font-size: 12px; color: var(--text); }
-.comment-meta .comment-date { font-size: 10.5px; color: var(--muted); }
+.comment-meta .comment-date { font-size: 10.5px; color: var(--text-muted); }
 .comment-text { margin: 0; font-size: 12.5px; color: var(--text); line-height: 1.4; white-space: pre-wrap; }
-.comments-empty { margin: 0 0 12px; font-size: 12.5px; color: var(--muted); }
+.comments-empty { margin: 0 0 12px; font-size: 12.5px; color: var(--text-muted); }
 .comment-form { display: flex; flex-direction: column; gap: 8px; }
 .comment-form input, .comment-form textarea {
   font: inherit;
   padding: 6px 8px;
-  border: 1px solid var(--border);
+  border: var(--bw, 1px) solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface);
   color: var(--text);
@@ -197,14 +236,14 @@ body {
    modale que #detail-modal (plus large qu'un simple formulaire, liste de tuiles proposées à
    défiler). */
 #pbix-import-modal .detail-modal-content { width: 480px; max-height: calc(100vh - 64px); display: flex; flex-direction: column; overflow-y: auto; }
-.pbix-import-hint { margin: 0 0 10px; padding: 8px 10px; font-size: 12px; color: var(--text-secondary); background: var(--accent-wash); border-left: 3px solid var(--accent); border-radius: var(--radius-sm); }
+.pbix-import-hint { margin: 0 0 10px; padding: 8px 10px; font-size: 12px; color: var(--text-secondary); background: var(--accent-soft); border-left: 3px solid var(--accent); border-radius: var(--radius-sm); }
 .pbix-import-status { margin: 8px 0; font-size: 12.5px; color: var(--text-secondary); }
 .pbix-import-results { list-style: none; margin: 0 0 12px; padding: 0; max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
 .pbix-import-result { padding: 8px 10px; background: var(--surface-sunken); border-radius: var(--radius-sm); display: flex; align-items: flex-start; gap: 8px; }
 .pbix-import-result label { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; width: 100%; }
 .pbix-import-result input[type="checkbox"] { margin-top: 3px; }
 .pbix-import-result-title { font-size: 12.5px; color: var(--text); font-weight: 600; }
-.pbix-import-result-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.pbix-import-result-meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
 .pbix-import-result.pbix-import-result-disabled { opacity: 0.6; }
 .pbix-import-result.pbix-import-result-disabled label { cursor: default; }
 
@@ -212,15 +251,15 @@ body {
    .pbix-import-divider (voir index.html/harness.html, juste après le bouton de création de
    tuiles de l'import de mise en page ci-dessus). */
 .pbix-import-divider { margin: 14px 0; border: none; border-top: 1px solid var(--border); }
-#pbix-import-modal h4 { margin: 0 0 8px; font-size: 13px; font-weight: 700; color: var(--text); }
+#pbix-import-modal h4 { margin: 0 0 8px; font-family: var(--font-head, inherit); font-size: 13px; font-weight: var(--fw-head, 700); color: var(--text); }
 .csv-import-preview { margin-top: 10px; }
 .csv-import-preview label { display: block; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
 .csv-import-preview input[type="text"] { width: 100%; margin-bottom: 10px; }
 .csv-import-columns { list-style: none; margin: 0 0 12px; padding: 0; max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
 .csv-import-column { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 5px 8px; background: var(--surface-sunken); border-radius: var(--radius-sm); font-size: 12px; }
 .csv-import-col-label { color: var(--text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.csv-import-col-type { color: var(--muted); font-size: 11px; flex: none; }
-.csv-import-confirm { margin-top: 10px; padding: 10px; background: var(--accent-wash); border-left: 3px solid var(--accent); border-radius: var(--radius-sm); }
+.csv-import-col-type { color: var(--text-muted); font-size: 11px; flex: none; }
+.csv-import-confirm { margin-top: 10px; padding: 10px; background: var(--accent-soft); border-left: 3px solid var(--accent); border-radius: var(--radius-sm); }
 .csv-import-confirm p { margin: 0 0 10px; font-size: 12.5px; color: var(--text); }
 .csv-import-confirm button { margin-right: 8px; }
 
@@ -230,9 +269,9 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background: var(--accent-wash);
-  color: var(--accent);
-  border: 1px solid transparent;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  border: 1px solid var(--accent-soft-border);
   border-radius: var(--radius-pill);
   padding: 3px 6px 3px 10px;
   font-weight: 600;
@@ -257,12 +296,12 @@ body {
   opacity: 0.65;
   transition: opacity 0.12s var(--ease), background 0.12s var(--ease);
 }
-.filter-chip-remove:hover, .advanced-filter-chip-remove:hover { opacity: 1; background: rgba(42, 120, 214, 0.16); }
+.filter-chip-remove:hover, .advanced-filter-chip-remove:hover { opacity: 1; background: var(--accent-soft-strong); }
 .filter-chip-remove .icon, .advanced-filter-chip-remove .icon { width: 11px; height: 11px; }
 
 .btn-primary, .btn-secondary {
   border-radius: var(--radius-sm);
-  border: 1px solid transparent;
+  border: var(--bw, 1px) solid transparent;
   padding: 7px 14px;
   font-size: 12.5px;
   font-weight: 500;
@@ -272,20 +311,23 @@ body {
 }
 .btn-primary:active, .btn-secondary:active { transform: translateY(1px); }
 
-.btn-primary { background: var(--accent); color: var(--accent-contrast); box-shadow: var(--shadow-xs); }
-.btn-primary:hover { background: #2569bf; }
+.btn-primary { background: var(--fill); color: var(--on-accent); box-shadow: var(--shadow-ctl); }
+.btn-primary:hover { background: var(--fill-hover); }
 .btn-secondary { background: var(--surface); border-color: var(--border-strong); color: var(--text); }
-.btn-secondary:hover { background: var(--surface-sunken); border-color: var(--muted); }
+.btn-secondary:hover { background: var(--surface-sunken); border-color: var(--text-muted); }
 .btn-tiny { padding: 4px 10px; font-size: 11px; align-self: flex-start; }
 .btn-secondary:disabled, .btn-primary:disabled, .btn-tiny:disabled { opacity: 0.5; cursor: default; box-shadow: none; }
 .btn-secondary:disabled:hover { background: var(--surface); border-color: var(--border-strong); }
-.btn-primary:disabled:hover { background: var(--accent); }
+.btn-primary:disabled:hover { background: var(--fill); }
 
 button:focus-visible, select:focus-visible, input:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 
+/* Bannière d'ERREUR (rouge) : couleur d'état, donc volontairement hors des jetons de la charte GFS
+   (règle 15, « les couleurs qui disent quelque chose restent les tiennes ») — jamais reposée par
+   une ambiance, voir son pendant en mode sombre plus bas. */
 .warning-banner {
   display: flex;
   align-items: center;
@@ -317,11 +359,12 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   margin-bottom: 10px;
 }
 .table-bar label {
+  font-family: var(--font-label, inherit);
   font-size: 11px;
   font-weight: 600;
-  color: var(--muted);
+  color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: var(--ls-label, 0.03em);
 }
 .table-bar .combobox-input { min-width: 220px; }
 .blend-bar { flex-wrap: wrap; }
@@ -355,7 +398,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   background: var(--surface);
   border-color: var(--border);
   color: var(--text);
-  box-shadow: var(--shadow-xs);
+  box-shadow: var(--shadow-ctl);
 }
 .page-tab-remove {
   display: inline-flex;
@@ -366,7 +409,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   padding: 3px;
   transition: opacity 0.12s var(--ease), background 0.12s var(--ease);
 }
-.page-tab-remove:hover { opacity: 1; background: rgba(42, 120, 214, 0.16); }
+.page-tab-remove:hover { opacity: 1; background: var(--accent-soft-strong); }
 .page-tab-remove .icon { width: 10px; height: 10px; }
 
 .bookmarks-bar {
@@ -377,7 +420,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   margin-bottom: 14px;
 }
 .bookmarks-bar select {
-  border: 1px solid var(--border-strong);
+  border: var(--bw, 1px) solid var(--border-strong);
   border-radius: var(--radius-sm);
   padding: 6px 9px;
   font-size: 12.5px;
@@ -393,9 +436,9 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   gap: 12px;
   flex-wrap: wrap;
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: var(--bw, 1px) solid var(--border);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-xs);
+  box-shadow: var(--shadow-ctl);
   padding: 12px 14px;
   margin-bottom: 16px;
 }
@@ -409,14 +452,15 @@ button:focus-visible, select:focus-visible, input:focus-visible {
    testant `isHidden()` en Playwright, jamais en lisant l'état JS seul. */
 .field[hidden] { display: none; }
 .field label {
+  font-family: var(--font-label, inherit);
   font-size: 11px;
   font-weight: 600;
-  color: var(--muted);
+  color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: var(--ls-label, 0.03em);
 }
 .field select, .field input[type="number"], .field input[type="date"], .field input[type="text"] {
-  border: 1px solid var(--border-strong);
+  border: var(--bw, 1px) solid var(--border-strong);
   border-radius: var(--radius-sm);
   padding: 6px 9px;
   font-size: 12.5px;
@@ -428,7 +472,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 }
 .field input[type="number"] { min-width: 80px; }
 .field select:hover, .field input[type="number"]:hover, .field input[type="date"]:hover, .field input[type="text"]:hover {
-  border-color: var(--muted);
+  border-color: var(--text-muted);
 }
 
 .range-inputs { display: flex; align-items: center; gap: 6px; }
@@ -452,9 +496,9 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   max-height: 220px;
   overflow-y: auto;
   background: var(--surface);
-  border: 1px solid var(--border-strong);
+  border: var(--bw, 1px) solid var(--border-strong);
   border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-float);
 }
 .combobox-list[hidden] { display: none; }
 .combobox-option {
@@ -467,8 +511,8 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.combobox-option:hover, .combobox-option.active { background: var(--accent-wash); }
-.combobox-option mark { background: none; color: var(--accent); font-weight: 700; }
+.combobox-option:hover, .combobox-option.active { background: var(--accent-soft); }
+.combobox-option mark { background: none; color: var(--accent-ink); font-weight: 700; }
 
 .field-checkbox label {
   display: flex;
@@ -495,9 +539,9 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 
 .tile {
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: var(--bw, 1px) solid var(--border);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-panel);
   padding: 12px 14px;
   /* `height` fixe, PAS `min-height` [BUG RÉEL] : `.tile-chart` en dessous a `flex:1` sans hauteur
      définie sur ce parent, ce qui rend sa taille dépendante du contenu qu'ECharts y dessine.
@@ -512,7 +556,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   flex-direction: column;
   transition: box-shadow 0.15s var(--ease);
 }
-.tile:hover { box-shadow: var(--shadow-md); }
+.tile:hover { box-shadow: var(--shadow-float); }
 
 .tile-header {
   display: flex;
@@ -537,7 +581,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   justify-content: center;
   background: none;
   border: none;
-  color: var(--muted);
+  color: var(--text-muted);
   cursor: pointer;
   padding: 4px 5px;
   border-radius: var(--radius-sm);
@@ -559,8 +603,8 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   height: 12px;
   padding: 0 2px;
   border-radius: 6px;
-  background: var(--accent);
-  color: var(--surface);
+  background: var(--fill);
+  color: var(--on-accent);
   font-size: 8.5px;
   font-weight: 700;
   line-height: 12px;
@@ -584,7 +628,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 
 .tile-breadcrumb {
   font-size: 11px;
-  color: var(--muted);
+  color: var(--text-muted);
   margin-bottom: 6px;
   display: flex;
   align-items: center;
@@ -594,7 +638,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 .breadcrumb-link {
   background: none;
   border: none;
-  color: var(--accent);
+  color: var(--accent-ink);
   text-decoration: none;
   border-bottom: 1px solid transparent;
   cursor: pointer;
@@ -647,15 +691,15 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 .pivot-cell { color: var(--text); }
 td.pivot-cell:not(.pivot-cell-empty):not(.pivot-total-cell) { cursor: pointer; transition: background 0.12s var(--ease); }
 td.pivot-cell:not(.pivot-cell-empty):not(.pivot-total-cell):hover { background: var(--surface-sunken); }
-.pivot-cell-empty { color: var(--muted); cursor: default; }
-.pivot-active { background: var(--accent-wash-strong); color: var(--accent); }
+.pivot-cell-empty { color: var(--text-muted); cursor: default; }
+.pivot-active { background: var(--accent-soft-strong); color: var(--accent-ink); }
 .pivot-dimmed { opacity: 0.45; }
 .pivot-total-row, .pivot-total-label, .pivot-total-cell {
   font-weight: 700;
   background: var(--surface-sunken);
 }
-.pivot-grand-total { color: var(--accent); }
-.pivot-empty { color: var(--muted); text-align: center; margin: 0; padding: 16px 0; }
+.pivot-grand-total { color: var(--accent-ink); }
+.pivot-empty { color: var(--text-muted); text-align: center; margin: 0; padding: 16px 0; }
 
 /* Nuage de mots (js/charts.js:renderWordCloud, depuis le 03/11/2026 : d3-cloud ne fait que le
    placement, ce widget dessine lui-même sur ce <canvas>) : `display: block` explicite — un canvas
@@ -665,7 +709,7 @@ td.pivot-cell:not(.pivot-cell-empty):not(.pivot-total-cell):hover { background: 
    commentaire de `.tile-chart` ci-dessus) — pas la peine d'en rouvrir un équivalent ici. Largeur/
    hauteur CSS posées directement en JS (voir drawWordCloud), pile à la taille de `.tile-chart`. */
 .tile-wordcloud-canvas { display: block; }
-.tile-wordcloud-message { color: var(--muted); text-align: center; margin: 0; padding: 16px 0; }
+.tile-wordcloud-message { color: var(--text-muted); text-align: center; margin: 0; padding: 16px 0; }
 
 .tile-kpi {
   flex: 1;
@@ -676,13 +720,13 @@ td.pivot-cell:not(.pivot-cell-empty):not(.pivot-total-cell):hover { background: 
   gap: 5px;
 }
 .tile-kpi-value { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; color: var(--text); }
-.tile-kpi-label { font-size: 11px; color: var(--muted); }
+.tile-kpi-label { font-size: 11px; color: var(--text-muted); }
 .tile-kpi-trend { font-size: 11.5px; font-weight: 600; margin-top: 2px; }
 .tile-kpi-trend.trend-up { color: var(--good); }
 .tile-kpi-trend.trend-down { color: var(--critical); }
 
 .empty-state {
-  color: var(--muted);
+  color: var(--text-muted);
   text-align: center;
   padding: 36px 16px;
   border: 1px dashed var(--border-strong);
@@ -698,25 +742,33 @@ td.pivot-cell:not(.pivot-cell-empty):not(.pivot-total-cell):hover { background: 
 @media (prefers-color-scheme: dark) {
   :root {
     color-scheme: dark;
-    --page-bg: #0d0d0d;
+    --bg: #0d0d0d;
     --surface: #1a1a19;
     --surface-sunken: #222220;
     --border: rgba(255, 255, 255, 0.10);
     --border-strong: #2c2c2a;
     --text: #ffffff;
     --text-secondary: #c3c2b7;
-    --muted: #898781;
+    --text-muted: #898781;
     --accent: #3987e5;
-    --accent-contrast: #0b0d12;
-    --accent-wash: rgba(57, 135, 229, 0.14);
-    --accent-wash-strong: rgba(57, 135, 229, 0.22);
+    --on-accent: #0b0d12;
+    /* `--accent-soft` garde une intensité par mode (14 % ici, 8 % en clair) comme avant ce lot ;
+       `--accent-solid`, `--accent-solid-hover`, `--accent-ink` et `--accent-soft-border` ne se
+       redéclarent PAS ici : ce sont des formules `color-mix()` posées une seule fois dans le bloc
+       `:root` plus haut, qui se résolvent contre la valeur de `--accent`/`--text` EN VIGUEUR sur cet
+       élément — déjà celles d'ici une fois ce bloc appliqué, jamais celles lues au moment où la
+       formule a été écrite. */
+    --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
     --good: #0ca30c;
     --critical: #e66767;
     --warning-bg: #3a2e00;
     --warning-text: #f1d27a;
     --warning-border: #5c4900;
   }
-  .btn-primary:hover { background: #4a94ea; }
+  /* `.warning-banner` est une bannière d'ERREUR (rouge), sans rapport avec les jetons
+     `--warning-*` ci-dessus (ambre, non consommés par aucun sélecteur de ce fichier — dead code
+     préexistant à ce lot, hors de son périmètre) : couleur d'état, donc hors ambiance (règle 15),
+     ses deux jeux clair/sombre restent ceux d'avant ce lot, inchangés. */
   .warning-banner { background: #3a1512; color: #f5b8b0; border-color: #6b241c; }
   .warning-banner code { background: rgba(255, 255, 255, 0.12); }
 }

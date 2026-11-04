@@ -7,6 +7,30 @@
  */
 (function () {
   'use strict';
+
+  // Ambiance de GFS (consigne 004, guide des apps règle 15) : Grist-BI n'a pas son propre lien
+  // avec GFS (contrairement à Publipostage+), donc la version toute prête du kit,
+  // `Ambiance.start()`, qui démarre ELLE-MÊME son lien (`kit/js/gfs-link.js`) plutôt que `js/main.js`
+  // qui lui donnerait le sien — voir le README du kit, section « L'ambiance de GFS ». `import()`
+  // dynamique plutôt qu'un `<script type="module">` séparé dans index.html : `js/main.js` reste un
+  // script classique (CLAUDE.md §2), et c'est déjà ainsi que ce widget charge un module ES depuis du
+  // code classique (js/duckdb-engine.js:VENDOR_BASE_URL, js/charts.js:loadD3Cloud). `document.
+  // currentScript` n'est fiable qu'ICI, à l'exécution synchrone initiale de CE script (jamais dans
+  // du code async) : capturé en tout premier, avant le moindre rendu, pour démarrer l'ambiance aussi
+  // tôt que possible dans ce widget sans module d'entrée propre — et pour que le chemin reste juste
+  // qu'on charge index.html (à la racine) ou dev-tests/harness.html (un sous-dossier, kit/ qui s'y
+  // retrouve via dev-tests/README.md). Seul (hors GFS), `Ambiance.start()` ne pose rien et ne
+  // regarde ni n'envoie rien (kit/js/host.js:hostContract) : aucun risque pour ce widget en dehors
+  // de GFS. Un échec de chargement (kit/ absent, réseau) est intercepté plutôt que de faire
+  // remonter une exception non gérée — l'ambiance est un embellissement, jamais une dépendance du
+  // dashboard lui-même.
+  if (typeof document !== 'undefined' && document.currentScript) {
+    const ambianceUrl = new URL('../kit/js/ambiance.js', document.currentScript.src).href;
+    import(ambianceUrl).then(({ Ambiance }) => Ambiance.start()).catch((e) => {
+      console.warn('[GristBI] ambiance de GFS indisponible (kit/ absent ou erreur de chargement)', e);
+    });
+  }
+
   const GristBI = window.GristBI;
   const store = (GristBI.store = GristBI.state.createStore());
   const { escapeHtml, tileDrillLevels } = GristBI.data;

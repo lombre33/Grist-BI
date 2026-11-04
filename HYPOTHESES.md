@@ -2429,6 +2429,62 @@ dans une seule instance de widget, avec ses propres tuiles internes.
   - **Non testable depuis ce sandbox** : le round-trip réel PDF.js une fois GFS la fournie (CDN
     réel, taille du fichier worker, timing sur un PDF de plusieurs centaines de pages).
 
+- **Ambiance de GFS (04/11/2026, consigne GFS 004)** — GFS (Grist Factory Suite, l'hébergeur commun
+  en préparation pour plusieurs apps Grist d'Antoine, voir `lombre33/grist-widget-GFS`) propose cinq
+  ambiances (Grist Factory, Pop, Papier, Brut, Néon) et la couleur libre de la personne, un seul
+  choix pour GFS et pour toutes ses apps. Ce widget référence désormais le **kit commun des apps
+  Grist Factory** (`lombre33/grist-factory-kit`, dépôt public, GPL 3.0) en **sous-module Git**
+  (`kit/`, pointant sur `db14544`, Kit 0.7.0, ≥ `8afa569` demandé par la consigne) et appelle
+  `Ambiance.start()` (`kit/js/ambiance.js`) au tout début de `js/main.js` (avant tout rendu), via un
+  `import()` dynamique résolu contre `document.currentScript.src` — même mécanisme déjà utilisé
+  pour charger un module ES depuis un script classique que `js/duckdb-engine.js`
+  (`VENDOR_BASE_URL`) et `js/charts.js:loadD3Cloud` (spécificateur nu résolu par l'import map),
+  jamais un `<script type="module">` séparé dans `index.html`. Grist-BI n'a pas son propre lien
+  avec GFS (contrairement à Publipostage+) : `Ambiance.start()` démarre donc le lien du kit
+  lui-même (`kit/js/gfs-link.js`), qui ne fait RIEN hors de GFS (`kit/js/host.js:hostContract` :
+  pas de `gfs=<n>` dans l'adresse) — aucun risque pour ce widget utilisé seul, comme aujourd'hui.
+  - `css/style.css` renomme ses jetons de couleur/forme existants vers ceux de la charte GFS (voir
+    le commentaire d'en-tête du fichier et `kit/js/ambiance-message.js:COLOR_TOKENS`/
+    `SHAPE_TOKENS`) : `--bg`, `--surface`, `--surface-sunken`, `--border`, `--border-strong`,
+    `--text`, `--text-muted`, `--accent`, `--on-accent`, `--accent-solid`/`--accent-solid-hover`/
+    `--accent-ink`/`--accent-soft`/`--accent-soft-border` (ces cinq derniers posés par une
+    ambiance avec leur propre valeur — voir le JSON d'exemple du kit, qui leur donne des couleurs
+    distinctes de `--accent`, pas nécessairement égales ; les valeurs par défaut de ce widget,
+    elles, les dérivent de `--accent` par `color-mix()` puisqu'il n'a qu'une seule teinte
+    d'accent), `--radius-sm`/`-md`/`-pill` (déjà nommés à l'identique avant ce lot), `--bw`
+    (largeur de trait, nouveau, câblé sur les conteneurs structurants : `.tile`, le formulaire
+    d'ajout de tuile, la barre de filtres avancés, `.combobox-list`, les boutons, les champs,
+    le sélecteur de vues sauvegardées), `--shadow-ctl`/`-panel`/`-float` (renommage par rôle de
+    `--shadow-xs`/`-sm`/`-md`), `--font-ui` (toute l'interface) et `--font-head`/`--font-label`
+    (+ `--fw-head`/`--fs-head`/`--ls-head`/`--tt-head`/`--ls-label`, avec repli explicite
+    `var(--token, valeur d'origine)` : titre du bandeau, titres de fenêtre, libellés en
+    majuscules), `--fill`/`--fill-hover` (bouton plein, `--accent-solid`[-hover] par défaut, un
+    dégradé chez Pop), `--wash`/`--wash-size` (décor de fond, posé en `background-image` sur
+    `body`, `none` par défaut). **Hors ambiance, volontairement** (règle 15 du guide des apps
+    GFS) : les graphiques (palette du tableau de bord), les couleurs d'état (`--good`,
+    `--critical`, `--warning-*`, `.warning-banner`) et `--text-secondary` (une 3e nuance de gris
+    propre à ce widget, sans équivalent dans les jetons de la charte).
+  - **Testé** : script Playwright ponctuel (non committé, voir CLAUDE.md §5) contre un
+    `http-server` local — `index.html` et `dev-tests/harness.html` chargent sans avertissement
+    `ambiance`/`kit` ; en clair et en sombre, hors ambiance, les couleurs restent celles par
+    défaut de ce widget ; en appliquant directement le message d'exemple réel du kit
+    (`kit/test/ambiance-exemple.json`, l'ambiance "Pop") via `kit/js/ambiance-message.js`
+    (`normalizeAmbiance`) et `kit/js/ambiance-pose.js` (`paintAmbiance`) sur `document.
+    documentElement` d'`index.html`, le fond de page, le fond d'une carte (`.add-tile-form`) et le
+    fond d'un bouton plein (`#submit-tile`, qui devient le dégradé `--fill` de Pop) changent tous
+    les trois, puis reviennent EXACTEMENT à leurs valeurs d'avant en reposant `null` — le scénario
+    même que la consigne GFS 004 demande de vérifier.
+  - **Non testé/non vérifiable depuis ce sandbox** : un vrai message d'ambiance envoyé par un vrai
+    GFS (seul le message d'exemple statique du kit a été rejoué, jamais le protocole
+    `postMessage`/`contexte` réel d'un hébergeur GFS, qui n'existe pas encore en production) ; que
+    GitHub Pages serve bien les fichiers du sous-module `kit/` sur le site publié de ce widget
+    (documentation GitHub elle-même dit que oui pour un sous-module public en `https://`, vérifiée
+    par GFS le 14/10/2026, et déjà le cas en production pour Form+/Automation+/Publipostage+ qui
+    font de même — mais jamais revérifié spécifiquement pour Grist-BI depuis ce sandbox, qui ne
+    peut pas joindre `*.github.io`) ; le rendu réel des cinq ambiances (seule "Pop" a été essayée,
+    faute d'un second fichier d'exemple dans le kit) ; la transition CSS de 0,12 s sur les boutons
+    pendant un changement d'ambiance en direct (mesurée seulement après coup, jamais en mouvement).
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée
