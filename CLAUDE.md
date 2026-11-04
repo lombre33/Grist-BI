@@ -40,6 +40,21 @@ données de l'utilisateur. Au démarrage, le widget se connecte désormais à la
 du document (`main.js:bootstrap`), ou affiche un état explicite si le document n'en contient encore
 aucune.
 
+**Mise à jour du 2026-11-04** : ce widget reçoit des consignes de GFS (Grist Factory Suite, un
+hébergeur commun en préparation pour plusieurs apps Grist d'Antoine) via le dépôt public
+`lombre33/grist-widget-GFS` (lecture seule — aucun push depuis ce dépôt), et y répond dans
+`GFS-ETAT.md` à la racine (seul canal vers GFS, que GFS lit mais ne modifie jamais). Consigne 004
+(« suivre l'ambiance de GFS ») : ce widget référencie désormais le **kit commun des apps Grist
+Factory** (`lombre33/grist-factory-kit`, licence GPL 3.0 comme ce dépôt) en **sous-module Git**
+(`kit/`), et appelle `Ambiance.start()` au démarrage (`js/main.js`, tout en haut du fichier) — ce
+qui ne fait RIEN tant que ce widget tourne hors de GFS (`kit/js/host.js:hostContract` : pas de
+`gfs=<n>` dans l'adresse, donc le lien du kit n'écoute ni n'envoie rien). Quand une personne choisit
+une ambiance dans GFS (cinq directions artistiques prédéfinies, ou sa propre couleur), le kit pose
+les jetons de couleur/forme correspondants directement sur `<html>` par le CSSOM ; `css/style.css`
+lit désormais ces mêmes noms de jeton (voir son commentaire d'en-tête) pour que l'interface de ce
+widget (jamais les graphiques, qui gardent la palette du tableau de bord, ni les couleurs d'état)
+suive. Voir §2 (ligne `kit/`) et §7/§8 pour le détail.
+
 ## 2. Structure du dépôt et rôle de chaque fichier
 
 Pas de `package.json`, pas d'étape de build : `index.html` charge directement chaque script via
@@ -68,6 +83,7 @@ suivants lisent `GristBI.i18n.t()` comme un global déjà prêt.
 | `js/pdf-export.js` | Export PDF (page actuellement affichée uniquement) via pdfmake, chargé depuis un CDN externe et non vendorisé (exception, voir §8) — capture l'image de chaque graphique déjà rendu (`GristBI.charts.getInstance`) plutôt que de recalculer, ce qui évite le mur asynchrone des tuiles en mode mesure DAX rencontré par l'export Excel. |
 | `js/pptx-export.js` | Export PPTX (page actuellement affichée uniquement) via PptxGenJS, même dérogation CDN/même stratégie de capture d'image que `js/pdf-export.js` — une diapositive par tuile (image ou tableau natif `slide.addTable`, selon `GristBI.data.tileExportKind`) plutôt qu'une grille façon écran. |
 | `js/vendor/echarts/`, `js/vendor/xlsx/`, `js/vendor/duckdb/`, `js/vendor/apache-arrow/`, `js/vendor/flatbuffers/`, `js/vendor/tslib/` | Bibliothèques tierces **vendorisées localement, jamais chargées depuis un CDN externe** — voir §7 pour la raison (bug réel rencontré). |
+| `kit/` | **Sous-module Git** (`lombre33/grist-factory-kit`, public, GPL 3.0 — pas une bibliothèque tierce vendorisée comme la ligne ci-dessus, et pas davantage une « nouvelle bibliothèque » au sens du protocole GFS §8 : l'adresse de ce dépôt est documentée dans ses propres consignes, référencée directement sans passer par une demande à GFS). Pointe sur un commit ≥ `8afa569` (Kit 0.6.0+, l'ambiance de GFS). Ce widget n'en importe pour l'instant que `kit/js/ambiance.js` (`js/main.js`, tout en haut du fichier, via un `import()` dynamique — même mécanisme que `js/duckdb-engine.js`/`js/charts.js:loadD3Cloud` pour charger un module ES depuis un script classique) : `Ambiance.start()` au démarrage, qui pose les jetons de couleur/forme de l'ambiance GFS choisie sur `<html>`, lus par `css/style.css` — voir §7/§8. N'importe aucun autre module du kit (pas encore de traduction/thème/fenêtres communs : ce lot ne couvre que l'ambiance, voir la consigne GFS 004). |
 | `dev-tests/` | Harnais de test hors Grist — voir §5. |
 | `README.md` | Vue d'ensemble produit, fonctionnalités, installation dans Grist, historique condensé des bugs réels corrigés. |
 | `ROADMAP.md` | **Source unique des priorités** — voir §6. |
@@ -158,6 +174,15 @@ dépôt. Les tests se lancent manuellement (voir §5).
   en localStorage, exactement comme avant cette fonctionnalité.
 
 ## 4. Lancer et prévisualiser en local
+
+**Avant tout, sur un clone frais** : `kit/` est un sous-module Git (voir §2) — un simple `git clone`
+laisse ce dossier VIDE (seule une référence de commit, pas les fichiers). `git submodule update
+--init` (une fois) le remplit. Sans ça, `Ambiance.start()` (js/main.js) échoue silencieusement sur
+un `import()` qui 404, intercepté par son propre `catch` (console.warn, rien d'autre) — le reste du
+widget continue de fonctionner normalement, sans ambiance. GitHub Pages, lui, récupère les
+sous-modules à la construction pour un dépôt public en `https://` (documentation GitHub elle-même,
+vérifiée par GFS le 14/10/2026 — `lombre33/grist-widget-GFS:docs/faits-verifies.md`), donc sans
+action supplémentaire côté déploiement.
 
 **Dans Grist (conditions réelles)** — README.md:111-119 :
 1. Publier ce dépôt en page statique (GitHub Pages : Settings → Pages → Deploy from branch → `main`
@@ -427,6 +452,18 @@ Cette liste condense les bugs réels les plus instructifs (détail complet dans 
 - **`RemoveTable` n'est jamais utilisé** dans ce projet — jugé verbe non éprouvé pour ce chemin
   critique de sécurité des données ; une table orpheline est laissée en place plutôt que supprimée
   automatiquement.
+- **GFS (Grist Factory Suite) et l'ambiance (depuis le 2026-11-04)** : ce widget suit les consignes
+  de `lombre33/grist-widget-GFS` (lecture seule) et y répond dans `GFS-ETAT.md`. Le sous-module
+  `kit/` (§2) et `Ambiance.start()` (`js/main.js`) sont la SEULE intégration GFS faite à ce jour —
+  ni `gfs.json`, ni liste unique de bibliothèques, ni contexte/stockage par le courtier du kit
+  (guide des apps GFS, section 1.2, points 2/3/4/5+) : ce widget reste par ailleurs un widget Grist
+  autonome, sans lien avec GFS en dehors de l'ambiance. **Toute bibliothèque/extension nouvelle au-delà
+  du kit passe par une demande à GFS** (section « Demandes à GFS » de `GFS-ETAT.md`, jamais ajoutée
+  soi-même, ni en CDN ni vendorisée) — voir `d3-cloud`/`pdfjs-dist` dans ce fichier à titre d'exemple
+  de demandes en cours. **Les graphiques gardent toujours la palette du tableau de bord** — une
+  ambiance ne recolore jamais une tuile, seulement le chrome (barres, panneaux, fenêtres, Réglages) ;
+  les couleurs d'état (succès/erreur/avertissement) restent elles aussi celles de ce widget, jamais
+  reposées par une ambiance.
 - **Tout bug réel corrigé est documenté** dans `HYPOTHESES.md` (diagnostic complet) et
   `TEST_PROTOCOL.md` (entrée `[BUG RÉEL]` permanente, jamais supprimée, seulement adaptée).
 - **Distinction permanente entre « testé en sandbox/mock » et « vérifié en conditions réelles

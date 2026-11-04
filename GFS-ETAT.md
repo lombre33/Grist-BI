@@ -1,18 +1,27 @@
 # GFS-ETAT : Grist-BI
 
-Mis à jour le 2026-11-04, au commit `e035bcf` (le dernier commit de code que cette page décrit ;
-cette mise à jour ne touche que ce fichier).
+Mis à jour le 2026-11-04, au commit `fef9af8` (prise du kit GFS, ambiance).
 
 ## Consignes
 - 001 · faite · `23647eb` · 1.1 : écart sur la règle 4 (les 3 tables internes — `BI_Dashboard_Config`, `BI_Dashboard_Comments`, `BI_Dashboard_UserProbe` — se créent au démarrage sans l'accord de la personne) et la règle 11 (pas de CSP, déjà noté dans le guide) ; ligne du guide par ailleurs juste à ce commit, seule omission : elle ne mentionne jamais `BI_Dashboard_Comments` (créée depuis le 30/09) parmi les tables internes
 - 002 · lue
 - 003 · faite · `21b012b` · fichier vide `.nojekyll` ajouté à la racine (PR #30) ; vérifié qu'aucun fichier caché sensible n'est nouvellement exposé (seuls `.nojekyll` et `.gitignore`, rien de sensible dans l'un ou l'autre, aucun fichier `_*`) ; run « pages build and deployment » #58 passé en succès sur ce commit ; version vue en ligne le 02/11/2026 à `https://lombre33.github.io/Grist-BI/` : titre « Grist BI Dashboard (POC) », bandeau « Dashboard BI POC », état vide conforme à `main` à ce commit — l'app n'affiche aucun numéro de version, donc pas de numéro à relever
-- 004 · lue · conditionnée par son propre texte à « au lot où tu prends le kit » (guide des apps 1.2,
-  points 1 et 4) — pas encore engagée : aucun `kit/` en sous-module, aucun `GfsLink`, aucun
-  `gfs.json` dans ce dépôt, et la consigne 001 (déjà faite) dit explicitement de ne pas engager la
-  section 1.2 avant une consigne séparée qui l'annonce. Rien n'a donc été codé à ce lot
-  (`Ambiance.start()` n'a pas de kit à lire) ; `004 · faite` suivra la consigne qui fera prendre le
-  kit à Grist-BI, pas avant.
+- 004 · faite · `fef9af8` · kit pris en sous-module Git (`kit/`, pointant
+  `db14544`, Kit 0.7.0, ≥ `8afa569` demandé) ; `Ambiance.start()` appelé au tout début de
+  `js/main.js`, avant tout rendu, via un `import()` dynamique résolu sur `document.currentScript.src`
+  (Grist-BI n'a pas son propre `GfsLink`, contrairement à Publipostage+, donc la version prête à
+  l'emploi du kit plutôt que `createAmbiance`) ; `css/style.css` lit désormais les jetons de couleur
+  de la charte (`--bg`, `--surface`, `--surface-sunken`, `--border`[`-strong`], `--text`[`-muted`],
+  `--accent`, `--on-accent`, `--accent-solid`[`-hover`], `--accent-ink`, `--accent-soft`[`-border`])
+  et de forme (`--radius-*`, `--bw`, `--shadow-ctl/panel/float`, `--font-ui/head/label` + leurs
+  variantes typographiques, `--fill`[`-hover`], `--wash`[`-size`]) ; les graphiques gardent la
+  palette du tableau de bord (jamais lu par `js/charts.js`) et les couleurs d'état
+  (`--good`/`--critical`/`--warning-*`, `.warning-banner`) restent les siennes, comme demandé.
+  Rien d'autre du guide 1.2 engagé à ce lot (pas de `GfsLink`/`gfs.json` propres à Grist-BI) — voir
+  CLAUDE.md §8. Testé en Playwright contre le message d'exemple réel du kit
+  (`kit/test/ambiance-exemple.json`) : pose puis dépose vérifiées sur le fond de page, une carte et
+  un bouton plein, en clair et en sombre — jamais contre un vrai hébergeur GFS (inexistant à ce
+  jour), voir HYPOTHESES.md/TEST_PROTOCOL.md pour le détail et les points encore non vérifiables.
 
 ## Changements qui touchent GFS
 - 2026-11-03 · `e035bcf` · tuile « Nuage de mots » (`js/charts.js`/`js/data.js`/`js/main.js`) :

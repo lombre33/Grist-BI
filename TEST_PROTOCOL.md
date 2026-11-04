@@ -565,6 +565,18 @@ délibérément laissé de côté (contenu généré par `js/data.js`/`js/demo-d
 - [x] En-têtes "Total" du tableau croisé traduits (mêmes clés que le rendu à l'écran) 🌐
 - [ ] **[NON TESTABLE ICI]** Comportement réel à l'intérieur d'une vraie iframe de widget Grist (`localStorage` scindé par origine notamment) — jamais vérifié en conditions réelles Grist, voir HYPOTHESES.md
 
+### `kit/js/ambiance.js` + `js/main.js` + `css/style.css` — ambiance de GFS (consigne GFS 004, 04/11/2026, Playwright contre le message d'exemple du kit `kit/test/ambiance-exemple.json`, jamais un vrai hébergeur GFS)
+
+- [x] `kit/` (sous-module Git) présent après `git submodule update --init` ; `Ambiance.start()` posé par `js/main.js` avant tout rendu ✅ (lecture de code)
+- [x] `index.html` seul (hors GFS) : aucun avertissement/erreur lié à `ambiance`/`kit/` en console, couleurs par défaut de ce widget inchangées 🌐
+- [x] `dev-tests/harness.html` (un sous-dossier, chemin résolu différemment via `document.currentScript.src`) : même absence d'avertissement 🌐
+- [x] Message d'exemple réel du kit (`kit/test/ambiance-exemple.json`, ambiance "Pop") posé directement via `kit/js/ambiance-message.js:normalizeAmbiance` + `kit/js/ambiance-pose.js:paintAmbiance` sur `index.html` : le fond de page, le fond d'une carte (`.add-tile-form`) et le fond d'un bouton plein (`#submit-tile`, qui devient le dégradé `--fill` de Pop) changent tous les trois 🌐
+- [x] Retour à `null` (équivalent d'une perte de connexion GFS) : les trois reviennent EXACTEMENT aux valeurs d'avant — pas de jeton orphelin laissé posé 🌐
+- [x] Même scénario en `prefers-color-scheme: dark` : aucune régression du rendu sombre existant (fond/bouton inchangés hors ambiance) 🌐
+- [ ] **[NON TESTABLE ICI]** Un vrai message d'ambiance envoyé par un vrai hébergeur GFS (protocole `postMessage`/`contexte` réel, pas le fichier d'exemple statique du kit) — voir HYPOTHESES.md
+- [ ] **[NON TESTABLE ICI]** Le rendu réel des 4 autres ambiances (Grist Factory, Papier, Brut, Néon) et de la couleur libre — seul le fichier d'exemple "Pop" existe dans le kit
+- [ ] **[NON TESTABLE ICI]** Que GitHub Pages serve bien `kit/` (sous-module) sur le site publié de ce widget précisément — ce sandbox ne peut pas joindre `*.github.io`, voir HYPOTHESES.md
+
 ### CSS — classe de bug à systématiquement re-vérifier
 
 - [x] `.field[hidden]` masque réellement l'élément (pas seulement `display:flex` de `.field` qui gagne à spécificité égale) [BUG RÉEL, trouvé 2 fois sur des champs différents] ✅ (règle en place)
