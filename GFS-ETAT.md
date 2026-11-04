@@ -1,12 +1,12 @@
 # GFS-ETAT : Grist-BI
 
-Mis à jour le 2026-11-04, au commit `<à compléter après commit>` (prise du kit GFS, ambiance).
+Mis à jour le 2026-11-04, au commit `fef9af8` (prise du kit GFS, ambiance).
 
 ## Consignes
 - 001 · faite · `23647eb` · 1.1 : écart sur la règle 4 (les 3 tables internes — `BI_Dashboard_Config`, `BI_Dashboard_Comments`, `BI_Dashboard_UserProbe` — se créent au démarrage sans l'accord de la personne) et la règle 11 (pas de CSP, déjà noté dans le guide) ; ligne du guide par ailleurs juste à ce commit, seule omission : elle ne mentionne jamais `BI_Dashboard_Comments` (créée depuis le 30/09) parmi les tables internes
 - 002 · lue
 - 003 · faite · `21b012b` · fichier vide `.nojekyll` ajouté à la racine (PR #30) ; vérifié qu'aucun fichier caché sensible n'est nouvellement exposé (seuls `.nojekyll` et `.gitignore`, rien de sensible dans l'un ou l'autre, aucun fichier `_*`) ; run « pages build and deployment » #58 passé en succès sur ce commit ; version vue en ligne le 02/11/2026 à `https://lombre33.github.io/Grist-BI/` : titre « Grist BI Dashboard (POC) », bandeau « Dashboard BI POC », état vide conforme à `main` à ce commit — l'app n'affiche aucun numéro de version, donc pas de numéro à relever
-- 004 · faite · `<à compléter après commit>` · kit pris en sous-module Git (`kit/`, pointant
+- 004 · faite · `fef9af8` · kit pris en sous-module Git (`kit/`, pointant
   `db14544`, Kit 0.7.0, ≥ `8afa569` demandé) ; `Ambiance.start()` appelé au tout début de
   `js/main.js`, avant tout rendu, via un `import()` dynamique résolu sur `document.currentScript.src`
   (Grist-BI n'a pas son propre `GfsLink`, contrairement à Publipostage+, donc la version prête à
