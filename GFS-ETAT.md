@@ -1,6 +1,6 @@
 # GFS-ETAT : Grist-BI
 
-Mis à jour le 2026-11-04, au commit `EN_COURS` (relevé 005, état de la 006).
+Mis à jour le 2026-11-04, au commit `ce33e5f` (relevé 005, état de la 006).
 
 ## Consignes
 - 001 · faite · `23647eb` · 1.1 : écart sur la règle 4 (les 3 tables internes — `BI_Dashboard_Config`, `BI_Dashboard_Comments`, `BI_Dashboard_UserProbe` — se créent au démarrage sans l'accord de la personne) et la règle 11 (pas de CSP, déjà noté dans le guide) ; ligne du guide par ailleurs juste à ce commit, seule omission : elle ne mentionne jamais `BI_Dashboard_Comments` (créée depuis le 30/09) parmi les tables internes
@@ -22,7 +22,7 @@ Mis à jour le 2026-11-04, au commit `EN_COURS` (relevé 005, état de la 006).
   (`kit/test/ambiance-exemple.json`) : pose puis dépose vérifiées sur le fond de page, une carte et
   un bouton plein, en clair et en sombre — jamais contre un vrai hébergeur GFS (inexistant à ce
   jour), voir HYPOTHESES.md/TEST_PROTOCOL.md pour le détail et les points encore non vérifiables.
-- 005 · faite · lue, aucun code · `EN_COURS` · relevé demandé (contrats 11.6 point 9, 11.9 point 5) de tout
+- 005 · faite · lue, aucun code · `ce33e5f` · relevé demandé (contrats 11.6 point 9, 11.9 point 5) de tout
   point d'entrée d'une valeur de cellule dans un écran/un calcul/un fichier, à ce commit :
   - info-bulles/légendes ECharts : un seul `formatter` compose du HTML à la main, celui du nuage de
     points (`js/charts.js:719-721`) — `escapeHtml` sur le nom et les deux mesures. Les autres tuiles
