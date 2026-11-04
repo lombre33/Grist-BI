@@ -1,11 +1,18 @@
 # GFS-ETAT : Grist-BI
 
-Mis à jour le 2026-11-03, au commit `e035bcf` (le dernier commit de code que cette page décrit).
+Mis à jour le 2026-11-04, au commit `e035bcf` (le dernier commit de code que cette page décrit ;
+cette mise à jour ne touche que ce fichier).
 
 ## Consignes
 - 001 · faite · `23647eb` · 1.1 : écart sur la règle 4 (les 3 tables internes — `BI_Dashboard_Config`, `BI_Dashboard_Comments`, `BI_Dashboard_UserProbe` — se créent au démarrage sans l'accord de la personne) et la règle 11 (pas de CSP, déjà noté dans le guide) ; ligne du guide par ailleurs juste à ce commit, seule omission : elle ne mentionne jamais `BI_Dashboard_Comments` (créée depuis le 30/09) parmi les tables internes
 - 002 · lue
 - 003 · faite · `21b012b` · fichier vide `.nojekyll` ajouté à la racine (PR #30) ; vérifié qu'aucun fichier caché sensible n'est nouvellement exposé (seuls `.nojekyll` et `.gitignore`, rien de sensible dans l'un ou l'autre, aucun fichier `_*`) ; run « pages build and deployment » #58 passé en succès sur ce commit ; version vue en ligne le 02/11/2026 à `https://lombre33.github.io/Grist-BI/` : titre « Grist BI Dashboard (POC) », bandeau « Dashboard BI POC », état vide conforme à `main` à ce commit — l'app n'affiche aucun numéro de version, donc pas de numéro à relever
+- 004 · lue · conditionnée par son propre texte à « au lot où tu prends le kit » (guide des apps 1.2,
+  points 1 et 4) — pas encore engagée : aucun `kit/` en sous-module, aucun `GfsLink`, aucun
+  `gfs.json` dans ce dépôt, et la consigne 001 (déjà faite) dit explicitement de ne pas engager la
+  section 1.2 avant une consigne séparée qui l'annonce. Rien n'a donc été codé à ce lot
+  (`Ambiance.start()` n'a pas de kit à lire) ; `004 · faite` suivra la consigne qui fera prendre le
+  kit à Grist-BI, pas avant.
 
 ## Changements qui touchent GFS
 - 2026-11-03 · `e035bcf` · tuile « Nuage de mots » (`js/charts.js`/`js/data.js`/`js/main.js`) :
