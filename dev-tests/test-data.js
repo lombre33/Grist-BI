@@ -1352,6 +1352,30 @@ const SAMPLE_TIME_SERIES = [
   console.log('OK i18n.t — substitution de variables + pluriel fr/en (Intl.PluralRules)');
 }
 
+// Consigne GFS 007, point 1 : dans le sous-cadre isolé d'un hébergeur comme GFS (sandbox sans
+// allow-same-origin), LIRE `localStorage` lève une exception — y compris à travers un simple
+// `typeof` (un `typeof` ne masque qu'une référence jamais déclarée, pas une exception levée par un
+// accesseur qui existe réellement) — ce n'est PAS le même cas que "pas de localStorage du tout"
+// déjà testé plus haut (Node n'a pas ce global, donc `typeof` y renvoie juste 'undefined', sans
+// jamais lever). Simulé en posant un tel accesseur sur `global.localStorage`, puis en rechargeant
+// js/i18n.js à neuf (une instance déjà requise a déjà figé son `lang` initial au premier chargement).
+{
+  Object.defineProperty(global, 'localStorage', {
+    get() { throw new Error('SecurityError (simulation : cadre isolé sans allow-same-origin)'); },
+    configurable: true
+  });
+  delete require.cache[require.resolve('../js/i18n.js')];
+  let sandboxed;
+  assert.doesNotThrow(() => { sandboxed = require('../js/i18n.js'); }, 'js/i18n.js ne doit pas planter au chargement si localStorage lève');
+  assert.strictEqual(sandboxed.getLang(), 'fr', 'repli français si localStorage lève dès le chargement');
+  assert.doesNotThrow(() => sandboxed.setLang('en'), 'setLang ne doit pas planter si localStorage lève');
+  assert.strictEqual(sandboxed.getLang(), 'en', 'setLang doit tout de même changer la langue en mémoire, même sans pouvoir la persister');
+  sandboxed.setLang('fr');
+  delete global.localStorage;
+  delete require.cache[require.resolve('../js/i18n.js')];
+  console.log('OK i18n.js — démarre et fonctionne quand localStorage lève (cadre isolé GFS, consigne 007 point 1)');
+}
+
 // measureExportSheet / buildWorkbookSheetsAsync : export Excel RÉEL (plus un simple message) pour
 // une tuile Barres en mode de calcul temporel (Cumul/YTD/N-1) — voir js/export.js. `computeMeasureSeries`
 // est ici FACTICE (une Promise résolue avec un timeSeries écrit à la main), jamais le vrai
