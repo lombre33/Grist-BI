@@ -78,20 +78,45 @@ Mis à jour le 2026-11-06 (lecture des consignes 007/008, `consignes/bi/INDEX.md
   suite Playwright de ce dépôt, voir CLAUDE.md §5) : une page hôte charge `index.html?gfs=0` dans
   une iframe, répond `contexte`, puis envoie `fermer { raison: "app" }` — réponse reçue
   `{ ferme: true }`, aucune exception.
-- 007 · en cours · point 1 `a4c53ee` · les quatre lectures `localStorage` (`js/i18n.js:332` langue,
-  `:389` `setLang`, `js/main.js:886`/`:890` auteur du commentaire) gardaient le `try` APRÈS le
-  `typeof` plutôt qu'autour : dans le sous-cadre isolé de GFS (sandbox sans `allow-same-origin`),
-  lire `localStorage` lève une exception même à travers un `typeof` (vérifié), qui n'empêchait donc
-  rien. `typeof` déplacé dans le `try` aux quatre endroits — aucun autre changement de comportement
-  (même repli français/saisie manuelle qu'avant quand le stockage est vraiment indisponible).
-  Testé sous Node (`dev-tests/test-data.js` : `localStorage` simulé comme un accesseur qui lève,
-  rechargement de `js/i18n.js`) et en Playwright (`index.html` dans une vraie iframe
-  `sandbox="allow-scripts"` sans `allow-same-origin`, non committé comme le reste de la suite
-  Playwright de ce dépôt, voir CLAUDE.md §5) : l'app démarre et s'affiche en français normalement -
-  avant ce correctif, `GristBI.i18n` restait indéfini et `js/charts.js`/`js/main.js` tombaient en le
-  déstructurant, exactement comme mesuré par GFS. Points 2 (rapport = ligne nommée de
-  `BI_Dashboard_Config`) et 3 (lien du kit, `GfsLink.opening`/`onOpen`/`onLanguage`) à suivre dans
-  un prochain commit.
+- 007 · faite · point 1 `a4c53ee`, points 2/3 `0ae0199` · point 1 : les quatre lectures
+  `localStorage` (`js/i18n.js:332` langue, `:389` `setLang`, `js/main.js:886`/`:890` auteur du
+  commentaire) gardaient le `try` APRÈS le `typeof` plutôt qu'autour : dans le sous-cadre isolé de
+  GFS (sandbox sans `allow-same-origin`), lire `localStorage` lève une exception même à travers un
+  `typeof` (vérifié), qui n'empêchait donc rien. `typeof` déplacé dans le `try` aux quatre endroits
+  — aucun autre changement de comportement (même repli français/saisie manuelle qu'avant quand le
+  stockage est vraiment indisponible). Testé sous Node (`dev-tests/test-data.js` : `localStorage`
+  simulé comme un accesseur qui lève, rechargement de `js/i18n.js`) et en Playwright (`index.html`
+  dans une vraie iframe `sandbox="allow-scripts"` sans `allow-same-origin`, non committé comme le
+  reste de la suite Playwright de ce dépôt, voir CLAUDE.md §5) : l'app démarre et s'affiche en
+  français normalement - avant ce correctif, `GristBI.i18n` restait indéfini et
+  `js/charts.js`/`js/main.js` tombaient en le déstructurant, exactement comme mesuré par GFS.
+  Point 2 : `BI_Dashboard_Config` gagne 4 colonnes par `AddColumn` sur la table existante (jamais
+  recréée) — `Nom`/`TypeRapport`/`DateModif`/`ModifiePar`. Un rapport est désormais une LIGNE
+  (plusieurs rapports peuvent partager le même `TableId`) : `saveConfig` accepte un `reportId`
+  absent/null (comportement historique, une seule ligne par `TableId`), un id réel (cible cette
+  ligne précise), ou le jeton `'new'` (force une nouvelle ligne, même si ce `TableId` en porte déjà
+  une autre — jamais confondue avec elle). Les lignes d'avant cette consigne (`Nom` vide) sont
+  nommées à leur PROCHAIN enregistrement réel seulement, jamais au démarrage — leur nom par défaut
+  est leur `TableId` (désambiguïsé si déjà pris) ; un rapport neuf reçoit "Rapport BI N"/"BI report
+  N" (clé i18n `gfs.newReportName`, langue de la personne), le plus petit N encore libre. Un nom
+  reste unique dans toute la table, tous `TableId` confondus. Une ligne dont le `TypeRapport` est
+  connu et différent de `'rapport'` n'est jamais ouverte ni réécrite (`loadConfigById`/`saveConfig`).
+  Point 3 : `js/main.js` branche `GfsLink.opening()` au bootstrap (avant la connexion automatique
+  à la 1re table du document) et `onOpen`/`onLanguage` une fois l'app démarrée, pour que "Nouveau"
+  et le double-clic dans GFS ouvrent le bon rapport (`openReportById`/`openBlankReport`) sans jamais
+  perdre le rapport en cours de frappe (`flushPendingSave()` avant tout changement). `scheduleSave`
+  capture désormais `reportId`/`authorLabel` au moment de la PLANIFICATION plutôt qu'à la résolution
+  du debounce (même piège que le changement de table, CLAUDE.md §7 piège 13), et adopte l'id réel
+  renvoyé par Grist une fois qu'un rapport "Nouveau" a été enregistré une première fois. La langue
+  est pilotée par GFS via `onLanguage` ; un changement fait malgré tout dans le widget remonte par
+  `storageSet` plutôt que `localStorage` (peu fiable dans le sous-cadre isolé de GFS).
+  Testé en Playwright (simulateur maison du protocole GFS, non committé, voir CLAUDE.md §5) :
+  migration d'une `BI_Dashboard_Config` à l'ancien schéma (2 colonnes) avec backfill au premier
+  enregistrement réel, nommage par défaut et unicité entre deux "Nouveau" successifs pour la même
+  table, ouverture d'un rapport précis par `GfsLink.opening()` (tuile du rapport visible), garde
+  `TypeRapport` étranger/id inconnu sur `onOpen` (affichage inchangé dans les deux cas),
+  synchronisation de la langue dans les deux sens (`onLanguage` -> `GristBI.i18n`, et
+  `GristBI.i18n` -> `stockage.ecrire` côté GFS).
 - 008 · faite · `4c20972` · `kit/` avancé à `eaa2ae2` (0.9.0). `GfsLink.onClose(async () =>
   { await flushPendingSave(); return true; })` posé au même endroit que l'ambiance (004) — même
   singleton `GfsLink` que `Ambiance.start()` (un module ES ne s'importe qu'une fois par URL),
