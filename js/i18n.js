@@ -329,7 +329,14 @@
     'chart.radar.groupAverage': { fr: 'Moyenne du groupe', en: 'Group average' },
   };
 
-  let lang = (typeof localStorage !== 'undefined' && localStorage.getItem('gristbi_lang') === 'en') ? 'en' : 'fr';
+  // Repli français si `localStorage` lève (consigne GFS 007, point 1) : dans le sous-cadre isolé
+  // d'un hébergeur comme GFS (sandbox sans allow-same-origin), lire `localStorage` — y compris via
+  // `typeof` — lève une exception, elle n'est jamais simplement absente comme sous Node. Le `try`
+  // doit donc envelopper le `typeof` lui-même, pas seulement l'accès qui le suit.
+  let lang = 'fr';
+  try {
+    if (typeof localStorage !== 'undefined' && localStorage.getItem('gristbi_lang') === 'en') lang = 'en';
+  } catch (e) { /* stockage indisponible (cadre isolé compris) - repli français */ }
 
   // Pluriel sans parenthèses, même syntaxe que publipostageGrist (`js/i18n.js`) : `{n|forme au
   // singulier|forme au pluriel}` prend l'une ou l'autre selon la règle de pluriel RÉELLE de la
@@ -386,9 +393,11 @@
 
   function setLang(next) {
     lang = next === 'en' ? 'en' : 'fr';
-    if (typeof localStorage !== 'undefined') {
-      try { localStorage.setItem('gristbi_lang', lang); } catch (e) { /* stockage indisponible - la langue ne survivra pas au rechargement, sans plus de conséquence */ }
-    }
+    // Même garde que la lecture plus haut (consigne GFS 007, point 1) : le `typeof` doit être DANS
+    // le `try`, pas seulement `setItem` - sinon il lève, lui aussi, dans un cadre isolé.
+    try {
+      if (typeof localStorage !== 'undefined') localStorage.setItem('gristbi_lang', lang);
+    } catch (e) { /* stockage indisponible (cadre isolé compris) - la langue ne survivra pas au rechargement, sans plus de conséquence */ }
     if (typeof document !== 'undefined') document.documentElement.lang = lang;
     applyTranslations();
     changeListeners.forEach((fn) => { try { fn(lang); } catch (e) { console.warn('[GristBI.i18n] un abonné au changement de langue a levé une exception', e); } });

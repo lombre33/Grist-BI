@@ -903,16 +903,22 @@
     return el;
   }
 
-  // Clé localStorage dédiée (même garde `typeof localStorage !== 'undefined'` + repli silencieux
-  // que GristBI.i18n pour `gristbi_lang`, voir js/i18n.js) : le nom saisi une fois est mémorisé
-  // d'une session à l'autre, comme la langue — pas la peine de le retaper à chaque commentaire.
+  // Clé localStorage dédiée (même garde que GristBI.i18n pour `gristbi_lang`, voir js/i18n.js) : le
+  // nom saisi une fois est mémorisé d'une session à l'autre, comme la langue — pas la peine de le
+  // retaper à chaque commentaire. Le `typeof` est DANS le `try` (consigne GFS 007, point 1) : dans
+  // un cadre isolé (sandbox sans allow-same-origin), lire `localStorage` lève une exception même à
+  // travers un `typeof`, elle n'est jamais simplement absente comme sous Node.
   function loadSavedCommentAuthor() {
-    if (typeof localStorage === 'undefined') return '';
-    try { return localStorage.getItem('gristbi_comment_author') || ''; } catch (e) { return ''; }
+    try {
+      if (typeof localStorage === 'undefined') return '';
+      return localStorage.getItem('gristbi_comment_author') || '';
+    } catch (e) { return ''; }
   }
   function saveCommentAuthor(author) {
-    if (typeof localStorage === 'undefined') return;
-    try { localStorage.setItem('gristbi_comment_author', author); } catch (e) { /* stockage indisponible - sans conséquence, juste à retaper la prochaine fois */ }
+    try {
+      if (typeof localStorage === 'undefined') return;
+      localStorage.setItem('gristbi_comment_author', author);
+    } catch (e) { /* stockage indisponible (cadre isolé compris) - sans conséquence, juste à retaper la prochaine fois */ }
   }
 
   // Reconstruit la liste de commentaires affichée dans #comments-modal pour `commentsModalTileId`
