@@ -1,6 +1,6 @@
 # GFS-ETAT : Grist-BI
 
-Mis à jour le 2026-11-04, au commit `ce33e5f` (relevé 005, état de la 006).
+Mis à jour le 2026-11-06 (lecture des consignes 007/008, `consignes/bi/INDEX.md` à `913b4a0`).
 
 ## Consignes
 - 001 · faite · `23647eb` · 1.1 : écart sur la règle 4 (les 3 tables internes — `BI_Dashboard_Config`, `BI_Dashboard_Comments`, `BI_Dashboard_UserProbe` — se créent au démarrage sans l'accord de la personne) et la règle 11 (pas de CSP, déjà noté dans le guide) ; ligne du guide par ailleurs juste à ce commit, seule omission : elle ne mentionne jamais `BI_Dashboard_Comments` (créée depuis le 30/09) parmi les tables internes
@@ -67,23 +67,23 @@ Mis à jour le 2026-11-04, au commit `ce33e5f` (relevé 005, état de la 006).
   automatiques sur les publications (`js/keywords.js`/`js/pdf-text.js`, PR #37) ne sont, à ce commit,
   branchés nulle part dans `index.html`/`js/main.js` (vérifié aujourd'hui) : sans effet pour l'instant,
   pas un lancement automatique actif.
-- 006 · lue · laissée à faire : répondre à `fermer { raison }` a besoin d'un point d'entrée dans le
-  lien avec GFS que Grist-BI utilise — celui du kit (`kit/js/gfs-link.js`, Grist-BI n'a pas le sien,
-  voir 004) — et ce point d'entrée n'existe pas encore, même au dernier commit amont du kit
-  (`336baf4`, Kit 0.8.0, vérifié aujourd'hui, un cran après `db14544` pris ici) : `receiveCall` n'y
-  reconnaît que `ouvrir` et répond `GFS_INCONNU` à tout le reste, et `GfsLink` (gelé par
-  `Object.freeze`) n'offre pas de `onClose` équivalent à `onOpen`. Pas un désaccord avec la consigne :
-  une dépendance sur le kit (dépôt séparé), pas sur ce dépôt — vérifié que les deux autres apps qui
-  utilisent elles aussi la version prête à l'emploi du kit (Automation+, Tuesday ; même consigne
-  aujourd'hui) sont elles aussi encore « à faire » ; seule Publipostage+ (son propre `js/gfs-link.js`)
-  peut la coder sans attendre le kit. Ce que Grist-BI a « en attente » : chaque geste (tuile, filtre,
-  bookmark, jointure) déclenche une sauvegarde débattue 600 ms dans `BI_Dashboard_Config`
-  (`js/main.js:scheduleSave`, ligne 1648) ; `flushPendingSave()` (ligne 1668) écrit tout de suite ce
-  qui attend et rend une promesse qui ne se résout qu'une fois l'écriture terminée — exactement la
-  réponse « enregistrement automatique allumé » du point 2 de la consigne (jamais de brouillon
-  distinct dans ce widget, donc jamais la question Enregistrer/Abandonner/Annuler). Dès que le kit
-  expose un point d'entrée pour `fermer`, il restera à y brancher `await flushPendingSave()` puis
-  `{ ferme: true }`.
+- 006 · faite · `4c20972` · répond à `fermer { raison }` via l'abonné posé par la 008
+  ci-dessous (`GfsLink.onClose`, `js/main.js`, juste après le démarrage de l'ambiance) : ce que
+  Grist-BI a « en attente » reste ce que décrivait cette ligne avant d'être faite — chaque geste
+  (tuile, filtre, bookmark, jointure) déclenche une sauvegarde débattue 600 ms dans
+  `BI_Dashboard_Config` (`js/main.js:scheduleSave`) — et l'autosave est TOUJOURS allumée (jamais de
+  brouillon distinct), donc la règle se réduit systématiquement à son cas du milieu :
+  `await flushPendingSave()` puis `{ ferme: true }`, sans jamais poser de question. Vérifié en
+  Playwright (simulateur maison du protocole GFS, pas committé — même limite que le reste de la
+  suite Playwright de ce dépôt, voir CLAUDE.md §5) : une page hôte charge `index.html?gfs=0` dans
+  une iframe, répond `contexte`, puis envoie `fermer { raison: "app" }` — réponse reçue
+  `{ ferme: true }`, aucune exception.
+- 007 · lue
+- 008 · faite · `4c20972` · `kit/` avancé à `eaa2ae2` (0.9.0). `GfsLink.onClose(async () =>
+  { await flushPendingSave(); return true; })` posé au même endroit que l'ambiance (004) — même
+  singleton `GfsLink` que `Ambiance.start()` (un module ES ne s'importe qu'une fois par URL),
+  vérifié par le même essai Playwright que la 006 : un seul appel `contexte` observé côté page hôte
+  malgré les deux `import()` (ambiance.js + gfs-link.js), donc un seul lien, pas deux.
 
 ## Changements qui touchent GFS
 - 2026-11-03 · `e035bcf` · tuile « Nuage de mots » (`js/charts.js`/`js/data.js`/`js/main.js`) :

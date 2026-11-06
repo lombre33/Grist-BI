@@ -29,6 +29,30 @@
     import(ambianceUrl).then(({ Ambiance }) => Ambiance.start()).catch((e) => {
       console.warn('[GristBI] ambiance de GFS indisponible (kit/ absent ou erreur de chargement)', e);
     });
+
+    // Consignes GFS 006/008 : répondre à l'appel « fermer » de GFS via `GfsLink.onClose` (kit
+    // 0.9.0+, `eaa2ae2` - avant cette version, `GfsLink` répondait GFS_INCONNU à tout appel sauf
+    // `ouvrir`, et GFS détruisait le cadre de ce widget sans rien enregistrer). Même module que
+    // `Ambiance.start()` importe ci-dessus (`kit/js/gfs-link.js`) : un module ES est mis en cache
+    // par URL, donc les deux `import()` rendent le MÊME singleton `GfsLink` - Grist-BI n'a pas son
+    // propre lien avec GFS (voir le commentaire ci-dessus), jamais un second lien démarré ici.
+    // L'autosave de ce widget (scheduleSave/flushPendingSave, plus bas) est TOUJOURS allumée :
+    // chaque geste programme une écriture dans BI_Dashboard_Config, jamais de brouillon distinct -
+    // la règle du point 2 de la consigne 006 se réduit donc systématiquement à son cas du milieu
+    // (« enregistrement automatique allumé ») : `flushPendingSave()` jusqu'au bout puis `true`,
+    // sans jamais poser la question Enregistrer/Abandonner/Annuler (pas de cas où elle serait
+    // pertinente dans ce widget). Un échec de chargement (kit/ absent, réseau) est intercepté comme
+    // pour l'ambiance ci-dessus - sans abonné, le kit répond lui-même GFS_INCONNU, comportement
+    // d'avant cette consigne.
+    const gfsLinkUrl = new URL('../kit/js/gfs-link.js', document.currentScript.src).href;
+    import(gfsLinkUrl).then(({ GfsLink }) => {
+      GfsLink.onClose(async () => {
+        await flushPendingSave();
+        return true;
+      });
+    }).catch((e) => {
+      console.warn('[GristBI] lien GFS indisponible pour répondre à "fermer" (kit/ absent ou erreur de chargement)', e);
+    });
   }
 
   const GristBI = window.GristBI;
