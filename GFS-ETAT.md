@@ -1,6 +1,6 @@
 # GFS-ETAT : Grist-BI
 
-Mis à jour le 2026-11-04, au commit `ce33e5f` (relevé 005, état de la 006).
+Mis à jour le 2026-11-06 (lecture des consignes 007/008, `consignes/bi/INDEX.md` à `913b4a0`).
 
 ## Consignes
 - 001 · faite · `23647eb` · 1.1 : écart sur la règle 4 (les 3 tables internes — `BI_Dashboard_Config`, `BI_Dashboard_Comments`, `BI_Dashboard_UserProbe` — se créent au démarrage sans l'accord de la personne) et la règle 11 (pas de CSP, déjà noté dans le guide) ; ligne du guide par ailleurs juste à ce commit, seule omission : elle ne mentionne jamais `BI_Dashboard_Comments` (créée depuis le 30/09) parmi les tables internes
@@ -84,6 +84,8 @@ Mis à jour le 2026-11-04, au commit `ce33e5f` (relevé 005, état de la 006).
   distinct dans ce widget, donc jamais la question Enregistrer/Abandonner/Annuler). Dès que le kit
   expose un point d'entrée pour `fermer`, il restera à y brancher `await flushPendingSave()` puis
   `{ ferme: true }`.
+- 007 · lue
+- 008 · lue
 
 ## Changements qui touchent GFS
 - 2026-11-03 · `e035bcf` · tuile « Nuage de mots » (`js/charts.js`/`js/data.js`/`js/main.js`) :
