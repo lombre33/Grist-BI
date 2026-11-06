@@ -78,7 +78,20 @@ Mis à jour le 2026-11-06 (lecture des consignes 007/008, `consignes/bi/INDEX.md
   suite Playwright de ce dépôt, voir CLAUDE.md §5) : une page hôte charge `index.html?gfs=0` dans
   une iframe, répond `contexte`, puis envoie `fermer { raison: "app" }` — réponse reçue
   `{ ferme: true }`, aucune exception.
-- 007 · lue
+- 007 · en cours · point 1 `a4c53ee` · les quatre lectures `localStorage` (`js/i18n.js:332` langue,
+  `:389` `setLang`, `js/main.js:886`/`:890` auteur du commentaire) gardaient le `try` APRÈS le
+  `typeof` plutôt qu'autour : dans le sous-cadre isolé de GFS (sandbox sans `allow-same-origin`),
+  lire `localStorage` lève une exception même à travers un `typeof` (vérifié), qui n'empêchait donc
+  rien. `typeof` déplacé dans le `try` aux quatre endroits — aucun autre changement de comportement
+  (même repli français/saisie manuelle qu'avant quand le stockage est vraiment indisponible).
+  Testé sous Node (`dev-tests/test-data.js` : `localStorage` simulé comme un accesseur qui lève,
+  rechargement de `js/i18n.js`) et en Playwright (`index.html` dans une vraie iframe
+  `sandbox="allow-scripts"` sans `allow-same-origin`, non committé comme le reste de la suite
+  Playwright de ce dépôt, voir CLAUDE.md §5) : l'app démarre et s'affiche en français normalement -
+  avant ce correctif, `GristBI.i18n` restait indéfini et `js/charts.js`/`js/main.js` tombaient en le
+  déstructurant, exactement comme mesuré par GFS. Points 2 (rapport = ligne nommée de
+  `BI_Dashboard_Config`) et 3 (lien du kit, `GfsLink.opening`/`onOpen`/`onLanguage`) à suivre dans
+  un prochain commit.
 - 008 · faite · `4c20972` · `kit/` avancé à `eaa2ae2` (0.9.0). `GfsLink.onClose(async () =>
   { await flushPendingSave(); return true; })` posé au même endroit que l'ambiance (004) — même
   singleton `GfsLink` que `Ambiance.start()` (un module ES ne s'importe qu'une fois par URL),
