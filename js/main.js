@@ -24,34 +24,61 @@
   // de GFS. Un échec de chargement (kit/ absent, réseau) est intercepté plutôt que de faire
   // remonter une exception non gérée — l'ambiance est un embellissement, jamais une dépendance du
   // dashboard lui-même.
+  // Lien avec GFS (kit 0.9.0+, `kit/js/gfs-link.js`) : résolu une fois pour tout le fichier - pour
+  // que `bootstrap()` (plus bas) sache, via `GfsLink.opening()`/`onOpen`, si GFS demande d'ouvrir un
+  // rapport précis plutôt que la connexion automatique habituelle (consigne 007, point 3), et pour
+  // que `loadSavedCommentAuthor`/`saveCommentAuthor` et la langue (plus bas) passent par
+  // `GfsLink.storageGet`/`storageSet` quand ce widget est hébergé (contrats 5.3) plutôt que par
+  // `localStorage`, peu fiable dans son sous-cadre isolé. `gfsLinkReady` ne se résout JAMAIS à une
+  // erreur (`null` hors GFS, ou si le chargement du kit échoue) : tout ce qui l'attend retombe alors
+  // sur son comportement d'avant cette consigne, jamais un widget bloqué.
+  let gfsLink = null;
+  let gfsLinkReady = Promise.resolve(null);
+
   if (typeof document !== 'undefined' && document.currentScript) {
     const ambianceUrl = new URL('../kit/js/ambiance.js', document.currentScript.src).href;
     import(ambianceUrl).then(({ Ambiance }) => Ambiance.start()).catch((e) => {
       console.warn('[GristBI] ambiance de GFS indisponible (kit/ absent ou erreur de chargement)', e);
     });
 
-    // Consignes GFS 006/008 : répondre à l'appel « fermer » de GFS via `GfsLink.onClose` (kit
-    // 0.9.0+, `eaa2ae2` - avant cette version, `GfsLink` répondait GFS_INCONNU à tout appel sauf
-    // `ouvrir`, et GFS détruisait le cadre de ce widget sans rien enregistrer). Même module que
-    // `Ambiance.start()` importe ci-dessus (`kit/js/gfs-link.js`) : un module ES est mis en cache
-    // par URL, donc les deux `import()` rendent le MÊME singleton `GfsLink` - Grist-BI n'a pas son
-    // propre lien avec GFS (voir le commentaire ci-dessus), jamais un second lien démarré ici.
-    // L'autosave de ce widget (scheduleSave/flushPendingSave, plus bas) est TOUJOURS allumée :
-    // chaque geste programme une écriture dans BI_Dashboard_Config, jamais de brouillon distinct -
-    // la règle du point 2 de la consigne 006 se réduit donc systématiquement à son cas du milieu
-    // (« enregistrement automatique allumé ») : `flushPendingSave()` jusqu'au bout puis `true`,
-    // sans jamais poser la question Enregistrer/Abandonner/Annuler (pas de cas où elle serait
-    // pertinente dans ce widget). Un échec de chargement (kit/ absent, réseau) est intercepté comme
-    // pour l'ambiance ci-dessus - sans abonné, le kit répond lui-même GFS_INCONNU, comportement
-    // d'avant cette consigne.
+    // Consignes GFS 006/007/008 : un seul import du lien du kit (même module que `Ambiance.start()`
+    // importe ci-dessus - un module ES est mis en cache par URL, donc les deux `import()` rendent le
+    // MÊME singleton `GfsLink` : Grist-BI n'a pas son propre lien avec GFS, contrairement à
+    // Publipostage+, jamais un second lien démarré ici), qui câble :
+    //  - `onClose` (006/008) : répond à l'appel « fermer » de GFS. L'autosave de ce widget
+    //    (scheduleSave/flushPendingSave, plus bas) est TOUJOURS allumée, jamais de brouillon
+    //    distinct - la règle de la 006 se réduit donc systématiquement à son cas du milieu
+    //    (« enregistrement automatique allumé ») : `flushPendingSave()` jusqu'au bout puis `true`,
+    //    sans jamais poser de question.
+    //  - `onOpen` (007, point 3) : GFS demande d'ouvrir un autre rapport pendant que l'app est déjà
+    //    ouverte (double-clic sur un autre fichier, ou « Nouveau ») - `openReportById`/le départ
+    //    vierge sont définis plus bas dans ce fichier, mais déjà en portée ici (fonctions
+    //    hoistées dans la même IIFE ; cet abonné n'est de toute façon appelé que bien plus tard,
+    //    jamais à l'exécution synchrone de ce bloc).
+    //  - `onLanguage` (007, point 3) : dans GFS, la langue est un seul choix pour GFS et ses apps
+    //    (contrats 5.2, point 6) - ce widget suit, il ne décide plus seul.
+    // Un échec de chargement (kit/ absent, réseau) est intercepté comme pour l'ambiance ci-dessus -
+    // `gfsLink` reste `null`, sans abonné le kit répond lui-même GFS_INCONNU à « fermer »/« ouvrir »,
+    // comportement d'avant ces consignes.
     const gfsLinkUrl = new URL('../kit/js/gfs-link.js', document.currentScript.src).href;
-    import(gfsLinkUrl).then(({ GfsLink }) => {
+    gfsLinkReady = import(gfsLinkUrl).then(({ GfsLink }) => {
+      gfsLink = GfsLink;
       GfsLink.onClose(async () => {
         await flushPendingSave();
         return true;
       });
+      GfsLink.onOpen(async ({ fichier }) => {
+        // openReportById/openBlankReport (plus bas) appellent déjà flushPendingSave() en premier -
+        // pas la peine de le refaire ici.
+        if (fichier) await openReportById(fichier.id);
+        else await openBlankReport();
+        return true;
+      });
+      GfsLink.onLanguage((lang) => GristBI.i18n.setLang(lang));
+      return GfsLink;
     }).catch((e) => {
-      console.warn('[GristBI] lien GFS indisponible pour répondre à "fermer" (kit/ absent ou erreur de chargement)', e);
+      console.warn('[GristBI] lien GFS indisponible (kit/ absent ou erreur de chargement)', e);
+      return null;
     });
   }
 
@@ -80,6 +107,14 @@
   }
 
   let currentTableId = null;
+  // Rapport actuellement ouvert, au sens de la consigne GFS 007 point 2/3 : une LIGNE précise de
+  // BI_Dashboard_Config (un `id` Grist), jamais un `TableId` seul (plusieurs rapports peuvent
+  // partager la même table de travail). `null` = comportement HISTORIQUE (hors GFS, ou table
+  // choisie via le sélecteur) : GristBI.api.saveConfig retombe alors sur "la première ligne qui
+  // porte ce TableId", exactement comme avant cette consigne. Le jeton `'new'` marque un rapport
+  // vierge ("Nouveau" dans GFS) dont la ligne n'existe pas encore : voir openBlankReport/
+  // scheduleSave plus bas pour comment il se résout en un vrai id à la première sauvegarde.
+  let currentReportId = null;
   let commentsModalTileId = null; // tuile actuellement affichée dans #comments-modal, ou null si fermé
   // Email de l'utilisateur courant, détecté UNE SEULE fois au bootstrap via la table-sonde
   // BI_Dashboard_UserProbe (GristBI.api.getCurrentUserEmail(), js/grist-api.js) — `null` tant que la
@@ -89,7 +124,7 @@
   let detailModalTileId = null; // tuile actuellement affichée dans #detail-modal, ou null si fermé
   const DETAIL_MODAL_MAX_ROWS = 500; // voir renderDetailModal : au-delà, l'export Excel reste la voie pour tout voir
   let saveTimer = null;
-  let pendingSave = null; // { tableId, pages, currentPageId, bookmarks, blend } en attente d'écriture, voir flushPendingSave()
+  let pendingSave = null; // { tableId, reportId, authorLabel, pages, currentPageId, bookmarks, blend } en attente d'écriture, voir flushPendingSave()
   let lastRenderedPages = null; // référence, pour ne pas re-sauvegarder la config à chaque rafraîchissement de données
   let lastRenderedCurrentPageId = null; // idem, côté page active (changer de page se sauvegarde aussi)
   let lastRenderedBookmarks = null; // idem, côté bookmarks
@@ -903,22 +938,41 @@
     return el;
   }
 
-  // Clé localStorage dédiée (même garde que GristBI.i18n pour `gristbi_lang`, voir js/i18n.js) : le
-  // nom saisi une fois est mémorisé d'une session à l'autre, comme la langue — pas la peine de le
-  // retaper à chaque commentaire. Le `typeof` est DANS le `try` (consigne GFS 007, point 1) : dans
-  // un cadre isolé (sandbox sans allow-same-origin), lire `localStorage` lève une exception même à
-  // travers un `typeof`, elle n'est jamais simplement absente comme sous Node.
+  // Nom saisi une fois, mémorisé d'une session à l'autre comme la langue — pas la peine de le
+  // retaper à chaque commentaire. Dans GFS (consigne 007, point 3), passe par
+  // `GfsLink.storageGet`/`storageSet` (contrats 5.3) plutôt que `localStorage`, peu fiable dans le
+  // sous-cadre isolé de GFS (voir gfsLink/gfsLinkReady en tête de fichier) ; hors GFS, ou si le
+  // lien n'a pas pu se charger, retombe sur `localStorage` — comportement d'avant cette consigne.
+  // Le `typeof` reste DANS le `try` (consigne GFS 007, point 1) : dans ce cadre isolé, lire
+  // `localStorage` lève une exception même à travers un `typeof`, elle n'est jamais simplement
+  // absente comme sous Node.
   function loadSavedCommentAuthor() {
+    if (gfsLink && gfsLink.hosted) return gfsLink.storageGet('gristbi_comment_author') || '';
     try {
       if (typeof localStorage === 'undefined') return '';
       return localStorage.getItem('gristbi_comment_author') || '';
     } catch (e) { return ''; }
   }
   function saveCommentAuthor(author) {
+    if (gfsLink && gfsLink.hosted) { gfsLink.storageSet('gristbi_comment_author', author); return; }
     try {
       if (typeof localStorage === 'undefined') return;
       localStorage.setItem('gristbi_comment_author', author);
     } catch (e) { /* stockage indisponible (cadre isolé compris) - sans conséquence, juste à retaper la prochaine fois */ }
+  }
+
+  // "Rapport modifié par" (consigne GFS 007, point 2, colonne ModifiePar) : MÊME précédence que le
+  // champ Auteur du formulaire de commentaire ci-dessus (openCommentsModal) - l'adresse détectée
+  // automatiquement (table-sonde BI_Dashboard_UserProbe, voir bootstrap()) quand elle est connue,
+  // sinon le nom mémorisé pour les commentaires, sinon `null` (saveConfig laisse alors la colonne
+  // telle qu'elle est plutôt que d'y écrire une chaîne vide). La consigne évoque aussi "Nom
+  // <adresse>" comme Publipostage+ ; non reproduit ici, faute d'un moyen de connaître à la fois un
+  // NOM et une adresse dans ce widget — detectedUserEmail et loadSavedCommentAuthor() sont déjà
+  // deux sources ALTERNATIVES nulle part combinées ailleurs dans ce fichier (voir
+  // openCommentsModal), jamais les deux à la fois.
+  function currentReportAuthorLabel() {
+    if (detectedUserEmail) return detectedUserEmail;
+    return loadSavedCommentAuthor() || null;
   }
 
   // Reconstruit la liste de commentaires affichée dans #comments-modal pour `commentsModalTileId`
@@ -1674,19 +1728,34 @@
 
   // `tableId` capturé À L'APPEL (pas relu dans le setTimeout) : sans ça, changer de table pendant
   // les 600ms de debounce fait s'exécuter la sauvegarde sous le tableId de la table SUIVANTE (bug
-  // réel trouvé en testant le sélecteur de table — voir flushPendingSave()/HYPOTHESES.md).
+  // réel trouvé en testant le sélecteur de table — voir flushPendingSave()/HYPOTHESES.md). Même
+  // raison pour `reportId`/`authorLabel` (consigne GFS 007) : capturés ici, jamais relus plus tard
+  // dans le setTimeout.
   function scheduleSave(pages, currentPageId, bookmarks, blend) {
     if (!currentTableId) return;
     clearTimeout(saveTimer);
-    pendingSave = { tableId: currentTableId, pages, currentPageId, bookmarks, blend };
+    pendingSave = { tableId: currentTableId, reportId: currentReportId, authorLabel: currentReportAuthorLabel(), pages, currentPageId, bookmarks, blend };
     saveTimer = setTimeout(() => {
       saveTimer = null;
       const p = pendingSave;
       pendingSave = null;
-      GristBI.api.saveConfig(p.tableId, p.pages, p.currentPageId, p.bookmarks, p.blend).catch((e) => {
-        console.error('[GristBI] échec de sauvegarde de la config', e);
-      });
+      runPendingSave(p);
     }, 600);
+  }
+
+  // Partagé par scheduleSave/flushPendingSave : écrit `p` puis, si c'était la toute première
+  // sauvegarde d'un rapport vierge ("Nouveau" dans GFS, voir openBlankReport plus bas), adopte
+  // l'id réel que Grist vient d'assigner comme `currentReportId` — sinon les sauvegardes SUIVANTES
+  // recréeraient chacune une nouvelle ligne au lieu de mettre à jour celle-ci (consigne GFS 007,
+  // point 2/3). Cette promotion ne s'applique que si `currentReportId` porte ENCORE le jeton
+  // `'new'` : un changement de table/rapport pendant l'écriture (rare, mais possible) l'aurait déjà
+  // remplacé, et l'écraser ici serait une course perdante sur l'état affiché à l'écran.
+  function runPendingSave(p) {
+    return GristBI.api.saveConfig(p.tableId, p.pages, p.currentPageId, p.bookmarks, p.blend, p.reportId, p.authorLabel).then((rowId) => {
+      if (p.reportId === 'new' && currentReportId === 'new') currentReportId = rowId;
+    }).catch((e) => {
+      console.error('[GristBI] échec de sauvegarde de la config', e);
+    });
   }
 
   // Écrit IMMÉDIATEMENT une sauvegarde encore en attente (debounce de scheduleSave), au lieu
@@ -1701,9 +1770,7 @@
     saveTimer = null;
     const p = pendingSave;
     pendingSave = null;
-    return GristBI.api.saveConfig(p.tableId, p.pages, p.currentPageId, p.bookmarks, p.blend).catch((e) => {
-      console.error('[GristBI] échec de sauvegarde de la config', e);
-    });
+    return runPendingSave(p);
   }
 
   // Rejoint `currentPrimaryRows` (TOUJOURS les lignes brutes de la table principale, jamais des
@@ -1743,16 +1810,23 @@
   // FRAÎCHES, pas rejouer la jointure sur un instantané périmé) puis délègue à `applyBlend` le
   // rafraîchissement des sélecteurs de colonne et `store.setRows` — jamais fait ici directement,
   // pour ne pas contourner la jointure en cours.
-  async function switchTable(tableId, rows) {
+  // `report` (consigne GFS 007, point 2/3), optionnel : `{ id, config }` quand GFS a demandé
+  // d'ouvrir UN rapport précis ou un départ vierge ("Nouveau", `id: 'new'`) plutôt que la
+  // convention historique "la config déjà sauvegardée pour cette table" - voir openReportById/
+  // openBlankReport plus bas. Sa seule présence force une (re)prise en compte même si `tableId` ne
+  // change pas (un deuxième rapport sur la MÊME table de travail doit quand même recharger ses
+  // propres pages/bookmarks/blend, jamais ceux du rapport précédent).
+  async function switchTable(tableId, rows, report) {
     await flushPendingSave();
-    const isNewTable = tableId !== currentTableId;
+    const isNewTable = tableId !== currentTableId || Boolean(report);
     currentTableId = tableId;
     currentPrimaryRows = rows;
     if (isNewTable) {
       store.clearFilter();
       store.clearAdvancedFilter();
       if (editingTileId) stopEditTile(); // le formulaire en cours d'édition référence une tuile de l'ancienne table
-      const saved = await GristBI.api.loadConfig(tableId);
+      const saved = report ? report.config : await GristBI.api.loadConfig(tableId);
+      currentReportId = report ? report.id : null;
       store.setPages(saved.pages, saved.currentPageId);
       store.setBookmarks(saved.bookmarks);
       currentBlend = saved.blend;
@@ -1760,6 +1834,44 @@
       refreshBlendPicker();
     }
     await applyBlend(currentBlend);
+  }
+
+  // Ouvre le rapport `reportId` (une ligne de BI_Dashboard_Config, voir GristBI.api.loadConfigById)
+  // - ce que GFS demande via GfsLink.opening()/onOpen (consigne 007, point 3 ; `reportId` y est
+  // toujours du TEXTE, voir kit/js/gfs-link.js:normalizeOpening). Rien à recharger si c'est déjà ce
+  // rapport qui est affiché (comparé en texte : `currentReportId` devient un NOMBRE une fois un
+  // rapport ouvert, voir switchTable/GristBI.api.loadConfigById).
+  async function openReportById(reportId) {
+    if (String(currentReportId) === String(reportId)) return;
+    await flushPendingSave();
+    const report = await GristBI.api.loadConfigById(reportId);
+    if (!report) {
+      console.error(`[GristBI] rapport "${reportId}" introuvable, ou d'un type inconnu pour ce widget - affichage inchangé`);
+      return;
+    }
+    const { rows } = await GristBI.api.loadTable(report.tableId);
+    await switchTable(report.tableId, rows, { id: report.id, config: report.config });
+    await refreshTablePicker();
+  }
+
+  // "Nouveau" dans GFS (consigne 007, point 3 : GfsLink.opening()/onOpen avec `fichier` null) :
+  // l'écran de départ habituel (connexion à la 1re table du document, comme bootstrap() plus bas),
+  // mais avec un dashboard VIERGE plutôt que la config déjà sauvegardée pour cette table - sa
+  // propre ligne de BI_Dashboard_Config ne s'écrit qu'au premier enregistrement (jeton `'new'`, vu
+  // par scheduleSave/runPendingSave), jamais ici : « Nouveau » n'écrit rien par lui-même.
+  async function openBlankReport() {
+    await flushPendingSave();
+    try {
+      const tables = await GristBI.api.listAvailableTables();
+      if (!tables.length) { rowCountEl.textContent = t('status.noTables'); return; }
+      const tableId = tables[0];
+      const { rows } = await GristBI.api.loadTable(tableId);
+      await switchTable(tableId, rows, { id: 'new', config: GristBI.api.blankConfig() });
+      await refreshTablePicker();
+    } catch (e) {
+      console.error('[GristBI] échec du départ vierge ("Nouveau" dans GFS)', e);
+      rowCountEl.textContent = t('status.connectionFailed');
+    }
   }
 
   store.subscribe(render);
@@ -1923,19 +2035,43 @@
   async function bootstrap() {
     await GristBI.api.init();
     rowCountEl.textContent = t('status.connecting');
-    try {
-      const tables = await GristBI.api.listAvailableTables();
-      if (tables.length) {
-        const tableId = tables[0];
-        const { rows } = await GristBI.api.loadTable(tableId);
-        await switchTable(tableId, rows);
-        await refreshTablePicker();
-      } else {
-        rowCountEl.textContent = t('status.noTables');
+
+    // Consigne GFS 007, point 3 : si GFS demande d'ouvrir un rapport précis (ou un départ vierge,
+    // "Nouveau"), ce départ remplace la connexion automatique habituelle ci-dessous - jamais
+    // l'inverse. `opening()` reste `null` hors GFS, et dans GFS tant qu'aucune route précise n'est
+    // donnée : dans les deux cas, tout ce qui suivait déjà cette ligne avant cette consigne reste
+    // inchangé (branche `else`).
+    const linkedGfs = await gfsLinkReady;
+    let opening = null;
+    if (linkedGfs && linkedGfs.hosted) {
+      await linkedGfs.ready;
+      opening = linkedGfs.opening();
+    }
+
+    if (opening && opening.fichier) {
+      try {
+        await openReportById(opening.fichier.id);
+      } catch (e) {
+        console.error('[GristBI] échec de l\'ouverture du rapport demandé par GFS', e);
+        rowCountEl.textContent = t('status.connectionFailed');
       }
-    } catch (e) {
-      console.error('[GristBI] échec de la connexion automatique à la 1re table du document', e);
-      rowCountEl.textContent = t('status.connectionFailed');
+    } else if (opening) {
+      await openBlankReport(); // gère déjà son propre try/catch
+    } else {
+      try {
+        const tables = await GristBI.api.listAvailableTables();
+        if (tables.length) {
+          const tableId = tables[0];
+          const { rows } = await GristBI.api.loadTable(tableId);
+          await switchTable(tableId, rows);
+          await refreshTablePicker();
+        } else {
+          rowCountEl.textContent = t('status.noTables');
+        }
+      } catch (e) {
+        console.error('[GristBI] échec de la connexion automatique à la 1re table du document', e);
+        rowCountEl.textContent = t('status.connectionFailed');
+      }
     }
     // Table dédiée, indépendante de la table de travail (voir js/state.js:comments) : chargée UNE
     // SEULE fois par session, jamais rechargée à un changement de table (switchTable) — dans un
@@ -1994,6 +2130,13 @@
     submitTileBtn.textContent = t(editingTileId ? 'tileForm.submit.edit' : 'tileForm.submit.add');
     render(store.getState());
   });
+  // Consigne GFS 007, point 3 : dans GFS, `gristbi_lang` passe par `GfsLink.storageSet` plutôt que
+  // `localStorage`, peu fiable dans le sous-cadre isolé de GFS — `GristBI.i18n.setLang` essaie
+  // quand même `localStorage` de son côté (voir js/i18n.js), sans effet dans ce cas, harmless. La
+  // LANGUE elle-même (quel fr/en est actif) reste pilotée par GFS via `GfsLink.onLanguage`
+  // (ci-dessus, tête de fichier) : ceci n'est qu'une sauvegarde de secours, jamais la source de
+  // vérité tant que ce widget est hébergé.
+  GristBI.i18n.onChange((lang) => { if (gfsLink && gfsLink.hosted) gfsLink.storageSet('gristbi_lang', lang); });
   refreshLangRadios();
 
   bootstrap();

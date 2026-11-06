@@ -316,6 +316,12 @@
     },
     'status.connectionFailed': { fr: 'Échec de la connexion aux données — voir la console (F12).', en: 'Failed to connect to the data — see the console (F12).' },
 
+    // --- GFS (js/grist-api.js:nextNewReportName, consigne 007) : nom par défaut d'un nouveau
+    // rapport, posé au premier enregistrement — seul cas où js/grist-api.js (normalement sans
+    // dépendance au DOM) passe par ce module, la consigne demandant explicitement ce nom "dans la
+    // langue de la personne" plutôt qu'un texte figé.
+    'gfs.newReportName': { fr: 'Rapport BI {n}', en: 'BI report {n}' },
+
     // --- Graphiques (js/charts.js) ---
     'chart.unavailable': { fr: 'ECharts indisponible — voir le bandeau en haut de page.', en: 'ECharts unavailable — see the banner at the top of the page.' },
     'chart.wordCloudUnavailable': { fr: 'Nuage de mots indisponible pour le moment (extension en attente d’ajout).', en: 'Word cloud unavailable for now (extension pending approval).' },

@@ -95,7 +95,11 @@
   // réel du moteur Grist (nombre de secondes depuis l'epoch UTC pour une colonne typée `Date`), donc
   // aucun test de ce dépôt n'aurait pu détecter que `js/data.js:parseDateValue`/`inferColumnKind`
   // (main.js) attendent une chaîne, pas un nombre. Reproduit ici pour toute colonne déclarée `Date` —
-  // PAS `DateTime` : aucune colonne de ce projet n'utilise ce type, voir grist-api.js:dateColumnIdsFrom.
+  // PAS `DateTime` : la seule colonne `DateTime` de ce projet (`BI_Dashboard_Config.DateModif`,
+  // consigne GFS 007) est toujours écrite par ce widget comme un nombre de secondes DÉJÀ calculé
+  // (`Math.floor(Date.now()/1000)`, js/grist-api.js:saveConfig), jamais comme une chaîne ISO à
+  // convertir comme `Date` — ce mock la stocke donc telle quelle, sans conversion, conformément à
+  // `toStoredValue` ci-dessous.
   function isoDateStringToEpochSeconds(s) {
     const t = Date.parse(s + 'T00:00:00Z');
     return Number.isFinite(t) ? t / 1000 : s;
