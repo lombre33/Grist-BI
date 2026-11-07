@@ -236,6 +236,7 @@
   const advancedFilterBadgesEl = document.getElementById('advanced-filter-badges');
   const renderTimeEl = document.getElementById('render-time');
   const echartsWarning = document.getElementById('echarts-warning');
+  const sharedReadOnlyWarning = document.getElementById('shared-readonly-warning');
   const settingsBtn = document.getElementById('open-settings');
   const settingsModal = document.getElementById('settings-modal');
   const settingsCloseBtn = document.getElementById('settings-close');
@@ -1764,6 +1765,12 @@
       if (p.reportId === 'new' && currentReportId === 'new') currentReportId = rowId;
     }).catch((e) => {
       console.error('[GristBI] échec de sauvegarde de la config', e);
+      // Consigne GFS 012 : une fois « Partager » activé sur BI_Dashboard_Config, Grist refuse
+      // cette écriture pour qui n'a accès à cette ligne qu'en lecture — jamais corrigé par un
+      // réessai (le droit ne change pas tout seul), donc on se contente de le dire une fois
+      // plutôt que de rejouer l'échec en boucle à chaque frappe (`scheduleSave` redéclenche ce
+      // catch toutes les 600ms tant que la personne modifie le rapport).
+      if (GristBI.data.isAccessRuleRefusal(e)) sharedReadOnlyWarning.hidden = false;
     });
   }
 
