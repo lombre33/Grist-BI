@@ -1,6 +1,6 @@
 # GFS-ETAT : Grist-BI
 
-Mis à jour le 2026-11-06 (lecture des consignes 007/008, `consignes/bi/INDEX.md` à `913b4a0`).
+Mis à jour le 2026-11-07 (consigne 009 faite, `consignes/bi/INDEX.md` à `8880b7f`).
 
 ## Consignes
 - 001 · faite · `23647eb` · 1.1 : écart sur la règle 4 (les 3 tables internes — `BI_Dashboard_Config`, `BI_Dashboard_Comments`, `BI_Dashboard_UserProbe` — se créent au démarrage sans l'accord de la personne) et la règle 11 (pas de CSP, déjà noté dans le guide) ; ligne du guide par ailleurs juste à ce commit, seule omission : elle ne mentionne jamais `BI_Dashboard_Comments` (créée depuis le 30/09) parmi les tables internes
@@ -122,6 +122,25 @@ Mis à jour le 2026-11-06 (lecture des consignes 007/008, `consignes/bi/INDEX.md
   singleton `GfsLink` que `Ambiance.start()` (un module ES ne s'importe qu'une fois par URL),
   vérifié par le même essai Playwright que la 006 : un seul appel `contexte` observé côté page hôte
   malgré les deux `import()` (ambiance.js + gfs-link.js), donc un seul lien, pas deux.
+- 009 · faite · `3144955` · constat corrigé : un rapport vierge ("Nouveau" dans GFS) n'écrit plus sa
+  ligne de `BI_Dashboard_Config` tout seul. Cause réelle (pas celle soupçonnée par la consigne :
+  `switchTable` appelle bien `store.setPages`/`setBookmarks`/`setBlend`, mais ce n'est pas
+  `store.setPages(…)` lui-même le problème) : charger un rapport (même vierge) pose forcément de
+  NOUVELLES références `pages`/`bookmarks`/`blend` dans le store, et `render()` (`js/main.js`) les
+  compare par référence à ce qu'il a déjà vu pour décider s'il y a eu un geste de la personne — un
+  CHARGEMENT change ces références exactement comme un geste réel, donc planifiait une sauvegarde
+  (`scheduleSave`) sans qu'aucun geste n'ait eu lieu. Correctif : un drapeau `suppressNextSave`,
+  levé par `switchTable` pendant tout le bloc synchrone où il pose la config chargée (les 3
+  `store.set*` notifient chacun `render()`), empêche `scheduleSave` tant qu'il est levé ;
+  `lastRendered*` reste mis à jour à chaque notification pour ne pas se désynchroniser au prochain
+  geste réel, qui continue de planifier une sauvegarde normalement, hors de ce bloc. Testé sous
+  Node (`dev-tests/test-data.js`, reproduit le même idiome store/render/drapeau contre `js/state.js`
+  — `js/main.js` n'est pas chargeable sous Node, voir CLAUDE.md §2) : charger un rapport vierge ou
+  déjà enregistré ne déclenche aucune sauvegarde, un vrai geste ensuite en déclenche exactement une.
+  Vérifié aussi avec un simulateur maison du protocole GFS (non committé, même limite que le reste
+  de la suite Playwright de ce dépôt, voir CLAUDE.md §5) reproduisant l'essai de GFS : AVANT ce
+  correctif, 2 "Nouveau" sans rien faire créaient 3 lignes fantômes dans `BI_Dashboard_Config` ;
+  APRÈS, aucune, et un vrai geste (+ tuile) sur ce rapport vierge écrit bien une seule ligne.
 
 ## Changements qui touchent GFS
 - 2026-11-03 · `e035bcf` · tuile « Nuage de mots » (`js/charts.js`/`js/data.js`/`js/main.js`) :

@@ -1128,6 +1128,73 @@ const rows = [
   console.log('OK state.setPages (chargement config + repli currentPageId invalide + garde-fou tableau vide)');
 }
 
+// main.js:switchTable + render() — consigne GFS 009 : CHARGER un rapport (y compris vierge,
+// "Nouveau" dans GFS) ne doit jamais, par lui-même, planifier une sauvegarde (main.js:scheduleSave) ;
+// seul un geste réel de la personne doit écrire une ligne dans BI_Dashboard_Config. render()
+// (main.js) détecte un geste en comparant state.pages/bookmarks/blend PAR RÉFÉRENCE à lastRendered*
+// (variables tenues par main.js, hors du store) ; le correctif lève un drapeau `suppressNextSave`
+// pendant tout le bloc synchrone où switchTable pose saved.pages/bookmarks/blend (3 notify(), un par
+// store.set*) — render() continue de mettre lastRendered* à jour à chaque notify (pour ne pas se
+// désynchroniser), mais ne planifie aucune sauvegarde tant que le drapeau reste levé. Un drapeau
+// aligné puis rebaissé APRÈS les 3 appels (plutôt qu'à l'intérieur de la condition de render(),
+// qui tournerait sinon 3 fois et retomberait à `false` dès la première) est indispensable : un essai
+// plus simple (aligner lastRendered* sur `saved.*` avant de les poser, sans drapeau) échoue ici,
+// car les 3 notify() se déclenchent un par un et voient un état intermédiaire incohérent (ex.
+// `pages` déjà chargé mais `bookmarks`/`blend` encore ceux de l'ANCIEN rapport) — détecté par ce
+// test avant ce correctif (saveCount valait 2, pas 0). main.js n'est pas chargeable sous Node (glue
+// DOM/Grist, voir CLAUDE.md §2) : ce test reproduit le même idiome (subscriber + comparaison par
+// référence + drapeau) directement contre js/state.js pour couvrir le mécanisme réel sous Node.
+{
+  const store = state.createStore();
+  let lastRenderedPages = null;
+  let lastRenderedCurrentPageId = null;
+  let lastRenderedBookmarks = null;
+  let lastRenderedBlend = null;
+  let suppressNextSave = false;
+  let saveCount = 0;
+  store.subscribe((s) => {
+    if (s.pages !== lastRenderedPages || s.currentPageId !== lastRenderedCurrentPageId ||
+        s.bookmarks !== lastRenderedBookmarks || s.blend !== lastRenderedBlend) {
+      lastRenderedPages = s.pages;
+      lastRenderedCurrentPageId = s.currentPageId;
+      lastRenderedBookmarks = s.bookmarks;
+      lastRenderedBlend = s.blend;
+      if (!suppressNextSave) saveCount += 1;
+    }
+  });
+
+  // Reproduit switchTable(tableId, rows, report) après son correctif (js/main.js) : lève le
+  // drapeau, pose saved.pages/bookmarks/blend (3 notify()), le rebaisse. Avant ce correctif,
+  // switchTable posait directement saved.* sans drapeau, et le subscriber ci-dessus aurait vu ça
+  // comme un ou plusieurs changements (saveCount serait passé au-dessus de 0 sans aucun geste de la
+  // personne — le bug mesuré par GFS, consigne 009).
+  function loadReportLikeSwitchTable(saved) {
+    suppressNextSave = true;
+    store.setPages(saved.pages, saved.currentPageId);
+    store.setBookmarks(saved.bookmarks);
+    store.setBlend(saved.blend);
+    suppressNextSave = false;
+  }
+
+  // "Nouveau" dans GFS (openBlankReport) : GristBI.api.blankConfig().
+  const blank = { pages: [{ id: 'page_default', name: 'Page 1', tiles: [] }], currentPageId: 'page_default', bookmarks: [], blend: null };
+  loadReportLikeSwitchTable(blank);
+  assert.strictEqual(saveCount, 0, 'charger un rapport vierge ("Nouveau") ne doit déclencher aucune sauvegarde par lui-même');
+
+  // Ouvrir un rapport déjà enregistré (openReportById) ne doit pas non plus resauvegarder sa propre
+  // config telle quelle.
+  const existing = { pages: [{ id: 'pA', name: 'Ventes', tiles: [{ id: 't0', type: 'bar' }] }], currentPageId: 'pA', bookmarks: [{ id: 'bk1', name: 'Vue 1' }], blend: { secondaryTableId: 'Autre', primaryColumn: 'Id', secondaryColumn: 'Id' } };
+  loadReportLikeSwitchTable(existing);
+  assert.strictEqual(saveCount, 0, 'ouvrir un rapport déjà enregistré ne doit pas non plus déclencher de sauvegarde par lui-même');
+
+  // Un VRAI geste de la personne (ex. le bouton "+ Tuile") change la référence de `pages` -> doit
+  // toujours être détecté et sauvegardé, exactement comme avant ce correctif.
+  store.addTile({ id: 't1', type: 'kpi' });
+  assert.strictEqual(saveCount, 1, 'un geste réel de la personne doit toujours déclencher exactement une sauvegarde');
+
+  console.log('OK main.js:switchTable+render (consigne GFS 009) — charger un rapport (vierge ou déjà enregistré) ne planifie plus de sauvegarde, un geste réel si');
+}
+
 // demo-data: deriveDateColumn — recalcule Date à partir des colonnes déjà présentes sur une ligne
 // EXISTANTE (pas au moment de la génération), pour la migration de schéma d'une table déjà créée
 // (voir grist-api.js:ensureColumnsUpToDate) : AddColumn + remplissage, jamais une nouvelle table.

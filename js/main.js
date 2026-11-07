@@ -129,6 +129,10 @@
   let lastRenderedCurrentPageId = null; // idem, côté page active (changer de page se sauvegarde aussi)
   let lastRenderedBookmarks = null; // idem, côté bookmarks
   let lastRenderedBlend = null; // idem, côté jointure de data blending (voir applyBlend/commitBlendFromForm)
+  // Consigne GFS 009 : levé par switchTable pendant qu'il CHARGE un rapport (pages/bookmarks/blend
+  // posés depuis BI_Dashboard_Config ou depuis un départ vierge), jamais pendant un geste réel de la
+  // personne — voir render() et switchTable plus bas.
+  let suppressNextSave = false;
   // Lignes BRUTES (non jointes) de la table de travail PRINCIPALE, tenues à jour par switchTable —
   // c'est TOUJOURS depuis celles-ci que la jointure de data blending est recalculée (voir
   // applyBlend), jamais depuis store.getState().rows qui peut déjà porter les colonnes préfixées
@@ -773,7 +777,12 @@
       lastRenderedCurrentPageId = state.currentPageId;
       lastRenderedBookmarks = state.bookmarks;
       lastRenderedBlend = state.blend;
-      scheduleSave(state.pages, state.currentPageId, state.bookmarks, state.blend);
+      // Consigne GFS 009 : pendant que switchTable CHARGE un rapport (même vierge, "Nouveau" dans
+      // GFS), ce bloc s'exécute une fois par store.set* (jusqu'à 3 fois, un par champ chargé) sans
+      // qu'aucun geste de la personne n'ait eu lieu — lastRendered* est quand même mis à jour
+      // ci-dessus (pour ne pas se retrouver désynchronisé au prochain geste réel), mais aucune
+      // sauvegarde n'est planifiée tant que switchTable n'a pas fini de poser son chargement.
+      if (!suppressNextSave) scheduleSave(state.pages, state.currentPageId, state.bookmarks, state.blend);
     }
     // Tient la liste du panneau Commentaires à jour s'il est ouvert (ajout d'un commentaire,
     // changement de langue...) sans avoir à le refermer/rouvrir — no-op si fermé
@@ -1827,10 +1836,22 @@
       if (editingTileId) stopEditTile(); // le formulaire en cours d'édition référence une tuile de l'ancienne table
       const saved = report ? report.config : await GristBI.api.loadConfig(tableId);
       currentReportId = report ? report.id : null;
+      // Consigne GFS 009 : CHARGER un rapport (y compris vierge, "Nouveau" dans GFS) ne doit jamais,
+      // par lui-même, planifier une sauvegarde — seul un geste réel de la personne doit écrire une
+      // ligne dans BI_Dashboard_Config. render() (plus haut) compare state.pages/bookmarks/blend à
+      // lastRendered* (par référence) pour décider s'il y a eu un geste ; sans garde, les trois
+      // notify() ci-dessous (un par store.set*) feraient chacun passer ce test, et planifieraient
+      // une sauvegarde dès le chargement. `suppressNextSave` reste levé pendant tout le bloc
+      // (synchrone, aucun `await` entre les trois appels) : render() met quand même lastRendered* à
+      // jour à chaque notify (pour ne pas se retrouver désynchronisé), mais sans planifier de
+      // sauvegarde tant que le drapeau est levé. Un changement réel ultérieur de la personne arrive
+      // hors de ce bloc, drapeau baissé, et continue d'être détecté et sauvegardé normalement.
+      suppressNextSave = true;
       store.setPages(saved.pages, saved.currentPageId);
       store.setBookmarks(saved.bookmarks);
       currentBlend = saved.blend;
       store.setBlend(currentBlend);
+      suppressNextSave = false;
       refreshBlendPicker();
     }
     await applyBlend(currentBlend);
