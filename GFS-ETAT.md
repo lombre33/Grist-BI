@@ -1,6 +1,7 @@
 # GFS-ETAT : Grist-BI
 
-Mis à jour le 2026-11-07 (consigne 010 faite, `consignes/bi/INDEX.md` à `7577d58`).
+Mis à jour le 2026-11-07 (consigne 012 lue, `consignes/bi/INDEX.md` à `10b9ae0` ou plus récent). La
+011 n'a pas été lue (remplacée par la 012 avant lecture, consigne explicite d'Antoine).
 
 ## Consignes
 - 001 · faite · `23647eb` · 1.1 : écart sur la règle 4 (les 3 tables internes — `BI_Dashboard_Config`, `BI_Dashboard_Comments`, `BI_Dashboard_UserProbe` — se créent au démarrage sans l'accord de la personne) et la règle 11 (pas de CSP, déjà noté dans le guide) ; ligne du guide par ailleurs juste à ce commit, seule omission : elle ne mentionne jamais `BI_Dashboard_Comments` (créée depuis le 30/09) parmi les tables internes
@@ -152,6 +153,29 @@ Mis à jour le 2026-11-07 (consigne 010 faite, `consignes/bi/INDEX.md` à `7577d
   chargement voit quand même le drapeau retomber, et un geste réel après cet échec continue de se
   sauvegarder normalement — vérifié aussi que ce même scénario, SANS `try…finally`, laisse bien le
   drapeau bloqué (la régression que ce correctif évite).
+- 011 · remplacée par la 012 avant lecture (consigne explicite d'Antoine du 07/11 : « ne la lis
+  pas ») — jamais ouverte, aucun constat ni action à son sujet.
+- 012 · lue · aucune colonne `Auteur`/`Visibilite`/`Personnes`/`Espace` écrite nulle part dans ce
+  dépôt : `CONFIG_COLUMNS` (`js/grist-api.js`) ne porte que `TableId`/`ConfigJSON`/`Nom`/
+  `TypeRapport`/`DateModif`/`ModifiePar`, et ni `ensureConfigTableExists`/`ensureConfigColumnsExist`
+  ni aucun autre site d'`AddColumn` n'en ajoutent d'autres — `GFS_Auteur` et toute autre colonne
+  `GFS_…` que GFS poserait sur `BI_Dashboard_Config` ne sont jamais lues ni écrites par ce widget
+  (tolérées de fait : `loadConfig`/`saveConfig`/`loadConfigById`/`ensureConfigColumnsExist` lisent
+  chacune des colonnes par leur nom précis, jamais la totalité de la table). Vérifié aussi que le
+  refus d'écriture décrit par la consigne (« Blocked by row update access rules ») ne fait PAS
+  planter l'app : `runPendingSave` (`js/main.js`) attrapait déjà ce rejet dans un `.catch` (comme
+  tout le reste de la chaîne de sauvegarde, `scheduleSave`/`flushPendingSave`), sans le moindre
+  réessai automatique — mais seulement `console.error`, donc une personne qui édite un rapport
+  partagé en lecture seule perdait ses modifications sans que rien ne le lui dise jamais à l'écran.
+  Corrigé par précaution (PR, ce lot) plutôt que d'attendre un rejeu avec la vraie app : une fonction
+  pure `GristBI.data.isAccessRuleRefusal(error)` (testée sous Node) reconnaît ce refus précis par son
+  message (`/blocked by[^]*access rules/i`, tolérant la variante « row update »/« row delete »/
+  « table update ») ; `runPendingSave` l'utilise pour afficher, une seule fois, un nouveau bandeau
+  i18n dédié (`#shared-readonly-warning`, même style que le bandeau ECharts existant) plutôt que de
+  rejouer un `alert()` à chaque frappe pendant les 600ms de debounce. Vérifié avec Playwright contre
+  `dev-tests/harness.html` (bandeau cause masqué par défaut, texte résolu dans les deux langues, pas
+  d'erreur JS) et contre `index.html` lui-même (même bandeau présent une seule fois, aucune erreur de
+  page). GFS pourra rejouer avec la vraie app dès qu'il le souhaite.
 
 ## Changements qui touchent GFS
 - 2026-11-03 · `e035bcf` · tuile « Nuage de mots » (`js/charts.js`/`js/data.js`/`js/main.js`) :

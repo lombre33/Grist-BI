@@ -263,6 +263,14 @@
     vides. Ouvrez la console du navigateur (F12 → Console / Réseau) pour voir pourquoi.</span>
   </p>
 
+  <!-- Consigne GFS 012 : affiché une fois que Grist refuse une sauvegarde de BI_Dashboard_Config
+       (rapport partagé en lecture seule) — voir js/main.js:runPendingSave. -->
+  <p id="shared-readonly-warning" class="warning-banner" hidden>
+    <svg class="icon icon-warning" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 2.2l6.5 11.6H1.5L8 2.2Z"/><path d="M8 6.6v3.2"/><path d="M8 11.9v.01"/></svg>
+    <span data-i18n="warning.sharedReadOnly">Ce rapport vous est partagé en lecture seule : Grist refuse d'enregistrer vos
+    modifications. Demandez l'accès en écriture à son propriétaire, ou travaillez sur une copie.</span>
+  </p>
+
   <form id="add-tile-form" class="add-tile-form">
     <div class="field">
       <label for="tile-type" data-i18n="tileForm.type.label">Type</label>

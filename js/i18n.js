@@ -139,6 +139,12 @@
       en: 'The charting library (ECharts, <code>js/vendor/echarts/echarts.min.js</code>) could not be loaded: KPI cards still work, but bar/pie tiles will stay empty. Open the browser console (F12 → Console / Network) to see why.',
     },
 
+    // --- Bandeau d'avertissement : rapport partagé en lecture seule (consigne GFS 012) ---
+    'warning.sharedReadOnly': {
+      fr: "Ce rapport vous est partagé en lecture seule : Grist refuse d'enregistrer vos modifications. Demandez l'accès en écriture à son propriétaire, ou travaillez sur une copie.",
+      en: 'This report is shared with you as read-only: Grist is refusing to save your changes. Ask its owner for write access, or work on a copy.',
+    },
+
     // --- Formulaire d'ajout/édition de tuile ---
     'tileForm.type.label': { fr: 'Type', en: 'Type' },
     'tileForm.type.bar': { fr: 'Barres', en: 'Bars' },

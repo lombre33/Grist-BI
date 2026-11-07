@@ -697,6 +697,19 @@
       .sort((a, b) => (a.CreatedAt < b.CreatedAt ? -1 : a.CreatedAt > b.CreatedAt ? 1 : 0));
   }
 
+  // Consigne GFS 012 : une fois « Partager » activé sur `BI_Dashboard_Config` (la table que le
+  // manifeste de ce widget déclare comme ses « fichiers »), Grist refuse l'`UpdateRecord`/
+  // `AddRecord` d'une ligne que la personne ne fait que lire, avec un message dont le texte réel
+  // contient toujours « access rules » (ex. « Blocked by row update access rules »). Détecté ici
+  // en JS pur, testable sous Node (voir dev-tests/test-data.js), pour que `js/main.js` distingue ce
+  // refus précis — qui ne se corrigera jamais tout seul (jamais de réessai) — d'un échec réseau
+  // quelconque, et le dise clairement plutôt que de laisser la sauvegarde disparaître en silence
+  // dans la seule console (voir js/main.js:runPendingSave).
+  function isAccessRuleRefusal(error) {
+    const text = (error && typeof error.message === 'string') ? error.message : String(error || '');
+    return /blocked by[^]*access rules/i.test(text);
+  }
+
   return {
     tableToRows, epochSecondsToIsoDate, applyFilters, matchesFilter, sameValue, parseDateValue,
     relativeDateRange, RELATIVE_DATE_PRESETS, groupByAggregate, aggregateSingle, wordFrequency, pivotTable,
@@ -704,6 +717,6 @@
     waterfallSeries, escapeHtml,
     tileDrillLevels, currentDimension, rowsForTile, tileExportSheet, tileExportKind,
     sanitizeSheetName, buildWorkbookSheets, measureExportSheet, buildWorkbookSheetsAsync,
-    blendRows, deriveDateHierarchyColumns, commentsForTile, AGGREGATORS
+    blendRows, deriveDateHierarchyColumns, commentsForTile, isAccessRuleRefusal, AGGREGATORS
   };
 });

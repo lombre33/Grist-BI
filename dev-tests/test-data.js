@@ -667,6 +667,37 @@ const rows = [
   console.log('OK data.commentsForTile (filtre par tuile, tri chronologique, cas vides)');
 }
 
+// isAccessRuleRefusal (consigne GFS 012, « Partager » sur BI_Dashboard_Config) : reconnaît le
+// refus d'écriture Grist sur une ligne qu'on ne fait que lire, quel que soit le verbe exact
+// (« row update »/« row delete »/« table update » access rules), pour que js/main.js:runPendingSave
+// le distingue d'un échec réseau quelconque et le dise une fois plutôt que de le laisser filer en
+// silence dans la seule console.
+{
+  assert.strictEqual(
+    data.isAccessRuleRefusal(new Error('Blocked by row update access rules')), true,
+    'texte exact cité par la consigne GFS 012'
+  );
+  assert.strictEqual(
+    data.isAccessRuleRefusal(new Error('Blocked by row delete access rules')), true,
+    'variante "delete" : même famille de refus'
+  );
+  assert.strictEqual(
+    data.isAccessRuleRefusal(new Error('blocked BY TABLE update ACCESS RULES')), true,
+    'insensible à la casse'
+  );
+  assert.strictEqual(
+    data.isAccessRuleRefusal(new Error('Network request failed')), false,
+    'un échec réseau quelconque n\'est pas pris pour un refus de droits'
+  );
+  assert.strictEqual(data.isAccessRuleRefusal(null), false, 'aucune exception sur une erreur absente');
+  assert.strictEqual(data.isAccessRuleRefusal(undefined), false, 'aucune exception sur une erreur absente (undefined)');
+  assert.strictEqual(
+    data.isAccessRuleRefusal('Blocked by row update access rules'), true,
+    'tolère aussi une erreur rejetée comme chaîne brute, pas seulement un objet Error'
+  );
+  console.log('OK data.isAccessRuleRefusal (refus Grist "access rules" vs. échec quelconque, consigne GFS 012)');
+}
+
 // tableToRows / epochSecondsToIsoDate (format réel de l'API Grist, vérifié le 29/09/2026 après la
 // livraison du drill-down) : une colonne réellement typée `Date` côté Grist renvoie, via
 // fetchTable(), un nombre de secondes depuis l'epoch UTC — pas la chaîne ISO 'AAAA-MM-JJ' que ce
