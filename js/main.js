@@ -1846,12 +1846,20 @@
       // jour à chaque notify (pour ne pas se retrouver désynchronisé), mais sans planifier de
       // sauvegarde tant que le drapeau est levé. Un changement réel ultérieur de la personne arrive
       // hors de ce bloc, drapeau baissé, et continue d'être détecté et sauvegardé normalement.
+      // Consigne GFS 010 : `try…finally` plutôt qu'un simple "levé puis baissé" - `render()` tourne
+      // à chaque `store.set*` et peut lever (tuile qu'il ne sait pas dessiner, configuration abîmée) ;
+      // sans `finally`, une exception laisserait le drapeau levé pour le reste de la session, et plus
+      // aucun geste réel de la personne ne se sauvegarderait ensuite, sans message. `notify()`
+      // (js/state.js) ne rattrape rien lui-même : seul ce `finally` referme le trou.
       suppressNextSave = true;
-      store.setPages(saved.pages, saved.currentPageId);
-      store.setBookmarks(saved.bookmarks);
-      currentBlend = saved.blend;
-      store.setBlend(currentBlend);
-      suppressNextSave = false;
+      try {
+        store.setPages(saved.pages, saved.currentPageId);
+        store.setBookmarks(saved.bookmarks);
+        currentBlend = saved.blend;
+        store.setBlend(currentBlend);
+      } finally {
+        suppressNextSave = false;
+      }
       refreshBlendPicker();
     }
     await applyBlend(currentBlend);
