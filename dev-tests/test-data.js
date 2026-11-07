@@ -1195,6 +1195,59 @@ const rows = [
   console.log('OK main.js:switchTable+render (consigne GFS 009) — charger un rapport (vierge ou déjà enregistré) ne planifie plus de sauvegarde, un geste réel si');
 }
 
+// main.js:switchTable — consigne GFS 010 : le drapeau `suppressNextSave` (voir le test 009
+// ci-dessus) est levé puis baissé dans un `try…finally`, pas un simple "levé puis baissé" - GFS a
+// relevé que `render()` tourne à chaque `store.set*` pendant le chargement et PEUT lever (une tuile
+// qu'il ne sait pas dessiner, une configuration abîmée) ; `notify()` (js/state.js) ne rattrape rien
+// lui-même. Sans `finally`, une exception laisserait le drapeau levé pour le reste de la session :
+// plus aucun geste réel de la personne ne se sauvegarderait ensuite, sans le moindre message.
+{
+  const store = state.createStore();
+  let lastRenderedPages = null;
+  let lastRenderedCurrentPageId = null;
+  let lastRenderedBookmarks = null;
+  let lastRenderedBlend = null;
+  let suppressNextSave = false;
+  let saveCount = 0;
+  let throwOnNextBookmarks = false;
+  store.subscribe((s) => {
+    if (s.pages !== lastRenderedPages || s.currentPageId !== lastRenderedCurrentPageId ||
+        s.bookmarks !== lastRenderedBookmarks || s.blend !== lastRenderedBlend) {
+      lastRenderedPages = s.pages;
+      lastRenderedCurrentPageId = s.currentPageId;
+      lastRenderedBookmarks = s.bookmarks;
+      lastRenderedBlend = s.blend;
+      if (throwOnNextBookmarks) { throwOnNextBookmarks = false; throw new Error('tuile illisible (simulée)'); }
+      if (!suppressNextSave) saveCount += 1;
+    }
+  });
+
+  // Reproduit switchTable (js/main.js) APRÈS la consigne 010 : try…finally autour des 3 store.set*.
+  function loadReportWithGuard(saved) {
+    suppressNextSave = true;
+    try {
+      store.setPages(saved.pages, saved.currentPageId);
+      store.setBookmarks(saved.bookmarks);
+      store.setBlend(saved.blend);
+    } finally {
+      suppressNextSave = false;
+    }
+  }
+
+  const blank = { pages: [{ id: 'page_default', name: 'Page 1', tiles: [] }], currentPageId: 'page_default', bookmarks: [], blend: null };
+  throwOnNextBookmarks = true; // simule render() qui lève pendant le TOUT PREMIER store.set* du chargement
+  assert.throws(() => loadReportWithGuard(blank), /tuile illisible/, 'l\'exception du rendu doit remonter (pas avalée ici), seul le drapeau est garanti retomber');
+  assert.strictEqual(suppressNextSave, false, 'le drapeau doit retomber MÊME si render() a levé pendant le chargement (try…finally, consigne GFS 010)');
+  assert.strictEqual(saveCount, 0, 'aucune sauvegarde ne doit avoir été planifiée pendant ce chargement en échec');
+
+  // Un geste réel après cet échec doit continuer à se sauvegarder normalement - c'est précisément
+  // ce qu'un drapeau resté bloqué (sans finally) aurait silencieusement empêché.
+  store.addTile({ id: 't1', type: 'kpi' });
+  assert.strictEqual(saveCount, 1, 'un geste réel après un chargement en échec doit quand même être sauvegardé (le drapeau n\'est pas resté bloqué)');
+
+  console.log('OK main.js:switchTable (consigne GFS 010) — le drapeau retombe même si render() lève pendant le chargement (try…finally), un geste réel se sauvegarde toujours ensuite');
+}
+
 // demo-data: deriveDateColumn — recalcule Date à partir des colonnes déjà présentes sur une ligne
 // EXISTANTE (pas au moment de la génération), pour la migration de schéma d'une table déjà créée
 // (voir grist-api.js:ensureColumnsUpToDate) : AddColumn + remplissage, jamais une nouvelle table.

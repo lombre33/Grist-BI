@@ -1,6 +1,6 @@
 # GFS-ETAT : Grist-BI
 
-Mis à jour le 2026-11-07 (consigne 009 faite, `consignes/bi/INDEX.md` à `8880b7f`).
+Mis à jour le 2026-11-07 (consigne 010 faite, `consignes/bi/INDEX.md` à `7577d58`).
 
 ## Consignes
 - 001 · faite · `23647eb` · 1.1 : écart sur la règle 4 (les 3 tables internes — `BI_Dashboard_Config`, `BI_Dashboard_Comments`, `BI_Dashboard_UserProbe` — se créent au démarrage sans l'accord de la personne) et la règle 11 (pas de CSP, déjà noté dans le guide) ; ligne du guide par ailleurs juste à ce commit, seule omission : elle ne mentionne jamais `BI_Dashboard_Comments` (créée depuis le 30/09) parmi les tables internes
@@ -141,6 +141,17 @@ Mis à jour le 2026-11-07 (consigne 009 faite, `consignes/bi/INDEX.md` à `8880b
   de la suite Playwright de ce dépôt, voir CLAUDE.md §5) reproduisant l'essai de GFS : AVANT ce
   correctif, 2 "Nouveau" sans rien faire créaient 3 lignes fantômes dans `BI_Dashboard_Config` ;
   APRÈS, aucune, et un vrai geste (+ tuile) sur ce rapport vierge écrit bien une seule ligne.
+- 010 · faite · `7bc9383` · garde-fou pris sur le point 3 : `suppressNextSave` (009) est maintenant
+  levé/baissé dans un `try { … } finally { suppressNextSave = false; }` autour des 3 `store.set*` de
+  `switchTable`, plutôt qu'un simple "levé puis baissé" — `render()` tourne à chaque `store.set*`
+  pendant le chargement et PEUT lever (une tuile qu'il ne sait pas dessiner, une configuration
+  abîmée) ; `notify()` (`js/state.js`) ne rattrapait rien lui-même, donc sans ce `finally` le
+  drapeau serait resté levé pour le reste de la session, et plus aucun geste réel de la personne ne
+  se serait sauvegardé ensuite, sans le moindre message. Testé sous Node
+  (`dev-tests/test-data.js`, à la suite du test de la 009) : un abonné qui lève pendant le
+  chargement voit quand même le drapeau retomber, et un geste réel après cet échec continue de se
+  sauvegarder normalement — vérifié aussi que ce même scénario, SANS `try…finally`, laisse bien le
+  drapeau bloqué (la régression que ce correctif évite).
 
 ## Changements qui touchent GFS
 - 2026-11-03 · `e035bcf` · tuile « Nuage de mots » (`js/charts.js`/`js/data.js`/`js/main.js`) :
