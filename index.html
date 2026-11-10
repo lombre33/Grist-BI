@@ -10,9 +10,9 @@
      script, que le navigateur refuse d'exécuter (X-Content-Type-Options: nosniff) - la bibliothèque
      ne se charge jamais et les tuiles graphiques restent vides sans erreur explicite. -->
 <script src="js/vendor/echarts/echarts.min.js"></script>
-<!-- SheetJS embarqué localement (js/vendor/xlsx/, Apache-2.0) pour l'export Excel du dashboard,
-     même raisonnement que ECharts ci-dessus : pas de dépendance à un CDN externe. -->
-<script src="js/vendor/xlsx/xlsx.full.min.js"></script>
+<!-- SheetJS (js/vendor/xlsx/, Apache-2.0) n'est PLUS chargé ici (consigne GFS 013, 10/11/2026) :
+     il ne sert qu'à l'export Excel, chargé paresseusement par js/export.js au premier clic sur
+     "Exporter en Excel" plutôt qu'à l'ouverture du widget — même origine, aucun CDN. -->
 <!-- DuckDB-WASM (js/vendor/duckdb/, MIT) : moteur SQL, fondation Tier 2 (voir ROADMAP.md/
      HYPOTHESES.md) — chargé PARESSEUX uniquement (js/duckdb-engine.js), jamais au démarrage.
      duckdb-browser.mjs importe "apache-arrow" (Apache-2.0) et "flatbuffers" (Apache-2.0) via des
