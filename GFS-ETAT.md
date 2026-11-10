@@ -1,6 +1,6 @@
 # GFS-ETAT : Grist-BI
 
-Mis à jour le 2026-11-07 (consigne 012 lue, `consignes/bi/INDEX.md` à `10b9ae0` ou plus récent). La
+Mis à jour le 2026-11-10 (consigne 013 lue, `consignes/bi/INDEX.md` à `2d93fb2` ou plus récent). La
 011 n'a pas été lue (remplacée par la 012 avant lecture, consigne explicite d'Antoine).
 
 ## Consignes
@@ -176,6 +176,31 @@ Mis à jour le 2026-11-07 (consigne 012 lue, `consignes/bi/INDEX.md` à `10b9ae0
   `dev-tests/harness.html` (bandeau cause masqué par défaut, texte résolu dans les deux langues, pas
   d'erreur JS) et contre `index.html` lui-même (même bandeau présent une seule fois, aucune erreur de
   page). GFS pourra rejouer avec la vraie app dès qu'il le souhaite.
+- 013 · faite · `adc5c3d` · `index.html` et `dev-tests/harness.html`
+  ne portent plus la balise statique de SheetJS ; `js/export.js` la charge désormais lui-même via
+  une balise `<script>` ajoutée dynamiquement à `exportDashboardToExcel` (une seule fois, mémoïsée,
+  résolue au `load`), vers une URL absolue calculée à partir de `document.currentScript.src` — même
+  technique que `js/duckdb-engine.js:VENDOR_BASE_URL` — pour rester correcte quel que soit le
+  document qui charge ce script (`index.html` à la racine, `dev-tests/harness.html` dans un sous-
+  dossier). Le test `typeof XLSX === 'undefined'` et son message sont conservés tels quels, exécutés
+  après ce chargement plutôt qu'avant : un échec de script continue de produire exactement le même
+  diagnostic qu'avant cette consigne (vérifié en bloquant la requête via une route Playwright
+  interceptée : le message console `XLSX indisponible (js/vendor/xlsx/xlsx.full.min.js ne s'est pas
+  chargé) — voir le bandeau ECharts pour un diagnostic similaire.` apparaît toujours, l'alerte
+  `export.failed` s'affiche, l'app reste utilisable ensuite).
+  Mesuré avec `dev-tests/harness.html` servi en HTTP local (`http-server`, cache désactivé) et
+  Playwright headless (écoute de chaque réponse réseau en guise d'onglet Réseau) — jamais un vrai
+  Grist, voir CLAUDE.md §5 pour cette limite :
+  - **avant** (`c5cdd30`) : 21 requêtes, 2 399 034 octets reçus au premier affichage ;
+    `xlsx.full.min.js` déjà demandé à ce moment-là.
+  - **après** (`adc5c3d`) : 20 requêtes, 1 518 958 octets ; `xlsx.full.min.js` absent des requêtes
+    du premier affichage, demandé pour la première fois seulement au clic sur « Exporter en Excel »
+    (vérifié : absent avant ce clic, présent juste après) ; le classeur `dashboard-bi.xlsx` se
+    télécharge toujours normalement ensuite.
+  - delta : **-1 requête, -880 076 octets** (≈ 859 Kio, cohérent avec les 881 727 octets réels de
+    `js/vendor/xlsx/xlsx.full.min.js` sur disque, 882 Ko annoncés par GFS).
+  `node dev-tests/test-data.js` toujours entièrement vert (inchangé par cette consigne, aucun test
+  Node ne charge `js/export.js`, voir CLAUDE.md §5).
 
 ## Changements qui touchent GFS
 - 2026-11-03 · `e035bcf` · tuile « Nuage de mots » (`js/charts.js`/`js/data.js`/`js/main.js`) :
