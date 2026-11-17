@@ -2484,6 +2484,40 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     peut pas joindre `*.github.io`) ; le rendu réel des cinq ambiances (seule "Pop" a été essayée,
     faute d'un second fichier d'exemple dans le kit) ; la transition CSS de 0,12 s sur les boutons
     pendant un changement d'ambiance en direct (mesurée seulement après coup, jamais en mouvement).
+- **Vitrine de GFS (consigne 014, 17/11/2026)** : `vitrine/` (`vitrine.json` + `1.webp`/`2.webp`/
+  `3.webp`, 960 × 600, de 42 à 56 Ko) alimente la carte et la fiche de cette app dans la fenêtre
+  « Apps et extensions » de GFS. Aucun code n'a changé : un dossier de fichiers que seul GFS lit
+  (jamais `index.html`).
+  - **Les captures n'ont PAS été prises dans un vrai Grist** (la consigne le demandait) : le build de
+    `grist-core` (`git clone` + `yarn install`), qui avait passé les 19/09, 29/09 et 16/11, a été refusé
+    ce jour-là par le classifieur de l'environnement de la session, et n'a pas été contourné. Elles
+    montrent le VRAI `index.html` servi en HTTP local, dont le script
+    `https://docs.getgrist.com/grist-plugin-api.js` est remplacé (interception de requête Playwright)
+    par `dev-tests/grist-stub.js`, le faux `window.grist` du dépôt, prérempli via
+    `window.__gristStubPreseed` (5 760 lignes, `BI_Dashboard_Config` avec 3 pages, commentaires, et
+    `_grist_Tables_column` qui déclare `Date` comme colonne `Date`, pour que le drill-down temporel
+    marche). Le widget seul (fenêtre de 960 × 600, ni barre du navigateur ni cadre de Grist), en clair,
+    rendu à ×2 puis réduit en Lanczos à 960 × 600 et encodé en WebP. L'interface est celle que verrait
+    un vrai Grist (même document, même CSS) ; ce que ce montage ne prouve toujours pas, c'est le
+    comportement de `grist.docApi` (voir « Points à valider en conditions réelles »). Si GFS exige
+    de vraies captures, il suffit de refaire les trois fichiers sous les mêmes noms.
+  - **Jeu de données** : dérivé de la démo vendeur v2 (`Demo-vendeur-Grist-BI-v2.grist`, dossier
+    partagé du projet) avec ces retouches, propres à la vitrine : les 6 noms de commerciaux deviennent
+    6 segments clients (« Grands comptes », « PME »…), les auteurs de commentaires deviennent des
+    équipes (aucun nom de personne dans les images), les quantités sont pondérées par produit (sinon le
+    nuage de points est une colonne verticale), la jauge passe en dernière tuile (sa taille de 270 px la
+    rend peu lisible) et les titres de tuile sont raccourcis pour ne pas finir en « … ».
+    Scènes : (1) page « Vue d'ensemble » au repos ; (2) clic sur « Nord » (filtre croisé) puis sur
+    2025 (drill-down vers les trimestres) ; (3) page « Analyse avancée » (cascade, N-1, YTD, tableau
+    croisé, cumul, nuage de points). Les scripts de prise de vue ne sont pas committés (même règle que
+    toute la suite Playwright de ce dépôt, voir CLAUDE.md §5) : ils sont dans le dossier partagé du
+    projet, `demos/vitrine-gfs/`.
+  - **Constats vus en passant, non corrigés (hors périmètre de la consigne)** : la jauge à 270 px de
+    large a ses graduations et son aiguille qui se chevauchent ; le radar coupe l'étiquette du haut et
+    celle du bas ; le titre de la tuile KPI déborde de quelques pixels à gauche quand la grille passe à
+    4 colonnes (fenêtre de 1 200 px) ; ECharts lève `Cannot read properties of null (reading
+    'offsetWidth')` dans l'info-bulle (`_updatePosition`) quand un drill-down redessine un graphique
+    sous le pointeur (bénin en apparence, pas investigué).
 
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
