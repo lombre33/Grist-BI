@@ -1,6 +1,6 @@
 # GFS-ETAT : Grist-BI
 
-Mis à jour le 2026-11-10 (consigne 013 lue, `consignes/bi/INDEX.md` à `2d93fb2` ou plus récent). La
+Mis à jour le 2026-11-17 (consigne 014 lue, `consignes/bi/INDEX.md` à `3f6983b` ou plus récent). La
 011 n'a pas été lue (remplacée par la 012 avant lecture, consigne explicite d'Antoine).
 
 ## Consignes
@@ -201,6 +201,16 @@ Mis à jour le 2026-11-10 (consigne 013 lue, `consignes/bi/INDEX.md` à `2d93fb2
     `js/vendor/xlsx/xlsx.full.min.js` sur disque, 882 Ko annoncés par GFS).
   `node dev-tests/test-data.js` toujours entièrement vert (inchangé par cette consigne, aucun test
   Node ne charge `js/export.js`, voir CLAUDE.md §5).
+- 014 · faite · `e06b239` · `vitrine/` à la racine : `vitrine.json` (description de 267 et 238
+  caractères, légendes de 43 à 55, fr/en) et `1.webp`/`2.webp`/`3.webp` (960 × 600, 48 734 / 42 450 /
+  55 818 octets, mesurés ; en clair, l'app seule). Aucun code, aucun changement de manifeste ni de
+  politique de sécurité. Scène 1 (celle de la carte) : un rapport au repos, indicateurs avec tendance,
+  barres, camemberts ; scène 2 : un clic sur « Nord » filtre toutes les tuiles, puis drill-down 2025 →
+  trimestres ; scène 3 : page « Analyse avancée » (cascade, N-1, cumul, tableau croisé, nuage de
+  points). Données d'exemple : 5 760 lignes de ventes (régions, produits, canaux, segments clients),
+  aucun nom de personne. **Une réserve : ces captures ne viennent pas d'un vrai Grist** (voir la
+  demande « vitrine » plus bas) ; la description dit aussi que l'app est un brouillon à l'essai,
+  comme le README.
 
 ## Changements qui touchent GFS
 - 2026-11-03 · `e035bcf` · tuile « Nuage de mots » (`js/charts.js`/`js/data.js`/`js/main.js`) :
@@ -222,6 +232,15 @@ Mis à jour le 2026-11-10 (consigne 013 lue, `consignes/bi/INDEX.md` à `2d93fb2
 - aucune
 
 ## Demandes à GFS
+- **`vitrine`** · `e06b239` · `vitrine/vitrine.json` · description et trois captures pour la carte et
+  la fiche. Réserve : la consigne demandait des captures « prises dans un vrai Grist ». Le build d'un
+  vrai Grist depuis les sources (`git clone` de `grist-core` + `yarn install`) a été refusé dans
+  l'environnement de cette session et n'a pas été contourné. Les trois images montrent le VRAI
+  `index.html` de ce dépôt, servi en HTTP local, avec le faux `window.grist` du dépôt
+  (`dev-tests/grist-stub.js`, préchargé de 5 760 lignes) à la place de l'API Grist : l'interface est la
+  même qu'en vrai (même document, même CSS), ce que ce montage ne prouve pas c'est `grist.docApi`.
+  Si tu veux de vraies captures, dis-le et elles seront refaites sous les mêmes noms de fichier ; le
+  détail de la méthode est dans HYPOTHESES.md (entrée « Vitrine de GFS »).
 - **`d3-cloud`** · version exacte **`2.0.0`** · remplace la demande `echarts-wordcloud` 2.1.0 d'un
   lot précédent (écartée sur demande d'Antoine : dépôt amont sans commit de code depuis fin 2022,
   voir l'historique de cette section dans git) · fonction concernée : `js/charts.js`
