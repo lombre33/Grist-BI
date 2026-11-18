@@ -278,7 +278,53 @@
     return f;
   }
 
+  // --- Échelle et géométrie de la jauge (pures : testées sous Node, ECharts n'y est pour rien) ------------
+
+  // Plus petit « beau » nombre (1, 1,2, 1,5, 2, 2,5, 3, 4, 5, 6, 8 x 10^k) supérieur ou égal à `x` : borne haute d'une
+  // jauge importée sans borne (le libellé de fin d'échelle est affiché, « 4 M » se lit, « 3 919 480 » non).
+  const NICE_STEPS = [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10];
+  function niceCeil(x) {
+    const v = toNumber(x);
+    if (v == null || v <= 0) return 1;
+    const base = Math.pow(10, Math.floor(Math.log10(v)));
+    const m = v / base;
+    const step = NICE_STEPS.find((c) => c >= m - 1e-12) || 10;
+    return Number((step * base).toPrecision(12));
+  }
+
+  // Jauge en demi-cercle dans une zone de w x h pixels : l'arc en haut, les deux bornes juste sous ses extrémités,
+  // la valeur sous le moyeu de l'aiguille — chaque élément dans SA bande, donc rien ne se chevauche, quelle que soit la
+  // taille de la tuile (avant : 270° d'arc, 5 graduations DANS l'arc, aiguille par-dessus, valeur qui débordait).
+  function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
+  function gaugeLayout(w, h) {
+    const PAD = 6;
+    const fMax = clamp(0.17 * h, 14, 56);
+    const below = 14 + 1.25 * fMax; // place sous l'axe : valeur (+ bornes, à côté)
+    const r = Math.max(30, Math.min(w / 2 - 12, h - PAD - below));
+    return {
+      cx: w / 2,
+      cy: PAD + r,
+      r,
+      ringW: clamp(r * 0.13, 8, 26),
+      labelFont: clamp(r * 0.11, 10, 16),
+      valueMaxFont: clamp(r * 0.27, 14, 56),
+      valueMinFont: 11,
+      valueMaxWidth: 1.4 * r,
+      below
+    };
+  }
+
+  // Plus grande taille de police (entre `minFont` et `maxFont`) qui tient en `maxWidth` pixels ; `measure(texte, taille)`
+  // rend la largeur du texte (canvas dans le navigateur, estimation dans les tests).
+  function fitFont(text, maxWidth, maxFont, minFont, measure) {
+    let size = maxFont;
+    const wide = measure(text, size);
+    if (wide > maxWidth) size = Math.max(minFont, Math.floor((size * maxWidth) / wide));
+    return size;
+  }
+
   return {
+    niceCeil, gaugeLayout, fitFont,
     MODES, MAX_CUSTOM_DECIMALS, localeForLang, normalizeSpec, parseWidgetOptions, parseDocSettings,
     styleFromColumn, resolveStyle, makeFormatter, forTile, setColumnInfo, getColumnInfo, getDocSettings
   };

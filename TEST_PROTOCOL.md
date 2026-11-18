@@ -806,6 +806,15 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 - [x] 6 000 lignes (DuckDB, `BigInt`) : KPI, infobulle de barre, libellé d'axe formatés 🌐
 - [ ] Lecture des options de colonne dans un vrai Grist ⬜ **[NON TESTABLE ICI]** (réglage de tuile et lecture de `_grist_Tables_column` : lot suivant)
 
+### `js/format.js` + `js/charts.js` + `css/style.css` — jauge et carte KPI (audit de lisibilité, lot 2, 18/11/2026 ; Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`)
+
+- [x] Jauge : arc, bornes, aiguille et valeur sans aucun chevauchement à 316 x 162 px (tuile normale), ~300 px (viewport de 330 px), agrandie, en thème sombre 🌐
+- [x] Jauge : valeur de 20 caractères réduite pour tenir, valeur supérieure au maximum (aiguille bloquée au bout, arc plein), valeur négative, borne basse négative, comptage, ratio 0-1 🌐
+- [x] Jauge : géométrie qui suit l'agrandissement de la tuile (`resizeAll` -> `__refit`) 🌐
+- [x] Carte KPI : valeur courte à 30 px, valeur de 20 caractères réduite à ~20 px sans sortir de la tuile, valeur agrandie jusqu'à 84 px 🌐
+- [x] `niceCeil`, `gaugeLayout` (arc, bornes et valeur dans la zone à 7 tailles), `fitFont` ✅
+- [ ] Rendu dans un vrai Grist ⬜ **[NON TESTABLE ICI]**
+
 ### CSS — classe de bug à systématiquement re-vérifier
 
 - [x] `.field[hidden]` masque réellement l'élément (pas seulement `display:flex` de `.field` qui gagne à spécificité égale) [BUG RÉEL, trouvé 2 fois sur des champs différents] ✅ (règle en place)
@@ -1016,6 +1025,7 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 37. **Boutons Filtre / Vues / Exporter sans aucun nom accessible sous 900 px** [BUG RÉEL, trouvé en réécrivant le bouton Vues, 18/11/2026] — sous 900 px le libellé (`.bar-label`) passe en `display: none` et l'icône est décorative (`aria-hidden`) : le bouton n'avait ni nom ni infobulle pour un lecteur d'écran. Corrigé : `aria-label` (traduit) sur les trois ; le bouton Vues y met en plus la vue suivie et son état. Test : `t10-views.js` (nom accessible lu à 700 px).
 38. **Infobulles en format anglais avec le bruit de flottant, langue de l'interface ignorée** [BUG RÉEL, remonté par Antoine sur un treemap, « 600,688.2299999992 », puis confirmé sur barres/courbe/camembert/cascade par l'audit de lisibilité du 18/11/2026] — `js/charts.js` ne formatait que KPI/radar/entonnoir/empilé/nuage de points (`fr-FR` figé, quelle que soit la langue), les infobulles par défaut d'ECharts affichaient la valeur brute (« 1,542,980.8799999997 », « 0.20472679998130852 »). Corrigé par `js/format.js` : un formateur par tuile, séparateurs de la langue, `valueFormatter` sur toutes les infobulles, Cascade avec une seule ligne signée (« Hausse : 172 597 » au lieu de « Baisse 0 » en plus). Test : `test-data.js` (module de format, absence de `Intl.NumberFormat`/`toFixed` dans `js/charts.js`) + survol de chaque type de tuile dans le vrai `index.html` (clair, sombre, fr/en, 6 000 lignes pour DuckDB/BigInt).
 39. **Une valeur minuscule s'affichait « 0 » et des graduations d'axe se répétaient** [BUG RÉEL, audit de lisibilité du 18/11/2026] — la moyenne de 0,0006 d'une carte KPI valait « 0 » (2 décimales maximum, quelle que soit la valeur) ; l'axe d'une barre de 0,0001 à 0,0007 affichait sept fois « 0 », et 0,05 d'écart donnait « 0,1 » « 0,1 » (compact à 1 décimale). Corrigé : Automatique = 2 chiffres significatifs sous 0,1, `axis` à 3 chiffres significatifs. Test : `test-data.js` (graduations 0 -> 0,3 par 0,05 et 0 -> 0,0007 par 0,0001 toutes distinctes ; 0,000618 -> « 0,00062 »).
+40. **Jauge illisible : libellés superposés, aiguille sur les libellés, valeur qui déborde** [BUG RÉEL, remonté par Antoine avec une capture, 18/11/2026] — arc de 270° d'environ 60 px de rayon portant 5 libellés et 5 traits, aiguille de 75 % du rayon par-dessus, valeur de 18 px fixes sous l'arc (« 3 266 234,27 » plus large que la jauge, coupée à gauche pour « -725 150,73 »). Reproduit à l'identique sur le jeu d'audit (clair, sombre, anglais). Corrigé : demi-cercle à géométrie calculée (`gaugeLayout`), bornes sous l'arc, valeur ajustée, `__refit` au redimensionnement. Test : `test-data.js` (invariants de géométrie sur 7 tailles de tuile, `niceCeil`, `fitFont`, câblage) + rendu aux tailles normale, étroite (330 px), agrandie, thème sombre, valeur de 20 caractères.
 
 ## Fragilité de test connue (PAS un bug produit — investiguée en profondeur, à ne pas re-diagnostiquer)
 

@@ -955,7 +955,7 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   box-shadow: var(--shadow-float);
 }
 .tile-zoomed .tile-header { font-size: 14px; }
-.tile-zoomed .tile-kpi-value { font-size: clamp(48px, 9vw, 84px); }
+.tile-zoomed .tile-kpi-value { --kpi-max: clamp(48px, 9vw, 84px); }
 .tile-zoomed .tile-kpi-label { font-size: 13px; }
 .tile-zoomed .tile-kpi-trend { font-size: 14px; }
 /* Réordonner n'a pas de sens dans la zone d'agrandissement (l'ordre est celui de la grille). */
@@ -1160,8 +1160,26 @@ td.pivot-cell:not(.pivot-cell-empty):not(.pivot-total-cell):hover { background: 
   align-items: center;
   justify-content: center;
   gap: 5px;
+  /* Conteneur de requête : `cqw` ci-dessous = la largeur de la tuile, pour que la valeur tienne dedans. */
+  container-type: inline-size;
+  min-width: 0;
+  /* Obligatoire avec `container-type: inline-size` : sans largeur propre le conteneur retombe à 0 px (sa largeur ne
+     dépend plus de son contenu) et la valeur disparaît. */
+  width: 100%;
 }
-.tile-kpi-value { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; color: var(--text); }
+/* La valeur se réduit pour tenir sur UNE ligne : 30 px au plus, moins quand le nombre est long (« 5 430 335 971 751 »
+   sortait de la tuile à 30 px fixes). `--kpi-chars` = nombre de caractères du texte, posé par js/charts.js:renderKpi ;
+   0,6 em = largeur moyenne d'un chiffre gras (estimation prudente, espaces comptés pleins). */
+.tile-kpi-value {
+  --kpi-max: 30px;
+  font-size: min(var(--kpi-max), calc(100cqw / (var(--kpi-chars, 8) * 0.6)));
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  white-space: nowrap;
+  max-width: 100%;
+  font-variant-numeric: tabular-nums;
+}
 .tile-kpi-label { font-size: 11px; color: var(--text-muted); }
 .tile-kpi-trend { font-size: 11.5px; font-weight: 600; margin-top: 2px; }
 .tile-kpi-trend.trend-up { color: var(--good-ink); }
