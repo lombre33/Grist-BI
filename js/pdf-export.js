@@ -1,109 +1,53 @@
 /*
- * Export du dashboard en PDF vectoriel via pdfmake. À la différence d'ECharts/ExcelJS/DuckDB-WASM
- * (vendorisés dans js/vendor/), pdfmake est chargé DEPUIS UN CDN EXTERNE — décision explicite
- * d'Antoine le 2026-09-29 (voir CLAUDE.md/ROADMAP.md), qui déroge à la règle habituelle de ce dépôt.
- * Même bibliothèque et même CDN que le widget frère publipostageGrist (js/pdf-export.js de ce
- * dépôt-là), pour rester cohérent entre projets plutôt que d'inventer un second motif de chargement.
+ * Export du tableau de bord en PDF (refait le 18/11/2026, demande d'Antoine : « il faut garder le côté tableau de bord, donc même visuel »).
  *
- * Contrairement à l'export Excel (js/export.js, GristBI.data.buildWorkbookSheets), qui recalcule
- * chaque tuile en pur JS et doit s'excuser explicitement pour une tuile en mode mesure DAX (calcul
- * ASYNCHRONE via DuckDB-WASM, incompatible avec un export synchrone) — cet export PDF capture
- * l'image de chaque graphique DÉJÀ RENDU à l'écran (GristBI.charts.getInstance(tile.id).getDataURL,
- * voir GristBI.data.tileExportKind) : comme la valeur est déjà calculée au moment du clic, ça marche
- * uniformément pour tous les types de tuile, y compris en mode Cumul/YTD/N-1.
+ * Avant : pdfmake (chargé depuis cdnjs) recomposait chaque tuile à part dans un document qui s'écoule — les cartes s'empilaient sur trois
+ * pages A4, un KPI devenait « 567.0545607638886 », un tableau croisé débordait de la page et le style comme la disposition de la page
+ * (Grille, Rapport, Planche, Vedette, Rail ; Standard, Fluide, Éditorial, Console, Verre dépoli) disparaissaient.
+ * Maintenant : la page affichée est photographiée telle qu'elle est dessinée (js/snapshot.js) et chaque page du tableau de bord donne UNE
+ * page du PDF, à la largeur d'un A4 paysage, avec son bandeau (nom de la page, jeu de données, date, vue suivie et filtres actifs).
+ * Aucune bibliothèque : le fichier est écrit par js/pdf-writer.js, l'image compressée par `CompressionStream` (JPEG sinon).
  *
- * Périmètre de ce premier export (documenté dans HYPOTHESES.md) : seulement la page actuellement
- * affichée, pas toutes les pages du dashboard comme le fait l'export Excel.
+ * Périmètre : la page actuellement affichée seulement (comme avant) ; l'image est celle de l'écran — une tuile rognée à l'écran l'est aussi
+ * dans le fichier, l'agrandir (bouton de la tuile) avant d'exporter la montre en entier. Texte non sélectionnable (c'est une image).
  */
 (function (global) {
+  'use strict';
   const GristBI = global.GristBI || (global.GristBI = {});
 
-  // Même version/CDN/hash SRI que publipostageGrist (js/pdf-export.js de ce dépôt-là, vérifié le
-  // 2026-09-29). cdnjs.cloudflare.com reste bloqué par la politique réseau de ce sandbox (même
-  // catégorie que le blocage CDN déjà rencontré pour ECharts), mais le hash de pdfmake.min.js a été
-  // recoupé avec le paquet npm officiel de cette version (identique) et le chemin de succès complet
-  // (chargement, rendu d'image, tableaux) vérifié en local avec cette copie — voir HYPOTHESES.md,
-  // entrée "Export PDF du dashboard", pour le détail et ce qui reste réellement non testé (le hash de
-  // vfs_fonts.min.js, la requête réseau réelle vers cdnjs). Recalculer ce hash si la version change :
-  // `curl -s <url> | openssl dgst -sha384 -binary | openssl base64 -A`.
-  const PDF_LIB_URLS = [
-    { src: 'https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js', integrity: 'sha384-VFQrHzqBh5qiJIU0uGU5CIW3+OWpdGGJM9LBnGbuIH2mkICcFZ7lPd/AAtI7SNf7' },
-    { src: 'https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.min.js', integrity: 'sha384-dWs4+zGqy/KS6giKxiK+6iowhidQwjVFaiE1lMar36QwIulE44VyBSQp0brMCx4D' }
-  ];
-  let pdfLibsPromise = null;
+  const FILE_NAME = 'dashboard-bi.pdf';
 
-  // Résolu au chargement, rejeté si le script ne charge pas (offline, CDN injoignable, hash SRI qui
-  // ne correspond plus...) — l'appelant transforme ce rejet en message clair plutôt que de casser la
-  // page ou de rester silencieux : c'est le prix d'un appel externe, exactement ce que vendoriser
-  // aurait évité (voir CLAUDE.md).
-  function loadScriptOnce(lib) {
-    return new Promise((resolve, reject) => {
-      const s = document.createElement('script');
-      s.src = lib.src;
-      s.integrity = lib.integrity;
-      s.crossOrigin = 'anonymous';
-      s.onload = () => resolve();
-      s.onerror = () => reject(new Error('Échec de chargement du script : ' + lib.src));
-      document.head.appendChild(s);
-    });
+  // Flux zlib (ce que PDF appelle FlateDecode) ; `null` si le navigateur n'a pas CompressionStream (Safari avant 16.4, Firefox avant 113).
+  async function deflate(bytes) {
+    if (typeof CompressionStream !== 'function' || typeof Response !== 'function') return null;
+    const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate'));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
   }
 
-  // Séquentiel (pas Promise.all) : vfs_fonts.min.js lit window.pdfMake.vfs à l'exécution, donc doit
-  // s'exécuter après pdfmake.min.js.
-  function ensurePdfLibsLoaded() {
-    if (!pdfLibsPromise) {
-      pdfLibsPromise = (async () => {
-        for (const lib of PDF_LIB_URLS) await loadScriptOnce(lib);
-      })().catch((e) => { pdfLibsPromise = null; throw e; });
-    }
-    return pdfLibsPromise;
+  // L'image d'une page : RGB compressé sans perte ; à défaut, un JPEG de haute qualité.
+  async function pageImage(canvas) {
+    const width = canvas.width;
+    const height = canvas.height;
+    const rgba = canvas.getContext('2d').getImageData(0, 0, width, height).data;
+    const compressed = await deflate(GristBI.pdfWriter.rgbaToRgb(rgba));
+    if (compressed) return { width, height, filter: 'FlateDecode', data: compressed };
+    const blob = await GristBI.snapshot.canvasToBlob(canvas, 'image/jpeg', 0.95);
+    return { width, height, filter: 'DCTDecode', data: new Uint8Array(await blob.arrayBuffer()) };
   }
 
-  // Un bloc de contenu pdfmake par tuile : titre + soit une image (graphique déjà rendu, capturé tel
-  // qu'affiché), soit un tableau natif (pivot/KPI, voir GristBI.data.tileExportKind — ni l'un ni
-  // l'autre n'a de graphique ECharts à capturer, et tileExportSheet leur donne déjà la bonne forme,
-  // déjà testée pour l'export Excel).
-  const PDF_TABLE_MAX_ROWS = 200;
-  function tileToPdfBlocks(tile, state) {
-    const title = { text: tile.title || `${tile.aggFn}(${tile.measure})`, style: 'tileTitle' };
-    // Tuile Texte : le texte lui-même, sans repères (ni graphique à capturer, ni tableau).
-    if (GristBI.data.tileExportKind(tile) === 'text') return [title, { text: GristBI.data.plainTextOf(tile.text), margin: [0, 4, 0, 16] }];
-    if (GristBI.data.tileExportKind(tile) === 'table') {
-      // Table plate : un PDF n'est pas un classeur, les premières lignes seulement (le reste est dans l'export Excel).
-      const sheet = GristBI.data.tileExportSheet(tile, state, tile.type === 'table' ? PDF_TABLE_MAX_ROWS : undefined);
-      const body = [sheet.header].concat(sheet.rows.map((row) => row.map((cell) => (cell == null ? '' : String(cell)))));
-      const blocks = [title, { table: { widths: sheet.header.map(() => '*'), body }, margin: [0, 4, 0, sheet.truncated ? 4 : 16] }];
-      if (sheet.truncated) blocks.push({ text: GristBI.i18n.t('export.table.more', { n: sheet.truncated }), italics: true, margin: [0, 0, 0, 16] });
-      return blocks;
-    }
-    const instance = GristBI.charts.getInstance(tile.id);
-    if (!instance || instance.isDisposed()) {
-      // Tuile jamais rendue dans cette session (ne devrait pas arriver pour la page courante,
-      // affichée au moment du clic — voir render() dans main.js) : message explicite plutôt qu'une
-      // exception qui interromprait tout l'export pour les autres tuiles.
-      return [title, { text: GristBI.i18n.t('export.pdf.chartUnavailable'), italics: true, margin: [0, 4, 0, 16] }];
-    }
-    const dataUrl = instance.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#ffffff' });
-    return [title, { image: dataUrl, width: 480, margin: [0, 4, 0, 16] }];
-  }
-
-  // Retourne `false` sans rien déclencher si la page courante n'a aucune tuile (à l'appelant de
-  // prévenir l'utilisateur, voir main.js) — même contrat que exportDashboardToExcel.
+  // Retourne `false` sans rien déclencher si la page courante n'a aucune tuile (à l'appelant de prévenir l'utilisateur, voir main.js) —
+  // même contrat que exportDashboardToExcel.
   async function exportDashboardToPdf(state) {
-    const page = state.pages.find((p) => p.id === state.currentPageId) || state.pages[0];
+    const page = GristBI.snapshot.currentPageOf(state);
     if (!page || !page.tiles.length) return false;
-    await ensurePdfLibsLoaded();
-    const content = [{ text: page.name, style: 'pageTitle' }]
-      .concat(page.tiles.flatMap((tile) => tileToPdfBlocks(tile, state)));
-    const docDefinition = {
-      pageMargins: [32, 32, 32, 32],
-      content,
-      styles: {
-        pageTitle: { fontSize: 16, bold: true, margin: [0, 0, 0, 12] },
-        tileTitle: { fontSize: 11, bold: true }
-      }
-    };
-    pdfMake.createPdf(docDefinition).download('dashboard-bi.pdf');
+    const shot = await GristBI.snapshot.capturePage(state, { scale: 2 });
+    const image = await pageImage(shot.canvas);
+    const size = GristBI.pdfWriter.pageSizeFor(shot.width, shot.height);
+    const bytes = GristBI.pdfWriter.buildPdf(
+      [{ width: size.width, height: size.height, image }],
+      { title: page.name, creator: 'Grist BI', created: new Date() }
+    );
+    GristBI.snapshot.downloadBlob(new Blob([bytes], { type: 'application/pdf' }), FILE_NAME);
     return true;
   }
 

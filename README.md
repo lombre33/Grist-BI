@@ -82,7 +82,13 @@ réellement (voir HYPOTHESES.md).
   photographiés (quelques secondes pour un grand tableau de bord). Le déclenchement du téléchargement depuis l'iframe du widget n'est pas
   encore vérifié en conditions réelles Grist (voir HYPOTHESES.md). Une tuile en mode mesure (voir
   ci-dessous) exporte ses vraies valeurs (Cumul/YTD/N-1, calculées via DuckDB-WASM comme
-  à l'écran), pas un texte d'excuse. Les exports PDF et PPTX sont, eux, provisoirement désactivés (« bientôt disponible »).
+  à l'écran), pas un texte d'excuse.
+- **Export PDF et PPTX** (refaits le 18/11/2026) : la page affichée est photographiée telle qu'elle est dessinée — même grille, même
+  disposition de page, même style (Standard, Fluide, Éditorial, Console, Verre dépoli), thème clair ou sombre, cartes KPI, tableaux et texte
+  compris. Le PDF (`dashboard-bi.pdf`) est une page à la largeur d'un A4 paysage avec un bandeau (nom de la page, jeu de données, date, vue
+  suivie, filtres actifs), écrite sans bibliothèque ; le PPTX (`dashboard-bi.pptx`) a la page en diapositive 1 puis une diapositive par tuile
+  (PptxGenJS, chargé à la demande depuis jsDelivr). Ce sont des images : le texte n'est pas sélectionnable, une tuile rognée à l'écran (tableau
+  croisé large) l'est aussi dans le fichier — l'agrandir avant d'exporter.
 - **Mesures façon DAX simplifié (Cumul / YTD / Comparaison N-1)** : sur une tuile barres, le champ
   « Mode » remplace Dimension/Drill-down par « Colonne date » — l'axe devient le MOIS calculé depuis
   cette colonne. « Cumul » = somme courante depuis le début de la série ; « Cumul annuel (YTD) » =

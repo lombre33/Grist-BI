@@ -3785,7 +3785,37 @@ Constat (en testant le style global des tuiles) : sur une courbe ou des barres v
 - **Vérifié** (Node `dev-tests/test-data.js`, 4 blocs : cellules, feuilles par page, images et lignes réservées, feuille pleine, bout en bout avec filtre croisé, source de la photographie ; **Playwright + LibreOffice** sur la démo v3) : 22 images pour les 22 tuiles graphiques de la démo, aucun recouvrement de titre après la correction des hauteurs d'en-tête (piège n°45), **17 types de graphiques** (barres, histogramme, boîte, courbe, combo, anneau, treemap, soleil, entonnoir, Sankey, calendrier, nuage de points, cascade, radar, jauge, carte de chaleur, nuage de mots masqué) tous photographiés et lisibles ; un filtre croisé posé sur « Région » : la tuile source garde ses quatre régions, les autres tuiles et les KPI ne montrent que le Nord (KPI = 949 476,38), le sous-titre le dit ; clic réel dans le menu Exporter, dans un `<iframe sandbox="allow-scripts allow-downloads">` (origine nulle) et en thème sombre ; après l'export, aucun nœud `__xl_` ne reste dans le DOM, le bouton est rendu et le bandeau vidé. Durée mesurée : 5,2 à 5,3 s du clic au téléchargement pour les 22 graphiques de la démo v3 (trois lots de 10 ; le gros du temps est l'animation d'entrée d'ECharts, attendue à chaque lot).
 - **Choix assumés** : chaque image garde SON fond (thème sombre = image sombre aux textes clairs) ; la copie d'une tuile voit l'état comme l'écran la voit (la tuile source de son filtre croisé reste entière) ; `buildWorkbookSheetsAsync` (une feuille par tuile) reste dans `js/data.js`, testée, mais n'est plus appelée par le bouton.
 - **Hors périmètre / limites** : la photo d'un graphique est un PNG (pas un graphique Excel natif : on ne peut pas le modifier dans Excel) ; une tuile sans donnée après filtrage a une image de cadre vide ou aucune image (mention « Graphique indisponible… ») ; le nuage de mots n'a pas d'image tant que l'extension de GFS manque (la tuile est grisée) ; un Excel natif (graphiques éditables) serait un autre chantier.
-- **Les boutons PDF et PPTX restent grisés** (autre fil) : seul le bouton Excel est rouvert.
+- **Les boutons PDF et PPTX** ont été rouverts par un autre fil le même jour (entrée suivante) : les trois exports sont ouverts.
+
+### Exports PDF et PPTX refaits — la page est photographiée (18/11/2026, retour d'Antoine : « complètement cassé, il faut garder le côté tableau de bord »)
+
+- **Exports PDF et PPTX refaits : la page est photographiée, pas recomposée** (`js/snapshot.js`, `js/pdf-writer.js`, `js/pdf-export.js`,
+  `js/pptx-export.js`, 18/11/2026, demande d'Antoine : « il faut garder le côté tableau de bord, donc même visuel »).
+  - **Constat** : le PDF (pdfmake) recomposait chaque tuile dans un document qui s'écoule — cartes empilées sur trois A4, KPI en nombres bruts
+    (« 567.0545607638886 »), tableau croisé qui débordait, aucun style ni disposition. Le PPTX avait le même défaut (une diapositive par tuile, tableaux
+    bruts) ET ne se chargeait jamais : **cdnjs n'héberge pas PptxGenJS** (404 pour toute version et toute casse, mesuré depuis le navigateur d'Antoine) alors
+    que le message accusait la connexion. L'adresse de l'automne n'avait jamais été vérifiée (voir l'entrée du 29/09/2026 plus haut : « RIEN ne confirme encore
+    que cdnjs sert PptxGenJS à cette URL » — c'était faux). Les trois exports ont été grisés en urgence (PR #119, « bientôt disponible »), puis PDF et PPTX
+    rouverts ; l'Excel avait été refait par un autre fil (entrée précédente) : les trois exports sont ouverts.
+  - **Décision d'architecture** : on photographie l'écran. `js/snapshot.js` clone la page avec ses styles calculés (ceux qui diffèrent d'un document vierge),
+    remplace chaque canvas ECharts par `getDataURL`, enveloppe le tout dans un SVG `foreignObject` et le dessine dans un canvas. Aucune bibliothèque (ni
+    html2canvas ni dom-to-image : rien à demander à GFS, rien à vendoriser). Styles, dispositions, thème sombre, KPI, tableaux, texte : tout vient de
+    l'écran, sans code par type de tuile. PDF = une page à la largeur d'un A4 paysage, écrite à la main (`js/pdf-writer.js`, ~150 lignes, image RGB
+    compressée par `CompressionStream('deflate')`, JPEG à défaut) ; PPTX = la page, puis une diapositive par tuile.
+  - **Pièges trouvés** (CLAUDE.md §7 n°46) : un SVG `foreignObject` en `blob:` souille le canvas dans Chromium (`data:` d'abord) ; une tuile photographiée avec
+    « Calcul… » ou un KPI à « – » parce que l'export n'attendait pas les calculs DuckDB (`whenSettled` suit désormais les instances ECharts ET les rendus en vol ;
+    la jauge créait son instance sans passer par `trackLoading`) ; l'ombre de survol dans le fichier (`pointer-events: none` pendant la prise).
+  - **Testé** : Node (pages de PDF relues sans outil externe : table des références exacte, pixels décompressés ; placement dans la diapositive ;
+    adresse et SRI de PptxGenJS ; câblage ; chaque `echarts.init` suivi) ; poppler relit le PDF ; la vraie PptxGenJS 4.0.1 (paquet npm, SRI identique) servie à la place de
+    l'adresse jsDelivr par `context.route()` : 11 et 12 diapositives relues par python-pptx et LibreOffice ; 5 styles x 5 dispositions x 3 pages x clair/sombre
+    photographiés sans erreur (écart moyen à l'écran de 3 à 6 sur 765) ; page directe ET `<iframe sandbox="allow-scripts allow-downloads">`, fr et en, vrais clics
+    sur les boutons du menu Exporter.
+  - **Limites assumées** : le PDF est une image (texte non sélectionnable) ; une tuile rognée à l'écran (tableau croisé large) l'est aussi dans le fichier — l'agrandir
+    avant d'exporter ; les défilements internes ne sont pas reproduits ; le PPTX n'a pas d'objets modifiables ; seul Chromium est essayé (Safari, Firefox non) ;
+    `CompressionStream` absent d'un navigateur ancien -> JPEG ; une page de plus de 16 000 px de haut est réduite.
+  - **Pas vérifié** : dans un vrai Grist/GFS, le chargement de PptxGenJS depuis jsDelivr (mesuré seulement depuis le navigateur d'Antoine : même fichier, même
+    empreinte) et le téléchargement des deux fichiers depuis le cadre isolé (GFS déclare `allow-downloads`, lu, pas rejoué). Un serveur d'essai sans en-tête CORS
+    fait échouer les tuiles en mesure DAX dans un cadre isolé, à l'écran comme dans l'export : artefact d'essai.
 
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
@@ -4096,6 +4126,11 @@ Constat (en testant le style global des tuiles) : sur une courbe ou des barres v
       SANS fausser celui de `BI_StressTest` (contrôlé juste avant, dans le même budget de garde) —
       jugé disproportionné pour un mécanisme déjà prouvé correct par le partage de code avec les deux
       autres tables, plutôt qu'une lacune réelle laissée sans réponse.
+
+16. **Exports PDF et PPTX (18/11/2026) jamais joués dans un vrai Grist ni un vrai GFS** : (a) le chargement de PptxGenJS depuis jsDelivr (SRI
+    `sha384-qb0Xhi7L…`) depuis la page d'un widget, avec le proxy de la personne ; (b) le déclenchement du téléchargement du `.pdf` et du `.pptx` depuis le cadre
+    isolé de GFS (`allow-downloads` déclaré par GFS, lu, jamais rejoué), comme pour l'Excel (point 11) ; (c) la photographie dans Firefox et Safari (`foreignObject`,
+    `CompressionStream`). Vérification : ouvrir le tableau de bord, menu Exporter > PDF puis PPTX, ouvrir les fichiers.
 
 ## Prochaines étapes suggérées
 

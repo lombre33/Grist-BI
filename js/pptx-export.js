@@ -1,37 +1,38 @@
 /*
- * Export du dashboard en PPTX via PptxGenJS. Même architecture que l'export PDF (js/pdf-export.js) :
- * chargé DEPUIS UN CDN EXTERNE — dérogation d'Antoine du 2026-09-29 (voir CLAUDE.md/ROADMAP.md),
- * pas vendorisé dans js/vendor/ ; une image capturée par tuile-graphique déjà rendue
- * (GristBI.charts.getInstance(tile.id).getDataURL()) plutôt qu'un recalcul qui buterait sur le mur
- * asynchrone des mesures DAX (voir js/pdf-export.js, même raisonnement) ; les tuiles pivot/KPI
- * réutilisent GristBI.data.tileExportSheet (déjà testé pour l'export Excel) sous forme de tableau
- * natif plutôt qu'une image.
+ * Export du tableau de bord en PPTX via PptxGenJS (refait le 18/11/2026, demande d'Antoine : « même visuel » que le tableau de bord).
  *
- * Contrairement au PDF (un seul document qui s'écoule), une diapositive est un canevas fixe : une
- * diapositive par tuile (titre + image ou tableau pleine page) plutôt qu'une grille façon écran, pour
- * éviter la logique d'ajustement automatique d'une mise en page à plusieurs tuiles par diapositive —
- * périmètre documenté dans HYPOTHESES.md, comme pour le PDF (page actuellement affichée seulement).
+ * Deux défauts réels corrigés :
+ *  1. PptxGenJS n'a JAMAIS pu se charger : l'adresse choisie le 29/09/2026 (cdnjs.cloudflare.com/ajax/libs/pptxgenjs/4.0.1/...) n'existe pas —
+ *     cdnjs n'héberge pas cette bibliothèque (404 pour toute version et toute casse, mesuré le 18/11/2026 depuis le navigateur d'Antoine), et
+ *     le message « vérifiez votre connexion » accusait le réseau. Le même fichier (4.0.1, 460 889 octets, même empreinte SRI) est servi
+ *     par jsDelivr, qui publie tel quel le paquet npm : seule l'adresse change.
+ *  2. Une diapositive par tuile avec des tableaux en nombres bruts (« 567.0545607638886 ») ne ressemblait pas au tableau de bord.
  *
- * À la différence de pdfmake (2 scripts : la bibliothèque + les polices vfs_fonts), PptxGenJS 4.0.1
- * n'a besoin que d'UN SEUL script : `dist/pptxgen.bundle.js` embarque JSZip (dont il dépend) et
- * expose `window.PptxGenJS` ET `window.JSZip` une fois chargé (vérifié en le chargeant dans un vrai
- * navigateur, voir HYPOTHESES.md).
+ * Maintenant : diapositive 1 = la page du tableau de bord telle qu'elle est dessinée (js/snapshot.js : même grille, disposition et style),
+ * puis une diapositive par tuile (la carte telle qu'à l'écran, KPI, table, tableau croisé et texte compris). Des images, pas des objets
+ * PowerPoint modifiables : c'est ce qui garantit le même visuel.
+ *
+ * Périmètre : la page actuellement affichée seulement (comme le PDF) ; PptxGenJS est chargé à la demande depuis un CDN externe (dérogation
+ * d'Antoine du 29/09/2026 : pas de vendorisation), avec une version figée et une empreinte SRI.
+ *
+ * Reste à confirmer dans un vrai Grist : le chargement depuis jsDelivr et le téléchargement du .pptx depuis le cadre isolé de GFS (essayés avec
+ * la vraie bibliothèque servie localement à la place de l'adresse du CDN, dans une page directe et dans un <iframe sandbox>).
  */
 (function (global) {
+  'use strict';
   const GristBI = global.GristBI || (global.GristBI = {});
 
-  // Version/hash calculés en local à partir du paquet npm officiel `pptxgenjs@4.0.1`
-  // (`dist/pptxgen.bundle.js`, voir HYPOTHESES.md pour la méthode) — CONTRAIREMENT à pdfmake
-  // (js/pdf-export.js), aucun widget frère ne charge déjà cette bibliothèque depuis cdnjs en
-  // conditions réelles : cette URL suit la convention connue de cdnjs
-  // (ajax/libs/<nom>/<version>/<fichier>, même nom de fichier que dans le paquet npm) mais n'a
-  // encore jamais été confirmée joignable — à vérifier en priorité par Antoine dans un vrai
-  // navigateur. Recalculer ce hash si la version change :
-  // `curl -s <url> | openssl dgst -sha384 -binary | openssl base64 -A`.
+  // Mesuré le 18/11/2026 depuis le navigateur d'Antoine : jsDelivr et unpkg servent ce fichier avec exactement cette empreinte, calculée
+  // aussi sur le paquet npm officiel `pptxgenjs@4.0.1` (`dist/pptxgen.bundle.js`, qui embarque JSZip et expose `window.PptxGenJS`).
+  // Recalculer l'empreinte si la version change : `curl -s <url> | openssl dgst -sha384 -binary | openssl base64 -A`.
   const PPTX_LIB_URL = {
-    src: 'https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/4.0.1/pptxgen.bundle.js',
+    src: 'https://cdn.jsdelivr.net/npm/pptxgenjs@4.0.1/dist/pptxgen.bundle.js',
     integrity: 'sha384-qb0Xhi7LLYpvW1HCK6oMrmDLSY9sy7vwm6ZlV6KjtrlL9yg30+YN4neTwnmX+Kp8'
   };
+  const FILE_NAME = 'dashboard-bi.pptx';
+  // Marque l'erreur « la bibliothèque n'a pas pu être chargée » (réseau, pare-feu, empreinte SRI qui ne correspond plus) : js/main.js ne l'annonce
+  // comme un problème de connexion que pour elle, et dit simplement « échec » pour toute autre erreur.
+  const LOAD_ERROR_CODE = 'PPTX_LIB_LOAD';
   let pptxLibPromise = null;
 
   function loadScriptOnce(lib) {
@@ -41,74 +42,73 @@
       s.integrity = lib.integrity;
       s.crossOrigin = 'anonymous';
       s.onload = () => resolve();
-      s.onerror = () => reject(new Error('Échec de chargement du script : ' + lib.src));
+      s.onerror = () => { const e = new Error('Échec de chargement du script : ' + lib.src); e.code = LOAD_ERROR_CODE; reject(e); };
       document.head.appendChild(s);
     });
   }
 
   function ensurePptxLibLoaded() {
+    if (typeof global.PptxGenJS === 'function') return Promise.resolve();
     if (!pptxLibPromise) {
       pptxLibPromise = loadScriptOnce(PPTX_LIB_URL).catch((e) => { pptxLibPromise = null; throw e; });
     }
     return pptxLibPromise;
   }
 
-  // Tableau natif PptxGenJS (pivot/KPI, voir GristBI.data.tileExportKind) : réutilise directement
-  // tileExportSheet (déjà testé pour l'export Excel), avec l'en-tête en gras comme seule mise en
-  // forme — pas de fusion de cellules ni de largeurs calculées, laissées à l'ajustement automatique
-  // de PptxGenJS pour ce premier jet.
-  const PPTX_TABLE_MAX_ROWS = 12;
-  function addTableSlide(pptx, tile, state) {
-    // Table plate : une diapositive tient une douzaine de lignes ; le reste est dans l'export Excel.
-    const sheet = GristBI.data.tileExportSheet(tile, state, tile.type === 'table' ? PPTX_TABLE_MAX_ROWS : undefined);
-    const headerRow = sheet.header.map((cell) => ({ text: String(cell == null ? '' : cell), options: { bold: true, fill: { color: 'F0F0F0' } } }));
-    const bodyRows = sheet.rows.map((row) => row.map((cell) => ({ text: String(cell == null ? '' : cell) })));
-    const slide = pptx.addSlide();
-    slide.addText(tile.title || `${tile.aggFn}(${tile.measure})`, { x: 0.4, y: 0.3, w: 9.2, h: 0.5, fontSize: 18, bold: true });
-    slide.addTable([headerRow].concat(bodyRows), { x: 0.4, y: 1.0, w: 9.2, fontSize: 11, autoPage: false });
-    if (sheet.truncated) slide.addText(GristBI.i18n.t('export.table.more', { n: sheet.truncated }), { x: 0.4, y: 5.0, w: 9.2, h: 0.4, fontSize: 10, italic: true });
+  // Diapositive large 16:9 (13,333 x 7,5 pouces), marge de 0,3 pouce.
+  const SLIDE_W = 13.333;
+  const SLIDE_H = 7.5;
+  const MARGIN = 0.3;
+  const CSS_DPI = 96;
+  const MAX_ZOOM = 3;
+
+  // Place une image de `pxWidth` x `pxHeight` px CSS dans la diapositive, centrée : la plus grande possible sans sortir des marges, mais jamais à
+  // plus de trois fois sa taille naturelle (une tuile est photographiée à l'échelle 3 ; au-delà elle serait floue). Rend { x, y, w, h } en pouces.
+  function fitInSlide(pxWidth, pxHeight) {
+    const w = Math.max(1, Number(pxWidth) || 1);
+    const h = Math.max(1, Number(pxHeight) || 1);
+    const k = Math.min((SLIDE_W - MARGIN * 2) / w, (SLIDE_H - MARGIN * 2) / h, MAX_ZOOM / CSS_DPI);
+    const width = w * k;
+    const height = h * k;
+    return { x: (SLIDE_W - width) / 2, y: (SLIDE_H - height) / 2, w: width, h: height };
   }
 
-  // Tuile Texte : une diapositive avec le titre et le texte, sans repères.
-  function addTextSlide(pptx, tile) {
-    const slide = pptx.addSlide();
-    slide.addText(tile.title || '', { x: 0.4, y: 0.3, w: 9.2, h: 0.5, fontSize: 18, bold: true });
-    slide.addText(GristBI.data.plainTextOf(tile.text), { x: 0.7, y: 1.0, w: 8.6, h: 5.0, fontSize: 14, valign: 'top' });
+  // Couleur (RRGGBB) du coin de l'image : le fond de la diapositive la prolonge, sans bande d'une autre teinte autour de l'image.
+  function cornerColor(canvas) {
+    try {
+      const px = canvas.getContext('2d').getImageData(1, 1, 1, 1).data;
+      return [px[0], px[1], px[2]].map((v) => v.toString(16).padStart(2, '0')).join('').toUpperCase();
+    } catch (e) { return 'FFFFFF'; }
   }
 
-  // Image du graphique déjà rendu (voir en-tête de fichier) — même contrat que
-  // GristBI.exportPdf.tileToPdfBlocks : un message explicite plutôt qu'une exception si la tuile n'a
-  // jamais été affichée dans cette session.
-  function addImageSlide(pptx, tile) {
+  function addPictureSlide(pptx, shot, altText) {
     const slide = pptx.addSlide();
-    slide.addText(tile.title || `${tile.aggFn}(${tile.measure})`, { x: 0.4, y: 0.3, w: 9.2, h: 0.5, fontSize: 18, bold: true });
-    const instance = GristBI.charts.getInstance(tile.id);
-    if (!instance || instance.isDisposed()) {
-      slide.addText(GristBI.i18n.t('export.pptx.chartUnavailable'), { x: 0.4, y: 1.0, w: 9.2, h: 0.5, fontSize: 12, italic: true });
-      return;
-    }
-    const dataUrl = instance.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#ffffff' });
-    slide.addImage({ data: dataUrl, x: 0.7, y: 1.0, w: 8.6, h: 5.0, sizing: { type: 'contain', w: 8.6, h: 5.0 } });
+    slide.background = { color: cornerColor(shot.canvas) };
+    const box = fitInSlide(shot.width, shot.height);
+    slide.addImage({ data: shot.canvas.toDataURL('image/png'), x: box.x, y: box.y, w: box.w, h: box.h, altText: altText || '' });
   }
 
-  // Retourne `false` sans rien déclencher si la page courante n'a aucune tuile — même contrat que
-  // GristBI.exportPdf.exportDashboardToPdf / exportDashboardToExcel.
+  // Retourne `false` sans rien déclencher si la page courante n'a aucune tuile — même contrat que exportDashboardToPdf / exportDashboardToExcel.
   async function exportDashboardToPptx(state) {
-    const page = state.pages.find((p) => p.id === state.currentPageId) || state.pages[0];
+    const page = GristBI.snapshot.currentPageOf(state);
     if (!page || !page.tiles.length) return false;
     await ensurePptxLibLoaded();
-    const pptx = new PptxGenJS();
-    const titleSlide = pptx.addSlide();
-    titleSlide.addText(page.name, { x: 0.4, y: 2.3, w: 9.2, h: 1, fontSize: 28, bold: true, align: 'center' });
+    const pageShot = await GristBI.snapshot.capturePage(state, { scale: 2 });
+    const pptx = new global.PptxGenJS();
+    pptx.layout = 'LAYOUT_WIDE';
+    pptx.title = page.name;
+    addPictureSlide(pptx, pageShot, page.name);
     for (const tile of page.tiles) {
-      const kind = GristBI.data.tileExportKind(tile);
-      if (kind === 'table') addTableSlide(pptx, tile, state);
-      else if (kind === 'text') addTextSlide(pptx, tile);
-      else addImageSlide(pptx, tile);
+      // Les graphiques viennent d'être attendus par la photographie de la page : pas de nouvelle attente par tuile.
+      const shot = await GristBI.snapshot.captureTile(tile.id, { scale: MAX_ZOOM, skipSettle: true });
+      if (shot) addPictureSlide(pptx, shot, GristBI.i18n.tileTitle(tile));
     }
-    await pptx.writeFile({ fileName: 'dashboard-bi.pptx' });
+    const blob = await pptx.write({ outputType: 'blob' });
+    GristBI.snapshot.downloadBlob(blob, FILE_NAME);
     return true;
   }
 
-  GristBI.exportPptx = { exportDashboardToPptx };
-})(window);
+  const api = { exportDashboardToPptx, fitInSlide, PPTX_LIB_URL, LOAD_ERROR_CODE };
+  GristBI.exportPptx = api;
+  if (typeof module === 'object' && module.exports) module.exports = api;
+})(typeof window !== 'undefined' ? window : globalThis);

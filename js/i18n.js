@@ -74,7 +74,6 @@
     'bookmarks.exportPdf': { fr: 'Exporter en PDF', en: 'Export to PDF' },
     'bookmarks.exportPptx': { fr: 'Exporter en PPTX', en: 'Export to PPTX' },
     'export.none': { fr: 'Aucune tuile à exporter.', en: 'No tile to export.' },
-    'export.soon': { fr: 'bientôt disponible', en: 'coming soon' },
     'export.failed': { fr: "Échec de l'export Excel — voir la console (F12).", en: 'Excel export failed — see the console (F12).' },
     // Classeur Excel (js/export.js) : une feuille par page, un bloc par tuile (graphique en image + données).
     'export.xlsx.subtitle': { fr: 'Exporté le {date} · {rows} {rows|ligne|lignes} de données', en: 'Exported on {date} · {rows} data {rows|row|rows}' },
@@ -83,15 +82,13 @@
     'export.xlsx.truncated': { fr: '… {n} {n|ligne de plus n’est pas exportée|lignes de plus ne sont pas exportées}', en: '… {n} more {n|row is|rows are} not exported' },
     'export.xlsx.cut': { fr: 'Feuille pleine : les tuiles suivantes de cette page ne sont pas exportées.', en: 'Sheet full: the following tiles of this page are not exported.' },
     'export.xlsx.preparing': { fr: 'Préparation du classeur Excel…', en: 'Preparing the Excel workbook…' },
-    'export.pdf.chartUnavailable': { fr: 'Graphique indisponible pour cette tuile — réaffichez-la avant d\'exporter.', en: 'Chart unavailable for this tile — display it again before exporting.' },
-    'export.pdf.networkError': {
-      fr: "Échec de l'export PDF — pdfmake est chargé depuis cdnjs.cloudflare.com (pas vendorisé dans ce dépôt, voir CLAUDE.md) : vérifiez votre connexion. Détail dans la console (F12).",
-      en: 'PDF export failed — pdfmake is loaded from cdnjs.cloudflare.com (not vendored in this repo, see CLAUDE.md): check your connection. Details in the console (F12).',
-    },
-    'export.pptx.chartUnavailable': { fr: 'Graphique indisponible pour cette tuile — réaffichez-la avant d\'exporter.', en: 'Chart unavailable for this tile — display it again before exporting.' },
+    // PDF et PPTX (js/pdf-export.js, js/pptx-export.js) : la page est photographiée telle qu'elle est dessinée (js/snapshot.js).
+    'export.pdf.failed': { fr: "Échec de l'export PDF — voir la console (F12).", en: 'PDF export failed — see the console (F12).' },
+    'export.header.filters': { fr: 'Filtres actifs', en: 'Active filters' },
+    'export.pptx.failed': { fr: "Échec de l'export PPTX — voir la console (F12).", en: 'PPTX export failed — see the console (F12).' },
     'export.pptx.networkError': {
-      fr: "Échec de l'export PPTX — PptxGenJS est chargé depuis cdnjs.cloudflare.com (pas vendorisé dans ce dépôt, voir CLAUDE.md) : vérifiez votre connexion. Détail dans la console (F12).",
-      en: 'PPTX export failed — PptxGenJS is loaded from cdnjs.cloudflare.com (not vendored in this repo, see CLAUDE.md): check your connection. Details in the console (F12).',
+      fr: "Échec de l'export PPTX — PptxGenJS est chargé à la demande depuis cdn.jsdelivr.net (pas vendorisé dans ce dépôt, voir CLAUDE.md) : vérifiez votre connexion, ou qu'un pare-feu ne bloque pas ce site. Détail dans la console (F12).",
+      en: 'PPTX export failed — PptxGenJS is loaded on demand from cdn.jsdelivr.net (not vendored in this repo, see CLAUDE.md): check your connection, or whether a firewall blocks that site. Details in the console (F12).',
     },
 
     // --- Panneau Réglages (logo/Crédits/licence GPL v3, PR #7 ; langue, remplace le bouton de

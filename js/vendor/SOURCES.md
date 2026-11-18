@@ -24,9 +24,9 @@ charge sans aller les chercher ailleurs (l'`importmap` d'`index.html` y renvoie)
 
 ## Ce qui n'est pas dans cette liste
 
-- `pdfmake` et `PptxGenJS` ne sont pas embarqués : ils sont chargés à la demande depuis `cdnjs.cloudflare.com`, version figée
-  dans l'adresse, avec une empreinte SRI (`js/pdf-export.js`, `js/pptx-export.js`) — dérogation actée par Antoine le 29/09/2026,
-  voir `CLAUDE.md` §8.
+- `PptxGenJS` n'est pas embarqué : il est chargé à la demande depuis `cdn.jsdelivr.net` (`pptxgenjs@4.0.1/dist/pptxgen.bundle.js`), version
+  figée dans l'adresse, avec une empreinte SRI (`js/pptx-export.js`) — dérogation actée par Antoine le 29/09/2026, voir `CLAUDE.md` §8.
+  `pdfmake` n'est plus utilisé depuis le 18/11/2026 : le PDF est écrit par `js/pdf-writer.js`, sans bibliothèque.
 - `d3-cloud` et `pdfjs-dist` passent par GFS (`GFS-ETAT.md`, « Demandes à GFS »).
 
 ## Modifications

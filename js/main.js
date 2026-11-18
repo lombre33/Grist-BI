@@ -386,13 +386,6 @@
   const exportPdfBtn = document.getElementById('export-pdf');
   const exportPptxBtn = document.getElementById('export-pptx');
 
-  // Exports PDF/PPTX provisoirement désactivés (18/11/2026, demande d'Antoine : le PDF empile les cartes au lieu
-  // de garder le visuel du tableau de bord, le PPTX ne charge pas sa bibliothèque dans un vrai Grist). Les boutons du
-  // menu Exporter sont grisés dans index.html (« bientôt disponible ») ; ce drapeau les garde fermés quand une table se
-  // connecte (setTableDependentControlsEnabled) et coupe les écouteurs. Remettre à `true` quand les exports sont refaits.
-  // L'export EXCEL, refait le même jour (une feuille par page, graphiques en images, js/export.js), est rouvert : il ne dépend
-  // plus de ce drapeau.
-  const EXPORTS_AVAILABLE = false;
   const tableSelectInput = document.getElementById('table-select');
   const blendSecondaryTableInput = document.getElementById('blend-secondary-table');
   const blendPrimaryColumnInput = document.getElementById('blend-primary-column');
@@ -1015,7 +1008,6 @@
                        blendSecondaryTableInput, blendPrimaryColumnInput, blendSecondaryColumnInput]) {
       el.disabled = !enabled;
     }
-    if (!EXPORTS_AVAILABLE) for (const el of [exportPdfBtn, exportPptxBtn]) el.disabled = true;
   }
 
   // Mode Lecture / Édition (audit UI/UX du 18/11/2026) : `body[data-mode]` masque en lecture tout ce
@@ -3011,32 +3003,30 @@
     }
   });
 
-  // Seulement la page actuellement affichée (voir js/pdf-export.js), pas toutes les pages comme
-  // l'export Excel — chaque graphique capturé est celui déjà rendu de CETTE page. pdfmake est
-  // chargé depuis un CDN externe (dérogation d'Antoine, voir CLAUDE.md) : un échec réseau doit être
-  // clairement dit à l'utilisateur plutôt que de rester silencieux ou de casser la page.
-  exportPdfBtn.addEventListener('click', async () => {
-    if (!EXPORTS_AVAILABLE) return;
+  // PDF et PPTX : seulement la page actuellement affichée (voir js/pdf-export.js, js/pptx-export.js), pas toutes les pages comme l'export Excel ; la page
+  // est photographiée telle qu'elle est dessinée (js/snapshot.js), ce qui prend une à quelques secondes : le bouton est fermé pendant ce temps (sinon un
+  // second clic lancerait un second export), puis rendu dans l'état que setTableDependentControlsEnabled lui donne.
+  async function runPageExport(btn, run, failureMessage) {
+    if (btn.dataset.busy) return;
+    btn.dataset.busy = '1';
+    btn.disabled = true;
     try {
-      const exported = await GristBI.exportPdf.exportDashboardToPdf(store.getState());
+      const exported = await run(store.getState());
       if (!exported) showNotice(t('export.none'));
     } catch (e) {
-      console.error('[GristBI] échec de l\'export PDF', e);
-      showError(t('export.pdf.networkError'));
+      console.error('[GristBI] échec de l\'export', e);
+      showError(failureMessage(e));
+    } finally {
+      delete btn.dataset.busy;
+      btn.disabled = !(Boolean(currentTableId) && dashboardReady);
     }
-  });
-
-  // Même raisonnement que l'export PDF ci-dessus, pour PptxGenJS (js/pptx-export.js).
-  exportPptxBtn.addEventListener('click', async () => {
-    if (!EXPORTS_AVAILABLE) return;
-    try {
-      const exported = await GristBI.exportPptx.exportDashboardToPptx(store.getState());
-      if (!exported) showNotice(t('export.none'));
-    } catch (e) {
-      console.error('[GristBI] échec de l\'export PPTX', e);
-      showError(t('export.pptx.networkError'));
-    }
-  });
+  }
+  exportPdfBtn.addEventListener('click', () => runPageExport(exportPdfBtn,
+    (state) => GristBI.exportPdf.exportDashboardToPdf(state), () => t('export.pdf.failed')));
+  // PptxGenJS est chargé à la demande (js/pptx-export.js) : seul un échec de CE chargement parle de connexion.
+  exportPptxBtn.addEventListener('click', () => runPageExport(exportPptxBtn,
+    (state) => GristBI.exportPptx.exportDashboardToPptx(state),
+    (e) => t(e && e.code === GristBI.exportPptx.LOAD_ERROR_CODE ? 'export.pptx.networkError' : 'export.pptx.failed')));
 
   addPageBtn.addEventListener('click', async () => {
     const answer = await GristBI.dialogs.prompt({

@@ -6296,29 +6296,21 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     console.log('OK export Excel — une feuille par page, bloc par tuile (titre, image réservée, données), cellules (types, NaN, grands entiers, objets, formats), texte = formule jamais, noms de feuille, bout en bout, photographie des graphiques lue dans les sources');
   }
 
-  // Exports PDF/PPTX provisoirement désactivés (18/11/2026, demande d'Antoine) : boutons GRISÉS (jamais retirés) avec la mention
-  // « bientôt disponible » en fr ET en anglais ; le drapeau de js/main.js les garde fermés quand une table se connecte
-  // (setTableDependentControlsEnabled ré-activait tout) et coupe les deux écouteurs. L'export EXCEL, refait le même jour (une feuille par
-  // page, graphiques en images), est le seul rouvert. À remplacer quand le PDF et le PPTX reviennent.
+  // Les trois exports sont ouverts (18/11/2026) : l'Excel refait par un autre fil (une feuille par page, graphiques en images), le PDF et le PPTX
+  // refaits ici (la page est photographiée). Plus aucun bouton grisé ni drapeau `EXPORTS_AVAILABLE` : ni dans `js/main.js`, ni dans `index.html`.
   {
     const fsE = require('fs');
     const pathE = require('path');
     const indexE = fsE.readFileSync(pathE.join(__dirname, '..', 'index.html'), 'utf8');
     const mainE = fsE.readFileSync(pathE.join(__dirname, '..', 'js', 'main.js'), 'utf8');
-    for (const id of ['export-pdf', 'export-pptx']) {
+    for (const [id, label] of [['export-excel', 'bookmarks.exportExcel'], ['export-pdf', 'bookmarks.exportPdf'], ['export-pptx', 'bookmarks.exportPptx']]) {
       const m = indexE.match(new RegExp('<button id="' + id + '"[^>]*>'));
-      assert.ok(m, id + ' : bouton présent (grisé, jamais retiré)');
-      assert.ok(/\sdisabled\b/.test(m[0]) && /aria-disabled="true"/.test(m[0]), id + ' : désactivé dans index.html');
+      assert.ok(m, id + ' : bouton présent');
+      assert.ok(!/\sdisabled\b/.test(m[0]) && !/aria-disabled/.test(m[0]), id + ' : rouvert, sans mention « bientôt disponible »');
+      assert.ok(m[0].indexOf('data-i18n="' + label + '"') > 0, id + ' : son libellé');
     }
-    const excelBtn = indexE.match(/<button id="export-excel"[^>]*>/);
-    assert.ok(excelBtn && !/\sdisabled\b/.test(excelBtn[0]) && !/aria-disabled/.test(excelBtn[0]), 'export-excel : rouvert, sans mention « bientôt disponible »');
-    assert.ok(/data-i18n="bookmarks\.exportExcel"/.test(excelBtn[0]), 'export-excel : son libellé d\'origine');
-    assert.strictEqual((indexE.match(/data-i18n="export\.soon"/g) || []).length, 2, 'la mention « bientôt disponible » sur les deux boutons restants');
-    assert.strictEqual(i18n.STRINGS['export.soon'].fr, 'bientôt disponible');
-    assert.strictEqual(i18n.STRINGS['export.soon'].en, 'coming soon');
-    assert.ok(/const EXPORTS_AVAILABLE = false;/.test(mainE), 'drapeau EXPORTS_AVAILABLE à false');
-    assert.ok(/if \(!EXPORTS_AVAILABLE\) for \(const el of \[exportPdfBtn, exportPptxBtn\]\) el\.disabled = true;/.test(mainE), 'la connexion d\'une table ne ré-active ni le PDF ni le PPTX');
-    assert.strictEqual((mainE.match(/if \(!EXPORTS_AVAILABLE\) return;/g) || []).length, 2, 'les deux écouteurs de clic restants sont coupés');
+    assert.ok(!/EXPORTS_AVAILABLE/.test(mainE) && !/EXPORTS_AVAILABLE/.test(indexE), 'plus aucun drapeau de désactivation des exports');
+    assert.ok(!/export\.soon/.test(indexE) && !i18n.STRINGS['export.soon'], 'plus de mention « bientôt disponible »');
     // Textes du classeur Excel : fr ET en, variables identiques.
     for (const key of ['export.xlsx.subtitle', 'export.xlsx.filters', 'export.xlsx.noImage', 'export.xlsx.truncated', 'export.xlsx.cut', 'export.xlsx.preparing']) {
       const entry = i18n.STRINGS[key];
@@ -6334,7 +6326,147 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     i18n.setLang('en');
     assert.strictEqual(i18n.t('export.xlsx.filters', { n: 2 }), '2 active filters applied to the figures below');
     i18n.setLang('fr');
-    console.log('OK exports PDF/PPTX désactivés, Excel rouvert — deux boutons grisés avec « bientôt disponible » fr/en, jamais ré-activés par la connexion d\'une table ; textes du classeur fr/en');
+    console.log('OK exports — Excel, PDF et PPTX ouverts, plus de drapeau ni de bouton grisé ; textes du classeur fr/en');
+  }
+
+  // Export PDF refait (18/11/2026, demande d'Antoine : « même visuel » que le tableau de bord) : la page est photographiée telle qu'elle est
+  // dessinée (js/snapshot.js) et écrite en PDF par js/pdf-writer.js — plus de pdfmake, plus aucun appel externe. Le rendu réel (styles,
+  // dispositions, cadre isolé) est joué en navigateur ; ici la logique pure et le câblage.
+  {
+    const fsP = require('fs');
+    const pathP = require('path');
+    const zlibP = require('zlib');
+    const writer = require('../js/pdf-writer.js');
+    const snapshot = require('../js/snapshot.js');
+    const read = (f) => fsP.readFileSync(pathP.join(__dirname, '..', f), 'utf8');
+
+    // Taille de page : toujours la largeur d'un A4 paysage, la hauteur suit l'image (une page du tableau de bord = une page du PDF).
+    assert.deepStrictEqual(writer.pageSizeFor(1600, 500), { width: 842, height: 263.13 });
+    assert.deepStrictEqual(writer.pageSizeFor(800, 800), { width: 842, height: 842 });
+    const tall = writer.pageSizeFor(1000, 100000);
+    assert.strictEqual(tall.height, 14400, 'limite du format PDF');
+    assert.ok(Math.abs(tall.width / tall.height - 1000 / 100000) < 1e-3, 'le rapport est gardé quand la page est ramenée sous la limite');
+    assert.deepStrictEqual(writer.pageSizeFor(0, 0), { width: 842, height: 842 }, 'jamais NaN ni zéro');
+    // Texte du dictionnaire d'informations : UTF-16BE avec marque d'ordre (accents et « & » lisibles).
+    assert.strictEqual(writer.pdfTextString('Équipe'), '<FEFF00C900710075006900700065>');
+    assert.strictEqual(writer.pdfTextString(null), '<FEFF>');
+    // RGBA -> RGB : trois octets par pixel, la transparence disparaît.
+    assert.deepStrictEqual(Array.from(writer.rgbaToRgb(new Uint8ClampedArray([1, 2, 3, 255, 4, 5, 6, 0]))), [1, 2, 3, 4, 5, 6]);
+
+    // Un vrai fichier : 2 pages, image Flate de 3 x 2 pixels, structure relue sans outil externe.
+    const rgb = new Uint8Array([255, 0, 0, 0, 255, 0, 0, 0, 255, 10, 20, 30, 40, 50, 60, 70, 80, 90]);
+    const z = new Uint8Array(zlibP.deflateSync(Buffer.from(rgb)));
+    const bytes = writer.buildPdf([
+      { width: 842, height: 300, image: { width: 3, height: 2, filter: 'FlateDecode', data: z } },
+      { width: 842, height: 500, image: { width: 3, height: 2, filter: 'FlateDecode', data: z } }
+    ], { title: 'Équipe & canaux', creator: 'Grist BI', created: new Date(Date.UTC(2026, 10, 18, 12, 0, 0)) });
+    const text = Buffer.from(bytes).toString('latin1');
+    assert.ok(text.startsWith('%PDF-1.4\n') && text.endsWith('%%EOF\n'));
+    assert.ok(/\/Count 2 /.test(text) && /\/MediaBox \[0 0 842 300\]/.test(text) && /\/MediaBox \[0 0 842 500\]/.test(text));
+    assert.ok(/\/Title <FEFF00C9/.test(text) && /\/CreationDate \(D:20261118120000Z\)/.test(text));
+    // La table de références : chaque entrée pointe exactement sur « N 0 obj », et startxref sur « xref ».
+    const startxref = Number(/startxref\n(\d+)\n%%EOF/.exec(text)[1]);
+    assert.strictEqual(text.slice(startxref, startxref + 4), 'xref');
+    const size = Number(/trailer\n<< \/Size (\d+)/.exec(text)[1]);
+    assert.strictEqual(size, 1 + 3 + 2 * 3, 'catalogue, pages, informations + trois objets par page, + l\'entrée 0');
+    const entries = text.slice(startxref).split('\n').slice(2, 2 + size);
+    assert.strictEqual(entries[0], '0000000000 65535 f ');
+    entries.slice(1).forEach((entry, i) => {
+      assert.strictEqual(entry.length, 19, 'une entrée de table de références fait 20 octets avec son saut de ligne');
+      const offset = Number(entry.slice(0, 10));
+      assert.ok(text.startsWith((i + 1) + ' 0 obj\n', offset), 'objet ' + (i + 1) + ' à son décalage');
+    });
+    // Le flux de l'image est rendu tel quel (longueur déclarée exacte) et se décompresse en les pixels d'origine.
+    const imgAt = text.indexOf('/Subtype /Image');
+    const declared = Number(/\/Length (\d+)/.exec(text.slice(imgAt))[1]);
+    assert.strictEqual(declared, z.length);
+    const start = text.indexOf('stream\n', imgAt) + 7;
+    const inflated = zlibP.inflateSync(Buffer.from(bytes.slice(start, start + declared)));
+    assert.deepStrictEqual(Array.from(inflated), Array.from(rgb));
+    assert.throws(() => writer.buildPdf([], {}), /au moins une page/);
+    // Une image JPEG se déclare DCTDecode, sans autre changement.
+    const jpg = writer.buildPdf([{ width: 842, height: 300, image: { width: 3, height: 2, filter: 'DCTDecode', data: new Uint8Array([0xff, 0xd8, 0xff, 0xd9]) } }], {});
+    assert.ok(/\/Filter \/DCTDecode \/Length 4 /.test(Buffer.from(jpg).toString('latin1')));
+
+    // Photographie : échelle réduite pour qu'une page très haute reste dans les limites d'un canvas, texte XML nettoyé.
+    assert.strictEqual(snapshot.pickScale(1600, 500, 2), 2);
+    assert.ok(snapshot.pickScale(1600, 20000, 2) < 1, 'une page très haute est ramenée sous les limites d\'un canvas');
+    assert.ok(1600 * snapshot.pickScale(1600, 20000, 2) * 20000 * snapshot.pickScale(1600, 20000, 2) <= 30e6 + 1);
+    assert.strictEqual(snapshot.pickScale(0, 0, 0), 2, 'dimensions nulles : jamais NaN');
+    assert.strictEqual(snapshot.cleanXmlText('a\u0000b\u0008c\u000bd\u001fe'), 'abcde', 'caractères interdits en XML retirés');
+    assert.strictEqual(snapshot.cleanXmlText('Équipe\n\t& « 2026 »'), 'Équipe\n\t& « 2026 »', 'accents, retours et tabulations gardés');
+    assert.strictEqual(snapshot.cleanXmlText(null), '');
+    assert.strictEqual(snapshot.cleanXmlText('x\ud800y'), 'x�y', 'demi-couple de substitution remplacé');
+
+    // Câblage : plus aucune trace de pdfmake ni de CDN dans l'export PDF ; les scripts se chargent dans l'ordre.
+    const pdfSource = read('js/pdf-export.js');
+    assert.ok(!/pdfmake|pdfMake|cdnjs|vfs_fonts/.test(pdfSource.replace(/\/\*[\s\S]*?\*\//, '')), 'export PDF sans pdfmake ni CDN');
+    for (const f of ['index.html', 'dev-tests/harness.html']) {
+      const html = read(f);
+      assert.ok(!/pdfmake/i.test(html.replace(/<!--[\s\S]*?-->/g, '')), f + ' : plus de pdfmake');
+      const at = (name) => html.indexOf('js/' + name + '"');
+      assert.ok(at('snapshot.js') > at('charts.js') && at('pdf-writer.js') > at('snapshot.js') && at('pdf-export.js') > at('pdf-writer.js'), f + ' : charts, snapshot, pdf-writer, pdf-export dans l\'ordre');
+      assert.ok(at('snapshot.js') > 0 && at('snapshot.js') < at('main.js'), f + ' : snapshot.js avant main.js');
+    }
+    assert.ok(/whenSettled/.test(read('js/charts.js')) && /GristBI\.charts = \{[^}]*whenSettled/.test(read('js/charts.js')), 'charts.js expose whenSettled (l\'export attend la fin des calculs)');
+    for (const key of ['export.pdf.failed', 'export.header.filters']) {
+      assert.ok(i18n.STRINGS[key] && i18n.STRINGS[key].fr && i18n.STRINGS[key].en, key + ' : fr et en');
+    }
+    assert.ok(!i18n.STRINGS['export.pdf.networkError'], 'ancien message « pdfmake chargé depuis cdnjs » retiré');
+    console.log('OK export PDF refait — page, image Flate, table des références exacte, relecture des pixels, échelle bornée, XML nettoyé, plus de pdfmake');
+  }
+
+  // Export PPTX refait (18/11/2026) : même photographie de la page que le PDF, puis une diapositive par tuile ; la bibliothèque vient de
+  // jsDelivr (cdnjs n'a jamais hébergé PptxGenJS : 404 pour toute version, c'est ce qui échouait dans un vrai Grist). Le fichier réel
+  // (11 diapositives relues par python-pptx et LibreOffice, cadre isolé compris) est joué en navigateur ; ici la logique pure et le câblage.
+  {
+    const fsX = require('fs');
+    const pathX = require('path');
+    const pptxExport = require('../js/pptx-export.js');
+    const read = (f) => fsX.readFileSync(pathX.join(__dirname, '..', f), 'utf8');
+    const stripComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+    // Adresse et empreinte : jsDelivr, version figée, SRI de dist/pptxgen.bundle.js du paquet npm pptxgenjs@4.0.1 (460 889 octets).
+    assert.strictEqual(pptxExport.PPTX_LIB_URL.src, 'https://cdn.jsdelivr.net/npm/pptxgenjs@4.0.1/dist/pptxgen.bundle.js');
+    assert.strictEqual(pptxExport.PPTX_LIB_URL.integrity, 'sha384-qb0Xhi7LLYpvW1HCK6oMrmDLSY9sy7vwm6ZlV6KjtrlL9yg30+YN4neTwnmX+Kp8');
+    assert.ok(!/@latest|pptxgenjs@\d+\//.test(pptxExport.PPTX_LIB_URL.src), 'version complète, jamais @latest ni une version flottante');
+    const pptxSource = stripComments(read('js/pptx-export.js'));
+    assert.ok(!/cdnjs|pdfmake/i.test(pptxSource), 'plus aucune trace de cdnjs dans l\'export PPTX (la bibliothèque n\'y est pas)');
+    assert.ok(/s\.integrity = lib\.integrity;/.test(pptxSource) && /s\.crossOrigin = 'anonymous';/.test(pptxSource), 'empreinte SRI et crossorigin posés sur le script');
+
+    // Placement d'une image dans la diapositive 13,333 x 7,5 pouces (marge 0,3) : centrée, dans les marges, jamais agrandie au-delà de trois fois.
+    const inside = (b) => b.x >= 0.3 - 1e-9 && b.y >= 0.3 - 1e-9 && b.x + b.w <= 13.333 - 0.3 + 1e-9 && b.y + b.h <= 7.5 - 0.3 + 1e-9;
+    const wide = pptxExport.fitInSlide(1600, 800);
+    assert.ok(inside(wide) && Math.abs(wide.x + wide.w / 2 - 13.333 / 2) < 1e-6 && Math.abs(wide.y + wide.h / 2 - 3.75) < 1e-6, 'page large : dans les marges et centrée');
+    assert.ok(Math.abs(wide.w / wide.h - 2) < 1e-9, 'le rapport de l\'image est gardé');
+    const tallBox = pptxExport.fitInSlide(1600, 20000);
+    assert.ok(inside(tallBox) && Math.abs(tallBox.w / tallBox.h - 0.08) < 1e-9, 'page très haute : réduite pour tenir en hauteur');
+    const small = pptxExport.fitInSlide(100, 80);
+    assert.ok(Math.abs(small.w - 100 * 3 / 96) < 1e-9, 'une petite image n\'est pas agrandie au-delà de trois fois sa taille');
+    const zero = pptxExport.fitInSlide(0, 0);
+    assert.ok(Number.isFinite(zero.x) && Number.isFinite(zero.w) && zero.w > 0, 'dimensions nulles : jamais NaN');
+
+    // Erreurs : « connexion » seulement pour un échec de chargement de la bibliothèque, « échec » simple pour toute autre erreur.
+    assert.strictEqual(pptxExport.LOAD_ERROR_CODE, 'PPTX_LIB_LOAD');
+    const mainX = read('js/main.js');
+    assert.ok(/e\.code === GristBI\.exportPptx\.LOAD_ERROR_CODE \? 'export\.pptx\.networkError' : 'export\.pptx\.failed'/.test(mainX), 'main.js distingue l\'échec de chargement de la bibliothèque des autres échecs');
+    for (const key of ['export.pptx.failed', 'export.pptx.networkError']) assert.ok(i18n.STRINGS[key] && i18n.STRINGS[key].fr && i18n.STRINGS[key].en, key + ' : fr et en');
+    assert.ok(/jsdelivr/i.test(i18n.STRINGS['export.pptx.networkError'].fr) && !/cdnjs/.test(i18n.STRINGS['export.pptx.networkError'].fr + i18n.STRINGS['export.pptx.networkError'].en), 'le message nomme le bon site');
+    assert.ok(!i18n.STRINGS['export.pptx.chartUnavailable'], 'ancien message de l\'export tuile par tuile retiré');
+
+    // Attente des calculs avant la photographie : TOUT rendu asynchrone en vol est suivi (carte KPI et tableau croisé n'ont pas d'instance
+    // ECharts), et chaque instance ECharts — jauge comprise, qui ne passe pas par getOrCreateChartInstance — est suivie par trackLoading.
+    const chartsSource = read('js/charts.js');
+    assert.strictEqual((chartsSource.match(/echarts\.init\(/g) || []).length, (chartsSource.match(/trackLoading\(instance\);/g) || []).length, 'chaque echarts.init est suivi par trackLoading');
+    assert.ok(/pendingRenders\.size === 0/.test(chartsSource) && /const pending = drawTile\(tile, state, container\);\s*trackPending\(pending\);\s*return pending;/.test(chartsSource), 'renderTile suit chaque dessin en vol (whenSettled les attend) et rend la même promesse à l\'export Excel');
+    assert.ok(/return renderKpi\(/.test(chartsSource) && /return renderPivot\(/.test(chartsSource) && /return renderGauge\(/.test(chartsSource), 'KPI, pivot et jauge rendent leur promesse');
+
+    for (const f of ['index.html', 'dev-tests/harness.html']) {
+      const html = read(f);
+      assert.ok(html.indexOf('js/pptx-export.js"') > html.indexOf('js/snapshot.js"') && html.indexOf('js/pptx-export.js"') < html.indexOf('js/main.js"'), f + ' : pptx-export.js après snapshot.js, avant main.js');
+      assert.ok(!/<script[^>]+pptxgen/i.test(html), f + ' : PptxGenJS jamais chargé d\'office (seulement à la demande)');
+    }
+    console.log('OK export PPTX refait — jsDelivr + SRI, placement dans la diapositive, erreurs distinguées, attente des calculs (KPI, pivot, jauge)');
   }
 })().then(() => {
   console.log('\nTous les tests data.js/state.js/demo-data.js/combobox.js/duckdb-engine.js/i18n.js sont passés.');
