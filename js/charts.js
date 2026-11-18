@@ -417,7 +417,10 @@
     const th = chartTheme();
     const F = GristBI.format;
     const family = th.font;
-    const bound = (v) => g.fmt.axis(v);
+    // Libellés de l'échelle entière : une échelle d'entiers de moins de 5 chiffres (des années, une colonne entière) n'est
+    // jamais compactée (« 1990, 2000 », pas « 1,99 k, 2 k ») — voir GristBI.format.plainScale.
+    const scale = g.fmt.forScale(g.min, g.max);
+    const bound = scale.axis;
     // Graduations : le plus grand nombre que la place permet, des valeurs rondes (1 M, 2 M, 3 M).
     const base = F.gaugeLayout(g.w, g.h);
     let L = base;
@@ -431,7 +434,7 @@
         ticks = items;
       }
     }
-    let text = g.hasValue ? (g.fmt.format(g.value) || '–') : '–';
+    let text = g.hasValue ? (scale.format(g.value) || '–') : '–';
     let fs = F.fitFont(text, L.valueMaxWidth, L.valueMaxFont, L.valueMinFont, (s, px) => measureText(s, px, 700, family));
     if (fs <= L.valueMinFont && measureText(text, fs, 700, family) > L.valueMaxWidth) {
       text = g.fmt.axis(g.value) || text;
@@ -1601,9 +1604,11 @@
     const fCount = fmtFor({ ...tile, aggFn: 'count' }, tile.measure);
     const palette = paletteColors(tile.palette);
     const mine = state.activeFilters.find((af) => af.column === tile.measure && af.sourceTileId === tile.id);
-    const bound = (v) => (f.axis(v) || String(v));
+    // Les bornes des classes forment UNE échelle : des années (1990 – 2000) ne sont jamais compactées (« 1,99 k – 2 k »).
+    const scale = f.forScale(hist.bins[0].lo, hist.bins[hist.bins.length - 1].hi);
+    const bound = (v) => (scale.axis(v) || String(v));
     const label = (b) => (b.lo === b.hi ? bound(b.lo) : `${bound(b.lo)} – ${bound(b.hi)}`);
-    const fullLabel = (b) => (b.lo === b.hi ? (f.format(b.lo) || String(b.lo)) : `${f.format(b.lo) || b.lo} – ${f.format(b.hi) || b.hi}`);
+    const fullLabel = (b) => (b.lo === b.hi ? (scale.format(b.lo) || String(b.lo)) : `${scale.format(b.lo) || b.lo} – ${scale.format(b.hi) || b.hi}`);
     const option = {
       color: palette,
       grid: { ...numericGrid },
@@ -1619,7 +1624,10 @@
           return `${escapeHtml(fullLabel(b))}<br/>${t('chart.histogram.rows', { n: fCount.format(b.count) || b.count, count: b.count })}${share}`;
         }
       },
-      xAxis: { type: 'category', data: hist.bins.map(label), axisLabel: { interval: 'auto' } },
+      // Largeur de libellé FIXÉE : un libellé de classe (« 1998 – 2003 », « 1 200 – 1 400 ») est deux nombres, bien plus large que
+      // la barre ; sans cela finalizeOption le tronquerait à la largeur d'une barre (« 199… »). Les libellés qui se touchent sont
+      // omis par ECharts (intervalle automatique), chacun s'écrit en entier.
+      xAxis: { type: 'category', data: hist.bins.map(label), axisLabel: { interval: 'auto', width: 84, overflow: 'truncate', ellipsis: '…' } },
       yAxis: { type: 'value', minInterval: 1, axisLabel: { formatter: fCount.axis } },
       series: [{
         type: 'bar',
