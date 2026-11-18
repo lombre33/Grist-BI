@@ -676,6 +676,17 @@ délibérément laissé de côté (contenu généré par `js/data.js`/`js/demo-d
 - [ ] **[NON TESTABLE ICI]** Vrai GFS ⬜ ; vrai Grist ⬜ ; clavier réel/lecteur d'écran ⬜ ; latence de l'aperçu sur un très gros tableau ⬜
 - Pièges de test : (1) un combobox STRICT ne peut pas être vidé (le blur remet la dernière valeur valide) : pour obtenir une erreur de validation, choisir deux valeurs incompatibles (même dimension en lignes/colonnes, jauge Min > Max) plutôt que vider un champ ; (2) attendre `state: 'attached'` sur `#row-count`, masqué sous 1100 px ; (3) toujours rejouer dans un cadre `sandbox="allow-scripts"` : un test en page directe ne voit ni les formulaires morts ni les boîtes natives muettes.
 
+### `js/vendor/echarts/` + `js/charts.js` — montée d'ECharts 5.x -> 6.1.0 (18/11/2026, Playwright contre le harnais servi en HTTP + `dev-tests/grist-stub.js`)
+
+- [x] `echarts.version` lue dans la page = `6.1.0` (la v5 vendorisée répondait 5.5.1 : ne pas s'y fier pour savoir ce qui est chargé) 🌐
+- [x] Les 12 types de tuile (barres, barres horizontales triées, courbe, aire, camembert, anneau %, treemap, nuage de points, cascade, radar, jauge, KPI) rendus sur 576 lignes : aucun message `error`/`warning`/`pageerror` ; capture avant/après de CHAQUE tuile comparée à l'écran (c'est ainsi que le treemap en bandeau, les noms « Widge… » du camembert et le petit radar ont été vus) 🌐
+- [x] ⚠ Attendre `GristBI.store.getState().rows.length > 0` AVANT d'ajouter les tuiles (~10 s) : sinon elles se rendent sans donnée, la comparaison ne prouve rien et le radar vide lève une exception
+- [x] `getInstance(id).getDataURL({ pixelRatio: 2, backgroundColor: '#fff' })` rend un PNG (chemin des exports PDF/PPTX) 🌐
+- [x] Clic souris RÉEL (coordonnées calculées avec `convertToPixel` / `getItemLayout`, valeurs DANS l'échelle réelle de l'axe) : secteur de camembert, rectangle de treemap et point de nuage de points posent le bon filtre croisé ; une barre avec `drillDimensions` descend d'un niveau 🌐
+- [x] Info-bulle au survol d'une barre : « Sud 2 400 » 🌐
+- [x] Radar dont un filtre vide toutes les lignes : aucune exception, instance sans série (avant : `reading 'push'`, v5 comme v6) 🌐
+- [ ] **[NON TESTÉ ICI]** tuiles en mode mesure DuckDB (cumul/YTD/N-1) sous la v6 ; thème sombre ; nuage de mots ; vrai Grist / vrai GFS
+
 ### CSS — classe de bug à systématiquement re-vérifier
 
 - [x] `.field[hidden]` masque réellement l'élément (pas seulement `display:flex` de `.field` qui gagne à spécificité égale) [BUG RÉEL, trouvé 2 fois sur des champs différents] ✅ (règle en place)

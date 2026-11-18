@@ -1,6 +1,6 @@
 # GFS-ETAT : Grist-BI
 
-Mis à jour le 2026-11-18 (consigne 015 lue, `consignes/bi/INDEX.md` à `a16fe10` ou plus récent). La
+Mis à jour le 2026-11-18 (ECharts 6.1.0 noté dans « Changements qui touchent GFS » ; consigne 015 lue, `consignes/bi/INDEX.md` à `a16fe10` ou plus récent). La
 011 n'a pas été lue (remplacée par la 012 avant lecture, consigne explicite d'Antoine).
 
 ## Consignes
@@ -227,6 +227,17 @@ Mis à jour le 2026-11-18 (consigne 015 lue, `consignes/bi/INDEX.md` à `a16fe10
   premier export Excel dans GFS (013) — hors du périmètre de cette consigne, rien à rejouer ici.
 
 ## Changements qui touchent GFS
+- 2026-11-18 · ECharts monté de la 5.6.0 à la **6.1.0** (dernière stable du registre npm, 19/05/2026, même version que
+  celle que GFS donne à l'extension « Graphique » de Publipostage+). **Ce n'est pas une demande à GFS** : ECharts est la
+  bibliothèque dont cette app ne peut pas se passer pour tourner seule, donc elle reste dans le dépôt de l'app
+  (`js/vendor/echarts/`, copie vendorisée, `LICENSE` + `NOTICE` à côté ; le test du manifeste de GFS le dit déjà : « ECharts, DuckDB
+  et le reste sont dans le dépôt de l'app : aucune extension »). Rien à ajouter au catalogue de GFS, aucun changement
+  d'adresse, de politique de sécurité ni d'`importmap`. Ce qui bouge pour GFS : le poids de `echarts.min.js`, chargé d'emblée
+  comme avant, passe de 1 030 855 à 1 121 883 octets (+ 91 Ko), et le texte `NOTICE` d'Apache est ajouté. Fichier du paquet
+  `echarts@6.1.0` (intégrité du registre `sha512-q0yaFPggC9FUdsWH4blavRWFmxdrIodbkoKNAjJudAI6CA9gNPxHtV2RcZNEepZVlk4yvBYkOkbk6HIVpIyHZA==`
+  vérifiée sur le tarball), SHA-256 du fichier posé commençant par b66b25aeb4df. Rendu rejoué avec le vrai `index.html` +
+  `dev-tests/grist-stub.js` (pas un vrai Grist, pas un vrai GFS). Si GFS mesure le poids de l'app, le chiffre à prendre est
+  celui-ci.
 - 2026-11-03 · `e035bcf` · tuile « Nuage de mots » (`js/charts.js`/`js/data.js`/`js/main.js`) :
   Antoine a demandé une lib plus récente/mieux maintenue qu'echarts-wordcloud et choisi **d3-cloud
   2.0.0** à la place (voir la demande mise à jour ci-dessous) — rendu toujours en attente de GFS,
