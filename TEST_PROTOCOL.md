@@ -710,7 +710,7 @@ délibérément laissé de côté (contenu généré par `js/data.js`/`js/demo-d
 - [x] Panneau : champ visible pour barres et courbe, masqué pour les 6 autres types testés ; choix par le vrai combobox ; aperçu vivant avec légende ; erreur « série = dimension » sous le champ ; ajout ; édition (valeur reprise) ; retrait de la série ; libellé anglais 🌐
 - [x] Rendu : 3 séries ECharts, légende `scroll`, trou `null` pour la combinaison absente (barre absente / rupture de la courbe), courbe+aire 🌐
 - [x] Clic souris RÉEL (`getItemLayout` de chaque série) : le filtre porte sur la catégorie, quelle que soit la série cliquée 🌐
-- [x] ⚠ DuckDB RÉEL : table de 6 050 lignes (> `DUCKDB_ROW_THRESHOLD`), moteur chargé (`duckdbEngine.isReady()`), séries/catégories/trous/tri identiques à la référence JS pure (`tileExportSheet`) 🌐 — à rejouer si `computeSeriesGroups` change
+- [x] ⚠ DuckDB RÉEL : table de 6 050 lignes (> `DUCKDB_ROW_THRESHOLD`), moteur chargé (`duckdbEngine.isReady()`), séries/catégories/trous/tri identiques à la référence JS pure (`tileExportSheet`) 🌐 — à rejouer si `computeSeriesGroups` change. ⚠ Le rejouer AVEC UNE DIMENSION ENTIÈRE (une année) ET une dimension texte : DuckDB rend un entier en BigInt (`2022n`), le JS pur en nombre ; un `Map`, un `===` ou un `indexOf` entre les deux ne les confond jamais, sans erreur (bug réel de la PR #65, raté par un test sur une dimension texte seule)
 - [ ] **[NON TESTABLE ICI]** vrai Grist / GFS ; une requête DuckDB par série sur de très gros volumes (coût) ; plus de 8 séries ; thème sombre
 
 ### `js/data.js` + `js/charts.js` + `js/advice.js` + panneau — empilé (18/11/2026, Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`)
