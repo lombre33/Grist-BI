@@ -155,6 +155,7 @@
   let lastRenderedCurrentPageId = null; // idem, côté page active (changer de page se sauvegarde aussi)
   let lastRenderedBookmarks = null; // idem, côté bookmarks
   let lastRenderedBlend = null; // idem, côté jointure de data blending (voir applyBlend/commitBlendFromForm)
+  let lastRenderedDashStyle = 'standard'; // idem, côté style global des tuiles (js/styles.js) — le Standard est ce que le chargement pose par défaut
   // Consigne GFS 009 : levé par switchTable pendant qu'il CHARGE un rapport (pages/bookmarks/blend
   // posés depuis BI_Dashboard_Config ou depuis un départ vierge), jamais pendant un geste réel de la
   // personne — voir render() et switchTable plus bas.
@@ -381,6 +382,7 @@
   const sharedReadOnlyWarning = document.getElementById('shared-readonly-warning');
   const settingsBtn = document.getElementById('open-settings');
   const settingsModal = document.getElementById('settings-modal');
+  const styleOptionsEl = document.getElementById('settings-style-options'); // cartes de choix du style des tuiles, voir renderStyleOptions
   const settingsCloseBtn = document.getElementById('settings-close');
   const commentsModal = document.getElementById('comments-modal');
   const commentsCloseBtn = document.getElementById('comments-close');
@@ -1040,6 +1042,10 @@
   }
 
   function render(state) {
+    // Style global des tuiles (js/styles.js) : posé AVANT les rendus ci-dessous, que js/charts.js lit à chaque tuile
+    // (`GristBI.styles.current()`) — un changement de style repasse donc par ce `render()` complet, sans rien d'autre à rafraîchir.
+    GristBI.styles.apply(state.dashStyle);
+    refreshStyleOptions(state.dashStyle);
     // Balaie tout le document pour les attributs data-i18n-* (voir js/i18n.js) à CHAQUE rendu, pas
     // seulement au changement de langue : les boutons d'en-tête de tuile (buildTileElement) sont mis
     // en cache et jamais reconstruits tant que la tuile existe (voir juste en dessous), donc un
@@ -1161,17 +1167,18 @@
     // chaque édition externe). Changer de page ne modifie QUE currentPageId (référence de `pages`
     // inchangée) mais mérite quand même d'être sauvegardé, comme la page active dans Power BI.
     if (state.pages !== lastRenderedPages || state.currentPageId !== lastRenderedCurrentPageId ||
-        state.bookmarks !== lastRenderedBookmarks || state.blend !== lastRenderedBlend) {
+        state.bookmarks !== lastRenderedBookmarks || state.blend !== lastRenderedBlend || state.dashStyle !== lastRenderedDashStyle) {
       lastRenderedPages = state.pages;
       lastRenderedCurrentPageId = state.currentPageId;
       lastRenderedBookmarks = state.bookmarks;
       lastRenderedBlend = state.blend;
+      lastRenderedDashStyle = state.dashStyle;
       // Consigne GFS 009 : pendant que switchTable CHARGE un rapport (même vierge, "Nouveau" dans
       // GFS), ce bloc s'exécute une fois par store.set* (jusqu'à 3 fois, un par champ chargé) sans
       // qu'aucun geste de la personne n'ait eu lieu — lastRendered* est quand même mis à jour
       // ci-dessus (pour ne pas se retrouver désynchronisé au prochain geste réel), mais aucune
       // sauvegarde n'est planifiée tant que switchTable n'a pas fini de poser son chargement.
-      if (!suppressNextSave) scheduleSave(state.pages, state.currentPageId, state.bookmarks, state.blend);
+      if (!suppressNextSave) scheduleSave(state.pages, state.currentPageId, state.bookmarks, state.blend, state.dashStyle);
     }
     // Tient la liste du panneau Commentaires à jour s'il est ouvert (ajout d'un commentaire,
     // changement de langue...) sans avoir à le refermer/rouvrir — no-op si fermé
@@ -2952,10 +2959,10 @@
   // réel trouvé en testant le sélecteur de table — voir flushPendingSave()/HYPOTHESES.md). Même
   // raison pour `reportId`/`authorLabel` (consigne GFS 007) : capturés ici, jamais relus plus tard
   // dans le setTimeout.
-  function scheduleSave(pages, currentPageId, bookmarks, blend) {
+  function scheduleSave(pages, currentPageId, bookmarks, blend, dashStyle) {
     if (!currentTableId) return;
     clearTimeout(saveTimer);
-    pendingSave = { tableId: currentTableId, reportId: currentReportId, authorLabel: currentReportAuthorLabel(), pages, currentPageId, bookmarks, blend };
+    pendingSave = { tableId: currentTableId, reportId: currentReportId, authorLabel: currentReportAuthorLabel(), pages, currentPageId, bookmarks, blend, dashStyle };
     saveTimer = setTimeout(() => {
       saveTimer = null;
       const p = pendingSave;
@@ -2972,7 +2979,7 @@
   // `'new'` : un changement de table/rapport pendant l'écriture (rare, mais possible) l'aurait déjà
   // remplacé, et l'écraser ici serait une course perdante sur l'état affiché à l'écran.
   function runPendingSave(p) {
-    return GristBI.api.saveConfig(p.tableId, p.pages, p.currentPageId, p.bookmarks, p.blend, p.reportId, p.authorLabel).then((rowId) => {
+    return GristBI.api.saveConfig(p.tableId, p.pages, p.currentPageId, p.bookmarks, p.blend, p.reportId, p.authorLabel, p.dashStyle).then((rowId) => {
       if (p.reportId === 'new' && currentReportId === 'new') currentReportId = rowId;
     }).catch((e) => {
       console.error('[GristBI] échec de sauvegarde de la config', e);
@@ -3095,6 +3102,7 @@
         store.setBookmarks(saved.bookmarks);
         currentBlend = saved.blend;
         store.setBlend(currentBlend);
+        store.setDashStyle(saved.style); // absent d'une configuration d'avant ce réglage -> Standard
       } finally {
         suppressNextSave = false;
       }
@@ -3500,6 +3508,63 @@
   // vérité tant que ce widget est hébergé.
   GristBI.i18n.onChange((lang) => { if (gfsLink && gfsLink.hosted) gfsLink.storageSet('gristbi_lang', lang); });
   refreshLangRadios();
+
+  // Style global des tuiles (js/styles.js, css/dash-styles.css) : une carte par style dans le menu Réglages, construites d'après
+  // le registre pour qu'un style ajouté y apparaisse sans toucher au HTML. Le texte vient de `data-i18n` (résolu par
+  // `applyTranslations()` à chaque rendu, donc il suit un changement de langue) ; la pastille est un aperçu fait des MÊMES jetons CSS
+  // que les tuiles (`.style-swatch[data-dash-style]`), jamais une image. Choisir un style passe par le store : `render()` pose le
+  // style, redessine toutes les tuiles et planifie la sauvegarde dans la configuration du tableau de bord.
+  function renderStyleOptions() {
+    if (!styleOptionsEl) return;
+    styleOptionsEl.textContent = '';
+    GristBI.styles.STYLE_IDS.forEach((id) => {
+      const style = GristBI.styles.STYLES[id];
+      const label = document.createElement('label');
+      label.className = 'style-option';
+      label.dataset.styleId = id;
+      const input = document.createElement('input');
+      input.type = 'radio';
+      input.name = 'settings-style';
+      input.value = id;
+      input.addEventListener('change', () => { if (input.checked) store.setDashStyle(id); });
+      const swatch = document.createElement('span');
+      swatch.className = 'style-swatch';
+      swatch.setAttribute('data-dash-style', id);
+      swatch.setAttribute('aria-hidden', 'true');
+      const card = document.createElement('span');
+      card.className = 'sw-card';
+      const title = document.createElement('span');
+      title.className = 'sw-title';
+      const bars = document.createElement('span');
+      bars.className = 'sw-bars';
+      for (let i = 0; i < 4; i++) bars.appendChild(document.createElement('i'));
+      card.append(title, bars);
+      swatch.appendChild(card);
+      const name = document.createElement('span');
+      name.className = 'style-option-name';
+      name.setAttribute('data-i18n', style.nameKey);
+      name.textContent = t(style.nameKey);
+      const desc = document.createElement('span');
+      desc.className = 'style-option-desc';
+      desc.setAttribute('data-i18n', style.descKey);
+      desc.textContent = t(style.descKey);
+      label.append(input, swatch, name, desc);
+      styleOptionsEl.appendChild(label);
+    });
+    refreshStyleOptions(store.getState().dashStyle);
+  }
+  // Coche la carte du style en vigueur (un id inconnu de ce widget s'affiche, et se coche, en Standard).
+  function refreshStyleOptions(dashStyle) {
+    if (!styleOptionsEl) return;
+    const current = GristBI.styles.normalizeStyleId(dashStyle);
+    styleOptionsEl.querySelectorAll('.style-option').forEach((label) => {
+      const selected = label.dataset.styleId === current;
+      label.classList.toggle('is-selected', selected);
+      const input = label.querySelector('input');
+      if (input && input.checked !== selected) input.checked = selected;
+    });
+  }
+  renderStyleOptions();
 
   bootstrap();
 })();

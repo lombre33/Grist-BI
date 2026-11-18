@@ -956,6 +956,16 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 - [x] 6 000 lignes (DuckDB) dans un cadre isolé : mêmes réglages, aucune erreur 🌐
 - [ ] Rendu dans un vrai Grist / un vrai GFS ⬜ **[NON TESTABLE ICI]**
 
+### `js/styles.js` + `css/dash-styles.css` + `js/state.js` + `js/grist-api.js` + `js/main.js` — style global des tuiles (18/11/2026 ; Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`)
+- [x] ✅ Registre : cinq ids, clés `style.<id>.name/desc` présentes en fr ET en anglais ; id inconnu, vide, non chaîne ou clé de prototype (`constructor`, `__proto__`) -> Standard ; `configValue` n'écrit rien pour Standard
+- [x] ✅ Passe ECharts : Standard rend le MÊME objet, rien de touché ; barres (rayon, pilule horizontale, valeurs au bout avec le formateur d'axe de la tuile, jamais au-delà de 14 barres, jamais avec plusieurs séries/empilé/combo/histogramme) ; courbes (lissage, repères gardés, aire non empilée seulement) ; parts (couleur de la carte, jamais du blanc en dur) ; palette de la tuile jamais remplacée ; options vides ou sans axe sans erreur
+- [x] ✅ Couleurs : lecture `#rgb`/`#rrggbb`/`rgb()`, `var()` gardé tel quel, teinte douce lisible sur carte sombre pour 4 couleurs de départ dont un bleu marine
+- [x] ✅ CSS : pour chaque style, tous les jetons de couleur en clair ET en sombre (un jeton oublié en sombre resterait clair), textes >= 4,5:1 sur les 3 fonds, jetons de `factory` identiques à `kit/css/tokens.css`, pastille Standard identique à `css/style.css`, aucune règle sur la page pour Standard, aucune hauteur de tuile ni `min-height`
+- [x] ✅ Store/configuration : `setDashStyle` (valeur identique : aucune notification donc aucune sauvegarde), valeurs mal formées -> Standard, id inconnu bien formé conservé ; aller-retour par le vrai `grist-api.js` ; anciens formats lus en Standard ; style hostile d'une ligne éditée à la main -> Standard
+- [x] 🌐 Cinq styles x clair/sombre sur les types de tuile (barres, horizontales, courbe, aire, camembert, anneau, KPI, jauge, treemap, entonnoir, radar, table), tuile agrandie ; menu Réglages (cartes, `aria-checked`, rien en Lecture) ; persistance après rechargement avec la ligne `BI_Dashboard_Config` préremplie ; changement de style = rendu des graphiques ET sauvegarde, dans un cadre `sandbox="allow-scripts"`
+- [ ] ⬜ Jamais rejoué : interaction avec une VRAIE ambiance GFS, exports PDF/PPTX avec le CDN, rendu dans un vrai Grist
+- **Piège de test** : le mode Édition (qui montre le réglage) n'est posé qu'après le chargement de la configuration (~9 s, garde `tableExistsConfirmed`) ; un test qui bascule trop tôt voit le réglage disparaître. Attendre `document.body.dataset.mode === 'edit'`.
+
 ### CSS — classe de bug à systématiquement re-vérifier
 
 - [x] `.field[hidden]` masque réellement l'élément (pas seulement `display:flex` de `.field` qui gagne à spécificité égale) [BUG RÉEL, trouvé 2 fois sur des champs différents] ✅ (règle en place)
