@@ -484,6 +484,53 @@
     return tile.type === 'bar' && !(tile.measureMode && tile.measureMode !== 'brut');
   }
 
+  // --- Bulles : le nuage de points + une 3e mesure (taille) et une colonne de couleur (`type: 'scatter'`) ---------------------
+  // Un nuage de points a déjà un point par valeur de la dimension (X = `measure`, Y = `measureY`, même agrégat `aggFn`). Deux
+  // options en font un graphique à bulles : `tile.measureSize` (+ `tile.aggFnSize`, écrit seulement s'il diffère de `aggFn`) =
+  // l'AIRE de la bulle ; `tile.seriesColumn` = une couleur (et une entrée de légende) par valeur de cette colonne. Les deux sont
+  // indépendantes. Sans elles, la tuile reste EXACTEMENT le nuage de points d'avant.
+  function isBubbleTile(tile) { return !!tile && tile.type === 'scatter' && !!tile.measureSize; }
+  function isColorSplitTile(tile) { return !!tile && tile.type === 'scatter' && !!tile.seriesColumn; }
+
+  // Points d'un nuage de points ou de bulles : `[{dimension, x, y, size}]`, un par groupe de `groupsX`. Les deux autres mesures sont
+  // alignées PAR NOM (`String`, jamais par position ni par clé brute : DuckDB rend une dimension entière en BigInt, le JS en nombre).
+  // Une mesure sans valeur pour ce groupe vaut `null`, jamais 0 (un trou n'est pas un zéro) ; `size` reste `undefined` sans mesure de
+  // taille. Un point sans X ou sans Y ne peut pas se placer : il est écarté (`skipped` les compte).
+  function bubblePoints(groupsX, groupsY, groupsSize) {
+    const keyOf = (v) => (v === null || v === undefined ? '\u0000' : String(v));
+    const byName = (groups) => new Map((groups || []).map((d) => [keyOf(d.dimension), d.value]));
+    const yBy = byName(groupsY);
+    const sizeBy = groupsSize ? byName(groupsSize) : null;
+    const finite = (v) => (typeof v === 'bigint' ? Number(v) : v);
+    const points = [];
+    let skipped = 0;
+    (groupsX || []).forEach((d) => {
+      const x = finite(d.value);
+      const yRaw = yBy.has(keyOf(d.dimension)) ? yBy.get(keyOf(d.dimension)) : null;
+      const y = finite(yRaw);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) { skipped++; return; }
+      const point = { dimension: d.dimension, x, y };
+      if (sizeBy) {
+        const raw = sizeBy.has(keyOf(d.dimension)) ? finite(sizeBy.get(keyOf(d.dimension))) : null;
+        point.size = Number.isFinite(raw) ? raw : null;
+      }
+      points.push(point);
+    });
+    return { points, skipped };
+  }
+
+  // Diamètres en pixels pour des valeurs de taille : l'AIRE est proportionnelle à la valeur (diamètre ~ racine carrée, jamais
+  // proportionnel au diamètre qui exagérerait les écarts), la plus grande valeur prenant `maxDiameter`, avec un plancher
+  // `minDiameter` pour qu'une petite bulle reste visible. Une taille nulle, négative ou absente n'a pas d'aire : `null` (pas de
+  // bulle) plutôt qu'un petit disque qui affirmerait « un peu ». `bigint` accepté. L'échelle est partagée par TOUTES les séries.
+  function bubbleDiameters(sizes, maxDiameter, minDiameter) {
+    const list = (sizes || []).map((v) => { const n = typeof v === 'bigint' ? Number(v) : v; return Number.isFinite(n) && n > 0 ? n : null; });
+    const top = list.reduce((m, v) => (v !== null && v > m ? v : m), 0);
+    const maxD = Number.isFinite(maxDiameter) && maxDiameter > 0 ? maxDiameter : 40;
+    const minD = Math.min(maxD, Number.isFinite(minDiameter) && minDiameter >= 0 ? minDiameter : 6);
+    return list.map((v) => (v === null || !(top > 0) ? null : Math.max(minD, maxD * Math.sqrt(v / top))));
+  }
+
   // --- Combo barres + courbe (`type: 'combo'`, double axe) ---------------------------------------
   // Deux lectures d'une même catégorie : des barres (axe de gauche, `measure`/`aggFn`) et une courbe (axe de
   // droite). Deux modes :
@@ -1276,13 +1323,26 @@
     const drillPath = (state.drillIns && state.drillIns[tile.id]) || [];
     const dimension = currentDimension(tile, drillPath);
     if (tile.type === 'scatter') {
-      const aggX = groupByAggregate(rows, dimension, tile.measure, tile.aggFn);
-      const yByDimension = new Map(groupByAggregate(rows, dimension, tile.measureY, tile.aggFn).map((d) => [d.dimension, d.value]));
-      return {
-        name: title,
-        header: [dimension, tile.measure, tile.measureY],
-        rows: aggX.map((d) => [d.dimension, d.value, yByDimension.get(d.dimension)])
+      // Bulles : une colonne de plus pour la taille ; couleur = une colonne « série » et un jeu de points par valeur (mêmes agrégats que l'écran).
+      const sizeAgg = tile.aggFnSize || tile.aggFn;
+      const header = [dimension].concat(isColorSplitTile(tile) ? [tile.seriesColumn] : [], [tile.measure, tile.measureY], isBubbleTile(tile) ? [tile.measureSize] : []);
+      const pointsOf = (list) => {
+        const x = groupByAggregate(list, dimension, tile.measure, tile.aggFn);
+        const y = groupByAggregate(list, dimension, tile.measureY, tile.aggFn);
+        const size = isBubbleTile(tile) ? groupByAggregate(list, dimension, tile.measureSize, sizeAgg) : null;
+        const yBy = new Map(y.map((d) => [String(d.dimension), d.value]));
+        const sizeBy = size ? new Map(size.map((d) => [String(d.dimension), d.value])) : null;
+        return x.map((d) => ({ d, y: yBy.get(String(d.dimension)), size: sizeBy ? sizeBy.get(String(d.dimension)) : undefined }));
       };
+      const exportRows = [];
+      if (isColorSplitTile(tile)) {
+        splitBySeries(rows, tile.seriesColumn, '').forEach((sr) => pointsOf(sr.rows).forEach((p) => {
+          exportRows.push([p.d.dimension, sr.name, p.d.value, p.y].concat(isBubbleTile(tile) ? [p.size] : []));
+        }));
+      } else {
+        pointsOf(rows).forEach((p) => exportRows.push([p.d.dimension, p.d.value, p.y].concat(isBubbleTile(tile) ? [p.size] : [])));
+      }
+      return { name: title, header, rows: exportRows };
     }
     // Radar "dimension" (classique) + comparaison active : même principe que ci-dessus, mais les
     // axes viennent du groupement par dimension plutôt que de colonnes choisies. `groupAgg` sert
@@ -1588,7 +1648,7 @@
     importMapHas, tableToRows, epochSecondsToIsoDate, applyFilters, matchesFilter, sameValue, parseDateValue,
     relativeDateRange, RELATIVE_DATE_PRESETS, groupByAggregate, aggregateSingle, wordFrequency, pivotTable,
     distinctColumnValues, computeTrend, trendFromGroups, periodLabel, measureSeriesForTile,
-    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, comboModeOf, paretoSeries, comboSeries, niceStep, histogramBins, histogramFilter, histogramBinIsActive, HISTOGRAM_MAX_BINS, boxStatsByGroup, quantileSorted, BOX_MAX_OUTLIERS, BOX_MIN_RELIABLE, BOX_MAX_GROUPS, sankeyFlows, topFlows, SANKEY_MAX_NODES, SANKEY_MAX_LINKS, filterSelects, LINE_SHAPES, lineShapeOf, supportsValueLabels, isStackedPercentTile, shareOfTotal, stackShares, REF_LINE_KINDS, supportsRefLine, refLineKind, refLineValue, cellFilterToggles, HEAT_RAMPS, heatStops, heatColor, heatTextColor, heatRange, heatCellColors, isStackedTile, splitBySeries, assembleSeries, PALETTES, PALETTE_KEYS, paletteColors, supportsPalette, supportsNumberFormat, NUMBER_FORMAT_TILE_TYPES, escapeHtml,
+    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, isBubbleTile, isColorSplitTile, bubblePoints, bubbleDiameters, comboModeOf, paretoSeries, comboSeries, niceStep, histogramBins, histogramFilter, histogramBinIsActive, HISTOGRAM_MAX_BINS, boxStatsByGroup, quantileSorted, BOX_MAX_OUTLIERS, BOX_MIN_RELIABLE, BOX_MAX_GROUPS, sankeyFlows, topFlows, SANKEY_MAX_NODES, SANKEY_MAX_LINKS, filterSelects, LINE_SHAPES, lineShapeOf, supportsValueLabels, isStackedPercentTile, shareOfTotal, stackShares, REF_LINE_KINDS, supportsRefLine, refLineKind, refLineValue, cellFilterToggles, HEAT_RAMPS, heatStops, heatColor, heatTextColor, heatRange, heatCellColors, isStackedTile, splitBySeries, assembleSeries, PALETTES, PALETTE_KEYS, paletteColors, supportsPalette, supportsNumberFormat, NUMBER_FORMAT_TILE_TYPES, escapeHtml,
     tileDrillLevels, currentDimension, rowsForTile, tileExportSheet, tileExportKind, renderTextHtml, plainTextOf, TEXT_TILE_MAX,
     DEFAULT_GOOD_PCT, DEFAULT_WARN_PCT, targetProgress, progressRows, sparklineValues, sparklineGeometry,
     TABLE_TILE_MAX_ROWS, TABLE_EXPORT_MAX_ROWS, tableColumnsOf, cellText, compareCells, sortRowsBy, moveInOrder, nextSortDir, tableSheet,

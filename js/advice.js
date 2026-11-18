@@ -896,6 +896,21 @@
       if (!timeLike) return warn('advice.line.notTime', { dimension: tile.dimension });
       if (tile.sortMode === 'value-desc' || tile.sortMode === 'value-asc') return warn('advice.line.valueSort');
     }
+    if (type === 'scatter' && hasDimension) {
+      // Bulles : la colonne de couleur ne peut pas être celle des points ; au-delà du nombre de couleurs de la palette elles se
+      // répètent ; une taille nulle ou négative n'a pas d'aire (la bulle n'est pas dessinée).
+      if (tile.seriesColumn) {
+        if (tile.seriesColumn === tile.dimension) return warn('advice.bubble.sameAsDimension');
+        const colors = new Set(rows.map((r) => r[tile.seriesColumn])).size;
+        const cap = Math.min(SERIES_MAX, data.paletteColors(tile.palette).length);
+        if (colors > cap) return warn('advice.bubble.tooManyColors', { n: colors, max: cap });
+      }
+      if (tile.measureSize) {
+        const sizes = data.groupByAggregate(rows, tile.dimension, tile.measureSize, tile.aggFnSize || tile.aggFn || 'sum');
+        const flat = sizes.filter((g) => { const v = typeof g.value === 'bigint' ? Number(g.value) : g.value; return !(Number.isFinite(v) && v > 0); }).length;
+        if (flat) return warn('advice.bubble.sizeSign', { n: flat });
+      }
+    }
     if (data.isSeriesTile(tile)) {
       if (tile.seriesColumn === tile.dimension) return warn('advice.series.sameAsDimension');
       const seriesCount = new Set(rows.map((r) => r[tile.seriesColumn])).size;

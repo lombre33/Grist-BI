@@ -511,6 +511,23 @@
           <option value="max" data-i18n="tileForm.agg.max">Max</option>
         </select>
       </div>
+      <div class="field" id="tile-measure-size-field" hidden>
+        <label for="tile-measure-size" data-i18n="tileForm.measureSize.label">Taille des bulles (facultatif)</label>
+        <div class="combobox">
+          <input type="text" id="tile-measure-size" class="combobox-input" />
+          <ul class="combobox-list" hidden></ul>
+        </div>
+      </div>
+      <div class="field" id="tile-agg-size-field" hidden>
+        <label for="tile-agg-size" data-i18n="tileForm.aggSize.label">Agrégat de la taille</label>
+        <select id="tile-agg-size">
+          <option value="sum" data-i18n="tileForm.agg.sum">Somme</option>
+          <option value="avg" data-i18n="tileForm.agg.avg">Moyenne</option>
+          <option value="count" data-i18n="tileForm.agg.count">Comptage</option>
+          <option value="min" data-i18n="tileForm.agg.min">Min</option>
+          <option value="max" data-i18n="tileForm.agg.max">Max</option>
+        </select>
+      </div>
       <div class="field" id="tile-bins-field" hidden>
         <label for="tile-bins" data-i18n="tileForm.bins.label">Nombre de classes</label>
         <input type="number" id="tile-bins" min="2" max="60" step="1" data-i18n-placeholder="tileForm.bins.placeholder" placeholder="Automatique" />
@@ -626,7 +643,7 @@
               </label>
             </div>
             <div class="field" id="tile-series-field" hidden>
-              <label for="tile-series" data-i18n="tileForm.series.label">Séries (une par valeur)</label>
+              <label for="tile-series" id="tile-series-label" data-i18n="tileForm.series.label">Séries (une par valeur)</label>
               <div class="combobox">
                 <input type="text" id="tile-series" class="combobox-input" />
                 <ul class="combobox-list" hidden></ul>

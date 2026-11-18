@@ -3498,6 +3498,25 @@ Constat (en testant le style global des tuiles) : sur une courbe ou des barres v
 
 **Contrepartie assumée** : la zone de tracé perd 45 à 60 px de large ; dans une tuile de 270 px avec 3-4 catégories, un nom long est tronqué (« Bouti… », « Ou… ») alors qu'il tenait avant. À 340 px et plus, tout tient. **Vérifié** : Node (`refLabelLayout` sur 5 largeurs x 5 libellés : marge <= 22 %, texte contenu, taille, troncature) ; rendu réel dans `index.html` + faux Grist, tuiles de 270, 300 et 350 px, clair et sombre, Standard/Fluide/Classique/Éditorial. **Non vérifié** : un vrai Grist.
 
+### Tuiles usuelles des outils BI — lot 3, bulles (18/11/2026)
+
+- **Ce qui est livré** (PR 10 du plan, §5.5 de `etudes/tuiles-usuelles-dashboard-2026-11-18.md`) : le nuage de points devient aussi un graphique à bulles. Deux options facultatives, indépendantes : « Taille des bulles »
+  (une 3e mesure, avec son propre agrégat : le prix est une moyenne, le chiffre d'affaires une somme) et « Couleur » (la colonne « Séries » du formulaire, une couleur et une entrée de légende par valeur). Sans
+  elles, la tuile est exactement le nuage de points d'avant (même option ECharts, même export). Clic sur une bulle = filtre d'égalité sur la dimension (ou drill-down, comme avant).
+- **Choix** : l'aire de la bulle suit la valeur (diamètre ~ racine carrée), échelle commune à toutes les couleurs, diamètre maximal = 18 % de la plus petite côté de la tuile (18 à 56 px) ; une taille nulle ou négative n'est
+  pas dessinée (conseil `advice.bubble.sizeSign`). La couleur se calcule PAR couleur : si une même valeur de la dimension figure dans deux couleurs, elle donne deux bulles (une par couleur), pas une couleur arbitraire
+  (« la première » ou « la plus fréquente »). Une colonne de couleur qui dépend de la dimension (produit -> gamme) donne donc exactement la maquette de l'étude. Réutilise `tile.seriesColumn` mais PAS `isSeriesTile`
+  (voir piège n°37). Calcul en JS ou DuckDB (au-delà de 5 000 lignes), comme le nuage de points.
+- **Pas fait, à décider** : nuage de points LIGNE PAR LIGNE (R6 de l'étude DRANE du 18/11, toujours ouvert : aujourd'hui une bulle = une valeur de la dimension, agrégée), légende de taille (aujourd'hui seulement l'infobulle),
+  taille minimale réglable, couleur par une mesure (dégradé), étiquettes de nom sur les bulles, axes qui ne partent pas de zéro (le comportement d'origine du nuage de points est conservé : les deux axes incluent 0).
+- **Conseils** : colonne de couleur = colonne des points, plus de couleurs que la palette n'en a (8 en Standard), tailles nulles ou négatives écartées.
+- **Testé** : Node (bloc « bulles » : diamètres à aire proportionnelle, plancher, tailles sans aire, `BigInt`, alignement par nom, mesure absente, point sans X ou Y, export simple / taille / couleur, conseils, i18n, câblage) ;
+  Playwright contre le vrai `index.html` + `grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`, 480 et 6 000 lignes (formulaire : champ de taille, agrégat de la taille seulement quand une taille est choisie,
+  libellé « Couleur », tuile enregistrée avec ses 3 mesures et la couleur ; option ECharts = calcul pur sur chaque couleur, **aire ~ taille**, diamètre maximal attendu ; **infobulle survolée** (texte, taille nommée, aucune
+  injection par un nom de valeur) ; **clic réel de souris sur une bulle libre** = filtre, autres bulles à 0,3, 2e clic = filtre retiré ; agrandissement = bulle maximale plus grosse ; filtre d'une autre tuile = tailles
+  recalculées ; feuille Excel ; taille négative = bulle absente + conseil ; nuage de points simple inchangé ; nuage de points -> barres -> bulles sans reliquat ; aucune erreur console). **Pas testé dans un vrai Grist ni un
+  vrai GFS.**
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée
