@@ -47,6 +47,8 @@
   const RADAR_MAX_AXES = 8;
   const BAR_MAX_VERTICAL = 12;
   const FUNNEL_MAX_STAGES = 10;
+  // Autant de séries que de couleurs de la palette du tableau de bord (js/charts.js:CATEGORICAL_PALETTE).
+  const SERIES_MAX = 8;
   const LONG_LABEL = 14;
 
   // Même liste que js/data.js (GRIST_TECHNICAL_COLUMNS) : `manualSort` n'est jamais une donnée.
@@ -777,6 +779,11 @@
     if (type === 'line' && hasDimension) {
       if (!timeLike) return warn('advice.line.notTime', { dimension: tile.dimension });
       if (tile.sortMode === 'value-desc' || tile.sortMode === 'value-asc') return warn('advice.line.valueSort');
+    }
+    if (data.isSeriesTile(tile)) {
+      if (tile.seriesColumn === tile.dimension) return warn('advice.series.sameAsDimension');
+      const seriesCount = new Set(rows.map((r) => r[tile.seriesColumn])).size;
+      if (seriesCount > SERIES_MAX) return warn('advice.series.tooMany', { n: seriesCount });
     }
     if (type === 'radar') {
       const axes = tile.radarAxisMode === 'columns' ? (tile.radarAxes || []).length : n;

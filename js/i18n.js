@@ -330,6 +330,7 @@
     'tileForm.error.dimensionRequired': { fr: 'Choisissez la colonne de regroupement.', en: 'Choose the column to group by.' },
     'tileForm.error.measureYRequired': { fr: "Choisissez la colonne de l'axe Y.", en: 'Choose the Y-axis column.' },
     'tileForm.error.columnDimensionRequired': { fr: 'Choisissez la colonne qui forme les colonnes du tableau.', en: "Choose the column that forms the table's columns." },
+    'tileForm.error.seriesSameAsDimension': { fr: 'Choisissez une colonne différente de la dimension : une série par valeur de cette colonne.', en: 'Choose a column other than the dimension: one series per value of this column.' },
     'tileForm.error.radarAxisRequired': { fr: 'Ajoutez au moins un axe.', en: 'Add at least one axis.' },
 
     // --- État vide ---
@@ -389,6 +390,7 @@
     // --- Titres de tuile composés automatiquement (js/main.js:autoTileTitle ; la tuile garde aussi
     // son `title` en clair, voir i18n.js:tileTitle). ---
     'tileTitle.measureByDimension': { fr: '{measure} par {dimension}', en: '{measure} by {dimension}' },
+    'tileTitle.measureByDimensionSeries': { fr: '{measure} par {dimension} et {series}', en: '{measure} by {dimension} and {series}' },
     'tileTitle.pivot': { fr: '{measure} par {dimension} × {columnDimension}', en: '{measure} by {dimension} × {columnDimension}' },
     'tileTitle.radarColumns': { fr: 'Radar : {axes}', en: 'Radar: {axes}' },
     'tileTitle.wordCloud': { fr: 'Nuage de mots : {dimension}', en: 'Word cloud: {dimension}' },
@@ -448,6 +450,8 @@
     'advice.pie.tooManySlices': { fr: '{n} parts : au-delà de 7, un camembert devient difficile à lire. Passez en barres triées ou regroupez les petites parts.', en: '{n} slices: beyond 7, a pie chart is hard to read. Switch to sorted bars or group the small slices.' },
     'advice.funnel.negative': { fr: 'Un entonnoir ne peut pas représenter des valeurs négatives : utilisez des barres.', en: 'A funnel can’t show negative values: use bars instead.' },
     'advice.funnel.tooManyStages': { fr: '{n} étapes : au-delà de 10, un entonnoir devient illisible. Regroupez les étapes ou passez en barres horizontales.', en: '{n} stages: beyond 10, a funnel becomes hard to read. Group the stages or switch to horizontal bars.' },
+    'advice.series.tooMany': { fr: '{n} séries : au-delà de 8, les couleurs se répètent et la légende devient illisible. Filtrez ou choisissez une colonne à moins de valeurs.', en: '{n} series: beyond 8, colours repeat and the legend becomes unreadable. Filter, or choose a column with fewer values.' },
+    'advice.series.sameAsDimension': { fr: 'La colonne « Séries » est la même que la dimension : chaque barre n’aurait qu’une série. Choisissez une autre colonne.', en: 'The “Series” column is the same as the dimension: each bar would have a single series. Choose another column.' },
     'advice.treemap.negative': { fr: 'Un treemap ne peut pas représenter des valeurs négatives : utilisez des barres.', en: 'A treemap can’t show negative values: use bars instead.' },
     'advice.line.notTime': { fr: '{dimension} n’a pas d’ordre naturel : une courbe relierait des valeurs sans lien entre elles. Préférez des barres.', en: '{dimension} has no natural order: a line would join unrelated values. Prefer bars.' },
     'advice.line.valueSort': { fr: 'Trier une courbe par valeur casse l’ordre du temps : gardez l’ordre des données ou triez par libellé.', en: 'Sorting a line by value breaks the time order: keep the data order or sort by label.' },
@@ -481,6 +485,7 @@
     'chart.waterfall.increase': { fr: 'Hausse', en: 'Increase' },
     'chart.waterfall.decrease': { fr: 'Baisse', en: 'Decrease' },
     'chart.funnel.ofFirst': { fr: '{pct} de la 1re étape', en: '{pct} of the first stage' },
+    'chart.series.empty': { fr: '(vide)', en: '(empty)' },
     'chart.radar.groupAverage': { fr: 'Moyenne du groupe', en: 'Group average' },
 
     // --- Options d'affichage des graphiques (courbe/aire, anneau, barres horizontales, tri) ---
@@ -488,6 +493,7 @@
     // parallèle qui ajoutent leurs propres clés ailleurs dans ce dictionnaire.
     'tileForm.type.line': { fr: 'Courbe / aire', en: 'Line / area' },
     'tileForm.sort.label': { fr: 'Tri', en: 'Sort' },
+    'tileForm.series.label': { fr: 'Séries (une par valeur)', en: 'Series (one per value)' },
     'tileForm.sort.default': { fr: 'Ordre des données', en: 'Data order' },
     'tileForm.sort.valueDesc': { fr: 'Valeur décroissante', en: 'Value, high to low' },
     'tileForm.sort.valueAsc': { fr: 'Valeur croissante', en: 'Value, low to high' },

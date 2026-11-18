@@ -2852,6 +2852,41 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     message de console. **Non vérifié** : un vrai Grist / GFS ; l'aspect avec des étapes très inégales (une étape 50 fois
     plus petite que la 1re est réduite à `minSize` 8 %, donc plus large que sa valeur — choix de lisibilité) ; le thème
     sombre.
+- **Séries multiples** (18/11/2026, fil « Passer à ECharts 6 et ajouter 4 graphiques », 2e des 4 fonctionnalités ;
+  `js/data.js`, `js/charts.js`, `js/advice.js`, `js/main.js`, `index.html`, `js/i18n.js`) : reproche de l'étude de
+  Publipostage+. Champ optionnel `tile.seriesColumn` (« Séries (une par valeur) », dans « Options avancées ») : une série
+  par valeur distincte de cette colonne, sur le même axe de catégories (`tile.dimension`). Aucune nouvelle bibliothèque.
+  - **Types concernés** : barres (hors mode mesure temporelle Cumul/YTD/N-1, qui ont déjà leur propre notion de séries) et
+    courbe/aire — `data.isSeriesTile`. Camembert, treemap, entonnoir, cascade, radar, nuage de points, KPI, jauge, tableau
+    croisé : une seule série par nature, le champ est masqué. Un champ laissé sur un type qui ne le gère pas est ignoré à la
+    lecture du formulaire (`readTileForm`) et au rendu (`isSeriesTile`).
+  - **Trois étapes pures et séparées** : `splitBySeries` (une série par valeur, ordre de PREMIÈRE APPARITION — piège n°14 ;
+    une cellule vide devient « (vide) »), un `groupByAggregate` PAR série (JS pur ou DuckDB selon le volume, comme pour une
+    tuile simple : `charts.js:computeSeriesGroups`), puis `assembleSeries` qui aligne les séries sur les catégories.
+    Une catégorie absente d'une série vaut `null` (un TROU, jamais 0 : ce n'est pas la même information — barre absente,
+    rupture de la courbe, cellule vide dans l'export Excel).
+  - **Tri** : `sortMode` trie les CATÉGORIES sur le total de leurs valeurs toutes séries confondues (pour une moyenne :
+    somme des moyennes — un simple critère d'ordre, jamais une valeur affichée). Les valeurs suivent leur catégorie dans
+    chaque série.
+  - **Interaction** : un clic sur une barre ou un point d'UNE série filtre sur la CATÉGORIE (colonne `dimension`), pas sur la
+    série — même geste que sans série. Filtrer aussi sur la série serait un choix de produit à part, non fait.
+  - **Conseil** (`advice.series.*`) : plus de 8 séries -> avertissement (légende illisible, couleurs répétées) ; colonne
+    Séries = dimension -> avertissement (chaque catégorie n'aurait qu'une série) ; la validation du formulaire refuse en
+    plus ce second cas (`tileForm.error.seriesSameAsDimension`, sous le champ).
+  - **Export Excel** : une colonne par série (en-tête = valeur de la série), mêmes catégories et même ordre que l'écran ;
+    sans colonne Séries l'export historique (2 colonnes) est INCHANGÉ.
+  - **Testé** : Node — `isSeriesTile` (types et modes), `splitBySeries`, `assembleSeries` (trous `null`, tri sur total,
+    ordre d'apparition, entrées non mutées, aucune catégorie), export Excel (en-têtes, trous vides, tri, filtre croisé qui
+    retire une série), avertissements du conseil ; Playwright (vrai `index.html` + `dev-tests/grist-stub.js`) — champ visible
+    pour barres et courbe seulement (et masqué pour pie/funnel/treemap/waterfall/radar/kpi), choix par le vrai combobox,
+    aperçu vivant avec légende, erreur série = dimension affichée sous le champ (le `<details>` s'ouvre), ajout, titre
+    auto « Montant par Region et Produit », 3 séries et trou `null` dans les données ECharts, clic souris réel sur une barre
+    de chaque série -> bon filtre de catégorie, édition (valeur reprise), retrait de la série -> retour à une seule série,
+    courbe+aire, libellé anglais, aucun message de console ; **DuckDB réel** (table de 6 050 lignes, au-delà de
+    `DUCKDB_ROW_THRESHOLD`, moteur chargé) : séries, catégories, trous et tri strictement identiques à la référence JS pure.
+    **Non vérifié** : un vrai Grist / GFS ; une série par DuckDB sur plusieurs dizaines de milliers de lignes (une requête
+    par série : coût non mesuré) ; plus de 8 séries à l'écran ; l'aire non empilée de plusieurs séries se recouvre (voir
+    le suivant « empilé ») ; thème sombre.
 
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 

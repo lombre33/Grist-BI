@@ -408,6 +408,65 @@
     });
   }
 
+  // --- Séries multiples (`tile.seriesColumn`, barres/courbe/aire) --------------------------------
+  // Une série par valeur distincte de la colonne « Séries », sur le même axe des catégories
+  // (`tile.dimension`). Trois étapes pures, séparées pour que le rendu puisse faire passer CHAQUE
+  // série par DuckDB (js/charts.js:computeSeriesGroups) sans que ce fichier ne connaisse le moteur :
+  // `splitBySeries` (une série par valeur, ordre de première apparition — piège n°14), puis un
+  // `groupByAggregate` par série (JS ou DuckDB), puis `assembleSeries` qui aligne les séries sur les
+  // catégories. La colonne « Séries » ne concerne que les barres (hors mode mesure temporelle) et la
+  // courbe/aire : le camembert, le treemap, l'entonnoir… n'ont qu'UNE série par nature.
+  function isSeriesTile(tile) {
+    if (!tile || !tile.seriesColumn) return false;
+    if (tile.type === 'line') return true;
+    return tile.type === 'bar' && !(tile.measureMode && tile.measureMode !== 'brut');
+  }
+
+  // Lignes de `rows` rangées par valeur de `seriesColumn` : `[{ key, name, rows }]`. `name` est le
+  // libellé affiché (la valeur en texte, ou `emptyLabel` pour une cellule vide).
+  function splitBySeries(rows, seriesColumn, emptyLabel) {
+    const bySeries = new Map();
+    for (const row of rows) {
+      const key = row[seriesColumn];
+      if (!bySeries.has(key)) bySeries.set(key, []);
+      bySeries.get(key).push(row);
+    }
+    return Array.from(bySeries.entries()).map(([key, groupRows]) => ({
+      key,
+      name: (key === null || key === undefined || key === '') ? (emptyLabel || '(vide)') : String(key),
+      rows: groupRows
+    }));
+  }
+
+  // Aligne les séries sur `categories` (les valeurs de la dimension, DÉJÀ dans l'ordre d'apparition
+  // des lignes) : `perSeries` = `[{ name, groups }]` où `groups` est un `groupByAggregate` de CETTE
+  // série. Une catégorie absente d'une série vaut `null` (un trou, jamais 0 : ce n'est pas la même
+  // information). `sortMode` (même vocabulaire que sortGroups) trie les catégories sur le TOTAL de
+  // leurs valeurs toutes séries confondues — pour une moyenne, c'est la somme des moyennes, un simple
+  // critère d'ordre et non une valeur affichée. Rend `{ categories, series: [{ name, values }] }`.
+  function assembleSeries(categories, perSeries, sortMode) {
+    const lookups = perSeries.map((s) => new Map(s.groups.map((g) => [g.dimension, g.value])));
+    let order = categories.map((_, i) => i);
+    if (SORT_MODES.indexOf(sortMode) !== -1) {
+      const totals = categories.map((category, index) => ({
+        dimension: category,
+        index,
+        value: lookups.reduce((sum, lookup) => {
+          const v = lookup.get(category);
+          return Number.isFinite(v) ? sum + v : sum;
+        }, 0)
+      }));
+      order = sortGroups(totals, sortMode).map((g) => g.index);
+    }
+    return {
+      categories: order.map((i) => categories[i]),
+      series: perSeries.map((s, j) => ({
+        name: s.name,
+        values: order.map((i) => (lookups[j].has(categories[i]) ? lookups[j].get(categories[i]) : null))
+      }))
+    };
+  }
+
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, (c) => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -555,6 +614,20 @@
     if (tile.type === 'wordcloud' && tile.wordCloudSplit) {
       const freq = wordFrequency(rows, dimension, true).slice().sort((a, b) => b.value - a.value);
       return { name: title, header: [dimension, 'Occurrences'], rows: freq.map((d) => [d.dimension, d.value]) };
+    }
+    // Séries multiples (barres/courbe/aire avec `seriesColumn`) : une colonne par série, dans le même
+    // ordre de catégories que le rendu ; une cellule vide (pas 0) là où la série n'a aucune ligne.
+    if (isSeriesTile(tile)) {
+      const categories = groupByAggregate(rows, dimension, tile.measure, tile.aggFn).map((d) => d.dimension);
+      const perSeries = splitBySeries(rows, tile.seriesColumn).map((sr) => ({
+        name: sr.name, groups: groupByAggregate(sr.rows, dimension, tile.measure, tile.aggFn)
+      }));
+      const assembled = assembleSeries(categories, perSeries, tile.sortMode);
+      return {
+        name: title,
+        header: [dimension].concat(assembled.series.map((sr) => sr.name)),
+        rows: assembled.categories.map((c, i) => [c].concat(assembled.series.map((sr) => (sr.values[i] == null ? '' : sr.values[i]))))
+      };
     }
     // Même tri que le rendu (js/charts.js:renderChart) : jamais appliqué à un type non triable.
     const agg = sortGroups(groupByAggregate(rows, dimension, tile.measure, tile.aggFn), isSortableTile(tile) ? tile.sortMode : undefined);
@@ -755,7 +828,7 @@
     tableToRows, epochSecondsToIsoDate, applyFilters, matchesFilter, sameValue, parseDateValue,
     relativeDateRange, RELATIVE_DATE_PRESETS, groupByAggregate, aggregateSingle, wordFrequency, pivotTable,
     distinctColumnValues, computeTrend, trendFromGroups, periodLabel, measureSeriesForTile,
-    waterfallSeries, sortGroups, isSortableTile, escapeHtml,
+    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, splitBySeries, assembleSeries, escapeHtml,
     tileDrillLevels, currentDimension, rowsForTile, tileExportSheet, tileExportKind,
     sanitizeSheetName, buildWorkbookSheets, measureExportSheet, buildWorkbookSheetsAsync,
     blendRows, deriveDateHierarchyColumns, commentsForTile, isAccessRuleRefusal, AGGREGATORS

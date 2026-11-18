@@ -699,6 +699,20 @@ délibérément laissé de côté (contenu généré par `js/data.js`/`js/demo-d
 - [x] Libellé anglais du type ; aucun message de console 🌐
 - [ ] **[NON TESTABLE ICI]** un vrai fichier .pbix avec un `funnel` ; vrai Grist / GFS ; thème sombre ; étapes très inégales (`minSize` 8 %)
 
+### `js/data.js` + `js/charts.js` + `js/advice.js` + panneau — séries multiples (18/11/2026, Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`)
+
+- [x] `isSeriesTile` : barres brutes et courbe/aire OUI ; barres en mode mesure, camembert, entonnoir, treemap, cascade, radar, nuage de points, KPI, jauge, tableau croisé, nuage de mots NON ; colonne vide/absente NON ✅
+- [x] `splitBySeries` : ordre de première apparition, cellule vide ET `null` sous « (vide) », valeur numérique -> libellé texte, aucune ligne -> aucune série ✅
+- [x] `assembleSeries` : catégorie absente = `null` (pas 0) ; tri `value-desc` / `label` sur le TOTAL des séries, valeurs suivant leur catégorie ; mode inconnu = ordre d'apparition ; entrées jamais mutées ; aucune catégorie -> structure vide valide ✅
+- [x] `tileExportSheet` : une colonne par série, trou = cellule vide, même ordre que l'écran ; sans série, export historique inchangé ; un filtre croisé retire la série qui n'a plus de ligne ✅
+- [x] `advice.adviceForTile` : plus de 8 séries / série = dimension -> avertissement ; sans série ou avec 3 séries -> aucun avertissement de série ✅
+- [x] Clés i18n `advice.series.*`, `tileForm.series.label`, `tileForm.error.seriesSameAsDimension`, `chart.series.empty`, `tileTitle.measureByDimensionSeries` définies fr/en, variables identiques ✅
+- [x] Panneau : champ visible pour barres et courbe, masqué pour les 6 autres types testés ; choix par le vrai combobox ; aperçu vivant avec légende ; erreur « série = dimension » sous le champ ; ajout ; édition (valeur reprise) ; retrait de la série ; libellé anglais 🌐
+- [x] Rendu : 3 séries ECharts, légende `scroll`, trou `null` pour la combinaison absente (barre absente / rupture de la courbe), courbe+aire 🌐
+- [x] Clic souris RÉEL (`getItemLayout` de chaque série) : le filtre porte sur la catégorie, quelle que soit la série cliquée 🌐
+- [x] ⚠ DuckDB RÉEL : table de 6 050 lignes (> `DUCKDB_ROW_THRESHOLD`), moteur chargé (`duckdbEngine.isReady()`), séries/catégories/trous/tri identiques à la référence JS pure (`tileExportSheet`) 🌐 — à rejouer si `computeSeriesGroups` change
+- [ ] **[NON TESTABLE ICI]** vrai Grist / GFS ; une requête DuckDB par série sur de très gros volumes (coût) ; plus de 8 séries ; thème sombre
+
 ### CSS — classe de bug à systématiquement re-vérifier
 
 - [x] `.field[hidden]` masque réellement l'élément (pas seulement `display:flex` de `.field` qui gagne à spécificité égale) [BUG RÉEL, trouvé 2 fois sur des champs différents] ✅ (règle en place)
