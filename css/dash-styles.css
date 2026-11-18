@@ -1,0 +1,215 @@
+/*
+ * Styles globaux des tuiles (demande d'Antoine du 18/11/2026) — un réglage du TABLEAU DE BORD, enregistré dans sa
+ * configuration (js/styles.js, `style`), qui pose l'attribut `data-dash-style` sur <html>. Cinq entrées :
+ *   standard   le rendu d'origine : AUCUN attribut, donc aucune règle de ce fichier ne s'applique (css/style.css seul) ;
+ *   factory    la charte Grist Factory (jetons de kit/css/tokens.css : gris bleuté, un seul bleu d'accent, coins de 8 px) ;
+ *   fluid      fluide/moderne : cartes très arrondies, ombres douces, gros chiffres, titres gras ;
+ *   dense      classique façon Power BI : coins presque droits, bordures fines, texte compact, peu d'espace perdu ;
+ *   editorial  sobre, façon rapport imprimé : fond papier, un filet en tête de carte, titres et chiffres à empattements.
+ * Les graphiques suivent par `chartTheme()` (js/charts.js), qui lit les MÊMES jetons de couleur, plus la passe
+ * `GristBI.styles.applyToOption` pour leur forme (barres arrondies, valeurs au bout des barres, quadrillage...).
+ *
+ * Règles de ce fichier :
+ *  - Chaque style pose, dans UN bloc clair et UN bloc sombre, la liste COMPLÈTE de ses jetons de couleur. Le sélecteur
+ *    `:root[data-dash-style]` bat `:root` de css/style.css quelle que soit la préférence de couleur : un jeton posé seulement dans
+ *    le bloc clair resterait donc clair en mode sombre (dev-tests/test-styles.js le vérifie).
+ *  - Les sélecteurs de tuile gardent leur spécificité propre : `.tile.tile-zoomed` et `.tile-zoomed .tile-header` (css/style.css)
+ *    restent plus précis que les règles génériques ci-dessous (`:not(.tile-zoomed)`), pour que l'agrandissement garde sa taille
+ *    de police et sa hauteur FIXE (piège n°8 : jamais de hauteur qui dépende du contenu).
+ *  - Une ambiance de GFS pose ses jetons EN LIGNE sur <html> : ils l'emportent sur les couleurs d'ici (comme sur celles du rendu
+ *    standard). Rayons, ombres, densité et typographie des tuiles viennent de jetons `--dash-*` que l'ambiance ne connaît pas.
+ *  - Les couleurs d'état (`--good`, `--critical`, `--caution`) et les couleurs des séries (palette de la tuile) ne sont jamais
+ *    redites ici.
+ * Le même bloc de jetons sert les pastilles d'aperçu du menu Réglages (`.style-swatch[data-dash-style]`).
+ */
+
+/* ---------- Jetons : standard (aperçu du menu Réglages seulement ; le rendu standard n'a aucune règle) ---------- */
+.style-swatch[data-dash-style="standard"] {
+  --bg: #f9f9f7; --surface: #fcfcfb; --border: rgba(11, 11, 11, 0.10); --text: #0b0b0b; --text-muted: #6b6a64;
+  --dash-radius: 10px; --dash-bw: 1px; --dash-border-color: var(--border);
+  --dash-shadow: 0 1px 3px rgba(11, 11, 11, 0.05), 0 1px 1px rgba(11, 11, 11, 0.04);
+  --dash-bar: #2a78d6; --dash-bar-radius: 1px;
+}
+@media (prefers-color-scheme: dark) {
+  .style-swatch[data-dash-style="standard"] {
+    --bg: #0d0d0d; --surface: #1a1a19; --border: rgba(255, 255, 255, 0.10); --text: #ffffff; --text-muted: #9b9992;
+    --dash-shadow: none;
+  }
+}
+
+/* ---------- Jetons : factory — la charte Grist Factory (kit/css/tokens.css) ---------- */
+:root[data-dash-style="factory"], .style-swatch[data-dash-style="factory"] {
+  --bg: #f4f6fa; --surface: #ffffff; --surface-sunken: #eef1f6;
+  --border: #dde2ea; --border-strong: #c3cad6;
+  --text: #1b2430; --text-secondary: #445066; --text-muted: #5f6b7e;
+  --accent: #2f6fed;
+  --dash-radius: 8px; --dash-gap: 14px; --dash-pad: 12px 14px;
+  --dash-bw: 1px; --dash-border-color: var(--border);
+  --dash-shadow: 0 1px 2px rgba(20, 28, 46, 0.05);
+  --dash-shadow-hover: 0 4px 14px -4px rgba(20, 28, 46, 0.14);
+  --dash-title-font: var(--font-ui); --dash-title-size: 12.5px; --dash-title-weight: 600;
+  --dash-kpi-font: var(--font-ui); --dash-kpi-max: 30px; --dash-kpi-weight: 700;
+  --dash-bar: #2a78d6; --dash-bar-radius: 2px;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-dash-style="factory"], .style-swatch[data-dash-style="factory"] {
+    --bg: #171b23; --surface: #1e2430; --surface-sunken: #262e3c;
+    --border: #323b4b; --border-strong: #465166;
+    --text: #e7ecf5; --text-secondary: #c3cbda; --text-muted: #9aa6bb;
+    --accent: #5b91f5;
+    --dash-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+    --dash-shadow-hover: 0 6px 18px -6px rgba(0, 0, 0, 0.6);
+  }
+}
+
+/* ---------- Jetons : fluid — fluide / moderne ---------- */
+:root[data-dash-style="fluid"], .style-swatch[data-dash-style="fluid"] {
+  --bg: #f3f5fb; --surface: #ffffff; --surface-sunken: #eef1f9;
+  --border: #e8ecf4; --border-strong: #d3d9e8;
+  --text: #131a2b; --text-secondary: #3b455e; --text-muted: #586381;
+  --accent: #3366e6;
+  --dash-radius: 18px; --dash-gap: 16px; --dash-pad: 14px 18px;
+  --dash-bw: 1px; --dash-border-color: var(--border);
+  --dash-shadow: 0 1px 2px rgba(19, 26, 43, 0.04), 0 10px 28px -12px rgba(19, 26, 43, 0.12);
+  --dash-shadow-hover: 0 1px 2px rgba(19, 26, 43, 0.05), 0 16px 36px -12px rgba(19, 26, 43, 0.2);
+  --dash-title-font: var(--font-ui); --dash-title-size: 14px; --dash-title-weight: 700;
+  --dash-kpi-font: var(--font-ui); --dash-kpi-max: 40px; --dash-kpi-weight: 700; --dash-kpi-lh: 1.15;
+  --dash-bar: #95bceb; --dash-bar-radius: 4px;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-dash-style="fluid"], .style-swatch[data-dash-style="fluid"] {
+    --bg: #0d1017; --surface: #171b25; --surface-sunken: #1e2330;
+    --border: #252b3a; --border-strong: #343c50;
+    --text: #eef1f8; --text-secondary: #c6cddd; --text-muted: #99a3ba;
+    --accent: #7094f7;
+    --dash-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 28px -12px rgba(0, 0, 0, 0.6);
+    --dash-shadow-hover: 0 1px 2px rgba(0, 0, 0, 0.45), 0 16px 36px -12px rgba(0, 0, 0, 0.75);
+    --dash-bar: #659ce0;
+  }
+}
+
+/* ---------- Jetons : dense — classique, façon Power BI ---------- */
+:root[data-dash-style="dense"], .style-swatch[data-dash-style="dense"] {
+  --bg: #f3f2f1; --surface: #ffffff; --surface-sunken: #f3f2f1;
+  --border: #e1dfdd; --border-strong: #c8c6c4;
+  --text: #201f1e; --text-secondary: #3b3a39; --text-muted: #605e5c;
+  --accent: #0078d4;
+  --dash-radius: 2px; --dash-gap: 8px; --dash-pad: 8px 10px;
+  --dash-bw: 1px; --dash-border-color: var(--border);
+  --dash-shadow: none;
+  --dash-shadow-hover: 0 0 0 1px var(--border-strong);
+  --dash-title-font: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif; --dash-title-size: 12px; --dash-title-weight: 600;
+  --dash-kpi-font: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif; --dash-kpi-max: 28px; --dash-kpi-weight: 600;
+  --dash-bar: #2a78d6; --dash-bar-radius: 0;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-dash-style="dense"], .style-swatch[data-dash-style="dense"] {
+    --bg: #1b1a19; --surface: #252423; --surface-sunken: #2d2c2b;
+    --border: #3b3a39; --border-strong: #484644;
+    --text: #f3f2f1; --text-secondary: #d2d0ce; --text-muted: #a19f9d;
+    --accent: #4ba0e8;
+  }
+}
+
+/* ---------- Jetons : editorial — sobre, façon rapport imprimé ---------- */
+:root[data-dash-style="editorial"], .style-swatch[data-dash-style="editorial"] {
+  --bg: #f8f6f1; --surface: #f8f6f1; --surface-sunken: #efece4;
+  --border: #d9d5c9; --border-strong: #bdb8a8;
+  --text: #1d1c1a; --text-secondary: #3f3d38; --text-muted: #66635a;
+  --accent: #1f4e8c;
+  --dash-radius: 0px; --dash-gap: 22px; --dash-pad: 10px 4px 8px;
+  /* Un seul filet, en tête de carte, de la couleur du texte. */
+  --dash-bw: 2px 0 0 0; --dash-border-color: var(--text);
+  --dash-shadow: none; --dash-shadow-hover: none;
+  --dash-title-font: Georgia, "Iowan Old Style", "Times New Roman", serif; --dash-title-size: 15px; --dash-title-weight: 600;
+  --dash-kpi-font: Georgia, "Iowan Old Style", "Times New Roman", serif; --dash-kpi-max: 36px; --dash-kpi-weight: 600; --dash-kpi-lh: 1.2;
+  --dash-bar: #265c9e; --dash-bar-radius: 0;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-dash-style="editorial"], .style-swatch[data-dash-style="editorial"] {
+    --bg: #151617; --surface: #151617; --surface-sunken: #1d1e20;
+    --border: #2d2f33; --border-strong: #44474d;
+    --text: #eceae4; --text-secondary: #c9c6bc; --text-muted: #a09d94;
+    --accent: #7fa6e0;
+    --dash-border-color: var(--text-secondary);
+    --dash-bar: #649ada;
+  }
+}
+
+/* ---------- Cartes : une seule série de règles pour les quatre styles ---------- */
+:root[data-dash-style] .tiles, :root[data-dash-style] .tiles-focus-grid { gap: var(--dash-gap); }
+:root[data-dash-style] .tile {
+  background: var(--surface);
+  border-style: solid;
+  border-width: var(--dash-bw);
+  border-color: var(--dash-border-color, var(--border));
+  border-radius: var(--dash-radius);
+  box-shadow: var(--dash-shadow);
+  padding: var(--dash-pad);
+}
+:root[data-dash-style] .tile:hover { box-shadow: var(--dash-shadow-hover); }
+:root[data-dash-style] .tile.tile-zoomed { border-color: var(--accent-soft-border); box-shadow: var(--dash-shadow-hover); }
+:root[data-dash-style="editorial"] .tile.tile-zoomed { border-color: var(--text); }
+/* L'aperçu vivant du panneau d'ajout est posé dans un cadre déjà bordé : pas d'ombre en plus. */
+:root[data-dash-style] .tile-preview-body .tile { box-shadow: none; }
+:root[data-dash-style] .tile:not(.tile-zoomed) .tile-header {
+  font-family: var(--dash-title-font);
+  font-size: var(--dash-title-size);
+  font-weight: var(--dash-title-weight);
+}
+:root[data-dash-style] .tile-zoomed .tile-header { font-family: var(--dash-title-font); font-weight: var(--dash-title-weight); }
+/* Chiffre de la carte KPI : `--kpi-max` plafonne sa taille (js/charts.js:renderKpi pose `--kpi-chars`), la valeur se réduit
+   toujours pour tenir sur une ligne ; agrandie, la tuile garde son plafond de css/style.css. */
+:root[data-dash-style] .tile:not(.tile-zoomed) .tile-kpi-value { --kpi-max: var(--dash-kpi-max); }
+:root[data-dash-style] .tile-kpi-value { font-family: var(--dash-kpi-font); font-weight: var(--dash-kpi-weight); line-height: var(--dash-kpi-lh, 1.5); }
+:root[data-dash-style="editorial"] .tile-kpi-value { letter-spacing: -0.01em; }
+:root[data-dash-style="editorial"] .tile-text-body h3, :root[data-dash-style="editorial"] .tile-text-body h4 { font-family: var(--dash-title-font); }
+:root[data-dash-style="dense"] .data-table { font-size: 11px; }
+:root[data-dash-style="dense"] .data-table th, :root[data-dash-style="dense"] .data-table td { padding-top: 3px; padding-bottom: 3px; }
+:root[data-dash-style="dense"] .prog-list { gap: 5px; }
+
+/* ---------- Menu Réglages : choix du style (js/main.js:renderStyleOptions) ---------- */
+/* Le menu grandit (style des tuiles) : il défile dans la fenêtre du widget (souvent ~500 px de haut) au lieu de sortir de l'écran. */
+#settings-modal .settings-modal-content { width: 420px; max-height: calc(100vh - 24px); overflow-y: auto; }
+.settings-hint { margin: 0 0 10px; font-size: 12px; line-height: 1.45; color: var(--text-muted); }
+.style-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.style-option {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  cursor: pointer;
+}
+.style-option:hover { border-color: var(--text-muted); }
+.style-option.is-selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.style-option:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* Le bouton radio reste dans l'arbre d'accessibilité et au clavier (flèches) ; seule sa pastille native est masquée. */
+.style-option input[type="radio"] { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; pointer-events: none; }
+.style-option-name { font-size: 12.5px; font-weight: 600; color: var(--text); }
+.style-option-desc { font-size: 11.5px; line-height: 1.4; color: var(--text-muted); }
+.style-swatch { display: block; height: 64px; padding: 8px; border-radius: 6px; background: var(--bg); }
+.sw-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 100%;
+  padding: 6px 8px;
+  background: var(--surface);
+  border-style: solid;
+  border-width: var(--dash-bw);
+  border-color: var(--dash-border-color, var(--border));
+  border-radius: calc(var(--dash-radius) * 0.6);
+  box-shadow: var(--dash-shadow);
+}
+.sw-title { display: block; height: 4px; width: 42%; border-radius: 2px; background: var(--text); opacity: 0.75; }
+.sw-bars { display: flex; align-items: flex-end; gap: 3px; height: 22px; }
+.sw-bars i { flex: 1; max-width: 14px; border-radius: var(--dash-bar-radius) var(--dash-bar-radius) 0 0; background: var(--dash-bar); }
+.sw-bars i:nth-child(1) { height: 45%; }
+.sw-bars i:nth-child(2) { height: 100%; }
+.sw-bars i:nth-child(3) { height: 70%; }
+.sw-bars i:nth-child(4) { height: 85%; }
+@media (max-width: 440px) { .style-options { grid-template-columns: 1fr; } }

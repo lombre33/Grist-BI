@@ -24,6 +24,17 @@ Ce que l'outil d'audit mesure et qu'une modification peut défaire sans bruit (v
 `index.html` a une étiquette, aucun bouton n'est vide, un seul `<main>`, `SECURITY.md` existe, et `js/vendor/SOURCES.md` dit
 vrai (empreintes SHA-256 des bibliothèques embarquées).
 
+## Style global des tuiles (Node, aucune dépendance)
+
+```
+node dev-tests/test-styles.js
+```
+
+`js/styles.js` (registre, passe sur les options ECharts de chaque style, couleurs), `css/dash-styles.css` (jetons complets en clair et en
+sombre, contrastes, accord avec `kit/css/tokens.css` quand le sous-module est initialisé), le réglage du store, l'aller-retour de la
+configuration par le vrai `js/grist-api.js` (faux `grist`) et le câblage d'`index.html`/`harness.html`. Le rendu à l'écran (cartes, graphiques,
+menu Réglages, cadre isolé) se rejoue dans un navigateur : voir `HYPOTHESES.md`.
+
 ## Harness visuelle (navigateur, sans document Grist)
 
 `dev-tests/harness.html` charge les mêmes fichiers `index.html`/`css`/`js` que le widget réel

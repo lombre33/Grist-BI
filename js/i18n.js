@@ -93,6 +93,34 @@
     'settings.language.title': { fr: 'Langue', en: 'Language' },
     'settings.language.fr': { fr: 'Français', en: 'French' },
     'settings.language.en': { fr: 'Anglais', en: 'English' },
+    // --- Style global des tuiles (js/styles.js, css/dash-styles.css) ---
+    'style.title': { fr: 'Style des tuiles', en: 'Tile style' },
+    'style.hint': {
+      fr: 'Change l’apparence de toutes les tuiles de ce tableau de bord. Enregistré avec lui.',
+      en: 'Changes the look of every tile in this dashboard. Saved with it.'
+    },
+    'style.standard.name': { fr: 'Standard', en: 'Standard' },
+    'style.standard.desc': { fr: 'Le rendu d’origine du widget.', en: 'The widget’s original look.' },
+    'style.factory.name': { fr: 'Grist Factory', en: 'Grist Factory' },
+    'style.factory.desc': {
+      fr: 'Gris bleuté et un seul bleu d’accent, coins doux : la charte des widgets Grist Factory.',
+      en: 'Cool grey with a single blue accent and soft corners: the Grist Factory widget identity.'
+    },
+    'style.fluid.name': { fr: 'Fluide', en: 'Fluid' },
+    'style.fluid.desc': {
+      fr: 'Cartes très arrondies, ombres douces, barres pastel avec leur valeur, peu d’axes.',
+      en: 'Very rounded cards, soft shadows, pastel bars labelled with their value, few axes.'
+    },
+    'style.dense.name': { fr: 'Classique dense', en: 'Classic dense' },
+    'style.dense.desc': {
+      fr: 'Façon Power BI : coins presque droits, bordures fines, quadrillage, texte compact.',
+      en: 'Power BI-like: near-square corners, thin borders, gridlines, compact text.'
+    },
+    'style.editorial.name': { fr: 'Éditorial', en: 'Editorial' },
+    'style.editorial.desc': {
+      fr: 'Sobre, façon rapport imprimé : fond papier, filet en tête de carte, titres à empattements.',
+      en: 'Sober, like a printed report: paper background, a rule above each card, serif headings.'
+    },
     'settings.credits.title': { fr: 'Crédits', en: 'Credits' },
     'settings.credits.author': { fr: 'Auteur', en: 'Author' },
     'settings.credits.website': { fr: 'Site', en: 'Website' },

@@ -1670,6 +1670,10 @@
         splitArea: Object.assign({ show: false }, option.radar.splitArea)
       });
     }
+    // Style global des tuiles (js/styles.js) : en DERNIER, après tous les réglages ci-dessus et ceux du rendu — barres arrondies,
+    // valeurs au bout des barres, quadrillage, tracé des courbes. Standard : option rendue telle quelle. La palette de la tuile
+    // n'est jamais remplacée, seulement transformée (teinte d'une couleur unique).
+    if (GristBI.styles) GristBI.styles.applyToOption(option, GristBI.styles.current(), th);
     return option;
   }
 
