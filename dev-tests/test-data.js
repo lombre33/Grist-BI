@@ -192,6 +192,56 @@ const rows = [
   console.log('OK empilé — isStackedTile (barres et aire seulement, avec une colonne Séries), export Excel inchangé');
 }
 
+// Palettes de couleurs (`tile.palette`).
+{
+  const fsP = require('fs');
+  const pathP = require('path');
+  assert.deepStrictEqual(data.PALETTE_KEYS, ['standard', 'okabe', 'blue', 'orange', 'green', 'gray']);
+  // `standard` est la palette HISTORIQUE : une tuile sans choix doit rester identique, octet pour octet
+  assert.deepStrictEqual(data.PALETTES.standard, ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948']);
+  // La miniature de l'accueil (js/welcome.js) garde sa propre copie : elle doit rester la même
+  const welcomeSrc = fsP.readFileSync(pathP.join(__dirname, '..', 'js', 'welcome.js'), 'utf8');
+  const welcomeCopy = /const PALETTE = (\[[^\]]+\]);/.exec(welcomeSrc);
+  assert.ok(welcomeCopy, 'js/welcome.js : const PALETTE introuvable');
+  assert.deepStrictEqual(JSON.parse(welcomeCopy[1].replace(/'/g, '"')), data.PALETTES.standard, 'js/welcome.js:PALETTE diverge de data.PALETTES.standard');
+  // Clé inconnue ou piégée -> standard, jamais undefined
+  for (const key of [undefined, null, '', 'inconnue', 'constructor', '__proto__', 'toString', 42]) {
+    assert.strictEqual(data.paletteColors(key), data.PALETTES.standard, String(key));
+  }
+  assert.strictEqual(data.paletteColors('okabe'), data.PALETTES.okabe);
+  // Types qui suivent la palette ; la cascade (vert/rouge = sens), le KPI et le tableau croisé non
+  for (const type of ['bar', 'line', 'pie', 'funnel', 'treemap', 'scatter', 'radar', 'gauge', 'wordcloud']) assert.strictEqual(data.supportsPalette({ type }), true, type);
+  for (const type of ['waterfall', 'kpi', 'pivot', 'inconnu']) assert.strictEqual(data.supportsPalette({ type }), false, type);
+  assert.strictEqual(data.supportsPalette(null), false);
+  // Garde-fous de forme et de validation (le validateur de la skill dataviz n'est pas dans le dépôt : on
+  // rejoue ici ses vérifications de rampe, valeur par valeur, pour qu'une retouche à la main ne les casse pas)
+  const lin = (c) => { const v = parseInt(c, 16) / 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+  const rgb = (hex) => [lin(hex.slice(1, 3)), lin(hex.slice(3, 5)), lin(hex.slice(5, 7))];
+  const relLum = (hex) => { const [r, g, b] = rgb(hex); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+  const contrast = (a, b) => { const [hi, lo] = [relLum(a), relLum(b)].sort((x, y) => y - x); return (hi + 0.05) / (lo + 0.05); };
+  const oklabL = (hex) => {
+    const [r, g, b] = rgb(hex);
+    const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+    const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+    const sv = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+    return 0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * sv;
+  };
+  for (const key of data.PALETTE_KEYS) {
+    const colors = data.PALETTES[key];
+    assert.ok(colors.length >= 6 && colors.every((c) => /^#[0-9a-f]{6}$/.test(c)), key + ' : hex #rrggbb en minuscules');
+    assert.strictEqual(new Set(colors).size, colors.length, key + ' : aucune couleur en double');
+  }
+  for (const key of ['blue', 'orange', 'green', 'gray']) {
+    const colors = data.PALETTES[key];
+    const Ls = colors.map(oklabL);
+    for (let i = 1; i < Ls.length; i++) assert.ok(Ls[i] - Ls[i - 1] >= 0.06, key + ' : écart de luminosité entre pas voisins ' + i + ' = ' + (Ls[i] - Ls[i - 1]).toFixed(3) + ' (< 0,06, du foncé au clair)');
+    for (const surface of ['#fcfcfb', '#ffffff']) assert.ok(contrast(colors[colors.length - 1], surface) >= 2.0, key + ' : pas le plus clair < 2:1 sur ' + surface);
+  }
+  // Okabe-Ito : les 6 teintes restent dans la bande de luminosité de la skill (0,43-0,77)
+  for (const c of data.PALETTES.okabe) assert.ok(oklabL(c) >= 0.43 && oklabL(c) <= 0.77, 'okabe ' + c + ' hors bande : ' + oklabL(c).toFixed(3));
+  console.log('OK palettes — historique inchangée, repli sur standard, types concernés, rampes (luminosité, contraste), Okabe-Ito dans la bande');
+}
+
 {
   const agg = data.groupByAggregate(rows, 'Region', 'Montant', 'count');
   assert.strictEqual(agg.find((d) => d.dimension === 'Sud').value, 2);
@@ -2596,6 +2646,25 @@ const SAMPLE_TIME_SERIES = [
       // Courbe sans aire : jamais empilée (isStackedTile) -> jamais l'avertissement de pile (un autre conseil de courbe peut s'appliquer)
       const lineNoArea = stk({ aggFn: 'avg', type: 'line' });
       assert.ok(!lineNoArea || lineNoArea.key !== 'advice.stacked.notAdditive', JSON.stringify(lineNoArea));
+      // Plafond de séries = nombre de couleurs de la palette choisie (ECharts reprend au début au-delà)
+      assert.strictEqual(tooManyS.vars.max, 8, 'palette standard : 8');
+      const sr7 = [];
+      for (let i = 0; i < 42; i++) sr7.push({ id: i + 1, Region: ['Nord', 'Sud'][i % 2], Prod: 'P' + (i % 7), V: 10 + i });
+      const okabeSeries = advice.adviceForTile({ type: 'bar', dimension: 'Region', measure: 'V', aggFn: 'sum', seriesColumn: 'Prod', palette: 'okabe' }, sr7);
+      assert.ok(okabeSeries && okabeSeries.key === 'advice.series.tooMany' && okabeSeries.vars.max === 6 && okabeSeries.vars.n === 7, JSON.stringify(okabeSeries));
+      const stdSeries = advice.adviceForTile({ type: 'bar', dimension: 'Region', measure: 'V', aggFn: 'sum', seriesColumn: 'Prod' }, sr7);
+      assert.ok(!stdSeries || stdSeries.key !== 'advice.series.tooMany', '7 séries en palette standard : pas d\'avertissement');
+      // Camembert / entonnoir / treemap : palette choisie plus courte que le nombre de parts -> avertissement ; sans choix, inchangé
+      const seven = Array.from({ length: 7 }, (_, i) => ({ id: i + 1, Cat: 'C' + i, V: 20 - i }));
+      const pieOkabe = advice.adviceForTile({ type: 'pie', dimension: 'Cat', measure: 'V', aggFn: 'sum', palette: 'okabe' }, seven);
+      assert.ok(pieOkabe && pieOkabe.key === 'advice.palette.tooFewColors' && pieOkabe.vars.n === 7 && pieOkabe.vars.max === 6, JSON.stringify(pieOkabe));
+      const notPalette = (tile) => { const a = advice.adviceForTile(tile, seven); return !a || a.key !== 'advice.palette.tooFewColors'; };
+      assert.ok(notPalette({ type: 'pie', dimension: 'Cat', measure: 'V', aggFn: 'sum' }), '7 parts, palette historique : pas d\'avertissement de palette');
+      assert.ok(notPalette({ type: 'pie', dimension: 'Cat', measure: 'V', aggFn: 'sum', palette: 'blue' }), 'dégradé de 7 pas pour 7 parts : pas d\'avertissement de palette');
+      for (const type of ['funnel', 'treemap']) {
+        const w = advice.adviceForTile({ type, dimension: 'Cat', measure: 'V', aggFn: 'sum', palette: 'okabe' }, seven);
+        assert.ok(w && w.key === 'advice.palette.tooFewColors', type + ' : ' + JSON.stringify(w));
+      }
       console.log('OK advice — séries multiples (trop de séries, série = dimension)');
     }
 

@@ -422,6 +422,39 @@
     return tile.type === 'bar' && !(tile.measureMode && tile.measureMode !== 'brut');
   }
 
+  // --- Palettes de couleurs (`tile.palette`) -----------------------------------------------------
+  // Six palettes au choix par tuile ; `standard` est la palette historique du tableau de bord (elle ne
+  // change JAMAIS : une tuile sans `palette` doit rester identique). Toutes ont été passées au
+  // validateur de la skill dataviz du projet, surface #fcfcfb ET #ffffff (HYPOTHESES.md) :
+  //   - `standard` : 8 teintes catégorielles, CVD ΔE 9,1 entre voisines (cible >= 8) ;
+  //   - `okabe`    : Okabe-Ito (conçue pour le daltonisme), 6 teintes DANS la bande de luminosité
+  //     (le jaune et le noir de la palette d'origine en sortent), CVD ΔE 9,6 entre voisines ;
+  //   - `blue`/`orange`/`green`/`gray` : dégradés d'UNE teinte, 7 pas du FONCÉ au CLAIR (la 1re
+  //     série, ou l'unique couleur d'une barre simple, est la plus lisible), écart de luminosité
+  //     >= 0,06 entre pas voisins, pas le plus clair >= 2:1 sur la surface. Pour des catégories
+  //     ORDONNÉES (étapes, tranches d'âge, paliers) — pas pour des séries sans ordre.
+  // Tableau trop court pour le nombre de séries/parts : ECharts reprend au début (js/advice.js le dit).
+  const PALETTES = {
+    standard: ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948'],
+    okabe: ['#0072b2', '#d55e00', '#009e73', '#e69f00', '#cc79a7', '#56b4e9'],
+    blue: ['#002f63', '#004285', '#0856a6', '#236cc1', '#3f83d7', '#5d9be9', '#7db2f6'],
+    orange: ['#511f00', '#6e2e01', '#8d3e03', '#ae4d05', '#d05e07', '#e47a3e', '#f49867'],
+    green: ['#003c17', '#025222', '#04692e', '#04813a', '#2b974e', '#51ac69', '#75c186'],
+    gray: ['#303030', '#434343', '#575757', '#6c6c6c', '#828282', '#989898', '#afafaf']
+  };
+  const PALETTE_KEYS = Object.keys(PALETTES);
+  // Une clé inconnue (config d'une version future, tuile importée) retombe sur `standard` : jamais de
+  // tuile sans couleur. `hasOwnProperty` : une clé comme « constructor » n'est pas une palette.
+  function paletteColors(key) {
+    return Object.prototype.hasOwnProperty.call(PALETTES, key) ? PALETTES[key] : PALETTES.standard;
+  }
+  // Types dont les couleurs viennent de la palette. Hors liste : la cascade (vert = hausse, rouge =
+  // baisse : un sens, pas une identité), le KPI et le tableau croisé (aucune couleur de série).
+  const PALETTE_TILE_TYPES = ['bar', 'line', 'pie', 'funnel', 'treemap', 'scatter', 'radar', 'gauge', 'wordcloud'];
+  function supportsPalette(tile) {
+    return !!tile && PALETTE_TILE_TYPES.indexOf(tile.type) !== -1;
+  }
+
   // Empilé (`tile.stacked`) : séries superposées au lieu de côte à côte. Seulement avec une colonne
   // Séries, et pour les barres ou l'AIRE (courbe + `areaFill`) : une courbe sans remplissage empilée
   // serait une courbe cumulée — un autre graphique, que personne ne lit comme tel.
@@ -836,7 +869,7 @@
     tableToRows, epochSecondsToIsoDate, applyFilters, matchesFilter, sameValue, parseDateValue,
     relativeDateRange, RELATIVE_DATE_PRESETS, groupByAggregate, aggregateSingle, wordFrequency, pivotTable,
     distinctColumnValues, computeTrend, trendFromGroups, periodLabel, measureSeriesForTile,
-    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, isStackedTile, splitBySeries, assembleSeries, escapeHtml,
+    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, isStackedTile, splitBySeries, assembleSeries, PALETTES, PALETTE_KEYS, paletteColors, supportsPalette, escapeHtml,
     tileDrillLevels, currentDimension, rowsForTile, tileExportSheet, tileExportKind,
     sanitizeSheetName, buildWorkbookSheets, measureExportSheet, buildWorkbookSheetsAsync,
     blendRows, deriveDateHierarchyColumns, commentsForTile, isAccessRuleRefusal, AGGREGATORS

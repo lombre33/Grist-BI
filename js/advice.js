@@ -783,9 +783,19 @@
     if (data.isSeriesTile(tile)) {
       if (tile.seriesColumn === tile.dimension) return warn('advice.series.sameAsDimension');
       const seriesCount = new Set(rows.map((r) => r[tile.seriesColumn])).size;
-      if (seriesCount > SERIES_MAX) return warn('advice.series.tooMany', { n: seriesCount });
+      // Au-delà du nombre de couleurs de la palette choisie, ECharts reprend au début : deux séries
+      // auraient la même couleur. Le plafond suit donc la palette (8 en Standard, 6 en Okabe-Ito…).
+      const seriesCap = Math.min(SERIES_MAX, data.paletteColors(tile.palette).length);
+      if (seriesCount > seriesCap) return warn('advice.series.tooMany', { n: seriesCount, max: seriesCap });
       // Une pile additionne les hauteurs : sans sens pour une moyenne, un minimum ou un maximum.
       if (data.isStackedTile(tile) && (tile.aggFn === 'avg' || tile.aggFn === 'min' || tile.aggFn === 'max')) return warn('advice.stacked.notAdditive');
+    }
+    // Palette choisie plus courte que le nombre de parts/étapes : la 1re couleur revient (et un camembert
+    // fait se toucher la 1re et la dernière part). Seulement quand une palette a été choisie : le
+    // comportement de la palette historique ne change pas.
+    if (tile.palette && (type === 'pie' || type === 'funnel' || type === 'treemap')) {
+      const colors = data.paletteColors(tile.palette).length;
+      if (n > colors) return warn('advice.palette.tooFewColors', { n, max: colors });
     }
     if (type === 'radar') {
       const axes = tile.radarAxisMode === 'columns' ? (tile.radarAxes || []).length : n;
