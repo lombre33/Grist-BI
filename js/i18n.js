@@ -962,7 +962,7 @@
     return out;
   }
 
-  function t(key, vars) {
+  function translate(key, vars) {
     const entry = STRINGS[key];
     if (!entry) { console.warn('[GristBI.i18n] clé inconnue :', key); return key; }
     if (!entry[lang]) console.warn('[GristBI.i18n] traduction "' + lang + '" manquante pour "' + key + '" (repli FR).');
@@ -980,7 +980,7 @@
   // main) le texte stocké (`title`) tel quel. Jamais utilisé pour nommer une feuille d'export
   // (js/data.js reste pur, sans dépendance à ce module) : ces exports gardent `tile.title`.
   function tileTitle(tile) {
-    if (tile && tile.titleKey && STRINGS[tile.titleKey]) return t(tile.titleKey, tile.titleVars);
+    if (tile && tile.titleKey && STRINGS[tile.titleKey]) return translate(tile.titleKey, tile.titleVars);
     return (tile && tile.title) || '';
   }
 
@@ -1013,11 +1013,11 @@
   function applyTranslations(root) {
     if (typeof document === 'undefined') return; // Node (tests) : pas de DOM à mettre à jour.
     const scope = root || document;
-    scope.querySelectorAll('[data-i18n]').forEach((el) => { el.textContent = t(el.getAttribute('data-i18n')); });
-    scope.querySelectorAll('[data-i18n-html]').forEach((el) => { el.innerHTML = t(el.getAttribute('data-i18n-html')); });
-    scope.querySelectorAll('[data-i18n-title]').forEach((el) => { el.setAttribute('title', t(el.getAttribute('data-i18n-title'))); });
-    scope.querySelectorAll('[data-i18n-aria]').forEach((el) => { el.setAttribute('aria-label', t(el.getAttribute('data-i18n-aria'))); });
-    scope.querySelectorAll('[data-i18n-placeholder]').forEach((el) => { el.setAttribute('placeholder', t(el.getAttribute('data-i18n-placeholder'))); });
+    scope.querySelectorAll('[data-i18n]').forEach((el) => { el.textContent = translate(el.getAttribute('data-i18n')); });
+    scope.querySelectorAll('[data-i18n-html]').forEach((el) => { el.innerHTML = translate(el.getAttribute('data-i18n-html')); });
+    scope.querySelectorAll('[data-i18n-title]').forEach((el) => { el.setAttribute('title', translate(el.getAttribute('data-i18n-title'))); });
+    scope.querySelectorAll('[data-i18n-aria]').forEach((el) => { el.setAttribute('aria-label', translate(el.getAttribute('data-i18n-aria'))); });
+    scope.querySelectorAll('[data-i18n-placeholder]').forEach((el) => { el.setAttribute('placeholder', translate(el.getAttribute('data-i18n-placeholder'))); });
   }
 
   // Applique tout de suite (pas seulement lors d'un futur setLang) : ce script est placé après tout
@@ -1026,5 +1026,5 @@
   if (typeof document !== 'undefined') document.documentElement.lang = lang;
   applyTranslations();
 
-  return { t, tileTitle, getLang, setLang, applyTranslations, onChange, STRINGS };
+  return { t: translate, tileTitle, getLang, setLang, applyTranslations, onChange, STRINGS };
 });

@@ -1939,8 +1939,8 @@
     const mode = numFmtSelect.value;
     if (mode === 'column') return { mode: 'column' };
     if (mode === 'custom') {
-      const d = numFmtDecimals.value;
-      return { mode: 'custom', decimals: d === 'auto' ? 'auto' : Number(d), notation: numFmtCompact.checked ? 'compact' : 'standard' };
+      const decimalsChoice = numFmtDecimals.value;
+      return { mode: 'custom', decimals: decimalsChoice === 'auto' ? 'auto' : Number(decimalsChoice), notation: numFmtCompact.checked ? 'compact' : 'standard' };
     }
     return undefined;
   }
@@ -1979,8 +1979,8 @@
     renderColumnsPicker(sel.concat(cols.filter((c) => !sel.includes(c))), new Set(sel));
   }
   function defaultTableColumns(cols) {
-    const d = GristBI.advice ? GristBI.advice.defaultsForType('table', [], cols) : null;
-    return d && d.columns ? d.columns : cols.slice(0, 6);
+    const tableDefaults = GristBI.advice ? GristBI.advice.defaultsForType('table', [], cols) : null;
+    return tableDefaults && tableDefaults.columns ? tableDefaults.columns : cols.slice(0, 6);
   }
   // Changement de table/de lignes : garde les cases cochées qui existent encore, sinon recoche les premières.
   function refreshColumnsPicker(cols) {
@@ -2669,36 +2669,36 @@
     resetTileForm();
     tileTypeSelect.value = type;
     const rows = store.getState().rows;
-    const d = GristBI.advice ? GristBI.advice.defaultsForType(type, rows, availableColumns(rows)) : null;
-    if (d) {
-      if (d.dimension) dimensionSelect.value = d.dimension;
-      columnDimensionSelect.value = d.columnDimension || '';
-      startColumnSelect.value = d.startColumn || '';
-      endColumnSelect.value = d.endColumn || '';
-      seriesSelect.value = d.seriesColumn || '';
-      measureYSelect.value = d.measureY || '';
-      comboModeSelect.value = d.comboMode === 'pareto' ? 'pareto' : 'measure';
-      if (d.drillDimensions) setDrillLevels(d.drillDimensions);
-      if (Number.isFinite(d.gaugeMin)) gaugeMinInput.value = d.gaugeMin;
-      if (Number.isFinite(d.gaugeMax)) gaugeMaxInput.value = d.gaugeMax;
-      radarModeSelect.value = d.radarAxisMode === 'columns' ? 'columns' : 'dimension';
-      if (d.radarAxisMode === 'columns') setRadarAxes(d.radarAxes);
-      wordCloudSplitCheckbox.checked = !!d.wordCloudSplit;
-      sortSelect.value = d.sortMode || '';
-      horizontalCheckbox.checked = !!d.horizontal;
-      areaCheckbox.checked = !!d.areaFill;
-      stackedCheckbox.checked = !!d.stacked;
-      donutCheckbox.checked = !!d.donut;
-      showPctCheckbox.checked = !!d.showPct;
-      if (d.columns) setColumnsPicker(d.columns);
+    const typeDefaults = GristBI.advice ? GristBI.advice.defaultsForType(type, rows, availableColumns(rows)) : null;
+    if (typeDefaults) {
+      if (typeDefaults.dimension) dimensionSelect.value = typeDefaults.dimension;
+      columnDimensionSelect.value = typeDefaults.columnDimension || '';
+      startColumnSelect.value = typeDefaults.startColumn || '';
+      endColumnSelect.value = typeDefaults.endColumn || '';
+      seriesSelect.value = typeDefaults.seriesColumn || '';
+      measureYSelect.value = typeDefaults.measureY || '';
+      comboModeSelect.value = typeDefaults.comboMode === 'pareto' ? 'pareto' : 'measure';
+      if (typeDefaults.drillDimensions) setDrillLevels(typeDefaults.drillDimensions);
+      if (Number.isFinite(typeDefaults.gaugeMin)) gaugeMinInput.value = typeDefaults.gaugeMin;
+      if (Number.isFinite(typeDefaults.gaugeMax)) gaugeMaxInput.value = typeDefaults.gaugeMax;
+      radarModeSelect.value = typeDefaults.radarAxisMode === 'columns' ? 'columns' : 'dimension';
+      if (typeDefaults.radarAxisMode === 'columns') setRadarAxes(typeDefaults.radarAxes);
+      wordCloudSplitCheckbox.checked = !!typeDefaults.wordCloudSplit;
+      sortSelect.value = typeDefaults.sortMode || '';
+      horizontalCheckbox.checked = !!typeDefaults.horizontal;
+      areaCheckbox.checked = !!typeDefaults.areaFill;
+      stackedCheckbox.checked = !!typeDefaults.stacked;
+      donutCheckbox.checked = !!typeDefaults.donut;
+      showPctCheckbox.checked = !!typeDefaults.showPct;
+      if (typeDefaults.columns) setColumnsPicker(typeDefaults.columns);
     }
     updateFormFieldsForType();
-    if (d) {
-      measureSelect.value = d.measure || '';
-      aggSelect.value = d.aggFn || 'sum';
-      aggYSelect.value = d.aggFnY || d.aggFn || 'sum';
-      aggSizeSelect.value = d.aggFn || 'sum';
-      trendDimensionSelect.value = d.trendDimension || '';
+    if (typeDefaults) {
+      measureSelect.value = typeDefaults.measure || '';
+      aggSelect.value = typeDefaults.aggFn || 'sum';
+      aggYSelect.value = typeDefaults.aggFnY || typeDefaults.aggFn || 'sum';
+      aggSizeSelect.value = typeDefaults.aggFn || 'sum';
+      trendDimensionSelect.value = typeDefaults.trendDimension || '';
     }
   }
 

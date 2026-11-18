@@ -324,9 +324,9 @@
       }
       if (idx < 0 || target < 0 || target >= tiles.length) return;
       const next = tiles.slice();
-      const tmp = next[idx];
+      const swapped = next[idx];
       next[idx] = next[target];
-      next[target] = tmp;
+      next[target] = swapped;
       replaceCurrentPageTiles(next);
       notify();
     }

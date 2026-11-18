@@ -225,9 +225,9 @@
     const types = ids.map((_, colIndex) => inferColumnType(rawRows.map((r) => r[colIndex])));
     const columns = ids.map((id, i) => ({ id, type: types[i], label: headers[i] || id }));
     const rows = rawRows.map((r) => {
-      const obj = {};
-      ids.forEach((id, i) => { obj[id] = coerceValue(r[i], types[i]); });
-      return obj;
+      const record = {};
+      ids.forEach((id, i) => { record[id] = coerceValue(r[i], types[i]); });
+      return record;
     });
     return { columns, rows, rowCount: rows.length };
   }

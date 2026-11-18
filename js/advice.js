@@ -395,9 +395,9 @@
       if (isEmpty(v) || seen.has(v)) continue;
       seen.add(v);
       if (last !== null) {
-        const a = numericValue(last);
-        const b = numericValue(v);
-        const lower = (a !== null && b !== null) ? b < a : String(v) < String(last);
+        const previousNumber = numericValue(last);
+        const currentNumber = numericValue(v);
+        const lower = (previousNumber !== null && currentNumber !== null) ? currentNumber < previousNumber : String(v) < String(last);
         if (lower) return false;
       }
       last = v;
@@ -554,17 +554,17 @@
     const pointDims = ctx.profiles.filter((p) => (p.role === 'category' && !p.yearLike && p.distinct >= 5)
       || (p.role === 'highCardinality' && p.distinct <= 300) || (p.role === 'identifier' && p.kind === 'text' && p.distinct <= 300));
     if (numericMeasures.length >= 2 && pointDims.length) {
-      const d = pointDims[0];
+      const pointDimension = pointDims[0];
       const [x, y] = numericMeasures;
       out.push(candidate({
         type: 'scatter',
         score: 5.5,
-        dims: [d.id],
+        dims: [pointDimension.id],
         measures: [x.id, y.id],
-        tileData: { type: 'scatter', dimension: d.id, measure: x.id, measureY: y.id, aggFn: 'sum',
-          title: resolveTitle(opts, 'advice.title.scatter', { measure: x.id, measureY: y.id, dimension: d.id }, `${y.id} / ${x.id}`) },
+        tileData: { type: 'scatter', dimension: pointDimension.id, measure: x.id, measureY: y.id, aggFn: 'sum',
+          title: resolveTitle(opts, 'advice.title.scatter', { measure: x.id, measureY: y.id, dimension: pointDimension.id }, `${y.id} / ${x.id}`) },
         titleKey: 'advice.title.scatter',
-        titleVars: { measure: x.id, measureY: y.id, dimension: d.id },
+        titleVars: { measure: x.id, measureY: y.id, dimension: pointDimension.id },
         reasonKey: 'advice.reason.scatterRelation',
         reasonVars: { measure: x.id, measureY: y.id }
       }));
@@ -693,9 +693,9 @@
     switch (type) {
       case 'bar': {
         out.dimension = dimensionFallback;
-        const d = ctx.byId.get(out.dimension);
-        if (d && d.role === 'category' && d.kind === 'text' && !d.timeLike && d.distinct >= 5) out.sortMode = 'value-desc';
-        if (d && (d.distinct >= 9 || (d.distinct >= 4 && d.maxLen > LONG_LABEL))) out.horizontal = true;
+        const dimensionProfile = ctx.byId.get(out.dimension);
+        if (dimensionProfile && dimensionProfile.role === 'category' && dimensionProfile.kind === 'text' && !dimensionProfile.timeLike && dimensionProfile.distinct >= 5) out.sortMode = 'value-desc';
+        if (dimensionProfile && (dimensionProfile.distinct >= 9 || (dimensionProfile.distinct >= 4 && dimensionProfile.maxLen > LONG_LABEL))) out.horizontal = true;
         break;
       }
       case 'line': {
@@ -745,10 +745,10 @@
         let earlier = 0;
         let later = 0;
         for (const r of rows.slice(0, SCAN_LIMIT)) {
-          const a = r[startCol.id];
-          const b = r[endCol.id];
-          if (isEmpty(a) || isEmpty(b)) continue;
-          if (String(a) < String(b)) earlier++; else if (String(a) > String(b)) later++;
+          const startValue = r[startCol.id];
+          const endValue = r[endCol.id];
+          if (isEmpty(startValue) || isEmpty(endValue)) continue;
+          if (String(startValue) < String(endValue)) earlier++; else if (String(startValue) > String(endValue)) later++;
         }
         if (later > earlier) [startCol, endCol] = [endCol, startCol];
         out.startColumn = startCol.id;
@@ -790,8 +790,8 @@
         // qui se range d'elle-même (mois, périodes) garde l'ordre des données : ce sont des étapes.
         const stages = ctx.categories.find((d) => d.kind === 'text' && d.distinct >= 3 && d.distinct <= 8 && !d.timeLike);
         out.dimension = (stages && stages.id) || dimensionFallback;
-        const d = ctx.byId.get(out.dimension);
-        if (!(d && (d.timeLike || d.role === 'time' || d.role === 'timePart'))) out.sortMode = 'value-desc';
+        const dimensionColumn = ctx.byId.get(out.dimension);
+        if (!(dimensionColumn && (dimensionColumn.timeLike || dimensionColumn.role === 'time' || dimensionColumn.role === 'timePart'))) out.sortMode = 'value-desc';
         break;
       }
       case 'treemap':
@@ -846,11 +846,11 @@
             const owners = new Map();
             let nested = true;
             for (const r of rows) {
-              const c = r[child.id];
+              const childValue = r[child.id];
               const p = r[parent.id];
-              if (c == null || c === '' || p == null || p === '') continue;
-              const seen = owners.get(String(c));
-              if (seen === undefined) owners.set(String(c), String(p));
+              if (childValue == null || childValue === '' || p == null || p === '') continue;
+              const seen = owners.get(String(childValue));
+              if (seen === undefined) owners.set(String(childValue), String(p));
               else if (seen !== String(p)) { nested = false; break; }
             }
             if (nested && !pair) pair = [parent.id, child.id];
