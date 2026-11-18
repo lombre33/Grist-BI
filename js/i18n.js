@@ -466,6 +466,20 @@
     'advice.bar.longLabels': { fr: 'Libellés longs (jusqu’à {maxLen} caractères) : des barres horizontales les affichent en entier.', en: 'Long labels (up to {maxLen} characters): horizontal bars show them in full.' },
     'advice.bar.unsorted': { fr: 'Triez par valeur pour repérer d’un coup d’œil le plus grand et le plus petit.', en: 'Sort by value to spot the largest and smallest at a glance.' },
 
+    // --- Modèles de rapport de « Nouveau > Depuis un modèle » de GFS (js/models.js, consigne 016) ---
+    'models.page.overview': { fr: 'Vue d’ensemble', en: 'Overview' },
+    'models.page.evolution': { fr: 'Évolution', en: 'Trend' },
+    'models.page.breakdown': { fr: 'Répartition', en: 'Breakdown' },
+    'models.title.seriesBy': { fr: '{measure} par {series}', en: '{measure} by {series}' },
+    'models.need.data': { fr: 'une table avec des lignes de données', en: 'a table with rows of data' },
+    'models.need.time': { fr: 'une colonne de dates (ou d’années)', en: 'a column of dates (or years)' },
+    'models.need.category': { fr: 'une colonne de catégories (du texte qui se répète)', en: 'a column of categories (text that repeats)' },
+    'models.needAnd': { fr: 'et', en: 'and' },
+    'models.noFit': { fr: 'Ce modèle n’a pas été ouvert : il lui faut {needs}, et aucune table de ce document n’en a.', en: 'This template was not opened: it needs {needs}, and no table in this document has it.' },
+    'models.noTables': { fr: 'Ce modèle n’a pas été ouvert : ce document n’a encore aucune table à analyser.', en: 'This template was not opened: this document has no table to analyse yet.' },
+    'models.unknown': { fr: 'Ce modèle n’a pas été ouvert : cette version de Grist BI ne le connaît pas.', en: 'This template was not opened: this version of Grist BI does not know it.' },
+    'models.failed': { fr: 'Ce modèle n’a pas pu être ouvert : la lecture du document a échoué.', en: 'This template could not be opened: reading the document failed.' },
+
     // --- Écran d'accueil d'un tableau de bord sans tuile (js/welcome.js) ---
     'welcome.title': { fr: 'Pour commencer', en: 'Get started' },
     'welcome.subtitle': { fr: 'Des visualisations adaptées à vos données : un clic suffit, vous pourrez les modifier ensuite.', en: 'Visualizations that fit your data: one click is enough, and you can edit them afterwards.' },

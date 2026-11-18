@@ -2960,6 +2960,43 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     inconnue -> Standard, libellés anglais. **Non vérifié** : un vrai Grist / GFS ; lecture au vidéoprojecteur ou à
     l'impression noir et blanc du dégradé gris ; thème sombre (les graphiques n'en ont pas) ; plus de 8 séries.
 
+- **Modèles de rapport pour « Nouveau > Depuis un modèle » de GFS** (18/11/2026, fil « Appliquer la nouvelle consigne GFS »,
+  consigne 016, facultative) :
+  - **Ce qu'est un modèle ici** : un rapport de départ (une page de tuiles) posé sur une table que la personne a DÉJÀ — jamais une
+    table créée. Trois modèles : `vue-d-ensemble` (2 chiffres clés avec tendance, aire dans le temps, barres, anneau),
+    `evolution` (chiffre clé, aire, aire empilée par catégorie, barres par mois `<date>.Mois`), `repartition` (barres sur deux
+    dimensions différentes, anneau, treemap s'il y a au moins 9 valeurs, tableau croisé). Chaque modèle est défini par des RÔLES
+    (une date, des catégories, une mesure) que `advice.analyzeColumns` lit dans les VALEURS, et pioche ses tuiles parmi
+    `advice.suggestTiles` : mêmes heuristiques que l'écran d'accueil, aucune copie à tenir à jour. Choix de produit : pas de
+    `tables: true` (la règle « aucune table de données » ne bouge pas, voir CLAUDE.md §8) ; un modèle qui crée des tables, avec
+    des données d'exemple, serait une décision à part d'Antoine.
+  - **Quelle table** : `openModelById` essaie d'abord la table déjà connectée, puis les autres dans l'ordre de GFS (8 au plus,
+    pour ne pas relire un gros document entier pour un clic), et prend la première où `models.build` réussit. `vue-d-ensemble` et
+    `repartition` veulent une colonne de catégories ; `evolution` veut une date (ou une année). Sans mesure, on compte les lignes.
+  - **Contrat d'ouverture** (contrats GFS 5.4, point 13) : un modèle s'ouvre NON enregistré (jeton `'new'`, comme « Nouveau » : rien
+    n'est écrit avant un geste de la personne) ; un `id` inconnu, un type autre que `rapport` ou aucune table qui convienne rendent
+    `{ ouvert: false }` (une fenêtre dit pourquoi, le rapport affiché ne change pas), JAMAIS un rapport vierge à la place. À
+    l'ouverture initiale (`bootstrap`), un modèle qui ne s'ouvre pas laisse l'app démarrer comme d'habitude sur la première table
+    avec son rapport enregistré — pas un rapport vierge qui ferait croire que le modèle s'est ouvert.
+  - **Kit 0.9.0 -> 0.24.0** (`7aa030c`) : seul `kit/js/gfs-link.js` change parmi les fichiers que cette app importe (`ambiance.js`,
+    `dialogs.js`, `windows.css` identiques entre les deux commits, vérifié par `git diff`) ; les ajouts sont facultatifs (correcteurs,
+    copies, `attach`, `onDelete`…), `modele` est le seul qui nous concerne.
+  - **Bug réel trouvé en route** : une aire empilée par année restait PLATE À 0 au-delà de 5 000 lignes (BigInt de DuckDB contre
+    nombre du JS pur dans `assembleSeries`) — PR #65, voir TEST_PROTOCOL.md n°34.
+  - **Testé** : Node — `models.build` sur le jeu de test (vraies colonnes, agrégats valides, fr/en, sans `id`), contenu de chaque
+    modèle, tables sans date / sans catégorie / vide / `id` inconnu (`__proto__` compris), résultats indépendants d'un appel à
+    l'autre, clés i18n `models.*` fr/en à variables identiques, `modeles/modeles.json` contre les règles de GFS (id, 60/140 signes,
+    étiquettes bilingues, WebP 240 × 320 ≤ 12 Ko, aucune vignette orpheline, aucun `tables`/`extensions`) et correspondance exacte
+    avec les modèles du code ; Playwright — le vrai `index.html` dans un `<iframe sandbox="allow-scripts">` servi par un FAUX GFS
+    parent qui répond `contexte` et envoie `ouvrir` avec le vrai kit 0.24.0 (9 scénarios : ouverture initiale avec `modele`, rien
+    d'écrit avant un geste puis UNE ligne avec les 5 tuiles, `ouvrir` d'un second modèle sans seconde ligne, `id` inconnu et type
+    `document` -> `{ ouvert: false }` écran inchangé, « Nouveau » toujours vierge, table de nombres seulement -> `{ ouvert: false }`
+    + message, ouverture initiale d'un `id` inconnu, anglais). **Non vérifié** : le vrai GFS (la fenêtre « Depuis un modèle », le
+    clic « Créer », la copie du catalogue par `outils/modeles.mjs`) ; un vrai Grist ; les modèles sur des tables réelles variées
+    (testés sur le jeu de ventes de test et une table de nombres). **Limites** : les titres reprennent les noms de colonnes
+    (`Montant par Date.Annee`) comme les suggestions de l'accueil ; les vignettes sont des captures du vrai `index.html` avec le
+    faux Grist du dépôt (même réserve que `vitrine/`), sur un jeu de ventes d'exemple sans nom de personne.
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée

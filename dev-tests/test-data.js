@@ -16,6 +16,7 @@ const keywords = require('../js/keywords.js');
 const pdfText = require('../js/pdf-text.js');
 const advice = require('../js/advice.js');
 const welcome = require('../js/welcome.js');
+const models = require('../js/models.js');
 
 const rows = [
   { id: 1, Region: 'Nord', Montant: 100 },
@@ -2812,6 +2813,192 @@ const SAMPLE_TIME_SERIES = [
       assert.notStrictEqual(en, fr);
       assert.ok(/ by /.test(en) && / par /.test(fr), `${en} / ${fr}`);
       console.log(`OK advice — ${used.size} clés i18n, toutes définies et utilisées, fr/en à variables identiques, aucune {variable} orpheline`);
+    }
+  }
+
+  // --- js/models.js + modeles/modeles.json : modèles de « Nouveau > Depuis un modèle » (consigne GFS 016) ---
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const root = path.join(__dirname, '..');
+    const withHierarchies = (rows) => Object.keys(rows[0]).filter((k) => k !== 'id')
+      .reduce((acc, col) => (data.parseDateValue(rows[0][col]) != null ? data.deriveDateHierarchyColumns(acc, col) : acc), rows);
+    const big = withHierarchies(demoData.buildLargeSampleRows());
+    const cols = (rows) => Object.keys(rows[0]).filter((k) => k !== 'id');
+
+    assert.deepStrictEqual(models.ids().sort(), ['evolution', 'repartition', 'vue-d-ensemble']);
+    assert.strictEqual(models.REPORT_TYPE, 'rapport');
+    assert.ok(models.has('evolution') && !models.has('nope') && !models.has('') && !models.has(undefined) && !models.has('__proto__') && !models.has('toString'));
+
+    // Chaque modèle sur un vrai tableau : des tuiles qui s'ajoutent au store et s'agrègent.
+    models.ids().forEach((id) => {
+      ['fr', 'en'].forEach((lang) => {
+        i18n.setLang(lang);
+        const r = models.build(id, big, cols(big), { t: i18n.t });
+        assert.ok(r.ok, `${id} (${lang}) s'applique au jeu de données de test`);
+        assert.ok(r.tiles.length >= 3 && r.tiles.length <= 6, `${id} : de 3 à 6 tuiles (${r.tiles.length})`);
+        assert.ok(r.pageName && r.pageName.indexOf('models.') === -1, `${id} (${lang}) : nom de page traduit « ${r.pageName} »`);
+        const store = state.createStore();
+        store.setPages([{ id: 'p1', name: r.pageName, tiles: r.tiles.map((t, i) => Object.assign({ id: `m${i}` }, t)) }], 'p1');
+        r.tiles.forEach((tile) => {
+          assert.ok(tile.title && tile.title.indexOf('{') === -1 && tile.title.indexOf('models.') === -1, `${id} : titre « ${tile.title} »`);
+          [tile.dimension, tile.measure, tile.columnDimension, tile.seriesColumn, tile.trendDimension].filter(Boolean).forEach((c) => {
+            assert.ok(Object.keys(big[0]).indexOf(c) !== -1, `${id} : la colonne « ${c} » existe`);
+          });
+          if (tile.dimension) {
+            const groups = data.groupByAggregate(big, tile.dimension, tile.measure, tile.aggFn);
+            assert.ok(groups.length >= 1 && groups.every((g) => Number.isFinite(g.value)), `${id}/${tile.type} : agrégat valide`);
+          }
+          assert.ok(!('id' in tile), 'les tuiles n\'ont pas d\'id : main.js le pose');
+        });
+      });
+    });
+    i18n.setLang('fr');
+    {
+      const fr = models.build('vue-d-ensemble', big, cols(big), { t: i18n.t });
+      i18n.setLang('en');
+      const en = models.build('vue-d-ensemble', big, cols(big), { t: i18n.t });
+      i18n.setLang('fr');
+      assert.strictEqual(fr.pageName, 'Vue d’ensemble');
+      assert.strictEqual(en.pageName, 'Overview');
+      assert.notStrictEqual(fr.tiles[2].title, en.tiles[2].title, 'les titres suivent la langue');
+      // Sans `opts.t` : jamais un mot de français en dur dans un titre.
+      const bare = models.build('evolution', big, cols(big));
+      assert.ok(bare.ok && bare.tiles.every((t) => !/\bpar\b|\bby\b|Total/.test(t.title)), 'repli neutre sans t : ' + bare.tiles.map((t) => t.title).join(' | '));
+      console.log('OK models.build — 3 modèles sur le jeu de données de test : vraies colonnes, agrégats valides, fr/en, sans id');
+    }
+
+    // Contenu de chaque modèle : ce que la personne y verra.
+    {
+      const tr = (key, vars) => i18n.t(key, vars);
+      const overview = models.build('vue-d-ensemble', big, cols(big), { t: tr });
+      assert.deepStrictEqual(overview.tiles.map((t) => t.type), ['kpi', 'kpi', 'line', 'bar', 'pie'], 'chiffres clés d\'abord, puis courbe, barres, anneau');
+      assert.strictEqual(overview.tiles[0].trendDimension, 'Date.Annee', 'KPI avec tendance');
+      assert.strictEqual(overview.tiles[2].areaFill, true, 'la courbe de la vue d\'ensemble est une aire');
+      assert.ok(overview.tiles[3].dimension !== 'Date.Annee' && overview.tiles[4].dimension !== 'Date.Annee', 'barres et anneau : de vraies catégories, pas l\'année');
+
+      const evolution = models.build('evolution', big, cols(big), { t: tr });
+      const series = evolution.tiles.find((t) => t.seriesColumn);
+      assert.ok(series && series.type === 'line' && series.areaFill && series.stacked, 'courbe de séries empilée');
+      assert.strictEqual(series.dimension, evolution.tiles.find((t) => t.type === 'line').dimension, 'même axe que la courbe de base');
+      assert.strictEqual(series.measure, evolution.tiles.find((t) => t.type === 'line').measure, 'même mesure');
+      assert.ok(data.isStackedTile(series) && data.isSeriesTile(series), 'la tuile est reconnue comme série empilée par js/data.js');
+      assert.ok(['Produit', 'Region'].indexOf(series.seriesColumn) !== -1, 'séries = une vraie catégorie de 2 à 6 valeurs');
+      const bar = evolution.tiles.find((t) => t.type === 'bar');
+      assert.ok(bar && /^(Mois|Date\.Mois|Date\.Trimestre|Trimestre|Jour|Annee)$/.test(bar.dimension), 'barres par mois : la saisonnalité, ' + (bar && bar.dimension));
+
+      const rep = models.build('repartition', big, cols(big), { t: tr });
+      const repDims = rep.tiles.filter((t) => t.type === 'bar').map((t) => t.dimension);
+      assert.strictEqual(new Set(repDims).size, repDims.length, 'deux barres = deux dimensions différentes : ' + repDims);
+      assert.ok(rep.tiles.every((t) => !/^(Date|Annee|Mois|Jour|Trimestre)/.test(t.dimension || '')), 'répartition : aucune dimension de temps');
+      console.log('OK models — vue d\'ensemble (KPI/aire/barres/anneau), évolution (série empilée, saisonnalité), répartition (dimensions distinctes)');
+    }
+
+    // Ce que le tableau n'a pas : `{ ok: false, missing }`, jamais un rapport vide ni une exception.
+    {
+      const noTime = Array.from({ length: 30 }, (_, i) => ({ id: i + 1, Equipe: ['A', 'B', 'C'][i % 3], Ventes: 10 + i }));
+      assert.deepStrictEqual(models.build('evolution', noTime, cols(noTime)), { ok: false, missing: ['time'] }, 'pas de date : l\'évolution refuse');
+      assert.ok(models.build('vue-d-ensemble', noTime, cols(noTime)).ok, 'sans date, la vue d\'ensemble reste possible (sans courbe)');
+      assert.ok(!models.build('vue-d-ensemble', noTime, cols(noTime)).tiles.some((t) => t.type === 'line'), 'et sans courbe');
+      const numbersOnly = Array.from({ length: 30 }, (_, i) => ({ id: i + 1, A: i * 1.5 + 0.25, B: Math.sin(i) * 100 + 0.5 }));
+      assert.deepStrictEqual(models.build('repartition', numbersOnly, cols(numbersOnly)), { ok: false, missing: ['category'] });
+      assert.deepStrictEqual(models.build('vue-d-ensemble', [], []), { ok: false, missing: ['data'] }, 'table vide');
+      assert.deepStrictEqual(models.build('vue-d-ensemble', undefined), { ok: false, missing: ['data'] });
+      assert.deepStrictEqual(models.build('nope', big, cols(big)), { ok: false, unknown: true, missing: [] }, 'id inconnu');
+      assert.deepStrictEqual(models.build('__proto__', big, cols(big)), { ok: false, unknown: true, missing: [] });
+      // Une table qui ne fait que des textes : on compte les lignes plutôt que de refuser.
+      const textOnly = Array.from({ length: 24 }, (_, i) => ({ id: i + 1, Ville: ['Lyon', 'Nice', 'Brest'][i % 3], Statut: ['Ouvert', 'Fermé'][i % 2] }));
+      const counted = models.build('vue-d-ensemble', textOnly, cols(textOnly));
+      assert.ok(counted.ok && counted.tiles.some((t) => t.aggFn === 'count'), 'sans mesure : comptage de lignes');
+      console.log('OK models.build — sans date / sans catégorie / vide / id inconnu : { ok: false, missing }, jamais une exception ni un rapport vide');
+    }
+
+    // Deux appels de suite ne partagent aucun objet (un modèle ne modifie jamais ses suggestions).
+    {
+      const a = models.build('vue-d-ensemble', big, cols(big));
+      a.tiles[0].title = 'modifié';
+      a.tiles.forEach((t) => { t.measure = 'XXX'; });
+      const b = models.build('vue-d-ensemble', big, cols(big));
+      assert.notStrictEqual(b.tiles[0].title, 'modifié');
+      assert.ok(b.tiles.every((t) => t.measure !== 'XXX'));
+      console.log('OK models.build — résultats indépendants d\'un appel à l\'autre');
+    }
+
+    // Clés i18n : toute clé `models.*` citée par le code existe en fr ET en anglais, mêmes variables.
+    {
+      const sources = ['js/models.js', 'js/main.js'].map((f) => fs.readFileSync(path.join(root, f), 'utf8')).join('\n');
+      const used = new Set((sources.match(/'models\.[A-Za-z.]+'/g) || []).map((k) => k.slice(1, -1)));
+      ['data', 'time', 'category'].forEach((role) => used.add('models.need.' + role)); // composée : 'models.need.' + role
+      used.delete('models.need.');
+      assert.ok(used.size >= 10, 'au moins dix clés citées, trouvé ' + used.size);
+      const vars = (str) => (str.match(/\{[a-zA-Z]+\}/g) || []).sort().join(',');
+      used.forEach((key) => {
+        const entry = i18n.STRINGS && i18n.STRINGS[key];
+        i18n.setLang('fr'); const fr = i18n.t(key, {});
+        i18n.setLang('en'); const en = i18n.t(key, {});
+        i18n.setLang('fr');
+        assert.ok(fr !== key && en !== key && fr && en, 'clé définie en fr et en : ' + key);
+        assert.strictEqual(vars(fr), vars(en), 'mêmes variables en fr et en : ' + key);
+      });
+      const defined = Object.keys(i18n.STRINGS || {}).filter((k) => /^models\./.test(k));
+      if (defined.length) defined.forEach((k) => assert.ok(used.has(k), 'clé models.* définie et jamais utilisée : ' + k));
+      console.log(`OK models — ${used.size} clés i18n, toutes définies fr/en à variables identiques`);
+    }
+
+    // Le catalogue que GFS copie (modeles/modeles.json) : les règles de GFS (contrats 5.4 point 13), au
+    // mot près, et la correspondance exacte avec les modèles que le code sait ouvrir.
+    {
+      const dir = path.join(root, 'modeles');
+      const catalogue = JSON.parse(fs.readFileSync(path.join(dir, 'modeles.json'), 'utf8'));
+      assert.ok(Array.isArray(catalogue) && catalogue.length === models.ids().length, 'une entrée par modèle');
+      const ids = new Set();
+      const bilingual = (v, max, label) => {
+        assert.ok(v && typeof v.fr === 'string' && typeof v.en === 'string' && v.fr.trim() && v.en.trim(), label + ' : fr ET en');
+        assert.ok(v.fr.length <= max && v.en.length <= max, `${label} : ${max} signes au plus`);
+      };
+      const webpSize = (buf) => {
+        assert.strictEqual(buf.toString('latin1', 0, 4), 'RIFF');
+        assert.strictEqual(buf.toString('latin1', 8, 12), 'WEBP');
+        const kind = buf.toString('latin1', 12, 16);
+        if (kind === 'VP8 ') return { w: buf.readUInt16LE(26) & 0x3fff, h: buf.readUInt16LE(28) & 0x3fff };
+        if (kind === 'VP8L') { const b = buf.readUInt32LE(21); return { w: (b & 0x3fff) + 1, h: ((b >> 14) & 0x3fff) + 1 }; }
+        if (kind === 'VP8X') return { w: buf.readUIntLE(24, 3) + 1, h: buf.readUIntLE(27, 3) + 1 };
+        throw new Error('WebP inconnu : ' + kind);
+      };
+      catalogue.forEach((e) => {
+        assert.ok(/^[a-z0-9][a-z0-9._-]{0,63}$/.test(e.id), 'id valide : ' + e.id);
+        assert.ok(!ids.has(e.id), 'id unique : ' + e.id); ids.add(e.id);
+        assert.ok(models.has(e.id), 'chaque entrée du catalogue est un modèle que le code sait ouvrir : ' + e.id);
+        assert.strictEqual(e.type, models.REPORT_TYPE, 'type = celui du manifeste');
+        bilingual(e.nom, 60, e.id + ' nom');
+        bilingual(e.description, 140, e.id + ' description');
+        assert.ok(Array.isArray(e.etiquettes) && e.etiquettes.length >= 3, e.id + ' : des étiquettes pour la recherche');
+        e.etiquettes.forEach((tag, i) => bilingual(tag, 40, `${e.id} étiquette ${i}`));
+        assert.ok(!e.tables, 'aucun modèle ne crée de table (CLAUDE.md §8) : pas de tables: true');
+        assert.ok(!e.extensions, 'aucune extension de plus que celle du type');
+        assert.ok(/^[a-z0-9][a-z0-9._-]*\.webp$/.test(e.vignette), 'vignette WebP : ' + e.vignette);
+        const file = fs.readFileSync(path.join(dir, e.vignette));
+        const size = webpSize(file);
+        assert.deepStrictEqual(size, { w: 240, h: 320 }, e.id + ' : vignette 240 × 320');
+        assert.ok(file.length <= 12 * 1024, `${e.id} : vignette ${file.length} octets (12 Ko conseillés)`);
+      });
+      models.ids().forEach((id) => assert.ok(ids.has(id), 'chaque modèle du code est au catalogue : ' + id));
+      const onDisk = fs.readdirSync(dir).filter((f) => /\.webp$/.test(f));
+      assert.strictEqual(onDisk.length, catalogue.length, 'aucune vignette orpheline dans modeles/');
+      console.log(`OK modeles/modeles.json — ${catalogue.length} entrées valides (règles de GFS : id, 60/140 signes fr/en, étiquettes, vignettes WebP 240×320 ≤ 12 Ko), sans tables ni extensions`);
+    }
+
+    // Câblage de l'ouverture `modele` (js/main.js) : lu dans la source, le navigateur le rejoue (voir TEST_PROTOCOL.md).
+    {
+      const main = fs.readFileSync(path.join(root, 'js', 'main.js'), 'utf8');
+      assert.ok(/GfsLink\.onOpen\(async \(\{ fichier, type, modele \}\)/.test(main), 'onOpen lit `modele`');
+      assert.ok(/if \(modele\) return openModelById\(modele\.id, type\)/.test(main), 'onOpen : un modèle ne retombe JAMAIS sur le départ vierge');
+      assert.ok(/opening && opening\.modele/.test(main), 'bootstrap : l\'ouverture initiale `modele` a sa branche, avant le départ vierge');
+      assert.ok(main.indexOf('opening && opening.modele') < main.indexOf('await openBlankReport(); // gère déjà'), 'la branche modèle passe avant « Nouveau »');
+      assert.ok(!/createTableFromRows[\s\S]{0,400}openModelById|openModelById[\s\S]{0,2500}createTableFromRows/.test(main.slice(main.indexOf('async function openModelById'), main.indexOf('GristBI.openModel ='))), 'openModelById ne crée aucune table');
+      assert.ok(/<script src="js\/models\.js"><\/script>/.test(fs.readFileSync(path.join(root, 'index.html'), 'utf8')), 'index.html charge js/models.js');
+      assert.ok(fs.readFileSync(path.join(root, 'index.html'), 'utf8').indexOf('js/models.js') > fs.readFileSync(path.join(root, 'index.html'), 'utf8').indexOf('js/advice.js'), 'models.js après advice.js');
+      console.log('OK js/main.js — onOpen/bootstrap lisent `modele` avant « Nouveau », openModelById ne crée aucune table, index.html charge js/models.js');
     }
   }
 })().then(() => {
