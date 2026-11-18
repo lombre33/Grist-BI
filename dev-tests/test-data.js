@@ -2186,13 +2186,13 @@ const SAMPLE_TIME_SERIES = [
   const format = require('../js/format.js');
 
   // types concernés : ceux qui affichent un nombre ; pas de réglage pour un type inconnu ni null
-  for (const type of ['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo']) {
+  for (const type of ['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo', 'histogram']) {
     assert.strictEqual(data.supportsNumberFormat({ type }), true, type);
   }
   assert.strictEqual(data.supportsNumberFormat({ type: 'text' }), false, 'la tuile Texte ne montre aucun nombre');
   assert.strictEqual(data.supportsNumberFormat({ type: 'inconnu' }), false);
   assert.strictEqual(data.supportsNumberFormat(null), false);
-  assert.deepStrictEqual(data.NUMBER_FORMAT_TILE_TYPES.filter((ty) => !['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo'].includes(ty)), []);
+  assert.deepStrictEqual(data.NUMBER_FORMAT_TILE_TYPES.filter((ty) => !['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo', 'histogram'].includes(ty)), []);
 
   // verdict de « Comme dans la colonne » : sert l'explication affichée sous le réglage
   format.setColumnInfo({
@@ -2251,8 +2251,8 @@ const SAMPLE_TIME_SERIES = [
   const charts = read('js/charts.js');
   const main = read('js/main.js');
   const css = read('css/style.css');
-  // une seule dernière étape avant setOption, pour les deux chemins ECharts (graphiques et mesures temporelles)
-  assert.strictEqual((charts.match(/finalizeOption\(option, instance\);\s*\n\s*instance\.setOption\(option, true\);/g) || []).length, 2, 'finalizeOption avant chaque setOption d\'option');
+  // une seule dernière étape avant setOption, pour les trois chemins ECharts (graphiques, mesures temporelles, histogramme)
+  assert.strictEqual((charts.match(/finalizeOption\(option, instance\);\s*\n\s*instance\.setOption\(option, true\);/g) || []).length, 3, 'finalizeOption avant chaque setOption d\'option');
   assert.strictEqual((charts.match(/^\s*confineTooltip\(option\);/gm) || []).length, 1, 'confineTooltip n\'est plus appelée qu\'à l\'intérieur de finalizeOption');
   // les jetons du thème viennent de la page, pas de couleurs en dur
   for (const token of ["'--surface'", "'--border-strong'", "'--border'", "'--text-secondary'"]) assert.ok(charts.includes(token), `chartTheme lit ${token}`);
@@ -3895,6 +3895,138 @@ const SAMPLE_TIME_SERIES = [
           assert.ok(/fmtFor\(\{ \.\.\.tile, aggFn: tile\.aggFnY \|\| tile\.aggFn \}, tile\.measureY\)/.test(chartsSrc4), 'format de la courbe : celui de SA colonne, un comptage jamais comme la colonne');
           assert.ok(!/Intl\.NumberFormat|toFixed/.test(chartsSrc4), 'aucun format de nombre en dur dans charts.js');
           console.log('OK combo barres + courbe — Pareto (cumul, 100 exact, négatifs), alignement par nom, tri, export, valeurs par défaut, conseil et i18n');
+        }
+        // Histogramme (lot 2 de l'étude, 18/11/2026) : classes rondes, bornes, filtre par plage, store, export, conseil, câblage.
+        {
+          // Pas « rond » le plus proche (1, 2, 5 x 10^n).
+          assert.deepStrictEqual([0.9, 1.4, 1.5, 2.9, 3, 3.33, 6.9, 7, 0.04, 130].map(data.niceStep), [1, 1, 2, 2, 5, 5, 5, 10, 0.05, 100]);
+          assert.strictEqual(data.niceStep(0), 1); assert.strictEqual(data.niceStep(-3), 1); assert.strictEqual(data.niceStep(NaN), 1);
+          // Notes sur 20 : 10 valeurs -> 5 classes demandées (Sturges), pas rond 5 -> [0;5[ [5;10[ [10;15[ [15;20].
+          const notes = [3, 8, 8, 12, 12, 12, 15, 18, 20, 5].map((Note, i) => ({ id: i, Note }));
+          const h = data.histogramBins(notes, notes, 'Note');
+          assert.deepStrictEqual(h.bins.map((b) => [b.lo, b.hi, b.count, b.last]), [[0, 5, 1, false], [5, 10, 3, false], [10, 15, 3, false], [15, 20, 3, true]]);
+          assert.strictEqual(h.total, 10); assert.strictEqual(h.ignored, 0); assert.strictEqual(h.step, 5);
+          assert.strictEqual(h.bins.reduce((a, b) => a + b.count, 0), 10, 'chaque ligne dans une classe, une seule');
+          // Valeurs vides / non numériques / booléens ignorées, JAMAIS comptées comme 0.
+          const messy = [null, '', 'abc', true, undefined, 4, '6', 8n].map((Note, i) => ({ id: i, Note }));
+          const hm = data.histogramBins(messy, messy, 'Note');
+          assert.strictEqual(hm.total, 3, '4, « 6 » et 8n (BigInt) seulement'); assert.strictEqual(hm.ignored, 5);
+          assert.ok(hm.bins[0].lo > 0 || hm.bins[0].lo === 0); assert.ok(hm.bins.every((b) => b.lo >= 0), 'aucune classe négative créée par un null pris pour 0');
+          // Aucune valeur numérique : aucune classe (le rendu affiche un message).
+          assert.deepStrictEqual(data.histogramBins([{ a: 'x' }, { a: null }], [{ a: 'x' }, { a: null }], 'a'), { bins: [], step: 0, total: 0, ignored: 2 });
+          assert.deepStrictEqual(data.histogramBins([], [], 'a').bins, []);
+          // Une seule valeur distincte : une classe fermée des deux côtés.
+          const one = [7, 7, 7].map((Note) => ({ Note }));
+          assert.deepStrictEqual(data.histogramBins(one, one, 'Note').bins, [{ lo: 7, hi: 7, count: 3, last: true }]);
+          assert.deepStrictEqual(data.histogramFilter({ lo: 7, hi: 7, count: 3, last: true }), { type: 'range', min: 7, max: 7 });
+          assert.strictEqual(data.applyFilters(one.map((r) => ({ Note: r.Note })), [Object.assign({ column: 'Note' }, data.histogramFilter({ lo: 7, hi: 7, last: true }))]).length, 3);
+          // Entiers : jamais de classe plus étroite que 1 (sinon une classe sur deux vide) ; bornes décimales sans bruit de flottant.
+          const ints = [1, 2, 3, 1, 2].map((Note) => ({ Note }));
+          assert.deepStrictEqual(data.histogramBins(ints, ints, 'Note').bins.map((b) => [b.lo, b.hi, b.count]), [[1, 2, 2], [2, 3, 3]]);
+          const tenths = Array.from({ length: 11 }, (_, i) => ({ x: i / 10 + (i === 3 ? 0.1 + 0.2 - 0.3 : 0) }));
+          const ht = data.histogramBins(tenths, tenths, 'x');
+          assert.deepStrictEqual(ht.bins.map((b) => b.lo).concat(ht.bins[ht.bins.length - 1].hi), [0, 0.2, 0.4, 0.6, 0.8, 1], 'bornes arrondies');
+          // Nombre de classes demandé : indicatif (bornes rondes), borné à 2..60 ; invalide ou < 2 -> automatique.
+          const twenty = Array.from({ length: 21 }, (_, i) => ({ v: i }));
+          assert.strictEqual(data.histogramBins(twenty, twenty, 'v', 4).bins.length, 4);
+          assert.strictEqual(data.histogramBins(twenty, twenty, 'v', '4').bins.length, 4, 'nombre saisi sous forme de texte');
+          assert.deepStrictEqual(data.histogramBins(twenty, twenty, 'v', 1).bins, data.histogramBins(twenty, twenty, 'v').bins, '1 classe : automatique');
+          assert.deepStrictEqual(data.histogramBins(twenty, twenty, 'v', 'abc').bins, data.histogramBins(twenty, twenty, 'v').bins);
+          const wide = Array.from({ length: 200 }, (_, i) => ({ v: i * 5000003 }));
+          assert.ok(data.histogramBins(wide, wide, 'v', 500).bins.length <= data.HISTOGRAM_MAX_BINS, 'plafond de 60 classes');
+          // Grille tirée de TOUTES les lignes, comptes sur les lignes visibles : l'axe ne bouge pas quand on filtre ailleurs.
+          const shown = twenty.filter((r) => r.v >= 10);
+          const hs = data.histogramBins(twenty, shown, 'v', 4);
+          assert.deepStrictEqual(hs.bins.map((b) => [b.lo, b.hi]), data.histogramBins(twenty, twenty, 'v', 4).bins.map((b) => [b.lo, b.hi]));
+          assert.strictEqual(hs.total, 11);
+          // Cohérence classe <-> filtre : chaque classe contient EXACTEMENT les lignes que son filtre range retient (bornes
+          // communes, flottants, dernière classe fermée). Jeu pseudo-aléatoire reproductible.
+          let seed = 7; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+          for (const gen of [() => Math.round(rnd() * 100) / 10, () => Math.floor(rnd() * 40), () => rnd() * 1e6, () => -50 + rnd() * 100]) {
+            const rs = Array.from({ length: 400 }, () => ({ v: gen() }));
+            const hh = data.histogramBins(rs, rs, 'v');
+            hh.bins.forEach((b) => {
+              const kept = data.applyFilters(rs, [Object.assign({ column: 'v' }, data.histogramFilter(b))]).length;
+              assert.strictEqual(kept, b.count, 'classe [' + b.lo + ' ; ' + b.hi + (b.last ? ']' : '[') + ' : le filtre retient autant de lignes que le compte');
+            });
+            assert.strictEqual(hh.bins.reduce((a, b) => a + b.count, 0), 400);
+          }
+          // matchesFilter : cellule vide jamais prise pour 0 ; borne haute exclue seulement avec maxExclusive.
+          assert.strictEqual(data.matchesFilter(null, { type: 'range', min: -1, max: 1 }), false);
+          assert.strictEqual(data.matchesFilter('', { type: 'range', min: -1, max: 1 }), false);
+          assert.strictEqual(data.matchesFilter(0, { type: 'range', min: -1, max: 1 }), true);
+          assert.strictEqual(data.matchesFilter(10, { type: 'range', min: 5, max: 10 }), true, 'borne haute incluse par défaut (filtres avancés inchangés)');
+          assert.strictEqual(data.matchesFilter(10, { type: 'range', min: 5, max: 10, maxExclusive: true }), false);
+          assert.strictEqual(data.matchesFilter(5, { type: 'range', min: 5, max: 10, maxExclusive: true }), true);
+          // filterSelects : égalité comme avant (types mêlés), plage par matchesFilter.
+          assert.strictEqual(data.filterSelects({ column: 'A', value: 2025 }, '2025'), true);
+          assert.strictEqual(data.filterSelects({ column: 'A', value: 'x' }, 'y'), false);
+          assert.strictEqual(data.filterSelects({ column: 'A', type: 'range', min: 5, max: 10, maxExclusive: true }, 7), true);
+          assert.strictEqual(data.filterSelects({ column: 'A', type: 'range', min: 5, max: 10, maxExclusive: true }, 10), false);
+          assert.strictEqual(data.filterSelects(undefined, 1), false);
+          // Classe active : le filtre posé par l'histogramme, rien d'autre.
+          const b1 = { lo: 5, hi: 10, count: 3, last: false };
+          assert.strictEqual(data.histogramBinIsActive(Object.assign({ column: 'Note' }, data.histogramFilter(b1)), b1), true);
+          assert.strictEqual(data.histogramBinIsActive(Object.assign({ column: 'Note' }, data.histogramFilter({ lo: 5, hi: 10, last: true })), b1), false, 'même bornes mais fermée à droite : autre classe');
+          assert.strictEqual(data.histogramBinIsActive({ column: 'Note', value: 5 }, b1), false);
+          assert.strictEqual(data.histogramBinIsActive(undefined, b1), false);
+          // Store : un clic de classe pose un filtre croisé `range`, le même clic le retire, une autre classe le remplace,
+          // un filtre d'égalité sur la colonne est remplacé ; la tuile source garde son filtre jusqu'à sa suppression.
+          const st = state.createStore();
+          st.setRows(notes);
+          st.addTile({ id: 'hs', type: 'histogram', measure: 'Note', title: 'H' });
+          st.addTile({ id: 'bs', type: 'bar', dimension: 'id', measure: 'Note', aggFn: 'sum', title: 'B' });
+          st.toggleRangeFilter('Note', data.histogramFilter(h.bins[1]), 'hs');
+          assert.deepStrictEqual(st.getState().activeFilters, [{ column: 'Note', type: 'range', min: 5, max: 10, maxExclusive: true, sourceTileId: 'hs' }]);
+          assert.strictEqual(data.rowsForTile(st.getState().tiles[0], st.getState()).length, 10, 'l\'histogramme reste affiché en entier');
+          assert.strictEqual(data.rowsForTile(st.getState().tiles[1], st.getState()).length, 3, 'les autres tuiles sont filtrées (5, 8, 8)');
+          st.toggleRangeFilter('Note', data.histogramFilter(h.bins[1]), 'hs');
+          assert.deepStrictEqual(st.getState().activeFilters, [], 'même classe : filtre retiré');
+          st.toggleRangeFilter('Note', data.histogramFilter(h.bins[1]), 'hs');
+          st.toggleRangeFilter('Note', data.histogramFilter(h.bins[3]), 'hs');
+          assert.strictEqual(st.getState().activeFilters.length, 1); assert.strictEqual(st.getState().activeFilters[0].min, 15);
+          assert.strictEqual(st.getState().activeFilters[0].maxExclusive, undefined, 'dernière classe : fermée à droite');
+          st.toggleFilter('Note', 8, 'bs');
+          assert.strictEqual(st.getState().activeFilters[0].value, 8); assert.strictEqual(st.getState().activeFilters[0].type, undefined, 'l\'égalité remplace la plage');
+          st.toggleRangeFilter('Note', data.histogramFilter(h.bins[0]), 'hs');
+          assert.strictEqual(st.getState().activeFilters[0].type, 'range', 'la plage remplace l\'égalité');
+          st.removeTile('hs');
+          assert.deepStrictEqual(st.getState().activeFilters, [], 'supprimer l\'histogramme lève son filtre');
+          // Export Excel : mêmes classes et mêmes comptes que l'écran, filtres des autres tuiles appliqués.
+          const hState = { rows: notes, activeFilters: [], advancedFilters: [], drillIns: {}, comments: [], pages: [] };
+          const hTile = { id: 'hx', type: 'histogram', title: 'Notes', measure: 'Note' };
+          assert.strictEqual(data.tileExportKind(hTile), 'image');
+          assert.deepStrictEqual(data.tileExportSheet(hTile, hState), { name: 'Notes', header: ['Note : borne basse', 'borne haute', 'Lignes'], rows: [[0, 5, 1], [5, 10, 3], [10, 15, 3], [15, 20, 3]] });
+          const filteredState = Object.assign({}, hState, { activeFilters: [{ column: 'Note', value: 8, sourceTileId: 'autre' }] });
+          assert.deepStrictEqual(data.tileExportSheet(hTile, filteredState).rows, [[0, 5, 0], [5, 10, 2], [10, 15, 0], [15, 20, 0]], 'grille inchangée, comptes filtrés');
+          assert.deepStrictEqual(data.tileExportSheet(Object.assign({}, hTile, { bins: 2 }), hState).rows.length, 2);
+          // Types : palette et format oui, tri / séries / empilé non.
+          assert.strictEqual(data.supportsPalette({ type: 'histogram' }), true); assert.strictEqual(data.supportsNumberFormat({ type: 'histogram' }), true);
+          assert.strictEqual(data.isSortableTile({ type: 'histogram' }), false); assert.strictEqual(data.isSeriesTile({ type: 'histogram', seriesColumn: 'R' }), false);
+          // Formulaire : valeurs par défaut (vraie mesure, ni dimension ni agrégat), conseils.
+          const hd = advice.defaultsForType('histogram', big, ['Region', 'Montant']);
+          assert.ok(hd && hd.measure && !hd.dimension && hd.aggFn === undefined, 'colonne numérique préremplie, ni dimension ni agrégat');
+          assert.strictEqual(advice.defaultsForType('histogram', [{ Region: 'N' }, { Region: 'S' }], ['Region']), null, 'aucune colonne numérique : rien à préremplir');
+          assert.strictEqual(advice.adviceForType('histogram', [{ Region: 'N' }, { Region: 'S' }], ['Region']).key, 'advice.fit.noMeasure');
+          assert.strictEqual(advice.TILE_TYPES.includes('histogram'), false, 'jamais proposé à l\'accueil');
+          const few = [1, 2, 1, 2, 3].map((Note) => ({ Note }));
+          assert.strictEqual(advice.adviceForTile({ type: 'histogram', measure: 'Note' }, few).key, 'advice.histogram.fewValues');
+          assert.strictEqual(advice.adviceForTile({ type: 'histogram', measure: 'Note' }, twenty.map((r) => ({ Note: r.v }))), null);
+          assert.strictEqual(advice.adviceForType('histogram', notes, ['Note']).key, 'advice.use.histogram');
+          ['tileForm.type.histogram', 'tileForm.measure.labelHistogram', 'tileForm.bins.label', 'tileForm.bins.placeholder', 'tileForm.bins.hint', 'tileForm.error.binsRange',
+            'tileTitle.histogram', 'chart.histogram.empty', 'chart.histogram.rows', 'filters.rangeExclusive', 'advice.use.histogram', 'advice.histogram.fewValues']
+            .forEach((k) => assert.ok(i18n.STRINGS[k] && i18n.STRINGS[k].fr && i18n.STRINGS[k].en, 'traduction fr/en : ' + k));
+          i18n.setLang('fr'); assert.strictEqual(i18n.t('chart.histogram.rows', { n: 1, count: 1 }), '1 ligne'); assert.strictEqual(i18n.t('chart.histogram.rows', { n: '12', count: 12 }), '12 lignes');
+          i18n.setLang('en'); assert.strictEqual(i18n.t('chart.histogram.rows', { n: 1, count: 1 }), '1 row'); i18n.setLang('fr');
+          // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
+          const mainSrc5 = fs.readFileSync(path.join(root, 'js', 'main.js'), 'utf8');
+          const chartsSrc5 = fs.readFileSync(path.join(root, 'js', 'charts.js'), 'utf8');
+          const indexSrc5 = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+          assert.ok(/const TYPE_CARDS = \[[^\]]*'histogram'/.test(mainSrc5) && /<option value="histogram"/.test(indexSrc5) && /id="tile-bins"/.test(indexSrc5));
+          assert.ok(/currentTile\.type === 'histogram'/.test(chartsSrc5) && /toggleRangeFilter\(currentTile\.measure/.test(chartsSrc5), 'le clic d\'une classe pose un filtre par plage');
+          assert.ok(!/sameValue\([a-zA-Z]*(Filter|OnThisDimension)\.value/.test(chartsSrc5), 'plus de comparaison d\'égalité seule sur un filtre actif : filterSelects');
+          assert.ok(!/Intl\.NumberFormat|toFixed/.test(chartsSrc5), 'aucun format de nombre en dur dans charts.js');
+          console.log('OK histogramme — classes rondes, bornes, vides ignorés, grille stable, cohérence classe/filtre, store (plage), export, défauts, conseil et i18n');
         }
       }
     }

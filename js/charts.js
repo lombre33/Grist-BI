@@ -8,7 +8,7 @@
   const GristBI = global.GristBI || (global.GristBI = {});
   const {
     groupByAggregate, sameValue, aggregateSingle, pivotTable, trendFromGroups, targetProgress, progressRows, sparklineValues, sparklineGeometry, measureSeriesForTile,
-    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, comboSeries, comboModeOf, isStackedTile, splitBySeries, assembleSeries, paletteColors, PALETTES, escapeHtml,
+    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, comboSeries, comboModeOf, histogramBins, histogramFilter, histogramBinIsActive, filterSelects, isStackedTile, splitBySeries, assembleSeries, paletteColors, PALETTES, escapeHtml,
     tileDrillLevels, currentDimension, rowsForTile, wordFrequency
   } = GristBI.data;
   const { t } = GristBI.i18n;
@@ -320,7 +320,7 @@
     } else {
       const rowsHtml = list.map((r) => {
         const key = String(r.key);
-        const active = filter && sameValue(filter.value, key);
+        const active = filter && filterSelects(filter, key);
         const dimmed = filter && !active;
         const pctText = r.pct == null ? '–' : f.percent(r.pct);
         const title = r.target == null ? `${key} : ${f.format(r.value) || '–'}`
@@ -497,10 +497,19 @@
   // peut arriver bien après le rendu qui l'a câblé (édition de tuile, drill-down — voir
   // HYPOTHESES.md) ; on relit l'état vivant à chaque clic, en ne fixant que l'id de la tuile (stable
   // tout au long de sa vie).
-  function handleTileClick(tileId, name) {
+  function handleTileClick(tileId, name, params) {
     const liveState = GristBI.store.getState();
     const currentTile = liveState.tiles.find((t) => t.id === tileId);
     if (!currentTile) return; // tuile supprimée entre-temps
+    // Histogramme : une barre est une CLASSE de valeurs, pas une catégorie — le clic pose un filtre par plage (jamais un
+    // filtre d'égalité sur le libellé « 10 – 20 », qui ne correspondrait à aucune ligne). Les classes affichées sont celles du
+    // dernier rendu (`instance.__bins`), retrouvées par rang : `params.name` est un libellé, pas une borne.
+    if (currentTile.type === 'histogram') {
+      const inst = chartInstances.get(tileId);
+      const bin = inst && inst.__bins && params ? inst.__bins[params.dataIndex] : null;
+      if (bin) GristBI.store.toggleRangeFilter(currentTile.measure, histogramFilter(bin), currentTile.id);
+      return;
+    }
     // Mode mesure temporelle (voir renderMeasureChart) : un point est un mois CALCULÉ (bucket
     // DuckDB), pas une vraie valeur de la dimension d'origine — rien de cohérent à filtrer/driller.
     if (currentTile.type === 'bar' && currentTile.measureMode && currentTile.measureMode !== 'brut') return;
@@ -544,7 +553,7 @@
     if (instance && !instance.isDisposed()) return instance;
     instance = echarts.init(el);
     chartInstances.set(tileId, instance);
-    instance.on('click', (params) => handleTileClick(tileId, params.name));
+    instance.on('click', (params) => handleTileClick(tileId, params.name, params));
     return instance;
   }
 
@@ -796,7 +805,7 @@
     }
 
     const activeOnThisDimension = state.activeFilters.find((f) => f.column === dimension);
-    const dim = (d) => (activeOnThisDimension && !sameValue(activeOnThisDimension.value, d) ? { opacity: 0.3 } : undefined);
+    const dim = (d) => (activeOnThisDimension && !filterSelects(activeOnThisDimension, d) ? { opacity: 0.3 } : undefined);
 
     const cssWidth = el.clientWidth || 1;
     const cssHeight = el.clientHeight || 1;
@@ -835,19 +844,19 @@
     const fmt = (v) => (v == null ? '–' : pivotFmt.format(v));
 
     const headCells = pivot.colKeys.map((ck) => {
-      const active = colFilter && sameValue(colFilter.value, ck);
+      const active = colFilter && filterSelects(colFilter, ck);
       const dimmed = colFilter && !active;
       const cls = `pivot-col-header${active ? ' pivot-active' : ''}${dimmed ? ' pivot-dimmed' : ''}`;
       return `<th class="${cls}" data-axis="col" data-value="${escapeHtml(String(ck))}">${escapeHtml(String(ck))}</th>`;
     }).join('');
 
     const bodyRows = pivot.rowKeys.map((rk, ri) => {
-      const rowActive = rowFilter && sameValue(rowFilter.value, rk);
+      const rowActive = rowFilter && filterSelects(rowFilter, rk);
       const rowDimmed = rowFilter && !rowActive;
       const rowHeaderCls = `pivot-row-header${rowActive ? ' pivot-active' : ''}${rowDimmed ? ' pivot-dimmed' : ''}`;
       const cells = pivot.cells[ri].map((v, ci) => {
         const ck = pivot.colKeys[ci];
-        const colActive = colFilter && sameValue(colFilter.value, ck);
+        const colActive = colFilter && filterSelects(colFilter, ck);
         const colDimmed = colFilter && !colActive;
         const cellActive = rowActive && colActive;
         const cellDimmed = !cellActive && (rowDimmed || colDimmed);
@@ -925,6 +934,12 @@
 
     const dimension = currentDimension(tile, drillPath);
     const instance = getOrCreateChartInstance(tile.id, el);
+    if (tile.type === 'histogram') {
+      bumpSeq(tile.id); // un rendu asynchrone encore en vol pour cette tuile (ancien type) ne doit plus s'appliquer
+      instance.hideLoading();
+      renderHistogram(tile, rows, state, instance);
+      return;
+    }
     // Formateur de la mesure (axe Y, infobulles, étiquettes) ; nuage de points : l'axe X porte `measure`,
     // l'axe Y `measureY`, chacun avec le format de SA colonne.
     const f = fmtFor(tile, tile.measure);
@@ -980,7 +995,7 @@
     const activeOnThisDimension = state.activeFilters.find((f) => f.column === dimension);
     // sameValue (pas !==) : le filtre stocke souvent params.name (toujours une chaîne ECharts),
     // à comparer à `d` qui garde le type d'origine de la donnée (ex. Annee=2025, un nombre).
-    const dim = (d) => (activeOnThisDimension && !sameValue(activeOnThisDimension.value, d)
+    const dim = (d) => (activeOnThisDimension && !filterSelects(activeOnThisDimension, d)
       ? { opacity: 0.3 }
       : undefined);
 
@@ -1394,6 +1409,56 @@
         }))
       };
     }
+    finalizeOption(option, instance);
+    instance.setOption(option, true);
+  }
+
+  // Histogramme (type 'histogram') : une barre par classe de valeurs de `tile.measure` (js/data.js:histogramBins : grille tirée de
+  // TOUTES les lignes, comptes sur celles qui restent après les autres filtres). Deux formats de nombres : les bornes ont celui de
+  // la colonne, les comptes (axe Y, infobulle) celui d'un comptage — jamais la devise de la colonne sur « 12 lignes ». Le clic
+  // (handleTileClick) pose un filtre par plage ; la classe filtrée garde sa couleur, les autres sont atténuées, comme une barre.
+  function renderHistogram(tile, rows, state, instance) {
+    const hist = histogramBins(state.rows, rows, tile.measure, tile.bins);
+    instance.__bins = hist.bins;
+    if (!hist.bins.length) {
+      // Aucune valeur numérique : un message au centre plutôt qu'un cadre vide sans explication.
+      instance.setOption({ title: { text: t('chart.histogram.empty'), left: 'center', top: 'middle', textStyle: { fontSize: 12, fontWeight: 'normal' } }, series: [], xAxis: { show: false }, yAxis: { show: false } }, true);
+      return;
+    }
+    const f = fmtFor(tile, tile.measure);
+    const fCount = fmtFor({ ...tile, aggFn: 'count' }, tile.measure);
+    const palette = paletteColors(tile.palette);
+    const mine = state.activeFilters.find((af) => af.column === tile.measure && af.sourceTileId === tile.id);
+    const bound = (v) => (f.axis(v) || String(v));
+    const label = (b) => (b.lo === b.hi ? bound(b.lo) : `${bound(b.lo)} – ${bound(b.hi)}`);
+    const fullLabel = (b) => (b.lo === b.hi ? (f.format(b.lo) || String(b.lo)) : `${f.format(b.lo) || b.lo} – ${f.format(b.hi) || b.hi}`);
+    const option = {
+      color: palette,
+      grid: { ...numericGrid },
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: { type: 'shadow' },
+        // Texte HTML : les bornes sont des nombres formatés (jamais du texte saisi), rien à échapper de plus.
+        formatter: (params) => {
+          const p = Array.isArray(params) ? params[0] : params;
+          const b = hist.bins[p.dataIndex];
+          if (!b) return '';
+          const share = hist.total > 0 ? ` (${f.percent((b.count * 100) / hist.total)})` : '';
+          return `${escapeHtml(fullLabel(b))}<br/>${t('chart.histogram.rows', { n: fCount.format(b.count) || b.count, count: b.count })}${share}`;
+        }
+      },
+      xAxis: { type: 'category', data: hist.bins.map(label), axisLabel: { interval: 'auto' } },
+      yAxis: { type: 'value', minInterval: 1, axisLabel: { formatter: fCount.axis } },
+      series: [{
+        type: 'bar',
+        // Classes contiguës, comme un histogramme : un trait d'espace seulement.
+        barCategoryGap: '8%',
+        data: hist.bins.map((b) => ({
+          value: b.count,
+          itemStyle: mine && !histogramBinIsActive(mine, b) ? { opacity: 0.3 } : undefined
+        }))
+      }]
+    };
     finalizeOption(option, instance);
     instance.setOption(option, true);
   }

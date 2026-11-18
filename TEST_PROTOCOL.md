@@ -901,6 +901,21 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 - [x] 6 000 lignes (DuckDB) dans un cadre isolé : barres et courbe alignées, aucun trou, aucune erreur 🌐
 - [ ] Rendu dans un vrai Grist / un vrai GFS ⬜ **[NON TESTABLE ICI]**
 
+### `js/data.js` + `js/state.js` + `js/charts.js` + panneau — histogramme, filtre par plage (18/11/2026 ; Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`)
+
+- [x] Pas ronds (1, 2, 5 x 10^n) ; 10 notes sur 20 -> [0;5[ [5;10[ [10;15[ [15;20] avec 5 et 20 aux bons endroits ; chaque ligne dans une seule classe ✅
+- [x] Vides, texte, booléens ignorés (jamais 0), `BigInt` accepté, texte numérique « 6 » accepté ; aucune valeur numérique -> aucune classe ; une seule valeur distincte -> une classe fermée ✅
+- [x] Entiers : pas plus étroit que 1 ; décimales : bornes 0 / 0,2 / … / 1 sans bruit de flottant ; nombre de classes demandé indicatif, 1 ou texte -> automatique, plafond 60 ✅
+- [x] Grille tirée de toutes les lignes, comptes sur les lignes visibles ✅
+- [x] **Cohérence classe <-> filtre** : pour 4 jeux pseudo-aléatoires (décimaux, entiers, grands nombres, négatifs), le filtre de chaque classe retient exactement son compte ✅
+- [x] `matchesFilter('range')` : cellule vide jamais prise pour 0, `maxExclusive` ; `filterSelects` (égalité à types mêlés, plage) ✅
+- [x] Store : clic de classe = filtre `range` croisé, même classe = retrait, autre classe = remplacement, égalité <-> plage, tuile source affichée en entier, suppression de la tuile lève son filtre ✅
+- [x] Export Excel : mêmes classes et comptes que l'écran, filtres des autres tuiles appliqués, grille inchangée ✅
+- [x] Formulaire : dimension et agrégat masqués, classes visibles, colonne préremplie, valeur < 2 refusée avec message sous le champ, relecture à l'édition, champ vidé -> automatique 🌐
+- [x] Rendu : classe cliquée en couleur / autres à 0,3 ; pastille « de 80 à moins de 100 » ; tuile Barres filtrée sur les seules lignes de la classe (somme vérifiée) ; re-clic le retire ; filtre d'une autre tuile : axe stable, comptes en baisse 🌐
+- [x] 6 000 lignes dans un cadre isolé : somme des classes = lignes non vides, aucune erreur 🌐
+- [ ] Rendu dans un vrai Grist / un vrai GFS ⬜ **[NON TESTABLE ICI]**
+
 ### CSS — classe de bug à systématiquement re-vérifier
 
 - [x] `.field[hidden]` masque réellement l'élément (pas seulement `display:flex` de `.field` qui gagne à spécificité égale) [BUG RÉEL, trouvé 2 fois sur des champs différents] ✅ (règle en place)
