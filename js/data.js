@@ -758,7 +758,7 @@
   // (aggregateSingle pour kpi/gauge, groupByAggregate pour bar/pie/treemap, les deux mesures pour
   // scatter), mais en lignes de tableau plutôt qu'en graphique. `header`/`rows` plutôt qu'un tableau
   // d'objets : contrôle explicite des en-têtes même quand `rows` est vide (aucune ligne visible
-  // après filtrage), ce que `XLSX.utils.json_to_sheet([])` ne permettrait pas (pas d'en-tête sans
+  // après filtrage), ce qu'un export à partir d'objets (`json_to_sheet([])` de SheetJS, par exemple) ne permettrait pas (pas d'en-tête sans
   // au moins un objet pour les déduire).
   function tileExportSheet(tile, state, maxRows) {
     // Tuile Texte : aucune donnée. Les classeurs Excel l'ignorent (voir buildWorkbookSheets), mais un appel
@@ -895,15 +895,29 @@
   }
 
   // Un nom de feuille Excel ne peut pas dépasser 31 caractères, ne peut pas contenir
-  // `: \ / ? * [ ]`, et doit être unique dans le classeur (deux tuiles peuvent avoir le même
-  // titre). `usedNames` est un Set mutable rempli au fil des appels (un par tuile exportée) pour
-  // garantir l'unicité sur tout le classeur, pas seulement dans une page.
+  // `: \ / ? * [ ]`, ne peut ni commencer ni finir par une apostrophe, ne peut pas être « History »
+  // (réservé) et doit être unique dans le classeur SANS tenir compte des majuscules (« Ventes » et
+  // « ventes » sont le même nom pour Excel ; ExcelJS lève une erreur sinon, et SheetJS le faisait
+  // déjà). Deux tuiles peuvent avoir le même titre. `usedNames` est un Set mutable rempli au fil des
+  // appels (un par tuile exportée) pour garantir l'unicité sur tout le classeur, pas seulement dans
+  // une page.
   const INVALID_SHEET_CHARS = /[:\\/?*[\]]/g;
+  function sheetNameBase(name) {
+    const cleaned = String(name || 'Feuille').replace(INVALID_SHEET_CHARS, ' ').trim().replace(/^'+/, '').trim();
+    // Couper à 31 peut laisser une apostrophe ou une espace en bout : nettoyer APRÈS la coupe.
+    return (cleaned.slice(0, 31).replace(/'+$/, '').trim()) || 'Feuille';
+  }
   function sanitizeSheetName(name, usedNames) {
-    const base = (String(name || 'Feuille').replace(INVALID_SHEET_CHARS, ' ').trim() || 'Feuille').slice(0, 31);
+    const base = sheetNameBase(name);
+    const taken = (candidate) => {
+      const key = candidate.toLowerCase();
+      if (key === 'history') return true;
+      for (const used of usedNames) if (used.toLowerCase() === key) return true;
+      return false;
+    };
     let candidate = base;
     let n = 2;
-    while (usedNames.has(candidate)) {
+    while (taken(candidate)) {
       const suffix = ` (${n})`;
       candidate = base.slice(0, 31 - suffix.length) + suffix;
       n++;

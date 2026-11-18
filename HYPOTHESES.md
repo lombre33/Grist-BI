@@ -3154,6 +3154,36 @@ des nombres étant laissé au fil « Rendre les valeurs lisibles sur chaque tuil
   « Ajouter la visualisation » ; `submit` ne part jamais dans ce cadre, c'est `bindFormSubmit`). **Pas testé dans un vrai
   Grist ni dans un vrai GFS.**
 
+- **Export Excel : ExcelJS 4.4.0 à la place de SheetJS 0.18.5** (18/11/2026, fil « Appliquer la nouvelle consigne GFS », consigne 017) :
+  - **Pourquoi** : SheetJS 0.18.5 a deux avis publiés (pollution de prototype GHSA-4r6h-8v6p-xvw6, expression régulière CVE-2024-22363) dont les
+    versions corrigées ne sont qu'à `cdn.sheetjs.com`, REFUSÉ par la politique réseau de l'environnement de développement (403 ; `git.sheetjs.com` injoignable,
+    `github.com/SheetJS` refusé ; npm n'a que la 0.18.5). La 017 proposait ExcelJS 4.4.0 (sans avis, celui de Publipostage+) en alternative « que le porteur
+    tranche » : Antoine a choisi ExcelJS le 18/11 « pour harmoniser les dépendances ». Aucun miroir tiers de SheetJS sur npm n'a été pris.
+  - **Provenance** : `npm pack exceljs@4.4.0`, intégrité de l'archive (`sha512-XctvKaEM…`) = celle du registre ; `dist/exceljs.min.js` (947 702 octets) a la MÊME
+    empreinte SHA-384 (`Pqp51FUN2/…`) et est identique octet pour octet à la copie que GFS vendorise (`prototype/vendor/exceljs/4.4.0/`, son catalogue) ; un test Node
+    refait le calcul. `js/vendor/exceljs/{exceljs.min.js,LICENSE}` (MIT) ; `js/vendor/xlsx/` supprimé. Les licences des paquets que ce bundle embarque (archiver,
+    jszip, saxes, dayjs, uuid…) n'ont pas été relues une à une ; la copie de GFS pour la même version ne porte, elle aussi, que la licence MIT d'ExcelJS (`LICENCES.txt` chez lui).
+  - **Changement de poids** : 881 727 -> 947 702 octets (+ 65 975, soit ~64 Kio) ; toujours chargé AU PREMIER EXPORT seulement (consigne 013 conservée) : vérifié
+    dans un navigateur, aucune requête vers lui avant le clic, une seule après.
+  - **Ce qui a changé dans `js/export.js`** : `cellValue` (nombre fini / texte / booléen / date / cellule vide pour null / cellule d'ERREUR `#NUM!`/`#DIV/0!`
+    pour un nombre non fini — ExcelJS écrirait sinon `NaN` en clair et Excel proposerait de « réparer » le classeur —, BigInt -> nombre si sûr sinon texte,
+    tout objet/tableau -> texte, texte plafonné à 32 767 signes), `buildWorkbook(ExcelJS, sheets)` (pur, testé sous Node avec le vrai paquet), téléchargement
+    par `Blob` + ancre `download` (ce que faisait `XLSX.writeFile`). Auteur du classeur : « Grist BI ». **Les feuilles et leurs valeurs ne changent pas** : même
+    `GristBI.data.buildWorkbookSheetsAsync`.
+  - **Bug trouvé en route (latent avec SheetJS aussi)** : `sanitizeSheetName` ne comparait pas les noms sans tenir compte des majuscules — deux tuiles « Ventes »
+    et « ventes » donnaient deux feuilles « identiques » pour Excel (ExcelJS lève `Worksheet name already exists`, SheetJS levait déjà son équivalent) ; une
+    apostrophe en début/fin de nom et le nom réservé « History » faisaient lever ExcelJS. Corrigé (unicité insensible à la casse, apostrophes retirées, « History »
+    évité) avec ses tests.
+  - **Texte qui ressemble à une formule** (réponse à la consigne 005, voir GFS-ETAT.md) : revérifié avec ExcelJS — `=SUM(A1)`, `+cmd|x`, `@x` sont écrits comme chaînes
+    partagées, 0 balise `<f>` dans le XML du classeur ; ExcelJS ne pose une formule que pour un OBJET `{ formula }`, que `cellValue` ne laisse jamais passer.
+  - **Testé** : Node (le vrai paquet vendorisé : cellules, relecture, XML, noms de feuille, chaîne `buildWorkbookSheetsAsync` -> classeur) + Playwright contre le
+    vrai `index.html` et le faux Grist : clic sur « Exporter en Excel » -> téléchargement `dashboard-bi.xlsx` (11 Ko), relu : une feuille par tuile (texte exclu),
+    la tuile YTD (DuckDB) avec ses 60 vraies valeurs, chargement paresseux. **Cadre isolé** : dans un `<iframe sandbox="allow-scripts">` SEUL aucun téléchargement ne
+    part (Chromium), avant (SheetJS, même constat sur `origin/main`) comme après ; avec `allow-downloads` il part. Le cadre de GFS déclare
+    `allow-scripts allow-forms allow-popups allow-modals allow-downloads` (`prototype/js/broker/frames.js:8`, `docs/cahier-des-charges-gfs.md:185`, lus) : le
+    téléchargement devrait donc partir dans GFS, **non rejoué dans le vrai GFS**. **Non vérifié** : un vrai Grist ; l'ouverture du classeur dans Excel/LibreOffice
+    (relu seulement par ExcelJS et par inspection du XML) ; les exports PDF/PPTX dans un cadre sans `allow-downloads` (même mécanisme, non essayé).
+
 ### Tuiles usuelles des outils BI — lot 1, table plate (18/11/2026)
 
 - **Ce que c'est** : type `table`, `tile.columns` (au moins une) = les colonnes cochées dans le formulaire, dans l'ordre des
@@ -3348,7 +3378,7 @@ des nombres étant laissé au fil « Rendre les valeurs lisibles sur chaque tuil
     payload sur la création initiale des ~47 000 lignes ? La reconnexion (relecture seule, sans
     envoi) est-elle bien quasi instantanée sur un vrai document, comme observé dans le mock ?
 11. **Déclenchement du téléchargement Excel depuis l'iframe du widget, jamais vérifié en conditions
-    réelles Grist** : `XLSX.writeFile` (voir `js/export.js`) crée un Blob + une ancre `<a download>`
+    réelles Grist** : l'export (voir `js/export.js` ; `XLSX.writeFile` avant le 18/11/2026) crée un Blob + une ancre `<a download>`
     + un clic synthétique, qui fonctionne dans Chromium headless (Playwright, voir plus haut) et
     repose sur le fait, vérifié dans le code source de Grist, que l'iframe d'un widget custom n'est
     PAS sandboxée (voir ROADMAP.md). Reste non vérifié dans un vrai navigateur à l'intérieur d'un vrai
