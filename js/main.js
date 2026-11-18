@@ -218,6 +218,8 @@
   const horizontalCheckbox = document.getElementById('tile-horizontal');
   const areaField = document.getElementById('tile-area-field');
   const areaCheckbox = document.getElementById('tile-area');
+  const stackField = document.getElementById('tile-stack-field');
+  const stackedCheckbox = document.getElementById('tile-stacked');
   const donutField = document.getElementById('tile-donut-field');
   const donutCheckbox = document.getElementById('tile-donut');
   const showPctField = document.getElementById('tile-show-pct-field');
@@ -1541,6 +1543,10 @@
     seriesField.hidden = !(isBarBrut || type === 'line');
     horizontalField.hidden = !isBarBrut;
     areaField.hidden = type !== 'line';
+    // Empilé : seulement avec une colonne Séries (sinon une seule série, rien à empiler), pour les barres
+    // et l'AIRE — une courbe sans remplissage empilée serait une courbe cumulée, que personne ne lit comme
+    // telle (voir GristBI.data.isStackedTile).
+    stackField.hidden = !(seriesSelect.value && (isBarBrut || (type === 'line' && areaCheckbox.checked)));
     donutField.hidden = type !== 'pie';
     showPctField.hidden = type !== 'pie';
     measureYField.hidden = !isScatter;
@@ -1613,6 +1619,7 @@
     sortSelect.value = tile.sortMode || '';
     horizontalCheckbox.checked = !!tile.horizontal;
     areaCheckbox.checked = !!tile.areaFill;
+    stackedCheckbox.checked = !!tile.stacked;
     donutCheckbox.checked = !!tile.donut;
     showPctCheckbox.checked = !!tile.showPct;
     radarEntityColumnSelect.value = tile.radarEntityColumn || '';
@@ -1636,6 +1643,9 @@
 
   tileTypeSelect.addEventListener('change', updateFormFieldsForType);
   measureModeSelect.addEventListener('change', updateFormFieldsForType);
+  // La case « Empilé » dépend de la colonne Séries et, pour une courbe, de la case Aire.
+  seriesSelect.addEventListener('change', updateFormFieldsForType);
+  areaCheckbox.addEventListener('change', updateFormFieldsForType);
   radarModeSelect.addEventListener('change', updateFormFieldsForType);
   wordCloudSplitCheckbox.addEventListener('change', updateFormFieldsForType);
   // Changer de colonne de comparaison invalide la valeur déjà choisie (elle appartenait à l'ANCIENNE
@@ -1786,6 +1796,7 @@
     tileData.sortMode = (GristBI.data.isSortableTile({ type, measureMode }) && sortSelect.value) ? sortSelect.value : undefined;
     tileData.horizontal = (isBar && !measureMode && horizontalCheckbox.checked) ? true : undefined;
     tileData.areaFill = (type === 'line' && areaCheckbox.checked) ? true : undefined;
+    tileData.stacked = (seriesColumn && stackedCheckbox.checked && ((isBar && !measureMode) || (type === 'line' && areaCheckbox.checked))) ? true : undefined;
     tileData.donut = (type === 'pie' && donutCheckbox.checked) ? true : undefined;
     tileData.showPct = (type === 'pie' && showPctCheckbox.checked) ? true : undefined;
     return { tileData, errors: [], autoTitle: auto.title };
@@ -1911,6 +1922,7 @@
     sortSelect.value = '';
     horizontalCheckbox.checked = false;
     areaCheckbox.checked = false;
+    stackedCheckbox.checked = false;
     donutCheckbox.checked = false;
     showPctCheckbox.checked = false;
     gaugeMinInput.value = 0;
@@ -1941,6 +1953,7 @@
       sortSelect.value = d.sortMode || '';
       horizontalCheckbox.checked = !!d.horizontal;
       areaCheckbox.checked = !!d.areaFill;
+      stackedCheckbox.checked = !!d.stacked;
       donutCheckbox.checked = !!d.donut;
       showPctCheckbox.checked = !!d.showPct;
     }

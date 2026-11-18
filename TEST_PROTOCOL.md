@@ -713,6 +713,17 @@ délibérément laissé de côté (contenu généré par `js/data.js`/`js/demo-d
 - [x] ⚠ DuckDB RÉEL : table de 6 050 lignes (> `DUCKDB_ROW_THRESHOLD`), moteur chargé (`duckdbEngine.isReady()`), séries/catégories/trous/tri identiques à la référence JS pure (`tileExportSheet`) 🌐 — à rejouer si `computeSeriesGroups` change
 - [ ] **[NON TESTABLE ICI]** vrai Grist / GFS ; une requête DuckDB par série sur de très gros volumes (coût) ; plus de 8 séries ; thème sombre
 
+### `js/data.js` + `js/charts.js` + `js/advice.js` + panneau — empilé (18/11/2026, Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`)
+
+- [x] `isStackedTile` : barres (même horizontales) et aire (courbe + `areaFill`) avec une colonne Séries OUI ; courbe sans remplissage, sans série, `stacked` faux/absent, barres en mode mesure, pie/funnel/treemap/waterfall/radar/scatter/kpi/gauge/pivot NON ✅
+- [x] `tileExportSheet` d'une tuile empilée = celle de la même tuile non empilée ✅
+- [x] `advice.adviceForTile` : empilé + avg/min/max -> `advice.stacked.notAdditive` ; sum/count, non empilé, courbe sans aire -> pas cet avertissement ✅
+- [x] Panneau : case masquée sans série, visible avec série (barres), masquée pour une courbe tant que « Aire » n'est pas cochée, masquée de nouveau quand la série est retirée ; aperçu vivant empilé ; ajout ; édition (case reprise) ; libellé anglais 🌐
+- [x] Rendu : `stack: 'total'` sur chaque série ; barre absente = `null`, aire absente = 0 ; opacité d'aire 0,65 empilée / 0,25 sinon ; Aire décochée -> plus de pile 🌐
+- [x] Info-bulle RÉELLE (souris sur une barre) : une ligne par série + `Total` = somme exacte 🌐
+- [x] Clic souris RÉEL sur une barre empilée : filtre sur la catégorie 🌐
+- [ ] **[NON TESTABLE ICI]** vrai Grist / GFS ; plusieurs valeurs négatives ; plus de 8 séries empilées ; thème sombre
+
 ### CSS — classe de bug à systématiquement re-vérifier
 
 - [x] `.field[hidden]` masque réellement l'élément (pas seulement `display:flex` de `.field` qui gagne à spécificité égale) [BUG RÉEL, trouvé 2 fois sur des champs différents] ✅ (règle en place)

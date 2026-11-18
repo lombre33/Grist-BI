@@ -8,7 +8,7 @@
   const GristBI = global.GristBI || (global.GristBI = {});
   const {
     groupByAggregate, sameValue, aggregateSingle, pivotTable, trendFromGroups, measureSeriesForTile,
-    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, splitBySeries, assembleSeries, escapeHtml,
+    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, isStackedTile, splitBySeries, assembleSeries, escapeHtml,
     tileDrillLevels, currentDimension, rowsForTile, wordFrequency
   } = GristBI.data;
   const { t } = GristBI.i18n;
@@ -700,6 +700,25 @@
     const multi = seriesGroups ? assembleSeries(agg.map((d) => d.dimension), seriesGroups, tile.sortMode) : null;
     const seriesLegend = multi && multi.series.length > 1 ? { top: 0, type: 'scroll' } : undefined;
     const seriesGrid = seriesLegend ? { ...numericGrid, top: 40 } : numericGrid;
+    // Empilé : toutes les séries partagent UNE pile ECharts. Une info-bulle sur l'axe y ajoute le TOTAL de
+    // la catégorie (la seule chose qu'on ne lit pas sur la hauteur d'une pile). Texte HTML : noms de
+    // séries échappés (ce sont des valeurs de la table), nombres au format français.
+    const stacked = !!multi && isStackedTile(tile);
+    const stackedTooltip = {
+      trigger: 'axis',
+      formatter: (params) => {
+        const list = Array.isArray(params) ? params : [params];
+        if (!list.length) return '';
+        let total = 0;
+        const lines = list.map((p) => {
+          const v = Number(p.value);
+          if (Number.isFinite(v)) total += v;
+          return `${p.marker}${escapeHtml(String(p.seriesName))} : ${Number.isFinite(v) ? formatNumber(v) : '–'}`;
+        });
+        const head = escapeHtml(String(list[0].axisValueLabel != null ? list[0].axisValueLabel : list[0].name));
+        return `${head}<br/>${lines.join('<br/>')}<br/><b>${escapeHtml(t('chart.stacked.total'))} : ${formatNumber(total)}</b>`;
+      }
+    };
 
     let option;
     if (tile.type === 'pie') {
@@ -935,15 +954,20 @@
         color: CATEGORICAL_PALETTE,
         grid: seriesGrid,
         legend: seriesLegend,
-        tooltip: { trigger: 'axis' },
+        tooltip: stacked ? stackedTooltip : { trigger: 'axis' },
         xAxis: { type: 'category', data: lineCategories },
         yAxis: { type: 'value', axisLabel: { formatter: formatCompactNumber } },
         series: lineSeries.map((sr) => ({
           type: 'line',
           name: sr.name,
           symbolSize: 8,
-          ...(tile.areaFill ? { areaStyle: { opacity: 0.25 } } : {}),
-          data: sr.values.map((v, i) => ({ value: v, itemStyle: dim(lineCategories[i]) }))
+          // Aire empilée : bandes plus opaques (à 0,25 deux bandes voisines se confondent) ; aire
+          // non empilée : les séries se recouvrent, donc très transparentes.
+          ...(tile.areaFill ? { areaStyle: { opacity: stacked ? 0.65 : 0.25 } } : {}),
+          ...(stacked ? { stack: 'total' } : {}),
+          // Une combinaison absente vaut 0 dans une pile : ECharts empile sur la valeur de la série du
+          // dessous, et un `null` y rompt la bande de TOUTES les séries au-dessus.
+          data: sr.values.map((v, i) => ({ value: (stacked && v == null) ? 0 : v, itemStyle: dim(lineCategories[i]) }))
         }))
       };
     } else {
@@ -960,7 +984,7 @@
         color: CATEGORICAL_PALETTE,
         grid: seriesGrid,
         legend: seriesLegend,
-        tooltip: { trigger: 'axis' },
+        tooltip: stacked ? stackedTooltip : { trigger: 'axis' },
         ...(tile.horizontal
           ? {
             xAxis: valueAxis,
@@ -973,6 +997,7 @@
         series: barSeries.map((sr) => ({
           type: 'bar',
           name: sr.name,
+          ...(stacked ? { stack: 'total' } : {}),
           data: sr.values.map((v, i) => ({ value: v, itemStyle: dim(categoryLabels[i]) }))
         }))
       };

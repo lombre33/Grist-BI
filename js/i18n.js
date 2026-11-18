@@ -451,6 +451,7 @@
     'advice.funnel.negative': { fr: 'Un entonnoir ne peut pas représenter des valeurs négatives : utilisez des barres.', en: 'A funnel can’t show negative values: use bars instead.' },
     'advice.funnel.tooManyStages': { fr: '{n} étapes : au-delà de 10, un entonnoir devient illisible. Regroupez les étapes ou passez en barres horizontales.', en: '{n} stages: beyond 10, a funnel becomes hard to read. Group the stages or switch to horizontal bars.' },
     'advice.series.tooMany': { fr: '{n} séries : au-delà de 8, les couleurs se répètent et la légende devient illisible. Filtrez ou choisissez une colonne à moins de valeurs.', en: '{n} series: beyond 8, colours repeat and the legend becomes unreadable. Filter, or choose a column with fewer values.' },
+    'advice.stacked.notAdditive': { fr: 'Une pile additionne les hauteurs : pour une moyenne, un minimum ou un maximum, le total n’a pas de sens. Utilisez Somme ou Comptage, ou décochez « Empiler ».', en: 'A stack adds up heights: for an average, minimum or maximum the total is meaningless. Use Sum or Count, or untick “Stack”.' },
     'advice.series.sameAsDimension': { fr: 'La colonne « Séries » est la même que la dimension : chaque barre n’aurait qu’une série. Choisissez une autre colonne.', en: 'The “Series” column is the same as the dimension: each bar would have a single series. Choose another column.' },
     'advice.treemap.negative': { fr: 'Un treemap ne peut pas représenter des valeurs négatives : utilisez des barres.', en: 'A treemap can’t show negative values: use bars instead.' },
     'advice.line.notTime': { fr: '{dimension} n’a pas d’ordre naturel : une courbe relierait des valeurs sans lien entre elles. Préférez des barres.', en: '{dimension} has no natural order: a line would join unrelated values. Prefer bars.' },
@@ -485,6 +486,7 @@
     'chart.waterfall.increase': { fr: 'Hausse', en: 'Increase' },
     'chart.waterfall.decrease': { fr: 'Baisse', en: 'Decrease' },
     'chart.funnel.ofFirst': { fr: '{pct} de la 1re étape', en: '{pct} of the first stage' },
+    'chart.stacked.total': { fr: 'Total', en: 'Total' },
     'chart.series.empty': { fr: '(vide)', en: '(empty)' },
     'chart.radar.groupAverage': { fr: 'Moyenne du groupe', en: 'Group average' },
 
@@ -499,6 +501,7 @@
     'tileForm.sort.valueAsc': { fr: 'Valeur croissante', en: 'Value, low to high' },
     'tileForm.sort.byLabel': { fr: 'Libellé (A→Z, 1→9)', en: 'Label (A→Z, 1→9)' },
     'tileForm.horizontal.label': { fr: 'Barres horizontales (libellés longs, nombreuses catégories)', en: 'Horizontal bars (long labels, many categories)' },
+    'tileForm.stacked.label': { fr: 'Empiler les séries (afficher le total de chaque catégorie)', en: 'Stack the series (show each category’s total)' },
     'tileForm.area.label': { fr: 'Aire : remplir sous la courbe', en: 'Area: fill under the line' },
     'tileForm.donut.label': { fr: 'Anneau (trou au centre)', en: 'Donut (hole in the middle)' },
     'tileForm.showPct.label': { fr: 'Afficher le pourcentage de chaque part', en: 'Show each slice’s percentage' },
