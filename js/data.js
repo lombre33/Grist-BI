@@ -14,7 +14,7 @@
 
   // Colonnes que Grist ajoute lui-même à toute table (jamais demandées via AddColumn côté widget) et
   // que `fetchTable()` renvoie donc mêlées aux vraies colonnes du document : `manualSort` (position
-  // flottante utilisée pour le glisser-déposer manuel des lignes) est de celles-là. [BUG RÉEL,
+  // flottante utilisée pour le glisser-déposer manuel des lignes) est de celles-là. [DÉFAUT RÉEL,
   // confirmé en conditions réelles Grist — voir TEST_PROTOCOL.md #19] Sans ce filtre, `manualSort`
   // apparaissait dans les sélecteurs Dimension/Mesure/Filtre du formulaire d'ajout de tuile, et s'y
   // retrouvait même pré-sélectionnée par défaut (1re colonne de la liste). Le mock `grist-stub.js` ne
