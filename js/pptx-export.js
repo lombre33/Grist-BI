@@ -57,13 +57,16 @@
   // tileExportSheet (déjà testé pour l'export Excel), avec l'en-tête en gras comme seule mise en
   // forme — pas de fusion de cellules ni de largeurs calculées, laissées à l'ajustement automatique
   // de PptxGenJS pour ce premier jet.
+  const PPTX_TABLE_MAX_ROWS = 12;
   function addTableSlide(pptx, tile, state) {
-    const sheet = GristBI.data.tileExportSheet(tile, state);
+    // Table plate : une diapositive tient une douzaine de lignes ; le reste est dans l'export Excel.
+    const sheet = GristBI.data.tileExportSheet(tile, state, tile.type === 'table' ? PPTX_TABLE_MAX_ROWS : undefined);
     const headerRow = sheet.header.map((cell) => ({ text: String(cell == null ? '' : cell), options: { bold: true, fill: { color: 'F0F0F0' } } }));
     const bodyRows = sheet.rows.map((row) => row.map((cell) => ({ text: String(cell == null ? '' : cell) })));
     const slide = pptx.addSlide();
     slide.addText(tile.title || `${tile.aggFn}(${tile.measure})`, { x: 0.4, y: 0.3, w: 9.2, h: 0.5, fontSize: 18, bold: true });
     slide.addTable([headerRow].concat(bodyRows), { x: 0.4, y: 1.0, w: 9.2, fontSize: 11, autoPage: false });
+    if (sheet.truncated) slide.addText(GristBI.i18n.t('export.table.more', { n: sheet.truncated }), { x: 0.4, y: 5.0, w: 9.2, h: 0.4, fontSize: 10, italic: true });
   }
 
   // Tuile Texte : une diapositive avec le titre et le texte, sans repères.

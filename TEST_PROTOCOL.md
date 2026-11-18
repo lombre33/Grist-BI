@@ -826,6 +826,19 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 - [x] `<iframe sandbox="allow-scripts">` : parcours au clic (Ajouter > carte Texte > saisie > bouton), aucune erreur ni boîte de dialogue 🌐
 - [ ] Rendu dans un vrai Grist / un vrai GFS ⬜ **[NON TESTABLE ICI]**
 
+### `js/data.js` + `js/format.js` + `js/charts.js` + panneau — table plate (18/11/2026 ; Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`)
+
+- [x] Colonnes : celles de `tile.columns` qui existent encore, dans l'ordre choisi ; sans ligne, la liste choisie telle quelle ✅
+- [x] Tri : nombres numériques, texte « naturel » (Lot 2 avant Lot 10) sans casse, dates, vides TOUJOURS à la fin, stable, `BigInt`, copie (le tableau partagé n'est jamais trié) ✅
+- [x] Cycle d'en-tête croissant -> décroissant -> origine (`aria-sort`, focus gardé sur l'en-tête), tri non enregistré dans la configuration 🌐
+- [x] Nombres Automatique = donnée (2024, 1542980,88 / 1542980.88, `-0`, `BigInt`), format choisi respecté ✅
+- [x] Formulaire : champs de données masqués, tout décoché -> erreur sous la liste sans tuile ajoutée, flèches ▲▼ (focus gardé, bornes désactivées), aperçu vivant, édition recharge l'ordre et les cases 🌐
+- [x] Filtre croisé d'une autre tuile : les lignes suivent ; 1 200 lignes -> 500 affichées + message de troncature ; retour à 8 lignes 🌐
+- [x] Exports : feuille Excel avec les colonnes dans l'ordre, `maxRows`/`truncated` pour PDF/PPTX ✅ (CDN pdfmake/PptxGenJS non joignable ici : seuls les blocs sont testés) ⬜
+- [x] **[BUG RÉEL n°41]** Barres -> Table -> Barres par « Changer de type » : l'élément est recréé, la table s'affiche, le graphique revient avec un canvas non vide 🌐
+- [x] `<iframe sandbox="allow-scripts">` : parcours au clic, aucune erreur ni boîte de dialogue 🌐
+- [ ] Rendu avec de vrais types Grist (ChoiceList, Reference, Attachments) ⬜ **[NON TESTABLE ICI]**
+
 ### CSS — classe de bug à systématiquement re-vérifier
 
 - [x] `.field[hidden]` masque réellement l'élément (pas seulement `display:flex` de `.field` qui gagne à spécificité égale) [BUG RÉEL, trouvé 2 fois sur des champs différents] ✅ (règle en place)
@@ -1037,6 +1050,7 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 38. **Infobulles en format anglais avec le bruit de flottant, langue de l'interface ignorée** [BUG RÉEL, remonté par Antoine sur un treemap, « 600,688.2299999992 », puis confirmé sur barres/courbe/camembert/cascade par l'audit de lisibilité du 18/11/2026] — `js/charts.js` ne formatait que KPI/radar/entonnoir/empilé/nuage de points (`fr-FR` figé, quelle que soit la langue), les infobulles par défaut d'ECharts affichaient la valeur brute (« 1,542,980.8799999997 », « 0.20472679998130852 »). Corrigé par `js/format.js` : un formateur par tuile, séparateurs de la langue, `valueFormatter` sur toutes les infobulles, Cascade avec une seule ligne signée (« Hausse : 172 597 » au lieu de « Baisse 0 » en plus). Test : `test-data.js` (module de format, absence de `Intl.NumberFormat`/`toFixed` dans `js/charts.js`) + survol de chaque type de tuile dans le vrai `index.html` (clair, sombre, fr/en, 6 000 lignes pour DuckDB/BigInt).
 39. **Une valeur minuscule s'affichait « 0 » et des graduations d'axe se répétaient** [BUG RÉEL, audit de lisibilité du 18/11/2026] — la moyenne de 0,0006 d'une carte KPI valait « 0 » (2 décimales maximum, quelle que soit la valeur) ; l'axe d'une barre de 0,0001 à 0,0007 affichait sept fois « 0 », et 0,05 d'écart donnait « 0,1 » « 0,1 » (compact à 1 décimale). Corrigé : Automatique = 2 chiffres significatifs sous 0,1, `axis` à 3 chiffres significatifs. Test : `test-data.js` (graduations 0 -> 0,3 par 0,05 et 0 -> 0,0007 par 0,0001 toutes distinctes ; 0,000618 -> « 0,00062 »).
 40. **Jauge illisible : libellés superposés, aiguille sur les libellés, valeur qui déborde** [BUG RÉEL, remonté par Antoine avec une capture, 18/11/2026] — arc de 270° d'environ 60 px de rayon portant 5 libellés et 5 traits, aiguille de 75 % du rayon par-dessus, valeur de 18 px fixes sous l'arc (« 3 266 234,27 » plus large que la jauge, coupée à gauche pour « -725 150,73 »). Reproduit à l'identique sur le jeu d'audit (clair, sombre, anglais). Corrigé : demi-cercle à géométrie calculée (`gaugeLayout`), bornes sous l'arc, valeur ajustée, `__refit` au redimensionnement. Test : `test-data.js` (invariants de géométrie sur 7 tailles de tuile, `niceCeil`, `fitFont`, câblage) + rendu aux tailles normale, étroite (330 px), agrandie, thème sombre, valeur de 20 caractères.
+41. **Une tuile dont le type change en édition gardait l'élément (balisage, classe, instance ECharts) de l'ancien type** [BUG RÉEL, trouvé en testant la table plate dans un `<iframe sandbox="allow-scripts">`, 18/11/2026] — Modifier > Changer de type > Table sur une tuile Barres affichait bien la table, mais l'élément restait `tile-bar` et son instance ECharts restait attachée au conteneur dont le contenu venait d'être remplacé : le retour à un graphique se rattachait à un canvas détaché (vide, sans erreur) ; une tuile Texte devenue graphique n'avait plus de `.tile-chart`. Corrigé : `render()` compare `el.dataset.tileType` à `tile.type` et recrée l'élément. Test : bloc « tuile Table » de `dev-tests/test-data.js` (garde lue dans la source) + Playwright (Barres -> Table -> Barres, canvas non vide).
 
 ## Fragilité de test connue (PAS un bug produit — investiguée en profondeur, à ne pas re-diagnostiquer)
 
