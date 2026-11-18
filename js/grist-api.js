@@ -268,9 +268,15 @@
   // même convention de compatibilité ascendante que `bookmarks` : absent des 3 formats historiques
   // (antérieurs à cette feature), donc toujours `null` ("aucune jointure") tant que l'utilisateur
   // n'en a pas configuré une pour cette table.
-  function singlePageConfig(tiles, bookmarks, blend) {
+  // `style` (style global des tuiles, js/styles.js) suit la même convention : absent de tous les formats d'avant ce réglage, donc
+  // `'standard'` tant que la personne n'en a pas choisi un. Un texte d'une autre forme qu'un id est ignoré (Standard).
+  function singlePageConfig(tiles, bookmarks, blend, style) {
     const pageId = (GristBI.state && GristBI.state.DEFAULT_PAGE_ID) || 'page_default';
-    return { pages: [{ id: pageId, name: 'Page 1', tiles: tiles || [] }], currentPageId: pageId, bookmarks: bookmarks || [], blend: blend || null };
+    return { pages: [{ id: pageId, name: 'Page 1', tiles: tiles || [] }], currentPageId: pageId, bookmarks: bookmarks || [], blend: blend || null, style: normalizeStyleValue(style) };
+  }
+
+  function normalizeStyleValue(style) {
+    return (typeof style === 'string' && /^[a-z][a-z0-9-]{0,31}$/.test(style)) ? style : 'standard';
   }
 
   function normalizeConfig(raw) {
@@ -278,9 +284,9 @@
     if (raw && typeof raw === 'object') {
       if (Array.isArray(raw.pages) && raw.pages.length) {
         const currentPageId = raw.pages.some((p) => p.id === raw.currentPageId) ? raw.currentPageId : raw.pages[0].id;
-        return { pages: raw.pages, currentPageId, bookmarks: raw.bookmarks || [], blend: raw.blend || null };
+        return { pages: raw.pages, currentPageId, bookmarks: raw.bookmarks || [], blend: raw.blend || null, style: normalizeStyleValue(raw.style) };
       }
-      return singlePageConfig(raw.tiles, raw.bookmarks, raw.blend);
+      return singlePageConfig(raw.tiles, raw.bookmarks, raw.blend, raw.style);
     }
     return singlePageConfig([], [], null);
   }
@@ -316,10 +322,13 @@
   //    renvoyé (voir son `then`) pour cibler cette même ligne aux sauvegardes suivantes.
   // `authorLabel` (adresse détectée, ou "Nom <adresse>", voir main.js:currentReportAuthorLabel) est
   // omis de la ligne quand ni l'un ni l'autre n'est connu, plutôt que d'y écrire une chaîne vide.
-  async function saveConfig(tableId, pages, currentPageId, bookmarks, blend, reportId, authorLabel) {
+  // `style` (style global des tuiles, js/styles.js) n'est écrit que s'il n'est pas le Standard : une configuration sans choix de
+  // style reste octet pour octet celle d'avant ce réglage.
+  async function saveConfig(tableId, pages, currentPageId, bookmarks, blend, reportId, authorLabel, style) {
     if (!tableId) return;
     await ensureConfigTableExists();
-    const json = JSON.stringify({ pages, currentPageId, bookmarks: bookmarks || [], blend: blend || null });
+    const styleValue = normalizeStyleValue(style);
+    const json = JSON.stringify(Object.assign({ pages, currentPageId, bookmarks: bookmarks || [], blend: blend || null }, styleValue !== 'standard' ? { style: styleValue } : {}));
     const fields = { ConfigJSON: json, DateModif: Math.floor(Date.now() / 1000) };
     if (authorLabel) fields.ModifiePar = authorLabel;
 

@@ -16,6 +16,9 @@
   // { id, type: 'bar'|'pie'|'kpi'|'gauge'|'treemap'|'scatter', title, dimension, measure, aggFn,
   //   drillDimensions?, drillCrossFilter?, trendDimension?, measureY?, gaugeMin?, gaugeMax? }
   const DEFAULT_PAGE_ID = 'page_default';
+  // Style global des tuiles (voir `dashStyle` dans createStore) : même forme d'id que js/styles.js.
+  const DEFAULT_DASH_STYLE = 'standard';
+  const DASH_STYLE_ID = /^[a-z][a-z0-9-]{0,31}$/;
 
   // Un id de tuile est lu depuis la configuration (`BI_Dashboard_Config`, une ligne que d'autres
   // personnes du document peuvent avoir écrite : consigne GFS 005) puis reposé dans du balisage
@@ -131,6 +134,12 @@
     // multi-tables (voir GristBI.data.blendRows/js/main.js) : propre à la table de travail
     // courante, comme bookmarks/pages, persisté avec elles dans BI_Dashboard_Config.
     let blend = null;
+    // Style global des tuiles (js/styles.js, css/dash-styles.css) : l'id d'une direction artistique, `'standard'` sans choix. Un
+    // réglage du tableau de bord (persisté avec `pages`/`bookmarks`/`blend` dans BI_Dashboard_Config), jamais d'une vue sauvegardée :
+    // changer de vue ne change pas l'apparence. Une valeur qui n'a pas la forme d'un id (configuration éditée à la main) vaut
+    // `'standard'` ; un id bien formé mais INCONNU de ce widget (version future) est gardé tel quel — js/styles.js l'affiche en
+    // Standard sans l'effacer, une sauvegarde ne perd donc pas le choix fait ailleurs.
+    let dashStyle = DEFAULT_DASH_STYLE;
     // [{ id, TableId, TileId, Author, Text, CreatedAt }, ...] — commentaires collaboratifs (voir
     // ROADMAP.md Tier 2), TOUJOURS chargés dans leur ENTIER depuis leur propre table Grist
     // dédiée (BI_Dashboard_Comments, js/grist-api.js), jamais filtrés par table de travail au
@@ -155,7 +164,7 @@
       // ou drill-downs actuels ne sont plus ceux de cette vue (voir activeBookmarkId plus haut).
       const active = activeBookmarkId && bookmarks.find((b) => b.id === activeBookmarkId);
       return {
-        rows, pages, currentPageId, tiles: currentPage().tiles, activeFilters, advancedFilters, drillIns, bookmarks, blend, comments,
+        rows, pages, currentPageId, tiles: currentPage().tiles, activeFilters, advancedFilters, drillIns, bookmarks, blend, dashStyle, comments,
         zoomedTileIds: currentPage().tiles.map((t) => t.id).filter((id) => zoomedTileIds.includes(id)),
         activeBookmarkId: active ? active.id : null,
         activeBookmarkModified: active ? !sameSnapshot(active, { activeFilters, advancedFilters, drillIns }) : false
@@ -387,6 +396,13 @@
 
     function setBlend(newBlend) { blend = newBlend || null; notify(); }
 
+    function setDashStyle(id) {
+      const next = (typeof id === 'string' && DASH_STYLE_ID.test(id)) ? id : DEFAULT_DASH_STYLE;
+      if (next === dashStyle) return;
+      dashStyle = next;
+      notify();
+    }
+
     // Remplace TOUS les commentaires connus (relecture complète de BI_Dashboard_Comments, voir
     // js/grist-api.js:loadOrCreateComments) — appelé au chargement d'une table de travail, jamais
     // par tuile individuellement.
@@ -447,7 +463,7 @@
       setPages, setCurrentPage, addPage, renamePage, removePage,
       addTile, removeTile, updateTile, moveTile,
       toggleFilter, toggleRangeFilter, clearFilter, setAdvancedFilter, clearAdvancedFilter, drillInto, drillUp,
-      setBookmarks, saveBookmark, applyBookmark, updateBookmark, leaveBookmark, removeBookmark, setBlend,
+      setBookmarks, saveBookmark, applyBookmark, updateBookmark, leaveBookmark, removeBookmark, setBlend, setDashStyle,
       toggleZoom, clearZoom,
       setComments, addCommentLocal
     };
