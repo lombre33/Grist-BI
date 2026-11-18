@@ -70,6 +70,9 @@
       <button id="export-toggle" type="button" class="bar-btn" data-popover="export-popover" aria-haspopup="menu" aria-expanded="false">
         <svg class="icon icon-download" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 2.5v8M4.5 7.5L8 11l3.5-3.5M3 13.5h10"/></svg><span class="bar-label" data-i18n="bar.export">Exporter</span><svg class="icon icon-chev icon-chev" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M4 6l4 4 4-4"/></svg>
       </button>
+      <button id="add-tile-open" type="button" class="bar-btn bar-btn-primary bar-btn-add edit-only" aria-haspopup="dialog" aria-controls="tile-panel" aria-expanded="false" data-i18n-aria="tilePanel.open.aria" aria-label="Ajouter une visualisation">
+        <svg class="icon icon-plus" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 3v10M3 8h10"/></svg><span class="bar-label bar-label-keep" data-i18n="tilePanel.open">Ajouter</span>
+      </button>
       <span class="appbar-sep" aria-hidden="true"></span>
       <button id="mode-toggle" type="button" class="bar-btn bar-btn-mode" aria-pressed="false">
         <svg class="icon icon-pencil icon-mode-edit" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M11.5 2.5l2 2L5 13l-2.8.8L3 11l8.5-8.5Z"/></svg><svg class="icon icon-check icon-mode-done" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M3.5 8.5l3 3 6-7"/></svg><span id="mode-toggle-label" class="bar-label" data-i18n="mode.edit">Modifier</span>
@@ -315,179 +318,8 @@
     modifications. Demandez l'accès en écriture à son propriétaire, ou travaillez sur une copie.</span>
   </p>
 
-  <form id="add-tile-form" class="add-tile-form edit-only">
-    <div class="field">
-      <label for="tile-type" data-i18n="tileForm.type.label">Type</label>
-      <select id="tile-type">
-        <option value="bar" data-i18n="tileForm.type.bar">Barres</option>
-        <option value="line" data-i18n="tileForm.type.line">Courbe / aire</option>
-        <option value="pie" data-i18n="tileForm.type.pie">Camembert</option>
-        <option value="treemap" data-i18n="tileForm.type.treemap">Treemap</option>
-        <option value="scatter" data-i18n="tileForm.type.scatter">Nuage de points</option>
-        <option value="waterfall" data-i18n="tileForm.type.waterfall">Cascade (waterfall)</option>
-        <option value="radar" data-i18n="tileForm.type.radar">Radar</option>
-        <option value="wordcloud" data-i18n="tileForm.type.wordcloud">Nuage de mots</option>
-        <option value="kpi" data-i18n="tileForm.type.kpi">Carte KPI</option>
-        <option value="gauge" data-i18n="tileForm.type.gauge">Jauge</option>
-        <option value="pivot" data-i18n="tileForm.type.pivot">Tableau croisé</option>
-      </select>
-    </div>
-    <div class="field" id="tile-dimension-field">
-      <label for="tile-dimension" id="tile-dimension-label" data-i18n="tileForm.dimension.label">Dimension</label>
-      <div class="combobox">
-        <input type="text" id="tile-dimension" class="combobox-input" />
-        <ul class="combobox-list" hidden></ul>
-      </div>
-      <button type="button" id="tile-suggest-date-hierarchy" class="btn-secondary btn-tiny" data-i18n="tileForm.suggestDateHierarchy" hidden>Détailler par Année/Trimestre/Mois/Jour</button>
-    </div>
-    <div class="field field-checkbox" id="tile-wordcloud-split-field" hidden>
-      <label for="tile-wordcloud-split">
-        <input type="checkbox" id="tile-wordcloud-split" />
-        <span data-i18n="tileForm.wordCloudSplit.label">Découper chaque cellule en plusieurs mots (ex. mots-clés séparés par des virgules)</span>
-      </label>
-    </div>
-    <div class="field" id="tile-column-dimension-field" hidden>
-      <label for="tile-column-dimension" data-i18n="tileForm.columnDimension.label">Dimension (colonnes)</label>
-      <div class="combobox">
-        <input type="text" id="tile-column-dimension" class="combobox-input" />
-        <ul class="combobox-list" hidden></ul>
-      </div>
-    </div>
-    <div class="field" id="tile-radar-mode-field" hidden>
-      <label for="tile-radar-mode" data-i18n="tileForm.radarMode.label">Axes du radar</label>
-      <select id="tile-radar-mode">
-        <option value="dimension" data-i18n="tileForm.radarMode.dimension">Une colonne catégorielle (classique)</option>
-        <option value="columns" data-i18n="tileForm.radarMode.columns">Plusieurs colonnes numériques (compétences)</option>
-      </select>
-    </div>
-    <div class="field" id="tile-radar-axes-field" hidden>
-      <label for="tile-radar-axis-1" data-i18n="tileForm.radarAxes.label">Axes (colonnes numériques)</label>
-      <div id="tile-radar-axes" class="drill-levels"></div>
-      <button type="button" id="tile-radar-axes-add" class="btn-secondary btn-tiny" data-i18n="tileForm.radarAxes.addAxis" hidden>+ Axe</button>
-    </div>
-    <div class="field" id="tile-radar-entity-column-field" hidden>
-      <label for="tile-radar-entity-column" data-i18n="tileForm.radarEntity.columnLabel">Comparer une valeur (colonne)</label>
-      <div class="combobox">
-        <input type="text" id="tile-radar-entity-column" class="combobox-input" />
-        <ul class="combobox-list" hidden></ul>
-      </div>
-    </div>
-    <div class="field" id="tile-radar-entity-value-field" hidden>
-      <label for="tile-radar-entity-value" data-i18n="tileForm.radarEntity.valueLabel">Valeur à comparer</label>
-      <div class="combobox">
-        <input type="text" id="tile-radar-entity-value" class="combobox-input" />
-        <ul class="combobox-list" hidden></ul>
-      </div>
-    </div>
-    <div class="field field-checkbox" id="tile-radar-compare-average-field" hidden>
-      <label for="tile-radar-compare-average">
-        <input type="checkbox" id="tile-radar-compare-average" />
-        <span data-i18n="tileForm.radarEntity.compareAverage">Comparer aussi à la moyenne du groupe filtré</span>
-      </label>
-    </div>
-    <div class="field" id="tile-drill-field">
-      <label for="tile-drill-dimension-1" data-i18n="tileForm.drill.label">Drill-down</label>
-      <div id="tile-drill-levels" class="drill-levels"></div>
-      <button type="button" id="tile-drill-add-level" class="btn-secondary btn-tiny" data-i18n="tileForm.drill.addLevel" hidden>+ Niveau</button>
-    </div>
-    <div class="field field-checkbox" id="tile-drill-crossfilter-field" hidden>
-      <label for="tile-drill-crossfilter">
-        <input type="checkbox" id="tile-drill-crossfilter" />
-        <span data-i18n="tileForm.drill.crossFilter">Filtrer aussi les autres cartes en détaillant</span>
-      </label>
-    </div>
-    <div class="field" id="tile-measure-field">
-      <label for="tile-measure" id="tile-measure-label" data-i18n="tileForm.measure.label">Mesure</label>
-      <div class="combobox">
-        <input type="text" id="tile-measure" class="combobox-input" />
-        <ul class="combobox-list" hidden></ul>
-      </div>
-    </div>
-    <div class="field" id="tile-measure-y-field" hidden>
-      <label for="tile-measure-y" data-i18n="tileForm.measureY.label">Mesure Y</label>
-      <div class="combobox">
-        <input type="text" id="tile-measure-y" class="combobox-input" />
-        <ul class="combobox-list" hidden></ul>
-      </div>
-    </div>
-    <div class="field" id="tile-agg-field">
-      <label for="tile-agg" data-i18n="tileForm.agg.label">Agrégat</label>
-      <select id="tile-agg">
-        <option value="sum" data-i18n="tileForm.agg.sum">Somme</option>
-        <option value="avg" data-i18n="tileForm.agg.avg">Moyenne</option>
-        <option value="count" data-i18n="tileForm.agg.count">Comptage</option>
-        <option value="min" data-i18n="tileForm.agg.min">Min</option>
-        <option value="max" data-i18n="tileForm.agg.max">Max</option>
-      </select>
-    </div>
-    <div class="field" id="tile-sort-field" hidden>
-      <label for="tile-sort" data-i18n="tileForm.sort.label">Tri</label>
-      <select id="tile-sort">
-        <option value="" data-i18n="tileForm.sort.default">Ordre des données</option>
-        <option value="value-desc" data-i18n="tileForm.sort.valueDesc">Valeur décroissante</option>
-        <option value="value-asc" data-i18n="tileForm.sort.valueAsc">Valeur croissante</option>
-        <option value="label" data-i18n="tileForm.sort.byLabel">Libellé (A→Z, 1→9)</option>
-      </select>
-    </div>
-    <div class="field field-checkbox" id="tile-horizontal-field" hidden>
-      <label for="tile-horizontal">
-        <input type="checkbox" id="tile-horizontal" />
-        <span data-i18n="tileForm.horizontal.label">Barres horizontales (libellés longs, nombreuses catégories)</span>
-      </label>
-    </div>
-    <div class="field field-checkbox" id="tile-area-field" hidden>
-      <label for="tile-area">
-        <input type="checkbox" id="tile-area" />
-        <span data-i18n="tileForm.area.label">Aire : remplir sous la courbe</span>
-      </label>
-    </div>
-    <div class="field field-checkbox" id="tile-donut-field" hidden>
-      <label for="tile-donut">
-        <input type="checkbox" id="tile-donut" />
-        <span data-i18n="tileForm.donut.label">Anneau (trou au centre)</span>
-      </label>
-    </div>
-    <div class="field field-checkbox" id="tile-show-pct-field" hidden>
-      <label for="tile-show-pct">
-        <input type="checkbox" id="tile-show-pct" />
-        <span data-i18n="tileForm.showPct.label">Afficher le pourcentage de chaque part</span>
-      </label>
-    </div>
-    <div class="field" id="tile-gauge-min-field" hidden>
-      <label for="tile-gauge-min" data-i18n="tileForm.gaugeMin.label">Min</label>
-      <input type="number" id="tile-gauge-min" value="0" />
-    </div>
-    <div class="field" id="tile-gauge-max-field" hidden>
-      <label for="tile-gauge-max" data-i18n="tileForm.gaugeMax.label">Max</label>
-      <input type="number" id="tile-gauge-max" value="100" />
-    </div>
-    <div class="field" id="tile-measure-mode-field">
-      <label for="tile-measure-mode" data-i18n="tileForm.measureMode.label">Mode</label>
-      <select id="tile-measure-mode">
-        <option value="brut" data-i18n="tileForm.measureMode.brut">Brut</option>
-        <option value="cumulative" data-i18n="tileForm.measureMode.cumulative">Cumul</option>
-        <option value="ytd" data-i18n="tileForm.measureMode.ytd">Cumul annuel (YTD)</option>
-        <option value="yoy" data-i18n="tileForm.measureMode.yoy">Comparaison N-1</option>
-      </select>
-    </div>
-    <div class="field" id="tile-date-column-field" hidden>
-      <label for="tile-date-column" data-i18n="tileForm.dateColumn.label">Colonne date</label>
-      <div class="combobox">
-        <input type="text" id="tile-date-column" class="combobox-input" />
-        <ul class="combobox-list" hidden></ul>
-      </div>
-    </div>
-    <div class="field" id="tile-trend-field" hidden>
-      <label for="tile-trend-dimension" data-i18n="tileForm.trend.label">Tendance vs</label>
-      <div class="combobox">
-        <input type="text" id="tile-trend-dimension" class="combobox-input" />
-        <ul class="combobox-list" hidden></ul>
-      </div>
-    </div>
-    <button id="submit-tile" type="submit" class="btn-primary" data-i18n="tileForm.submit.add">+ Ajouter la tuile</button>
-    <button id="cancel-edit" type="button" class="btn-secondary" data-i18n="tileForm.cancel" hidden>Annuler</button>
-  </form>
-
+  <div class="workspace" id="workspace">
+  <div class="workspace-main">
   <main id="tiles" class="tiles" role="tabpanel"></main>
   
   <section id="welcome" class="welcome">
@@ -505,7 +337,7 @@
     </div>
   </div>
   <p id="empty-state" class="empty-state">
-    <span id="empty-state-hint" class="edit-only" data-i18n-html="emptyState.hint">Aucune tuile pour l'instant. Ajoutez-en une ci-dessus. Cliquer sur une barre/part filtre les
+    <span id="empty-state-hint" class="edit-only" data-i18n-html="emptyState.hint">Aucune tuile pour l'instant. Utilisez « Ajouter une visualisation » pour en créer une. Cliquer sur une barre/part filtre les
     autres tuiles (cumulable entre colonnes différentes ; recliquer retire le filtre). Une tuile
     avec un « Drill-down » se détaille au clic ; une carte KPI avec une « Tendance vs » affiche
     l'évolution par rapport à la période précédente.</span>
@@ -513,7 +345,220 @@
     <button id="retry-connect" type="button" class="btn-secondary" data-i18n="status.retry" hidden>Réessayer</button>
     <span id="empty-state-readhint" class="read-only" data-i18n="emptyState.readHint">Ce tableau de bord est vide. Cliquez sur « Modifier » pour ajouter une visualisation.</span>
   </p>
+  <button id="welcome-add" type="button" class="btn-primary edit-only" data-i18n="tilePanel.welcomeAdd" hidden>Ajouter une visualisation</button>
   </section>
+  </div>
+
+  <aside id="tile-panel" class="tile-panel edit-only" role="dialog" aria-modal="false" aria-labelledby="tile-panel-title" hidden>
+    <header class="tile-panel-header">
+      <h2 id="tile-panel-title">Ajouter une visualisation</h2>
+      <button id="tile-panel-close" type="button" class="bar-btn bar-btn-icon" data-i18n-aria="tilePanel.close" data-i18n-title="tilePanel.close" aria-label="Fermer" title="Fermer">
+        <svg class="icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+      </button>
+    </header>
+
+    <section id="tile-panel-choose" class="tile-panel-step" data-step="choose">
+      <p class="tile-panel-lead" data-i18n="tilePanel.choose.lead">Quelle question voulez-vous poser à vos données ?</p>
+      <div id="tile-type-grid" class="type-grid"></div>
+    </section>
+
+    <section id="tile-panel-configure" class="tile-panel-step" data-step="configure" tabindex="-1" hidden>
+      <div class="tile-type-line">
+        <span id="tile-type-line-name" class="tile-type-line-name"></span>
+        <button id="tile-panel-back" type="button" class="link-btn" data-i18n="tilePanel.back">Changer de type</button>
+      </div>
+      <form id="add-tile-form" class="add-tile-form" novalidate>
+    <div class="field" id="tile-type-field" hidden>
+      <label for="tile-type" data-i18n="tileForm.type.label">Type</label>
+      <select id="tile-type">
+        <option value="bar" data-i18n="tileForm.type.bar">Barres</option>
+        <option value="line" data-i18n="tileForm.type.line">Courbe / aire</option>
+        <option value="pie" data-i18n="tileForm.type.pie">Camembert</option>
+        <option value="treemap" data-i18n="tileForm.type.treemap">Treemap</option>
+        <option value="scatter" data-i18n="tileForm.type.scatter">Nuage de points</option>
+        <option value="waterfall" data-i18n="tileForm.type.waterfall">Cascade (waterfall)</option>
+        <option value="radar" data-i18n="tileForm.type.radar">Radar</option>
+        <option value="wordcloud" data-i18n="tileForm.type.wordcloud">Nuage de mots</option>
+        <option value="kpi" data-i18n="tileForm.type.kpi">Carte KPI</option>
+        <option value="gauge" data-i18n="tileForm.type.gauge">Jauge</option>
+        <option value="pivot" data-i18n="tileForm.type.pivot">Tableau croisé</option>
+      </select>
+    </div>
+      <div class="field" id="tile-radar-mode-field" hidden>
+        <label for="tile-radar-mode" data-i18n="tileForm.radarMode.label">Axes du radar</label>
+        <select id="tile-radar-mode">
+          <option value="dimension" data-i18n="tileForm.radarMode.dimension">Une colonne catégorielle (classique)</option>
+          <option value="columns" data-i18n="tileForm.radarMode.columns">Plusieurs colonnes numériques (compétences)</option>
+        </select>
+      </div>
+      <div class="field" id="tile-dimension-field">
+        <label for="tile-dimension" id="tile-dimension-label" data-i18n="tileForm.dimension.label">Dimension</label>
+        <div class="combobox">
+          <input type="text" id="tile-dimension" class="combobox-input" />
+          <ul class="combobox-list" hidden></ul>
+        </div>
+        <button type="button" id="tile-suggest-date-hierarchy" class="btn-secondary btn-tiny" data-i18n="tileForm.suggestDateHierarchy" hidden>Détailler par Année/Trimestre/Mois/Jour</button>
+      </div>
+      <div class="field field-checkbox" id="tile-wordcloud-split-field" hidden>
+        <label for="tile-wordcloud-split">
+          <input type="checkbox" id="tile-wordcloud-split" />
+          <span data-i18n="tileForm.wordCloudSplit.label">Découper chaque cellule en plusieurs mots (ex. mots-clés séparés par des virgules)</span>
+        </label>
+      </div>
+      <div class="field" id="tile-column-dimension-field" hidden>
+        <label for="tile-column-dimension" data-i18n="tileForm.columnDimension.label">Dimension (colonnes)</label>
+        <div class="combobox">
+          <input type="text" id="tile-column-dimension" class="combobox-input" />
+          <ul class="combobox-list" hidden></ul>
+        </div>
+      </div>
+      <div class="field" id="tile-radar-axes-field" hidden>
+        <label for="tile-radar-axis-1" data-i18n="tileForm.radarAxes.label">Axes (colonnes numériques)</label>
+        <div id="tile-radar-axes" class="drill-levels"></div>
+        <button type="button" id="tile-radar-axes-add" class="btn-secondary btn-tiny" data-i18n="tileForm.radarAxes.addAxis" hidden>+ Axe</button>
+      </div>
+      <div class="field" id="tile-measure-field">
+        <label for="tile-measure" id="tile-measure-label" data-i18n="tileForm.measure.label">Mesure</label>
+        <div class="combobox">
+          <input type="text" id="tile-measure" class="combobox-input" />
+          <ul class="combobox-list" hidden></ul>
+        </div>
+      </div>
+      <div class="field" id="tile-measure-y-field" hidden>
+        <label for="tile-measure-y" data-i18n="tileForm.measureY.label">Mesure Y</label>
+        <div class="combobox">
+          <input type="text" id="tile-measure-y" class="combobox-input" />
+          <ul class="combobox-list" hidden></ul>
+        </div>
+      </div>
+      <div class="field" id="tile-agg-field">
+        <label for="tile-agg" data-i18n="tileForm.agg.label">Agrégat</label>
+        <select id="tile-agg">
+          <option value="sum" data-i18n="tileForm.agg.sum">Somme</option>
+          <option value="avg" data-i18n="tileForm.agg.avg">Moyenne</option>
+          <option value="count" data-i18n="tileForm.agg.count">Comptage</option>
+          <option value="min" data-i18n="tileForm.agg.min">Min</option>
+          <option value="max" data-i18n="tileForm.agg.max">Max</option>
+        </select>
+      </div>
+      <div class="field" id="tile-gauge-min-field" hidden>
+        <label for="tile-gauge-min" data-i18n="tileForm.gaugeMin.label">Min</label>
+        <input type="number" id="tile-gauge-min" value="0" />
+      </div>
+      <div class="field" id="tile-gauge-max-field" hidden>
+        <label for="tile-gauge-max" data-i18n="tileForm.gaugeMax.label">Max</label>
+        <input type="number" id="tile-gauge-max" value="100" />
+      </div>
+        <div class="field" id="tile-title-field">
+          <label for="tile-title" data-i18n="tilePanel.titleField.label">Titre (facultatif)</label>
+          <input type="text" id="tile-title" autocomplete="off" />
+        </div>
+        <p id="tile-advice" class="tile-advice" role="status" hidden></p>
+        <div class="tile-preview" id="tile-preview-box">
+          <div class="tile-preview-head" data-i18n="tilePanel.preview.title">Aperçu</div>
+          <div id="tile-preview" class="tile-preview-body" aria-live="polite"></div>
+          <p id="tile-preview-empty" class="tile-preview-empty" data-i18n="tilePanel.preview.empty">Complétez les champs obligatoires pour voir l'aperçu.</p>
+        </div>
+        <details id="tile-advanced" class="tile-advanced" hidden>
+          <summary data-i18n="tilePanel.advanced">Options avancées</summary>
+          <div class="tile-advanced-body">
+            <div class="field" id="tile-drill-field">
+              <label for="tile-drill-dimension-1" data-i18n="tileForm.drill.label">Drill-down</label>
+              <div id="tile-drill-levels" class="drill-levels"></div>
+              <button type="button" id="tile-drill-add-level" class="btn-secondary btn-tiny" data-i18n="tileForm.drill.addLevel" hidden>+ Niveau</button>
+            </div>
+            <div class="field field-checkbox" id="tile-drill-crossfilter-field" hidden>
+              <label for="tile-drill-crossfilter">
+                <input type="checkbox" id="tile-drill-crossfilter" />
+                <span data-i18n="tileForm.drill.crossFilter">Filtrer aussi les autres cartes en détaillant</span>
+              </label>
+            </div>
+            <div class="field" id="tile-measure-mode-field">
+              <label for="tile-measure-mode" data-i18n="tileForm.measureMode.label">Mode</label>
+              <select id="tile-measure-mode">
+                <option value="brut" data-i18n="tileForm.measureMode.brut">Brut</option>
+                <option value="cumulative" data-i18n="tileForm.measureMode.cumulative">Cumul</option>
+                <option value="ytd" data-i18n="tileForm.measureMode.ytd">Cumul annuel (YTD)</option>
+                <option value="yoy" data-i18n="tileForm.measureMode.yoy">Comparaison N-1</option>
+              </select>
+            </div>
+            <div class="field" id="tile-date-column-field" hidden>
+              <label for="tile-date-column" data-i18n="tileForm.dateColumn.label">Colonne date</label>
+              <div class="combobox">
+                <input type="text" id="tile-date-column" class="combobox-input" />
+                <ul class="combobox-list" hidden></ul>
+              </div>
+            </div>
+            <div class="field" id="tile-trend-field" hidden>
+              <label for="tile-trend-dimension" data-i18n="tileForm.trend.label">Tendance vs</label>
+              <div class="combobox">
+                <input type="text" id="tile-trend-dimension" class="combobox-input" />
+                <ul class="combobox-list" hidden></ul>
+              </div>
+            </div>
+            <div class="field" id="tile-radar-entity-column-field" hidden>
+              <label for="tile-radar-entity-column" data-i18n="tileForm.radarEntity.columnLabel">Comparer une valeur (colonne)</label>
+              <div class="combobox">
+                <input type="text" id="tile-radar-entity-column" class="combobox-input" />
+                <ul class="combobox-list" hidden></ul>
+              </div>
+            </div>
+            <div class="field" id="tile-radar-entity-value-field" hidden>
+              <label for="tile-radar-entity-value" data-i18n="tileForm.radarEntity.valueLabel">Valeur à comparer</label>
+              <div class="combobox">
+                <input type="text" id="tile-radar-entity-value" class="combobox-input" />
+                <ul class="combobox-list" hidden></ul>
+              </div>
+            </div>
+            <div class="field field-checkbox" id="tile-radar-compare-average-field" hidden>
+              <label for="tile-radar-compare-average">
+                <input type="checkbox" id="tile-radar-compare-average" />
+                <span data-i18n="tileForm.radarEntity.compareAverage">Comparer aussi à la moyenne du groupe filtré</span>
+              </label>
+            </div>
+            <div class="field" id="tile-sort-field" hidden>
+              <label for="tile-sort" data-i18n="tileForm.sort.label">Tri</label>
+              <select id="tile-sort">
+                <option value="" data-i18n="tileForm.sort.default">Ordre des données</option>
+                <option value="value-desc" data-i18n="tileForm.sort.valueDesc">Valeur décroissante</option>
+                <option value="value-asc" data-i18n="tileForm.sort.valueAsc">Valeur croissante</option>
+                <option value="label" data-i18n="tileForm.sort.byLabel">Libellé (A→Z, 1→9)</option>
+              </select>
+            </div>
+            <div class="field field-checkbox" id="tile-horizontal-field" hidden>
+              <label for="tile-horizontal">
+                <input type="checkbox" id="tile-horizontal" />
+                <span data-i18n="tileForm.horizontal.label">Barres horizontales (libellés longs, nombreuses catégories)</span>
+              </label>
+            </div>
+            <div class="field field-checkbox" id="tile-area-field" hidden>
+              <label for="tile-area">
+                <input type="checkbox" id="tile-area" />
+                <span data-i18n="tileForm.area.label">Aire : remplir sous la courbe</span>
+              </label>
+            </div>
+            <div class="field field-checkbox" id="tile-donut-field" hidden>
+              <label for="tile-donut">
+                <input type="checkbox" id="tile-donut" />
+                <span data-i18n="tileForm.donut.label">Anneau (trou au centre)</span>
+              </label>
+            </div>
+            <div class="field field-checkbox" id="tile-show-pct-field" hidden>
+              <label for="tile-show-pct">
+                <input type="checkbox" id="tile-show-pct" />
+                <span data-i18n="tileForm.showPct.label">Afficher le pourcentage de chaque part</span>
+              </label>
+            </div>
+          </div>
+        </details>
+        <div class="tile-panel-actions">
+          <button id="cancel-edit" type="button" class="btn-secondary" data-i18n="tileForm.cancel">Annuler</button>
+          <button id="submit-tile" type="submit" class="btn-primary">Ajouter la visualisation</button>
+        </div>
+      </form>
+    </section>
+  </aside>
+  </div>
 
   <script src="../js/i18n.js"></script>
   <script src="../js/data.js"></script>

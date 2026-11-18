@@ -144,11 +144,11 @@ body[data-mode="edit"] .read-only { display: none !important; }
   gap: 8px;
   min-height: 48px;
 }
-/* Tout reste sur UNE ligne au-dessus de 760 px : seuls la pastille « Données » et les onglets cèdent
-   de la place (le nom de table s'abrège, les onglets défilent), jamais les boutons d'action. */
+/* Tout reste sur UNE ligne au-dessus de 760 px : seuls les onglets cèdent de la place (ils défilent,
+   avec un fondu), jamais les boutons d'action ni la pastille « Données » — le nom de la table doit
+   rester lisible (sa largeur est bornée par `.pill { max-width }`). */
 .appbar > * { flex-shrink: 0; }
-.appbar > .pill { flex-shrink: 1; min-width: 118px; }
-.appbar > .page-tabs { flex-shrink: 3; }
+.appbar > .page-tabs { flex-shrink: 1; }
 .appbar-spacer { flex: 1 1 8px; }
 .appbar-sep { width: 1px; height: 20px; background: var(--border-strong); margin: 0 2px; }
 
@@ -325,24 +325,31 @@ body[data-mode="edit"] .bar-btn-mode .icon-mode-done { display: inline-block; }
 .filter-form .range-inputs input[type="number"], .filter-form .range-inputs input[type="date"] { flex: 1 1 0; width: auto; min-width: 0; }
 .filter-form .btn-secondary { align-self: flex-start; }
 
-/* Écran étroit (panneau Grist replié, téléphone) : les libellés des boutons disparaissent (leur nom
-   reste dans `aria-label`/`title`), les onglets de page passent sur leur propre ligne, défilables. */
-@media (max-width: 760px) {
+/* Largeurs réduites, par paliers (le panneau d'un widget Grist fait souvent 700-1000 px). Les onglets de
+   page sont la navigation : ils gardent toujours au moins `min-width` ; c'est le reste qui s'allège. */
+.appbar > .page-tabs { min-width: 150px; }
+@media (max-width: 1100px) {
+  .badge-alpha, .appbar > .pill .row-count { display: none; }
+}
+/* ≤ 900 px : les libellés des boutons disparaissent (leur nom reste dans `aria-label`/`title`). */
+@media (max-width: 900px) {
   .bar-label { display: none; }
   .bar-btn { padding: 0 8px; }
   .bar-btn-mode .bar-label { display: inline; }
+}
+/* ≤ 760 px (panneau Grist replié, téléphone) : les onglets passent sur leur propre ligne, défilables. */
+@media (max-width: 760px) {
   .appbar > .pill { max-width: 200px; }
-  .page-tabs { order: 10; flex: 1 1 calc(100% - 44px); overflow-x: auto; flex-wrap: nowrap; padding-bottom: 6px; }
+  .appbar > .page-tabs { order: 10; flex: 1 1 calc(100% - 44px); overflow-x: auto; flex-wrap: nowrap; padding-bottom: 6px; min-width: 0; }
   #add-page { order: 11; }
   .appbar { flex-wrap: wrap; row-gap: 2px; }
 }
-/* Très étroit (téléphone, panneau Grist replié) : tout tient sur la 1re ligne, les onglets sur la 2e. */
+/* Très étroit : tout tient sur la 1re ligne, les onglets sur la 2e. */
 @media (max-width: 560px) {
-  .bar-btn-mode .bar-label, .badge-alpha, .appbar-sep { display: none; }
+  .bar-btn-mode .bar-label, .appbar-sep { display: none; }
   .bar-btn { padding: 0 6px; }
   .appbar { gap: 4px; }
   .appbar > .pill { max-width: 150px; }
-  .appbar > .pill .row-count { display: none; }
 }
 
 /* Bouton Réglages + logo Grist Factory : en bout de barre (`.appbar`), cadrage identité §1. */
@@ -1031,3 +1038,125 @@ td.pivot-cell:not(.pivot-cell-empty):not(.pivot-total-cell):hover { background: 
   .warning-banner { background: #3a1512; color: #f5b8b0; border-color: #6b241c; }
   .warning-banner code { background: rgba(255, 255, 255, 0.12); }
 }
+
+/* ==========================================================================================
+   Panneau « Ajouter / Modifier une visualisation » (audit UI/UX du 18/11/2026, lot 2)
+   ------------------------------------------------------------------------------------------
+   Remplace le formulaire permanent posé au-dessus de la grille. En flux normal : à droite de la
+   grille à partir de 900 px (collant sous la barre, `--chrome-h` est posée par js/main.js), au-dessus
+   sinon. JAMAIS en `position: fixed` : il recouvrirait « Terminer » et les menus de la barre.
+   ========================================================================================== */
+.workspace-main { min-width: 0; }
+.workspace.panel-open { display: flex; flex-direction: column; gap: 16px; }
+.workspace.panel-open .tile-panel { order: -1; }
+@media (min-width: 900px) {
+  .workspace.panel-open { display: grid; grid-template-columns: minmax(0, 1fr) 400px; align-items: start; }
+  .workspace.panel-open .tile-panel {
+    order: 0;
+    position: sticky;
+    top: calc(var(--chrome-h, 56px) + 12px);
+    max-height: calc(100vh - var(--chrome-h, 56px) - 24px);
+    overflow-y: auto;
+  }
+}
+.tile-panel {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: var(--bw, 1px) solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-panel);
+  margin-bottom: 16px;
+  min-width: 0;
+}
+.tile-panel[hidden], .tile-panel [hidden], .welcome [hidden] { display: none !important; }
+.tile-panel-header {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 10px 10px 10px 16px;
+  border-bottom: var(--bw, 1px) solid var(--border);
+  position: sticky; top: 0; z-index: 2; background: var(--surface);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+.tile-panel-header h2 { margin: 0; font-size: 14px; font-weight: 600; }
+.tile-panel-step { padding: 14px 16px 16px; }
+.tile-panel-lead { margin: 0 0 12px; color: var(--text-secondary); font-size: 13px; }
+
+/* Étape « Choisir » : une carte par type de visualisation. */
+.type-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.type-card {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
+  padding: 10px 12px; min-height: 76px;
+  border: var(--bw, 1px) solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit; text-align: left; cursor: pointer;
+  transition: background 0.12s var(--ease), border-color 0.12s var(--ease);
+}
+.type-card:hover { background: var(--surface-sunken); border-color: var(--text-muted); }
+.type-card .icon { width: 18px; height: 18px; color: var(--accent-ink); }
+.type-card-name { font-size: 13px; font-weight: 600; }
+.type-card-advice { font-size: 11.5px; line-height: 1.35; color: var(--text-secondary); }
+.type-card-advice[data-level="warn"] { color: var(--warning-text); }
+.type-card-advice:empty { display: none; }
+@media (max-width: 480px) { .type-grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* Étape « Régler ». */
+.tile-type-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+.tile-type-line-name { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px; }
+.tile-type-line-name .icon { width: 18px; height: 18px; color: var(--accent-ink); }
+.tile-panel .add-tile-form {
+  display: flex; flex-direction: column; align-items: stretch; flex-wrap: nowrap; gap: 12px;
+  background: none; border: 0; box-shadow: none; padding: 0; margin: 0;
+}
+.tile-panel .field { width: 100%; min-width: 0; }
+.tile-panel .field select, .tile-panel .field input[type="text"], .tile-panel .field input[type="number"],
+.tile-panel .field input[type="date"], .tile-panel .combobox { width: 100%; min-width: 0; box-sizing: border-box; }
+.tile-panel .field-checkbox label { text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 12.5px; color: var(--text); }
+.tile-advice {
+  margin: 0; padding: 8px 10px; font-size: 12px; line-height: 1.4;
+  border: var(--bw, 1px) solid var(--accent-soft-border); border-radius: var(--radius-sm);
+  background: var(--accent-soft); color: var(--text);
+}
+.tile-advice[data-level="warn"] { background: var(--warning-bg); border-color: var(--warning-border); color: var(--warning-text); }
+
+/* Erreurs de saisie en ligne (à la place des fenêtres de message et des retours silencieux). */
+.field-error { margin: 0; font-size: 12px; line-height: 1.35; color: var(--danger-ink); }
+.field [aria-invalid="true"], .field [aria-invalid="true"] .combobox-input { border-color: var(--danger-ink); }
+.tile-panel .field [aria-invalid="true"] { box-shadow: 0 0 0 1px var(--danger-ink); }
+
+/* Aperçu en direct : la vraie tuile, non cliquable (un clic dans l'aperçu poserait un vrai filtre). */
+.tile-preview { border: var(--bw, 1px) solid var(--border); border-radius: var(--radius-sm); background: var(--surface-sunken); overflow: hidden; }
+.tile-preview-head { padding: 6px 10px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: var(--ls-label, 0.03em); color: var(--text-muted); border-bottom: var(--bw, 1px) solid var(--border); }
+.tile-preview-body { pointer-events: none; padding: 8px; }
+.tile-preview-body .tile { height: 200px; margin: 0; box-shadow: none; }
+.tile-preview-body:empty { display: none; }
+.tile-preview-empty { margin: 0; padding: 18px 12px; text-align: center; font-size: 12px; color: var(--text-muted); }
+.tile-preview-empty[hidden] { display: none; }
+
+.tile-advanced { border: var(--bw, 1px) solid var(--border); border-radius: var(--radius-sm); }
+.tile-advanced > summary { padding: 9px 12px; cursor: pointer; font-size: 12.5px; font-weight: 600; color: var(--text-secondary); list-style-position: inside; }
+.tile-advanced > summary:hover { color: var(--text); }
+.tile-advanced-body { display: flex; flex-direction: column; gap: 12px; padding: 4px 12px 12px; }
+.tile-panel-actions {
+  display: flex; justify-content: flex-end; gap: 8px;
+  position: sticky; bottom: 0; z-index: 2;
+  margin: 4px -16px -16px; padding: 10px 16px;
+  background: var(--surface); border-top: var(--bw, 1px) solid var(--border);
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+}
+
+/* Boutons d'ajout : « Ajouter » dans la barre, « Ajouter une visualisation » dans l'accueil. */
+.bar-btn-primary { background: var(--fill); color: var(--on-accent); border-color: transparent; font-weight: 600; }
+.bar-btn-primary:hover:not(:disabled) { background: var(--fill-hover); }
+.bar-btn-primary[aria-expanded="true"] { background: var(--fill-hover); color: var(--on-accent); }
+.bar-btn-add .bar-label { display: inline; }
+.welcome > .btn-primary { margin-top: 12px; }
+/* Une tuile qui vient d'être ajoutée/modifiée clignote une fois : on voit où elle est tombée. */
+@keyframes tile-flash { 0% { box-shadow: 0 0 0 3px var(--accent); } 100% { box-shadow: 0 0 0 0 transparent; } }
+.tile.tile-flash { animation: tile-flash 1.4s ease-out 1; }
+@media (prefers-reduced-motion: reduce) { .tile.tile-flash { animation: none; outline: 2px solid var(--accent); } }
+
+.tile-panel-step:focus { outline: none; }
+.tile-panel { scroll-margin-top: calc(var(--chrome-h, 56px) + 12px); }
+.tile { scroll-margin-top: calc(var(--chrome-h, 56px) + 12px); }
