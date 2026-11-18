@@ -3472,6 +3472,25 @@ Point de départ : Antoine, avec la capture d'un tableau de bord fluide/moderne 
 
 **Non vérifié** : rendu dans un vrai Grist/GFS (aucun accès) ; interaction réelle avec une ambiance GFS choisie (testée seulement en posant des jetons en ligne à la main) ; exports PDF/PPTX avec le vrai CDN (cdnjs est bloqué ici) — ils capturent l'image du graphique déjà rendu, donc ils suivent le style, mais n'ont pas été rejoués ; en thème sombre ils gardent le fond clair déjà connu, comme avant ce réglage. **Limite connue** : seules les tuiles ECharts, le KPI, la progression, la table et le texte suivent le style ; le pivot HTML reprend les jetons de couleur mais pas la forme des graphiques (il n'en a pas).
 
+### Tuiles usuelles des outils BI — lot 3, flux (Sankey) (18/11/2026)
+
+- **Ce qui est livré** (PR 9 du plan, §5.2 de `etudes/tuiles-usuelles-dashboard-2026-11-18.md`) : un type `sankey` (« Flux (Sankey) »). Deux colonnes catégorielles (source à gauche, cible à droite) et une mesure ;
+  chaque lien a l'épaisseur de la mesure agrégée (Somme ou Comptage) pour SA paire source -> cible. Un clic sur un nœud = filtre d'égalité sur sa colonne (les autres nœuds, et les liens qui n'y passent pas,
+  s'estompent) ; un clic sur un lien = filtre source ET cible (comme une case de la carte de chaleur, `cellFilterToggles`). La tuile reste entière sur son propre filtre. Pas de drill-down, de tri, de séries ni de repère.
+- **Choix** : graphe BIPARTI (source à gauche, cible à droite), pas un Sankey à plusieurs étapes. Une valeur qui figure des deux côtés (« Web » en source et en cible) donne deux nœuds, ce qui évite tout cycle
+  (ECharts refuse un graphe cyclique) ; un parcours en plusieurs étapes (A -> B -> C) demanderait de choisir l'ordre des colonnes et un empilement de paires, à décider si le besoin se présente. **Calcul en JS pur à
+  tout volume** (une passe, groupement par paire ; pas de DuckDB, comme l'histogramme et la boîte).
+- **Plafonds et écarts** : 60 liens tracés au plus (les plus gros ; la tuile écrit « 60 flux les plus importants sur 144 » et l'export Excel garde toutes les paires, négatives comprises) ; un flux nul, négatif ou
+  absent n'a pas d'épaisseur et n'est pas tracé (conseil « n flux nuls ou négatifs n'apparaissent pas ») ; lignes sans source ou sans cible ignorées. Conseil au-delà de 15 nœuds (écheveau) et pour une moyenne/min/max
+  (un flux s'additionne ; le préremplissage du formulaire force Somme ou Comptage).
+- **Pas fait, à décider** : Sankey à plus de deux colonnes (étapes), tri des nœuds (ECharts les ordonne pour limiter les croisements), déplacement des nœuds à la souris (`draggable: false`, un déplacement ne
+  s'enregistre pas), choix de la couleur d'un lien par la cible, regroupement des petits flux en « Autres ».
+- **Testé** : Node (bloc « flux (Sankey) » : pair par paire, somme/comptage/moyenne, flux écartés et ignorés, `pairs` pour l'export, même valeur des deux côtés = deux ensembles, types mêlés et `BigInt`, plafond et
+  ordre, store (nœud, lien, retrait, suppression de la tuile), export, défauts, conseils, i18n, câblage) ; Playwright contre le vrai `index.html` + `grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`,
+  220 et 6 000 lignes (formulaire : libellés « Source » / « Cible », 2e dimension obligatoire et différente, message propre ; option ECharts = calcul pur ; **clic réel de souris sur un nœud puis sur un lien**,
+  atténuation des autres, retrait au 2e clic ; filtre d'une autre tuile = flux recalculés ; feuille Excel ; barres -> flux -> barres sans reliquat ; flux sans valeur positive = message ; thème sombre).
+  **Pas testé dans un vrai Grist ni un vrai GFS.**
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée

@@ -2459,13 +2459,13 @@ const SAMPLE_TIME_SERIES = [
   const format = require('../js/format.js');
 
   // types concernés : ceux qui affichent un nombre ; pas de réglage pour un type inconnu ni null
-  for (const type of ['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo', 'histogram', 'heatmap', 'box']) {
+  for (const type of ['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo', 'histogram', 'heatmap', 'box', 'sankey']) {
     assert.strictEqual(data.supportsNumberFormat({ type }), true, type);
   }
   assert.strictEqual(data.supportsNumberFormat({ type: 'text' }), false, 'la tuile Texte ne montre aucun nombre');
   assert.strictEqual(data.supportsNumberFormat({ type: 'inconnu' }), false);
   assert.strictEqual(data.supportsNumberFormat(null), false);
-  assert.deepStrictEqual(data.NUMBER_FORMAT_TILE_TYPES.filter((ty) => !['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo', 'histogram', 'heatmap', 'box'].includes(ty)), []);
+  assert.deepStrictEqual(data.NUMBER_FORMAT_TILE_TYPES.filter((ty) => !['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo', 'histogram', 'heatmap', 'box', 'sankey'].includes(ty)), []);
 
   // verdict de « Comme dans la colonne » : sert l'explication affichée sous le réglage
   format.setColumnInfo({
@@ -2525,7 +2525,7 @@ const SAMPLE_TIME_SERIES = [
   const main = read('js/main.js');
   const css = read('css/style.css');
   // une seule dernière étape avant setOption, pour les quatre chemins ECharts (graphiques, mesures temporelles, histogramme, carte de chaleur)
-  assert.strictEqual((charts.match(/finalizeOption\(option, instance\);\s*\n\s*instance\.setOption\(option, true\);/g) || []).length, 5, 'finalizeOption avant chaque setOption d\'option');
+  assert.strictEqual((charts.match(/finalizeOption\(option, instance\);\s*\n\s*instance\.setOption\(option, true\);/g) || []).length, 6, 'finalizeOption avant chaque setOption d\'option');
   assert.strictEqual((charts.match(/^\s*confineTooltip\(option\);/gm) || []).length, 1, 'confineTooltip n\'est plus appelée qu\'à l\'intérieur de finalizeOption');
   // les jetons du thème viennent de la page, pas de couleurs en dur
   for (const token of ["'--surface'", "'--border-strong'", "'--border'", "'--text-secondary'"]) assert.ok(charts.includes(token), `chartTheme lit ${token}`);
@@ -4819,13 +4819,105 @@ const SAMPLE_TIME_SERIES = [
     const chartsB = fsB.readFileSync(pathB.join(rootB, 'js', 'charts.js'), 'utf8');
     const indexB = fsB.readFileSync(pathB.join(rootB, 'index.html'), 'utf8');
     assert.ok(/const TYPE_CARDS = \[[^\]]*'box'/.test(mainB) && /<option value="box"/.test(indexB) && /'type-box':/.test(mainB), 'carte, option et icône du type');
-    assert.ok(/type !== 'box'; \}/.test(mainB), 'pas de drill-down (valeurs brutes, pas de niveau suivant)');
+    assert.ok(/type !== 'box' && /.test(mainB), 'pas de drill-down (valeurs brutes, pas de niveau suivant)');
     assert.ok(/if \(isBox\) tileData\.aggFn = undefined;/.test(mainB) && /isHistogram \|\| isBox;/.test(mainB), 'ni agrégat écrit ni champ Agrégat affiché');
     assert.ok(/currentTile\.type === 'box'/.test(chartsB) && /params\.seriesType === 'scatter' && Array\.isArray\(params\.value\) \? params\.value\[0\]/.test(chartsB), 'le clic retrouve le groupe par son rang (boîte : dataIndex, aberrante : value[0])');
     assert.ok(/toggleFilter\(currentTile\.dimension, names\[rank\], currentTile\.id\)/.test(chartsB), 'filtre d\'égalité sur le groupe, tuile source = la boîte');
     assert.ok(/escapeHtml\(g\.name\)/.test(chartsB), 'le nom du groupe (donnée saisie) est échappé dans l\'infobulle');
     assert.ok(!/Intl\.NumberFormat|toFixed/.test(chartsB), 'aucun format de nombre en dur dans charts.js');
     console.log('OK boîte à moustaches — quantiles (type 7), moustaches de Tukey, aberrantes (plafond), valeurs ignorées, groupes, store, export, défauts, conseil, i18n, câblage');
+  }
+
+  // Flux / Sankey (type 'sankey', 18/11/2026, lot 3 de l'étude des tuiles usuelles) : flux par paire source -> cible, flux écartés,
+  // plafond de liens dessinés, clics (nœud, lien), export, défauts, conseils, i18n, câblage.
+  {
+    const fsK = require('fs');
+    const pathK = require('path');
+    const rootK = pathK.join(__dirname, '..');
+    const mk = (list) => list.map(([c, st, v]) => ({ c, st, v }));
+    const rowsK = mk([['Web', 'Gagné', 10], ['Web', 'Perdu', 5], ['Mail', 'Gagné', 3], ['Mail', 'Gagné', 4], ['Web', 'Gagné', -2], ['Tel', 'Perdu', -9], ['Tel', '', 4], ['Tel', 'Gagné', 'x'], [null, 'Gagné', 1]]);
+    const sk = data.sankeyFlows(rowsK, 'c', 'st', 'v', 'sum');
+    assert.deepStrictEqual(sk.flows, [{ source: 'Web', target: 'Gagné', value: 8 }, { source: 'Web', target: 'Perdu', value: 5 }, { source: 'Mail', target: 'Gagné', value: 7 }], 'une valeur par paire, somme, ordre de première apparition');
+    assert.deepStrictEqual([sk.sources, sk.targets, sk.total], [['Web', 'Mail'], ['Gagné', 'Perdu'], 20]);
+    assert.strictEqual(sk.ignored, 2, 'cible vide et source vide : pas de flux');
+    assert.strictEqual(sk.dropped, 2, 'Tel -> Perdu (-9) et Tel -> Gagné (texte = 0) : pas d\'épaisseur');
+    assert.deepStrictEqual(sk.pairs.map((f) => [f.source, f.target, f.value]), [['Web', 'Gagné', 8], ['Web', 'Perdu', 5], ['Mail', 'Gagné', 7], ['Tel', 'Perdu', -9], ['Tel', 'Gagné', 0]], 'toutes les paires restent pour l\'export');
+    assert.deepStrictEqual(data.sankeyFlows(rowsK, 'c', 'st', 'v', 'count').flows.map((f) => f.value), [2, 1, 2, 1, 1], 'comptage : lignes par paire, jamais négatif');
+    assert.strictEqual(data.sankeyFlows(rowsK, 'c', 'st', 'v', 'inconnu').flows[0].value, 8, 'agrégat inconnu : somme');
+    // Une valeur des deux côtés : deux ensembles de nœuds distincts, donc jamais de cycle ; un flux A -> A reste un flux.
+    const loop = data.sankeyFlows(mk([['A', 'B', 3], ['B', 'A', 2], ['A', 'A', 1]]), 'c', 'st', 'v', 'sum');
+    assert.deepStrictEqual([loop.sources, loop.targets, loop.flows.length], [['A', 'B'], ['B', 'A'], 3]);
+    // Types mêlés (nombre / texte / BigInt) : une paire par texte ; vide / absent sans exception.
+    const mixed = data.sankeyFlows([{ c: 1, st: 'x', v: 2n }, { c: '1', st: 'x', v: 3 }, { c: 2, st: 'x', v: '4' }], 'c', 'st', 'v', 'sum');
+    assert.deepStrictEqual(mixed.flows.map((f) => [f.source, f.value]), [['1', 5], ['2', 4]], '1 et "1" sont la même source ; BigInt et chaîne numérique acceptés');
+    assert.deepStrictEqual(data.sankeyFlows([], 'c', 'st', 'v', 'sum').flows, []); assert.deepStrictEqual(data.sankeyFlows(undefined, 'c', 'st', 'v', 'sum').flows, []);
+    // Plafond de liens dessinés : les plus gros, dans l'ordre d'origine, les premiers à valeur égale.
+    const fl = [5, 9, 1, 9, 7, 9].map((value, i) => ({ source: 's' + i, target: 't', value }));
+    assert.strictEqual(data.topFlows(fl, 10), fl, 'sous le plafond : la même liste');
+    assert.deepStrictEqual(data.topFlows(fl, 3).map((f) => f.source), ['s1', 's3', 's5'], 'les trois plus gros, ordre d\'origine');
+    assert.deepStrictEqual(data.topFlows(fl, 4).map((f) => f.source), ['s1', 's3', 's4', 's5']);
+    assert.deepStrictEqual(data.topFlows(fl, 0), []); assert.strictEqual(data.topFlows(Array.from({ length: 100 }, (_, i) => ({ source: 's' + i, target: 't', value: i + 1 }))).length, data.SANKEY_MAX_LINKS, 'plafond par défaut');
+    // Store : un nœud filtre sa colonne ; un lien pose source ET cible (cellFilterToggles) ; le même lien les retire ; la tuile reste entière.
+    {
+      const st = state.createStore();
+      st.setRows(mk([['Web', 'Gagné', 10], ['Web', 'Perdu', 5], ['Mail', 'Gagné', 3]]));
+      st.addTile({ id: 'sk', type: 'sankey', dimension: 'c', columnDimension: 'st', measure: 'v', aggFn: 'sum', title: 'F' });
+      st.addTile({ id: 'br', type: 'bar', dimension: 'c', measure: 'v', aggFn: 'sum', title: 'B' });
+      st.toggleFilter('c', 'Web', 'sk');
+      assert.strictEqual(data.rowsForTile(st.getState().tiles[0], st.getState()).length, 3, 'le flux reste affiché en entier');
+      assert.strictEqual(data.rowsForTile(st.getState().tiles[1], st.getState()).length, 2, 'les autres tuiles sont filtrées');
+      data.cellFilterToggles(st.getState().activeFilters, 'c', 'Web', 'st', 'Perdu').forEach((c) => st.toggleFilter(c.column, c.value, 'sk'));
+      assert.deepStrictEqual(st.getState().activeFilters.map((f) => [f.column, f.value]), [['c', 'Web'], ['st', 'Perdu']], 'lien Web -> Perdu : la source reste, la cible s\'ajoute');
+      data.cellFilterToggles(st.getState().activeFilters, 'c', 'Web', 'st', 'Perdu').forEach((c) => st.toggleFilter(c.column, c.value, 'sk'));
+      assert.deepStrictEqual(st.getState().activeFilters, [], 'même lien : les deux filtres retirés');
+      st.toggleFilter('st', 'Gagné', 'sk'); st.removeTile('sk');
+      assert.deepStrictEqual(st.getState().activeFilters, [], 'supprimer la tuile lève ses filtres');
+    }
+    // Export Excel : toutes les paires (négatives comprises), filtres des autres tuiles appliqués ; image pour PDF/PPTX.
+    const kState = { rows: rowsK, activeFilters: [], advancedFilters: [], drillIns: {}, comments: [], pages: [] };
+    const kTile = { id: 'sk', type: 'sankey', title: 'Canal -> statut', dimension: 'c', columnDimension: 'st', measure: 'v', aggFn: 'sum' };
+    assert.strictEqual(data.tileExportKind(kTile), 'image');
+    assert.deepStrictEqual(data.tileExportSheet(kTile, kState), { name: 'Canal -> statut', header: ['c', 'st', 'v'], rows: [['Web', 'Gagné', 8], ['Web', 'Perdu', 5], ['Mail', 'Gagné', 7], ['Tel', 'Perdu', -9], ['Tel', 'Gagné', 0]] });
+    assert.deepStrictEqual(data.tileExportSheet(kTile, Object.assign({}, kState, { activeFilters: [{ column: 'c', value: 'Mail', sourceTileId: 'autre' }] })).rows, [['Mail', 'Gagné', 7]]);
+    assert.deepStrictEqual(data.tileExportSheet(kTile, Object.assign({}, kState, { rows: [] })).rows, [], 'aucune ligne : en-têtes seuls');
+    // Types : palette et format oui ; ni tri, ni séries, ni repère, ni étiquettes de valeur.
+    assert.strictEqual(data.supportsPalette({ type: 'sankey' }), true); assert.strictEqual(data.supportsNumberFormat({ type: 'sankey' }), true);
+    assert.strictEqual(data.isSortableTile({ type: 'sankey' }), false); assert.strictEqual(data.isSeriesTile({ type: 'sankey', seriesColumn: 'P' }), false);
+    assert.strictEqual(data.supportsRefLine({ type: 'sankey' }), false); assert.strictEqual(data.supportsValueLabels({ type: 'sankey' }), false);
+    // Valeurs par défaut : deux catégories distinctes, jamais une moyenne (un flux s'additionne), comptage sans mesure ; types sans conseil d'accueil.
+    const cmd = [];
+    for (let i = 0; i < 120; i++) cmd.push({ Canal: ['Web', 'Mail', 'Tel'][i % 3], Statut: ['Gagné', 'Perdu'][(i * 5) % 2], Note: 1 + (i % 5) });
+    const kd = advice.defaultsForType('sankey', cmd, ['Canal', 'Statut', 'Note']);
+    assert.ok(kd && kd.dimension && kd.columnDimension && kd.dimension !== kd.columnDimension && kd.measure === 'Note', JSON.stringify(kd));
+    assert.ok(['sum', 'count'].includes(kd.aggFn) && kd.aggFn !== 'avg', 'jamais une moyenne');
+    assert.strictEqual(advice.defaultsForType('sankey', [{ A: 'x', B: 'y' }, { A: 'z', B: 'w' }], ['A', 'B']).aggFn, 'count', 'aucune mesure : comptage');
+    assert.strictEqual(advice.adviceForType('sankey', cmd.map((r, i) => ({ Canal: r.Canal, Montant: 100.5 + i * 7.25 })), ['Canal', 'Montant']).key, 'advice.fit.needTwoDimensions', 'une seule catégorie : le type est déconseillé');
+    assert.strictEqual(advice.TILE_TYPES.includes('sankey'), false, 'jamais proposé à l\'accueil');
+    assert.strictEqual(advice.adviceForType('sankey', cmd, ['Canal', 'Statut', 'Note']).key, 'advice.use.sankey');
+    // Conseils : moyenne/min/max, trop de nœuds, flux écartés ; rien pour un flux sain.
+    const tk = { type: 'sankey', dimension: 'Canal', columnDimension: 'Statut', measure: 'Note', aggFn: 'sum' };
+    assert.strictEqual(advice.adviceForTile(tk, cmd), null);
+    for (const agg of ['avg', 'min', 'max']) assert.strictEqual(advice.adviceForTile(Object.assign({}, tk, { aggFn: agg }), cmd).key, 'advice.sankey.notAdditive', agg);
+    const wideK = Array.from({ length: 200 }, (_, i) => ({ S: 's' + (i % 10), T: 't' + (Math.floor(i / 10) % 10), V: 1 }));
+    assert.deepStrictEqual(advice.adviceForTile({ type: 'sankey', dimension: 'S', columnDimension: 'T', measure: 'V', aggFn: 'sum' }, wideK), { key: 'advice.sankey.tooManyNodes', vars: { nodes: 20 }, level: 'warn' });
+    assert.deepStrictEqual(advice.adviceForTile({ type: 'sankey', dimension: 'c', columnDimension: 'st', measure: 'v', aggFn: 'sum' }, rowsK), { key: 'advice.sankey.dropped', vars: { n: 2 }, level: 'tip' });
+    assert.doesNotThrow(() => advice.adviceForTile({ type: 'sankey', dimension: 'Z', columnDimension: 'Y', measure: 'X', aggFn: 'sum' }, cmd), 'colonnes absentes : aucune exception');
+    ['tileForm.type.sankey', 'tileTitle.sankey', 'tileForm.dimension.labelSource', 'tileForm.columnDimension.labelTarget', 'tileForm.error.sankeyTargetRequired', 'tileForm.alert.sankeyDimsDiffer', 'chart.sankey.empty', 'chart.sankey.node',
+      'chart.sankey.capped', 'advice.use.sankey', 'advice.sankey.tooManyNodes', 'advice.sankey.notAdditive', 'advice.sankey.dropped']
+      .forEach((k) => assert.ok(i18n.STRINGS[k] && i18n.STRINGS[k].fr && i18n.STRINGS[k].en, 'traduction fr/en : ' + k));
+    i18n.setLang('fr'); assert.strictEqual(i18n.t('chart.sankey.capped', { shown: 60, total: 144 }), '60 flux les plus importants sur 144'); i18n.setLang('en'); assert.strictEqual(i18n.t('chart.sankey.capped', { shown: 60, total: 144 }), 'Top 60 flows of 144'); i18n.setLang('fr');
+    // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
+    const mainK = fsK.readFileSync(pathK.join(rootK, 'js', 'main.js'), 'utf8');
+    const chartsK = fsK.readFileSync(pathK.join(rootK, 'js', 'charts.js'), 'utf8');
+    const indexK = fsK.readFileSync(pathK.join(rootK, 'index.html'), 'utf8');
+    assert.ok(/const TYPE_CARDS = \[[^\]]*'sankey'/.test(mainK) && /<option value="sankey"/.test(indexK) && /'type-sankey':/.test(mainK), 'carte, option et icône du type');
+    assert.ok(/type !== 'sankey'; \}/.test(mainK), 'pas de drill-down');
+    assert.ok(/isGrid = isPivot \|\| isHeatmap \|\| isSankey/.test(mainK) && /sankeyDimsDiffer/.test(mainK) && /sankeyTargetRequired/.test(mainK), 'deux colonnes obligatoires et différentes, messages propres au flux');
+    assert.ok(/currentTile\.type === 'sankey'/.test(chartsK) && /params\.dataType === 'edge'/.test(chartsK) && /toggleCellFilters\(currentTile, from\.value, to\.value\)/.test(chartsK) && /toggleFilter\(node\.column, node\.value, currentTile\.id\)/.test(chartsK), 'nœud = filtre de sa colonne, lien = source ET cible');
+    assert.ok(/instance\.__refit = \(\) => \{\s*const p = place\(\);/.test(chartsK), 'les marges de libellés suivent le redimensionnement');
+    assert.ok(/return n \? escapeHtml\(n\.value\) : ''/.test(chartsK), 'les noms de nœuds (données saisies) sont échappés dans l\'infobulle');
+    assert.ok(!/Intl\.NumberFormat|toFixed/.test(chartsK), 'aucun format de nombre en dur dans charts.js');
+    console.log('OK flux (Sankey) — flux par paire, écartés, sources et cibles distinctes (jamais de cycle), plafond, store (nœud, lien), export, défauts, conseils, i18n, câblage');
   }
 
   // Export Excel avec ExcelJS 4.4.0 (consigne GFS 017, 18/11/2026) : le VRAI paquet vendorisé, exécuté sous Node

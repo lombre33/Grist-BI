@@ -983,6 +983,22 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 - [ ] ⬜ Jamais rejoué : interaction avec une VRAIE ambiance GFS, exports PDF/PPTX avec le CDN, rendu dans un vrai Grist
 - **Piège de test** : le mode Édition (qui montre le réglage) n'est posé qu'après le chargement de la configuration (~9 s, garde `tableExistsConfirmed`) ; un test qui bascule trop tôt voit le réglage disparaître. Attendre `document.body.dataset.mode === 'edit'`.
 
+### `js/data.js` + `js/charts.js` + panneau — flux (Sankey) (18/11/2026 ; Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`, 220 et 6 000 lignes)
+
+- [x] `sankeyFlows` : une valeur par paire dans l'ordre de première apparition, somme / comptage / agrégat inconnu = somme ; flux nuls ou négatifs écartés du tracé mais comptés (`dropped`) et gardés dans `pairs` ; lignes sans source ou sans cible ignorées ✅
+- [x] Une même valeur des deux côtés (`A -> B`, `B -> A`, `A -> A`) = deux ensembles distincts, jamais de cycle ; `1` et `"1"` = même source ; `BigInt` et chaîne numérique acceptés ; entrées vides sans exception ✅
+- [x] `topFlows` : sous le plafond = la même liste, sinon les plus gros dans l'ordre d'origine (égalités : les premiers), plafond 0, plafond par défaut ✅
+- [x] Store : nœud = filtre de sa colonne, lien = source ET cible, même lien = les deux retirés, tuile source entière, suppression de la tuile = filtres levés ✅
+- [x] Export Excel : une ligne par paire (négatives comprises), filtre d'une autre tuile appliqué, aucune ligne = en-têtes seuls ; `tileExportKind` = `image` ✅
+- [x] Types : palette et format oui ; tri, séries, ligne de repère, étiquettes non ✅ ; défauts (deux catégories distinctes, Somme jamais Moyenne, Comptage sans mesure), `needTwoDimensions`, conseils `notAdditive` / `tooManyNodes` / `dropped`, jamais à l'accueil, i18n fr/en ✅
+- [x] Formulaire : libellés « Source » / « Cible », 2e dimension obligatoire et différente avec messages propres au flux, titre `tileTitle.sankey`, pas de drill-down 🌐
+- [x] Rendu : option ECharts `sankey` = calcul pur, marges des libellés qui suivent l'agrandissement de la tuile 🌐 ; thème sombre lisible 🌐 ; infobulle (nœud et lien, noms échappés, valeur au format de la mesure + part) vérifiée par la lecture des sources seulement ✅, jamais survolée dans un navigateur ⬜
+- [x] Clic réel de souris : nœud = filtre de sa colonne ; lien = filtre source ET cible (mise en page lue dans `getItemLayout`, décalages `sy`/`ty` relatifs au nœud) ; 2e clic = filtre retiré ; autres éléments à 0,3 ; tuile source entière 🌐
+- [x] Filtre d'une autre tuile : flux recalculés ; barres -> flux -> barres sans reliquat (`dataset.tileType`) ; flux sans valeur positive = message ; plafond de liens tracés + mention ; aucune erreur console 🌐
+- [x] 6 000 lignes, page directe ET cadre isolé : mêmes vérifications 🌐
+- [ ] Rendu dans un vrai Grist / un vrai GFS ⬜ **[NON TESTABLE ICI]**
+- **Piège de test** : l'animation d'entrée du Sankey dure plus d'une seconde, les libellés paraissent rognés tant qu'elle n'est pas finie ; attendre ≥ 2,5 s avant une capture.
+
 ### CSS — classe de bug à systématiquement re-vérifier
 
 - [x] `.field[hidden]` masque réellement l'élément (pas seulement `display:flex` de `.field` qui gagne à spécificité égale) [BUG RÉEL, trouvé 2 fois sur des champs différents] ✅ (règle en place)
