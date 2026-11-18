@@ -1,0 +1,95 @@
+[
+  {
+    "id": "vue-d-ensemble",
+    "type": "rapport",
+    "nom": {
+      "fr": "Vue d’ensemble",
+      "en": "Overview"
+    },
+    "description": {
+      "fr": "Chiffres clés avec tendance, courbe, barres et anneau sur l’une de vos tables. Il lui faut une colonne de catégories.",
+      "en": "Key figures with trend, line, bars and donut on one of your tables. Needs a column of categories."
+    },
+    "etiquettes": [
+      {
+        "fr": "tableau de bord",
+        "en": "dashboard"
+      },
+      {
+        "fr": "indicateurs",
+        "en": "indicators"
+      },
+      {
+        "fr": "synthèse",
+        "en": "summary"
+      },
+      {
+        "fr": "ventes",
+        "en": "sales"
+      }
+    ],
+    "vignette": "vue-d-ensemble.webp"
+  },
+  {
+    "id": "evolution",
+    "type": "rapport",
+    "nom": {
+      "fr": "Évolution dans le temps",
+      "en": "Trend over time"
+    },
+    "description": {
+      "fr": "Chiffre clé avec tendance, courbe, aire empilée par catégorie et barres par mois. Il lui faut une colonne de dates.",
+      "en": "Key figure with trend, line, stacked area by category and bars by month. Needs a column of dates."
+    },
+    "etiquettes": [
+      {
+        "fr": "évolution",
+        "en": "trend"
+      },
+      {
+        "fr": "temps",
+        "en": "time"
+      },
+      {
+        "fr": "courbe",
+        "en": "line chart"
+      },
+      {
+        "fr": "saisonnalité",
+        "en": "seasonality"
+      }
+    ],
+    "vignette": "evolution.webp"
+  },
+  {
+    "id": "repartition",
+    "type": "rapport",
+    "nom": {
+      "fr": "Répartition par catégorie",
+      "en": "Breakdown by category"
+    },
+    "description": {
+      "fr": "Barres, anneau et tableau croisé pour voir ce qui pèse le plus. Il lui faut une colonne de catégories.",
+      "en": "Bars, donut and pivot table to see what weighs the most. Needs a column of categories."
+    },
+    "etiquettes": [
+      {
+        "fr": "répartition",
+        "en": "breakdown"
+      },
+      {
+        "fr": "catégories",
+        "en": "categories"
+      },
+      {
+        "fr": "comparaison",
+        "en": "comparison"
+      },
+      {
+        "fr": "part",
+        "en": "share"
+      }
+    ],
+    "vignette": "repartition.webp"
+  }
+]
