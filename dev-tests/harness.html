@@ -638,6 +638,18 @@
                 <span data-i18n="tileForm.pivotHeat.label">Colorer les cellules selon leur valeur</span>
               </label>
             </div>
+            <div class="field" id="tile-refline-field" hidden>
+              <label for="tile-refline" data-i18n="tileForm.refLine.label">Ligne de repère</label>
+              <select id="tile-refline">
+                <option value="" data-i18n="tileForm.refLine.none">Aucune</option>
+                <option value="average" data-i18n="tileForm.refLine.average">Moyenne des valeurs affichées</option>
+                <option value="value" data-i18n="tileForm.refLine.value">Valeur fixe (objectif)</option>
+              </select>
+            </div>
+            <div class="field" id="tile-refvalue-field" hidden>
+              <label for="tile-refvalue" data-i18n="tileForm.refValue.label">Valeur de la ligne</label>
+              <input type="number" id="tile-refvalue" step="any" />
+            </div>
             <div class="field" id="tile-palette-field" hidden>
               <label for="tile-palette" data-i18n="tileForm.palette.label">Palette de couleurs</label>
               <select id="tile-palette">

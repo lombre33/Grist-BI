@@ -3376,6 +3376,21 @@ Point de départ : la limite notée à la fin du lot « graduations de la jauge 
   dans le graphique = couleur calculée à 0 près, clic de case, 2e clic sur la même ligne, 3e clic qui retire, tableau croisé coloré, contour de la cellule active, retour au rendu
   d'avant, édition, thème sombre, 6 000 lignes servies avec CORS). **Pas testé dans un vrai Grist ni un vrai GFS.**
 
+### Tuiles usuelles des outils BI — lot 2, ligne de repère (18/11/2026)
+
+- **Option « Ligne de repère »** (`tile.refLine`, PR 7a du plan, §4.7) sur les **barres** (hors mode mesure temporelle) et la **courbe/aire** : un trait pointillé à une valeur, avec son libellé
+  (« Moyenne 12,4 k » ou « Objectif 100 k », au format de la mesure). Deux genres : `average` = moyenne des valeurs AFFICHÉES (une par catégorie, après tri, drill-down et filtres croisés :
+  elle bouge quand on filtre ailleurs) ; `value` = un objectif saisi (`tile.refValue`, zéro et négatifs admis ; sans nombre valide, le formulaire refuse et une configuration relue sans
+  valeur ne trace rien).
+- **Séries multiples et pile** : le repère se calcule sur la valeur agrégée par catégorie (le total pour une somme), pas par série — sur une pile, c'est la hauteur de la pile qui se compare
+  à l'objectif. Pour une moyenne (`aggFn: 'avg'`) c'est donc la moyenne des moyennes de catégorie : à décider si on veut mieux.
+- **Pas fait, à décider** : une ligne par série, une 2e ligne (objectif ET moyenne), repère sur le combo, l'histogramme ou la tuile Barres en mode mesure, une zone d'objectif (bande), un repère
+  tiré d'une colonne (la Progression et la carte KPI ont déjà `targetColumn`), la médiane ; le repère n'est pas exporté dans Excel (le fichier garde les valeurs seules).
+- **Testé** : Node (bloc « ligne de repère » : types, genre tracé, objectif invalide, moyenne avec vides/`BigInt`/chaînes, store, export inchangé, i18n, câblage) ; Playwright contre le vrai
+  `index.html` + `grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">` (formulaire : champ de valeur seulement pour « Valeur fixe », erreur sous le champ, relecture à l'édition ;
+  objectif hors de la plage des données = axe élargi et ligne dans le cadre ; barres horizontales, courbe, pile, repère négatif, objectif invalide, camembert sans ligne ; moyenne qui suit un filtre croisé).
+  **Pas testé dans un vrai Grist ni un vrai GFS.**
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée

@@ -935,6 +935,16 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 - [x] 6 000 lignes (DuckDB) dans un cadre isolé : mêmes cases, aucune erreur 🌐
 - [ ] Rendu dans un vrai Grist / un vrai GFS ⬜ **[NON TESTABLE ICI]**
 
+### `js/data.js` + `js/charts.js` + panneau — ligne de repère (18/11/2026 ; Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`)
+
+- [x] Types : barres (brut ou sans mode) et courbe oui ; mode mesure temporelle, camembert, KPI, combo, histogramme, carte de chaleur, tableau croisé, radar non ✅
+- [x] Genre tracé : moyenne (sans `refValue`), valeur (0 valide, chaîne numérique), refus de `NaN`/`Infinity`/booléen/texte/vide, clés piégées (`constructor`, `__proto__`) ✅
+- [x] Moyenne des valeurs affichées : vides jamais comptés comme 0, vrai 0 compté, négatifs, `BigInt`, aucune valeur -> pas de ligne ✅
+- [x] Store : champs gardés puis effacés ; export Excel identique avec ou sans repère ✅
+- [x] Formulaire : champ « Valeur de la ligne » seulement pour « Valeur fixe », erreur sous le champ sans nombre (le champ s'ouvre dans « Options avancées »), relecture à l'édition 🌐
+- [x] Rendu : objectif 9 000 dans une tuile de barres (ligne dans le cadre) ; **objectif hors plage = axe élargi** ; barres horizontales (trait vertical, libellé en haut) ; courbe ; pile ; repère négatif ; objectif invalide et camembert sans ligne ; moyenne qui change après un filtre croisé 🌐
+- [ ] Rendu dans un vrai Grist / un vrai GFS ⬜ **[NON TESTABLE ICI]**
+
 ### CSS — classe de bug à systématiquement re-vérifier
 
 - [x] `.field[hidden]` masque réellement l'élément (pas seulement `display:flex` de `.field` qui gagne à spécificité égale) [BUG RÉEL, trouvé 2 fois sur des champs différents] ✅ (règle en place)

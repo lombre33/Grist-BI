@@ -264,6 +264,10 @@
   const paletteSelect = document.getElementById('tile-palette');
   const paletteSwatch = document.getElementById('tile-palette-swatch');
   const paletteHint = document.getElementById('tile-palette-hint');
+  const refLineField = document.getElementById('tile-refline-field');
+  const refLineSelect = document.getElementById('tile-refline');
+  const refValueField = document.getElementById('tile-refvalue-field');
+  const refValueInput = document.getElementById('tile-refvalue');
   const pivotHeatField = document.getElementById('tile-pivot-heat-field');
   const pivotHeatCheckbox = document.getElementById('tile-pivot-heat');
   // Format des nombres de la tuile (`tile.numberFormat`, js/format.js) : liste Automatique / Comme dans la colonne /
@@ -1934,6 +1938,10 @@
     // et l'AIRE — une courbe sans remplissage empilée serait une courbe cumulée, que personne ne lit comme
     // telle (voir GristBI.data.isStackedTile).
     // Palette : tous les types qui colorent leurs marques (pas la cascade, le KPI ni le tableau croisé).
+    // Ligne de repère : barres (hors mode mesure) et courbe ; la valeur fixe demande un champ de plus.
+    const refOk = GristBI.data.supportsRefLine({ type, measureMode: measureModeSelect.value });
+    refLineField.hidden = !refOk;
+    refValueField.hidden = !(refOk && refLineSelect.value === 'value');
     paletteField.hidden = !GristBI.data.supportsPalette({ type, pivotHeat: pivotHeatCheckbox.checked });
     updatePaletteSwatch();
     numFmtField.hidden = !GristBI.data.supportsNumberFormat({ type });
@@ -2025,6 +2033,8 @@
     stackedCheckbox.checked = !!tile.stacked;
     paletteSelect.value = GristBI.data.PALETTE_KEYS.includes(tile.palette) ? tile.palette : 'standard';
     pivotHeatCheckbox.checked = !!tile.pivotHeat;
+    refLineSelect.value = GristBI.data.REF_LINE_KINDS.includes(tile.refLine) ? tile.refLine : '';
+    refValueInput.value = Number.isFinite(tile.refValue) ? tile.refValue : '';
     setNumberFormatForm(tile.numberFormat);
     donutCheckbox.checked = !!tile.donut;
     showPctCheckbox.checked = !!tile.showPct;
@@ -2064,6 +2074,7 @@
   paletteSelect.addEventListener('change', updatePaletteSwatch);
   areaCheckbox.addEventListener('change', updateFormFieldsForType);
   pivotHeatCheckbox.addEventListener('change', updateFormFieldsForType);
+  refLineSelect.addEventListener('change', updateFormFieldsForType);
   radarModeSelect.addEventListener('change', updateFormFieldsForType);
   comboModeSelect.addEventListener('change', updateFormFieldsForType);
   wordCloudSplitCheckbox.addEventListener('change', updateFormFieldsForType);
@@ -2168,6 +2179,11 @@
     if (hasDimension && !dimension) fail('tile-dimension', 'tileForm.error.dimensionRequired');
     if (isScatter && !measureYSelect.value) fail('tile-measure-y', 'tileForm.error.measureYRequired'); // 2e mesure obligatoire pour un nuage de points
     if (isHistogram && binsValue !== undefined && !(Number.isInteger(binsValue) && binsValue >= 2 && binsValue <= GristBI.data.HISTOGRAM_MAX_BINS)) fail('tile-bins', 'tileForm.error.binsRange');
+    // Ligne de repère : une valeur fixe demande un nombre.
+    const refKind = GristBI.data.supportsRefLine({ type, measureMode }) ? refLineSelect.value : '';
+    const refRaw = refKind === 'value' ? refValueInput.value.trim() : '';
+    const refValue = refRaw === '' ? undefined : Number(refRaw);
+    if (refKind === 'value' && !(refValue !== undefined && Number.isFinite(refValue))) fail('tile-refvalue', 'tileForm.error.refValueRequired');
     if (isCombo && !comboPareto && !measureYSelect.value) fail('tile-measure-y', 'tileForm.error.comboMeasureRequired'); // la courbe d'un combo a sa propre mesure
     if (measureMode && !dateColumn) fail('tile-date-column', 'tileForm.alert.dateColumnRequired');
     if (isGrid && !columnDimension) fail('tile-column-dimension', 'tileForm.error.columnDimensionRequired'); // 2e dimension obligatoire pour un tableau croisé / une carte de chaleur
@@ -2245,6 +2261,8 @@
     tileData.dateColumn = measureMode ? dateColumn : undefined;
     tileData.columnDimension = isGrid ? columnDimension : undefined;
     tileData.pivotHeat = (isPivot && pivotHeatCheckbox.checked) ? true : undefined;
+    tileData.refLine = refKind || undefined;
+    tileData.refValue = refKind === 'value' ? refValue : undefined;
     tileData.seriesColumn = seriesColumn || undefined;
     tileData.radarAxisMode = (type === 'radar') ? (isRadarColumns ? 'columns' : 'dimension') : undefined;
     tileData.radarAxes = isRadarColumns ? radarAxes : undefined;
@@ -2405,6 +2423,8 @@
     stackedCheckbox.checked = false;
     paletteSelect.value = 'standard';
     pivotHeatCheckbox.checked = false;
+    refLineSelect.value = '';
+    refValueInput.value = '';
     setNumberFormatForm(null);
     donutCheckbox.checked = false;
     showPctCheckbox.checked = false;
