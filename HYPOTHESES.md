@@ -3207,6 +3207,25 @@ des nombres étant laissé au fil « Rendre les valeurs lisibles sur chaque tuil
   édition, Excel, anglais). **Pas testé dans un vrai Grist ni un vrai GFS ; types Grist exotiques (Attachments, Reference
   résolue, ChoiceList) vus seulement par leur forme supposée** (`cellText`).
 
+### Tuiles usuelles des outils BI — lot 1, KPI enrichi et tuile Progression (18/11/2026)
+
+- **Carte KPI** (rien ne change pour une carte existante : tout est facultatif) : `tile.kpiSparkline` (case « Tracer la courbe de la tendance »,
+  visible seulement avec une dimension « Tendance vs »), `tile.target` (valeur saisie) ou `tile.targetColumn` (colonne agrégée par le même
+  agrégat que la mesure, prioritaire), `tile.goodPct`/`tile.warnPct` (écrits seulement s'ils diffèrent de 90/60). La courbe est un SVG maison, pas une
+  instance ECharts (rien à disposer) ; ses points sont les groupes de la dimension de tendance (années triées, sinon ordre des données).
+  Le calcul des groupes est partagé avec le delta (un seul `computeGroupBy`, DuckDB au-delà de 5 000 lignes). L'ajustement de police de la valeur
+  (`--kpi-chars`, lot jauge/KPI de l'autre fil) est conservé tel quel.
+- **Tuile Progression** (`type: 'progress'`) : dimension + mesure + agrégat, objectif commun OU colonne d'objectifs agrégée PAR catégorie (une catégorie
+  sans objectif n'a pas de barre, « – »). Un objectif nul ou négatif est refusé (division par zéro, « % atteint » inversé). Cliquable comme une barre de
+  graphique (filtre croisé, re-clic = retire, les autres lignes s'estompent) ; pas de drill-down, pas de tri (l'ordre des données).
+- **Couleurs** : jamais seules (le pourcentage est écrit à côté, la barre porte `role="progressbar"` et un nom accessible) ; vert/orange/rouge = couleurs
+  d'état du widget (`--good`, nouveau `--caution`, `--critical`), jamais celles d'une ambiance GFS.
+- **Pas fait, à décider** : « objectif qui baisse = mieux » (coûts, délais : 120 % est mauvais), objectif par période sur la courbe, courbe lissée (lot 2).
+- **Testé** : Node (bloc « objectif KPI, courbe, Progression » : niveaux et bornes, flottants, `BigInt`, lignes par catégorie, géométrie SVG, exports) ;
+  Playwright contre le vrai `index.html` + `grist-stub.js`, page directe (formulaire, validations, aperçu, clic/clavier, édition, anglais, Excel) et
+  `<iframe sandbox="allow-scripts">`, y compris 6 000 lignes servies avec CORS (DuckDB réel : valeurs `BigInt`). **Pas testé dans un vrai Grist ni un vrai
+  GFS.**
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée

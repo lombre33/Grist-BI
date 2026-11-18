@@ -2186,13 +2186,13 @@ const SAMPLE_TIME_SERIES = [
   const format = require('../js/format.js');
 
   // types concernés : ceux qui affichent un nombre ; pas de réglage pour un type inconnu ni null
-  for (const type of ['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table']) {
+  for (const type of ['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress']) {
     assert.strictEqual(data.supportsNumberFormat({ type }), true, type);
   }
   assert.strictEqual(data.supportsNumberFormat({ type: 'text' }), false, 'la tuile Texte ne montre aucun nombre');
   assert.strictEqual(data.supportsNumberFormat({ type: 'inconnu' }), false);
   assert.strictEqual(data.supportsNumberFormat(null), false);
-  assert.deepStrictEqual(data.NUMBER_FORMAT_TILE_TYPES.filter((ty) => !['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table'].includes(ty)), []);
+  assert.deepStrictEqual(data.NUMBER_FORMAT_TILE_TYPES.filter((ty) => !['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress'].includes(ty)), []);
 
   // verdict de « Comme dans la colonne » : sert l'explication affichée sous le réglage
   format.setColumnInfo({
@@ -3714,6 +3714,76 @@ const SAMPLE_TIME_SERIES = [
         assert.ok(/el\.dataset\.tileType !== tile\.type/.test(mainSrc2), 'une tuile dont le type change est recréée');
         assert.ok(!/Intl\.NumberFormat|toFixed/.test(chartsSrc2), 'aucun format de nombre en dur dans charts.js');
         console.log('OK tuile Table — colonnes, tri (naturel, vides à la fin, stable), nombres bruts, exports plafonnés, conseil et i18n');
+      }
+
+      // --- Objectif, courbe de tendance d'une carte KPI et tuile « Progression » ---
+      {
+        // Niveaux : vert dès `good`, orange dès `warn`, rouge en dessous ; seuils par défaut 90 / 60.
+        assert.deepStrictEqual(data.targetProgress(82, 100), { pct: 82, fill: 0.82, level: 'warn' });
+        assert.strictEqual(data.targetProgress(90, 100).level, 'good', 'le seuil lui-même est atteint');
+        assert.strictEqual(data.targetProgress(60, 100).level, 'warn');
+        assert.strictEqual(data.targetProgress(59.9, 100).level, 'bad');
+        assert.strictEqual(data.targetProgress(58, 100).pct, 58, 'pas de bruit de flottant (58/100*100)');
+        assert.deepStrictEqual(data.targetProgress(104, 100), { pct: 104, fill: 1, level: 'good' }, 'dépassement : % réel, barre plafonnée');
+        assert.strictEqual(data.targetProgress(-5, 100).fill, 0, 'valeur négative : barre vide, jamais négative');
+        assert.strictEqual(data.targetProgress(50, 100, 40, 20).level, 'good', 'seuils réglables');
+        assert.strictEqual(data.targetProgress(5, 0), null, 'objectif nul');
+        assert.strictEqual(data.targetProgress(5, -3), null, 'objectif négatif');
+        assert.strictEqual(data.targetProgress(5, null), null);
+        assert.strictEqual(data.targetProgress(null, 100), null);
+        assert.strictEqual(data.targetProgress('', 100), null);
+        assert.strictEqual(data.targetProgress(50n, 100n).pct, 50, 'BigInt (DuckDB)');
+        // Lignes d'une Progression : objectif commun, ou colonne agrégée PAR catégorie (catégorie sans objectif -> sans barre).
+        const groups = [{ dimension: 'Léa', value: 104 }, { dimension: 'Marc', value: 58 }, { dimension: 'Zoé', value: 10 }];
+        const common = data.progressRows(groups, null, 100);
+        assert.deepStrictEqual(common.map((r) => [r.key, r.pct, r.level]), [['Léa', 104, 'good'], ['Marc', 58, 'bad'], ['Zoé', 10, 'bad']]);
+        const perKey = data.progressRows(groups, [{ dimension: 'Léa', value: 200 }, { dimension: 'Marc', value: 58 }], undefined);
+        assert.deepStrictEqual(perKey.map((r) => [r.key, r.target, r.pct, r.level]), [['Léa', 200, 52, 'bad'], ['Marc', 58, 100, 'good'], ['Zoé', null, null, null]]);
+        assert.strictEqual(perKey[2].fill, 0);
+        assert.strictEqual(data.progressRows(groups, null, undefined)[0].pct, null, 'sans objectif du tout : rien à afficher');
+        // Courbe : années triées, mois dans l'ordre des données ; moins de 2 points -> rien ; série plate au milieu.
+        assert.deepStrictEqual(data.sparklineValues([{ dimension: 2025, value: 3 }, { dimension: 2023, value: 1 }, { dimension: 2024, value: 2 }]), [1, 2, 3]);
+        assert.deepStrictEqual(data.sparklineValues([{ dimension: 'Mars', value: 3 }, { dimension: 'Janvier', value: 1 }]), [3, 1], 'ordre des données pour du texte');
+        assert.deepStrictEqual(data.sparklineValues([{ dimension: 'a', value: null }, { dimension: 'b', value: 2 }]), [2], 'valeurs nulles ignorées');
+        assert.strictEqual(data.sparklineGeometry([5], 100, 30, 3), null);
+        assert.strictEqual(data.sparklineGeometry([], 100, 30, 3), null);
+        const geo = data.sparklineGeometry([1, 3, 2, 5], 100, 30, 3);
+        assert.strictEqual(geo.line, 'M0 27 L33.33 15 L66.67 21 L100 3');
+        assert.ok(geo.area.endsWith('L100 30 L0 30 Z'));
+        assert.deepStrictEqual(geo.last, { x: 100, y: 10 });
+        assert.strictEqual(data.sparklineGeometry([4, 4, 4], 100, 30, 3).line, 'M0 15 L50 15 L100 15', 'série plate : trait au milieu');
+        // Exports : Progression en table (type + valeur + objectif + %) ; carte KPI avec objectif ; sans objectif, inchangée.
+        const exRows = [{ R: 'A', M: 80, T: 100 }, { R: 'A', M: 10, T: 0 }, { R: 'B', M: 30, T: 100 }];
+        const exState = { rows: exRows, activeFilters: [], advancedFilters: [], drillIns: {}, comments: [], pages: [] };
+        const progTile = { id: 'pg', type: 'progress', title: 'Obj', dimension: 'R', measure: 'M', aggFn: 'sum', targetColumn: 'T' };
+        assert.strictEqual(data.tileExportKind(progTile), 'table');
+        assert.deepStrictEqual(data.tileExportSheet(progTile, exState), { name: 'Obj', header: ['R', 'Valeur', 'Objectif', '% de l’objectif'], rows: [['A', 90, 100, 90], ['B', 30, 100, 30]] });
+        assert.deepStrictEqual(data.tileExportSheet(Object.assign({}, progTile, { targetColumn: undefined, target: 200 }), exState).rows, [['A', 90, 200, 45], ['B', 30, 200, 15]]);
+        const kpiT = { id: 'k', type: 'kpi', title: 'K', measure: 'M', aggFn: 'sum' };
+        assert.deepStrictEqual(data.tileExportSheet(kpiT, exState), { name: 'K', header: ['Mesure', 'Valeur'], rows: [['sum(M)', 120]] });
+        assert.deepStrictEqual(data.tileExportSheet(Object.assign({}, kpiT, { target: 150 }), exState), { name: 'K', header: ['Mesure', 'Valeur', 'Objectif', '% de l’objectif'], rows: [['sum(M)', 120, 150, 80]] });
+        assert.deepStrictEqual(data.tileExportSheet(Object.assign({}, kpiT, { targetColumn: 'T' }), exState).rows, [['sum(M)', 120, 200, 60]]);
+        // Assistant et format : la Progression a sa ligne d'usage, ses valeurs par défaut (catégorie + mesure), le format des nombres.
+        assert.strictEqual(advice.USE_KEYS.progress, 'advice.use.progress');
+        assert.strictEqual(advice.adviceForType('progress', big, ['Region']).key !== undefined, true);
+        const progDefaults = advice.defaultsForType('progress', big, Object.keys(big[0]));
+        assert.ok(progDefaults.dimension && progDefaults.measure, 'catégorie + mesure préremplies');
+        assert.strictEqual(data.supportsNumberFormat({ type: 'progress' }), true);
+        assert.strictEqual(data.supportsPalette({ type: 'progress' }), false);
+        assert.strictEqual(data.isSortableTile({ type: 'progress' }), false);
+        ['tileForm.type.progress', 'tileForm.target.label', 'tileForm.targetColumn.label', 'tileForm.target.hint', 'tileForm.goodPct.label', 'tileForm.warnPct.label',
+          'tileForm.sparkline.label', 'tileForm.error.targetRequired', 'tileForm.error.targetPositive', 'tileForm.error.thresholds', 'tileTitle.progress',
+          'advice.use.progress', 'chart.kpi.goalPct', 'chart.kpi.goalTarget', 'chart.progress.empty', 'chart.progress.row', 'chart.progress.legend']
+          .forEach((k) => assert.ok(i18n.STRINGS[k] && i18n.STRINGS[k].fr && i18n.STRINGS[k].en, 'traduction fr/en : ' + k));
+        // Câblage lu dans les sources.
+        const mainSrc3 = fs.readFileSync(path.join(root, 'js', 'main.js'), 'utf8');
+        const chartsSrc3 = fs.readFileSync(path.join(root, 'js', 'charts.js'), 'utf8');
+        const indexSrc3 = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+        assert.ok(/const TYPE_CARDS = \[[^\]]*'progress'/.test(mainSrc3) && /<option value="progress"/.test(indexSrc3) && /id="tile-target"/.test(indexSrc3) && /id="tile-sparkline"/.test(indexSrc3));
+        assert.ok(/tile-kpi-spark/.test(mainSrc3) && /tile-kpi-goal/.test(mainSrc3), 'balisage de la carte KPI : courbe + objectif');
+        assert.ok(/tile\.type === 'progress'\) \{\s*renderProgress\(/.test(chartsSrc3), 'renderTile aiguille vers renderProgress');
+        assert.ok(/setProperty\('--kpi-chars'/.test(chartsSrc3), 'la police de la valeur KPI s\'ajuste toujours (lot jauge/KPI)');
+        console.log('OK objectif KPI, courbe, Progression — niveaux et seuils, lignes par catégorie, courbe SVG, exports, conseil et i18n');
       }
     }
   }

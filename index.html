@@ -467,6 +467,7 @@
         <option value="wordcloud" data-i18n="tileForm.type.wordcloud">Nuage de mots</option>
         <option value="kpi" data-i18n="tileForm.type.kpi">Carte KPI</option>
         <option value="gauge" data-i18n="tileForm.type.gauge">Jauge</option>
+        <option value="progress" data-i18n="tileForm.type.progress">Progression</option>
         <option value="pivot" data-i18n="tileForm.type.pivot">Tableau croisé</option>
         <option value="table" data-i18n="tileForm.type.table">Table</option>
         <option value="text" data-i18n="tileForm.type.text">Texte</option>
@@ -528,6 +529,24 @@
           <option value="min" data-i18n="tileForm.agg.min">Min</option>
           <option value="max" data-i18n="tileForm.agg.max">Max</option>
         </select>
+      </div>
+      <div class="field" id="tile-target-field" hidden>
+        <label for="tile-target" data-i18n="tileForm.target.label">Objectif (valeur)</label>
+        <input type="number" id="tile-target" min="0" step="any" />
+      </div>
+      <div class="field" id="tile-target-column-field" hidden>
+        <label for="tile-target-column" data-i18n="tileForm.targetColumn.label">Objectif (colonne, facultatif)</label>
+        <div class="combobox">
+          <input type="text" id="tile-target-column" class="combobox-input" />
+          <ul class="combobox-list" hidden></ul>
+        </div>
+        <p class="field-hint" data-i18n="tileForm.target.hint">Une colonne d'objectifs est agrégée comme la mesure et prend le pas sur la valeur saisie.</p>
+      </div>
+      <div class="field" id="tile-thresholds-field" hidden>
+        <label for="tile-good-pct" data-i18n="tileForm.goodPct.label">Vert à partir de (% de l'objectif)</label>
+        <input type="number" id="tile-good-pct" value="90" min="0" step="any" />
+        <label for="tile-warn-pct" data-i18n="tileForm.warnPct.label">Orange à partir de (% de l'objectif)</label>
+        <input type="number" id="tile-warn-pct" value="60" min="0" step="any" />
       </div>
       <div class="field" id="tile-gauge-min-field" hidden>
         <label for="tile-gauge-min" data-i18n="tileForm.gaugeMin.label">Min</label>
@@ -593,6 +612,12 @@
                 <input type="text" id="tile-trend-dimension" class="combobox-input" />
                 <ul class="combobox-list" hidden></ul>
               </div>
+            </div>
+            <div class="field field-checkbox" id="tile-sparkline-field" hidden>
+              <label for="tile-sparkline">
+                <input type="checkbox" id="tile-sparkline" />
+                <span data-i18n="tileForm.sparkline.label">Tracer la courbe de la tendance</span>
+              </label>
             </div>
             <div class="field" id="tile-radar-entity-column-field" hidden>
               <label for="tile-radar-entity-column" data-i18n="tileForm.radarEntity.columnLabel">Comparer une valeur (colonne)</label>
