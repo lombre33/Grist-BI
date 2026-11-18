@@ -592,6 +592,24 @@ délibérément laissé de côté (contenu généré par `js/data.js`/`js/demo-d
 - [x] Textes anglais du type et des 5 options ; hauteur de tuile stable (10 échantillons avec redimensionnement) ; aucun canvas ne déborde 🌐
 - [ ] **[NON TESTABLE ICI]** Rendu dans un vrai Grist (iframe de widget) ; courbe sur une VRAIE colonne `Date` (le test utilise une année numérique) ; import Power BI d'un `lineChart`/`areaChart` (non branché)
 
+### `js/advice.js` — suggestions de tuiles, valeurs par défaut, avertissements (18/11/2026, Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js` pour le chargement)
+
+- [x] Rôle des colonnes : région/produit catégories, année (2020-2026) catégorie et non mesure, date → temps, colonnes dérivées `.Annee/.Trimestre` → parties de temps, jour du mois → ordinal ✅
+- [x] Identifiant (entiers consécutifs uniques, texte à 40 valeurs toutes différentes) ≠ mesure entière non consécutive (salaire) ≠ constante ≠ texte libre ✅
+- [x] Type d'une colonne par VOTE : une cellule texte égarée dans 20 nombres ne change pas le type ; moitié texte → texte ✅
+- [x] `suggestTiles` : tableau vide/absent → `[]` ; 3 par défaut, `limit` respecté ; trois TYPES différents sur le banc de 47 040 lignes ; vraies colonnes, dimension ≠ mesure ; courbe sur `Date.Annee` avec le même drill-down que « Détailler par Année… » ; KPI avec tendance ✅
+- [x] Sans date : barres + KPI + anneau ; une valeur négative écarte l'anneau ; colonne « note »/« moyenne » → agrégat `avg` ; aucune colonne numérique → comptage de lignes ✅
+- [x] Radar « compétences en colonnes » proposé pour des notes sur une échelle commune, jamais mêlé à un chiffre d'affaires ✅
+- [x] Chaque suggestion s'ajoute au store et s'agrège sur les vraies données (agrégat fini, ≥ 2 groupes) ✅
+- [x] Dates dans le désordre : courbe suggérée avec `sortMode: 'label'`, ordre chronologique vérifié via `sortGroups` ✅
+- [x] `defaultsForType` : jamais dimension = mesure ; anneau sur ≤ 6 parts ; jauge dont le maximum est juste au-dessus de la valeur ; pivot sur deux dimensions différentes ; type inconnu / tableau vide → `null` ; une seule colonne → repli en comptage ✅
+- [x] `adviceForTile` : un test PAR avertissement (anneau > 7 parts / négatif, treemap négatif, barres > 12 / libellés longs / non triées, courbe sans ordre naturel / dates en désordre / triée par valeur / 2 points, cascade non chronologique, radar > 8 axes, jauge hors échelle, mesure vide à 70 %) ET par absence d'avertissement (barres négatives, mois en texte, tri déjà posé, horizontales déjà posées, KPI) ✅
+- [x] Aucun conseil sur les tuiles de démonstration du banc d'essai ; entrées gelées (`Object.freeze`) jamais mutées ✅
+- [x] `adviceForType` : jamais `null` ; indisponibilité (`advice.fit.noTime`/`needTwoMeasures`/`needTwoDimensions`/`noMeasure`/`needText`) ; ligne générique pour un type inconnu ou sans données ✅
+- [x] i18n : toute clé `advice.*` citée par le module existe, toute clé du dictionnaire est utilisée (pas de clé morte), mêmes variables en fr et en anglais, aucune `{variable}` orpheline une fois résolue dans les DEUX langues ✅
+- [x] `GristBI.advice` réellement chargé par le vrai `index.html` (script tag) et suggestions cohérentes sur la table du faux Grist 🌐
+- [ ] **[NON TESTABLE ICI]** Données d'un VRAI document Grist (colonnes `Date` en secondes, `Reference`, très larges tables) ⬜ ; seuils de lisibilité jamais confrontés à de vrais utilisateurs ⬜
+
 ### CSS — classe de bug à systématiquement re-vérifier
 
 - [x] `.field[hidden]` masque réellement l'élément (pas seulement `display:flex` de `.field` qui gagne à spécificité égale) [BUG RÉEL, trouvé 2 fois sur des champs différents] ✅ (règle en place)
