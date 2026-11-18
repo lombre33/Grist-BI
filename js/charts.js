@@ -8,7 +8,7 @@
   const GristBI = global.GristBI || (global.GristBI = {});
   const {
     groupByAggregate, sameValue, aggregateSingle, pivotTable, trendFromGroups, targetProgress, progressRows, sparklineValues, sparklineGeometry, measureSeriesForTile,
-    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, isStackedTile, splitBySeries, assembleSeries, paletteColors, PALETTES, escapeHtml,
+    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, comboSeries, comboModeOf, isStackedTile, splitBySeries, assembleSeries, paletteColors, PALETTES, escapeHtml,
     tileDrillLevels, currentDimension, rowsForTile, wordFrequency
   } = GristBI.data;
   const { t } = GristBI.i18n;
@@ -954,7 +954,10 @@
     const hasSeries = isSeriesTile(tile);
     const [agg, aggY, radarColumnValues, radarEntityColumnValues, radarEntityAgg, seriesGroups] = await Promise.all([
       isRadarColumns ? Promise.resolve(null) : computeGroupBy(rows, dimension, tile.measure, tile.aggFn),
-      tile.type === 'scatter' ? computeGroupBy(rows, dimension, tile.measureY, tile.aggFn) : Promise.resolve(null),
+      tile.type === 'scatter' ? computeGroupBy(rows, dimension, tile.measureY, tile.aggFn)
+        // Combo : la 2e mesure (courbe) a son propre agrégat ; en Pareto la courbe se déduit des barres.
+        : (tile.type === 'combo' && comboModeOf(tile) === 'measure') ? computeGroupBy(rows, dimension, tile.measureY, tile.aggFnY || tile.aggFn)
+          : Promise.resolve(null),
       isRadarColumns ? Promise.all(radarAxesColumns.map((col) => computeAggregateSingle(rows, col, 'avg'))) : Promise.resolve(null),
       (isRadarColumns && hasRadarEntity) ? Promise.all(radarAxesColumns.map((col) => computeAggregateSingle(radarEntityRows, col, 'avg'))) : Promise.resolve(null),
       (!isRadarColumns && tile.type === 'radar' && hasRadarEntity) ? computeGroupBy(radarEntityRows, dimension, tile.measure, tile.aggFn) : Promise.resolve(null),
@@ -1248,6 +1251,68 @@
           type: 'radar',
           data: series
         }]
+      };
+    } else if (tile.type === 'combo') {
+      // Combo barres + courbe à DOUBLE AXE (js/data.js:comboSeries) : barres sur l'axe de gauche, courbe sur
+      // celui de droite, deux formats de nombres (chaque série formate SA colonne). Mode Pareto : barres du
+      // plus grand au plus petit, courbe = part cumulée en % sur un axe fixe 0-100 avec un repère à 80 %.
+      // Les deux séries partagent l'axe des catégories : le clic (drill-down / filtre croisé) passe par le
+      // gestionnaire générique, qui lit `params.name`, quelle que soit la série cliquée.
+      const combo = comboSeries(tile, groups, aggY);
+      const pareto = combo.mode === 'pareto';
+      // L'agrégat de la courbe peut différer de celui des barres : un comptage n'a jamais le format d'une colonne.
+      const fLine = pareto ? f : fmtFor({ ...tile, aggFn: tile.aggFnY || tile.aggFn }, tile.measureY);
+      const aggLabel = (fn) => t('tileForm.agg.' + (fn || 'sum'));
+      // Légende : les noms de colonnes, seuls (une tuile de 270 px ne porte pas « Montant (Somme) » + « Quantité (Somme) ») ;
+      // l'agrégat n'est ajouté que si les deux séries portent la même colonne et ne se distingueraient plus.
+      const sameColumn = !pareto && tile.measure === tile.measureY;
+      const barName = sameColumn ? `${tile.measure} (${aggLabel(tile.aggFn)})` : String(tile.measure);
+      const lineName = pareto ? t('chart.combo.cumulative') : (sameColumn ? `${tile.measureY} (${aggLabel(tile.aggFnY || tile.aggFn)})` : String(tile.measureY));
+      const lineValue = (v) => (pareto ? (Number.isFinite(Number(v)) ? f.percent(Number(v)) : '–') : (fLine.format(v) || '–'));
+      option = {
+        color: palette,
+        grid: { ...numericGrid, top: 40 },
+        legend: { top: 0, type: 'scroll' },
+        tooltip: { trigger: 'axis' },
+        xAxis: { type: 'category', data: combo.categories },
+        yAxis: [
+          { type: 'value', axisLabel: { formatter: f.axis } },
+          {
+            type: 'value',
+            position: 'right',
+            splitLine: { show: false },
+            axisLabel: { formatter: pareto ? (v) => f.percent(v) : fLine.axis },
+            ...(pareto ? { min: 0, max: 100 } : {})
+          }
+        ],
+        series: [
+          {
+            type: 'bar',
+            name: barName,
+            yAxisIndex: 0,
+            tooltip: { valueFormatter: tipValue },
+            data: combo.bars.map((v, i) => ({ value: v, itemStyle: dim(combo.categories[i]) }))
+          },
+          {
+            type: 'line',
+            name: lineName,
+            yAxisIndex: 1,
+            symbolSize: 8,
+            z: 3,
+            tooltip: { valueFormatter: lineValue },
+            data: combo.line.map((v, i) => ({ value: v, itemStyle: dim(combo.categories[i]) })),
+            ...(pareto ? {
+              markLine: {
+                silent: true,
+                symbol: 'none',
+                data: [{ yAxis: 80 }],
+                // Pas d'étiquette : la graduation « 80 % » de l'axe de droite la dit déjà, et le texte recouvrait la courbe.
+                lineStyle: { type: 'dashed', width: 1 },
+                label: { show: false }
+              }
+            } : {})
+          }
+        ]
       };
     } else if (tile.type === 'line') {
       // Courbe (ou aire si `tile.areaFill`) : même formulaire et mêmes données que "bar" (1 dimension

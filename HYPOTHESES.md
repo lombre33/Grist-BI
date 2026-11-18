@@ -3226,6 +3226,21 @@ des nombres étant laissé au fil « Rendre les valeurs lisibles sur chaque tuil
   `<iframe sandbox="allow-scripts">`, y compris 6 000 lignes servies avec CORS (DuckDB réel : valeurs `BigInt`). **Pas testé dans un vrai Grist ni un vrai
   GFS.**
 
+### Tuiles usuelles des outils BI — lot 2, combo barres + courbe à double axe (18/11/2026)
+
+- **Tuile « Barres + courbe »** (`type: 'combo'`, PR 4 du plan de l'étude, §4.2) : une dimension, des barres (axe de gauche, `measure`/`aggFn`) et une courbe
+  (axe de droite). Deux modes (`tile.comboMode`) : « autre mesure » (défaut, absent de la configuration) = `measureY` + `aggFnY` (écrit seulement s'il diffère de
+  `aggFn`) ; `'pareto'` = barres du plus grand au plus petit et courbe = part CUMULÉE du total en % sur un axe fixe 0-100 avec un repère pointillé à 80 %.
+- **Décisions** : Pareto = pas de seconde mesure (elle se déduit des barres), pas de tri réglable (l'ordre fait la méthode), les valeurs négatives ou absentes
+  comptent pour 0 dans la part (conseil `advice.combo.paretoNegative`), dernier point exactement 100, une moyenne/min/max est signalée (`paretoAgg` : ça ne se
+  cumule pas). Pas de colonne Séries ni d'empilé sur un combo (deux axes + séries multiples = illisible dans 270 px). Légende = noms de colonnes seuls (« Montant »,
+  « Quantité ») ; l'agrégat n'y est ajouté que si les deux séries portent la même colonne. Clic sur n'importe quelle série = drill-down / filtre croisé de la
+  catégorie (gestionnaire générique).
+- **Pas fait, à décider** : courbe sur l'axe de gauche (un seul axe), seuil Pareto réglable (80 % fixe), deuxième courbe, barres empilées + courbe.
+- **Testé** : Node (bloc « combo barres + courbe » : Pareto, alignement par nom avec `BigInt`, tri, export, valeurs par défaut, conseil, i18n) ; Playwright contre le
+  vrai `index.html` + `grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">` (carte, formulaire prérempli, ordre des champs, clic sur une barre, passage
+  en Pareto et retour, erreur sous le champ, 6 000 lignes servies avec CORS : DuckDB réel), anglais. **Pas testé dans un vrai Grist ni un vrai GFS.**
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée

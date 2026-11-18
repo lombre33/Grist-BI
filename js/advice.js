@@ -65,6 +65,7 @@
   const USE_KEYS = {
     bar: 'advice.use.bar',
     line: 'advice.use.line',
+    combo: 'advice.use.combo',
     pie: 'advice.use.pie',
     treemap: 'advice.use.treemap',
     funnel: 'advice.use.funnel',
@@ -666,6 +667,20 @@
           && !appearsAscending(rows, time.dimension)) out.sortMode = 'label';
         break;
       }
+      case 'combo': {
+        // Barres = la mesure principale ; courbe = une AUTRE vraie mesure s'il y en a une. Sinon (une seule
+        // mesure) un Pareto, qui n'en demande pas d'autre : barres triées + part cumulée.
+        out.dimension = dimensionFallback;
+        const second = ctx.measures.filter((p) => !p.ordinal).find((p) => p.id !== out.measure);
+        if (second) {
+          out.measureY = second.id;
+          if (aggFor(second) !== out.aggFn) out.aggFnY = aggFor(second);
+        } else {
+          out.comboMode = 'pareto';
+          out.aggFn = measure ? 'sum' : 'count'; // un Pareto additionne : jamais une moyenne
+        }
+        break;
+      }
       case 'pie': {
         const small = ctx.categories.find((d) => d.kind === 'text' && d.distinct >= 2 && d.distinct <= 6);
         out.dimension = (small && small.id) || dimensionFallback;
@@ -783,6 +798,15 @@
       if (n > PIE_MAX_SLICES) return warn('advice.pie.tooManySlices', { n });
     }
     if (type === 'treemap' && agg.some((g) => g.value < 0)) return warn('advice.treemap.negative');
+    if (type === 'combo') {
+      if (tile.comboMode === 'pareto') {
+        if (tile.aggFn === 'avg' || tile.aggFn === 'min' || tile.aggFn === 'max') return warn('advice.combo.paretoAgg');
+        if (agg.some((g) => g.value < 0)) return warn('advice.combo.paretoNegative');
+      } else if (tile.measureY === tile.measure && (tile.aggFnY || tile.aggFn) === tile.aggFn) {
+        return warn('advice.combo.sameSeries');
+      }
+      if (n > BAR_MAX_VERTICAL * 2) return warn('advice.combo.manyBars', { n });
+    }
     if (type === 'funnel') {
       if (agg.some((g) => g.value < 0)) return warn('advice.funnel.negative');
       if (n > FUNNEL_MAX_STAGES) return warn('advice.funnel.tooManyStages', { n });
