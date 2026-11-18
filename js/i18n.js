@@ -68,8 +68,6 @@
     'pages.new.prompt': { fr: 'Nom de la nouvelle page :', en: 'Name of the new page:' },
 
     // --- Vues sauvegardées (bookmarks) ---
-    'bookmarks.placeholder': { fr: 'Vues sauvegardées…', en: 'Saved views…' },
-    'bookmarks.delete': { fr: 'Supprimer la vue', en: 'Delete view' },
     'bookmarks.save': { fr: 'Sauvegarder la vue actuelle', en: 'Save current view' },
     'bookmarks.save.prompt': { fr: 'Nom de la vue à sauvegarder :', en: 'Name of the view to save:' },
     'bookmarks.exportExcel': { fr: 'Exporter en Excel', en: 'Export to Excel' },
@@ -377,6 +375,27 @@
     'filters.values.hint': { fr: 'Cliquez une valeur pour filtrer tout de suite, ou tapez un morceau de texte.', en: 'Click a value to filter right away, or type part of a text.' },
     'views.popover.aria': { fr: 'Vues', en: 'Views' },
     'views.saved': { fr: 'Vues sauvegardées', en: 'Saved views' },
+    // Suivi de la vue active (retours d'Antoine du 18/11/2026, point 4).
+    'views.empty': {
+      fr: 'Aucune vue sauvegardée pour l\'instant. Posez des filtres, puis sauvegardez-les ici pour y revenir en un clic.',
+      en: 'No saved view yet. Set some filters, then save them here to come back to them in one click.'
+    },
+    'views.modified': { fr: 'modifiée', en: 'modified' },
+    'views.current': { fr: 'vue active', en: 'current view' },
+    'views.apply.aria': { fr: 'Appliquer la vue « {name} »', en: 'Apply view “{name}”' },
+    'views.delete.aria': { fr: 'Supprimer la vue « {name} »', en: 'Delete view “{name}”' },
+    'views.delete.title': { fr: 'Supprimer la vue', en: 'Delete view' },
+    'views.delete.confirm': {
+      fr: 'Supprimer la vue « {name} » ? Les filtres actuels ne changent pas.',
+      en: 'Delete view “{name}”? The current filters stay as they are.'
+    },
+    'views.update': { fr: 'Mettre à jour « {name} »', en: 'Update “{name}”' },
+    'views.saveNew': { fr: 'Sauvegarder comme nouvelle vue', en: 'Save as a new view' },
+    'views.leave': { fr: 'Quitter la vue (les filtres restent)', en: 'Leave the view (filters stay)' },
+    'views.chip.label': { fr: 'Vue', en: 'View' },
+    'views.chip.update': { fr: 'Mettre à jour', en: 'Update' },
+    'views.toggle.aria': { fr: 'Vues — vue active : {name}', en: 'Views — current view: {name}' },
+    'views.toggle.ariaModified': { fr: 'Vues — vue active : {name} (modifiée)', en: 'Views — current view: {name} (modified)' },
     'export.menu.aria': { fr: 'Exporter', en: 'Export' },
     'blend.title': { fr: 'Joindre une autre table', en: 'Join another table' },
     'emptyState.readHint': {
@@ -399,6 +418,8 @@
     'pages.remove.confirmLabel': { fr: 'Supprimer', en: 'Delete' },
     'bookmarks.save.title': { fr: 'Sauvegarder la vue', en: 'Save view' },
     'bookmarks.save.confirm': { fr: 'Sauvegarder', en: 'Save' },
+    'views.delete.dialogTitle': { fr: 'Supprimer la vue', en: 'Delete view' },
+    'views.delete.confirmLabel': { fr: 'Supprimer', en: 'Delete' },
 
     // --- Titres de tuile composés automatiquement (js/main.js:autoTileTitle ; la tuile garde aussi
     // son `title` en clair, voir i18n.js:tileTitle). ---
