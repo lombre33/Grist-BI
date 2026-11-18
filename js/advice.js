@@ -73,7 +73,9 @@
     wordcloud: 'advice.use.wordcloud',
     kpi: 'advice.use.kpi',
     gauge: 'advice.use.gauge',
-    pivot: 'advice.use.pivot'
+    pivot: 'advice.use.pivot',
+    // Hors TILE_TYPES : aucune donnée, donc ni valeurs par défaut, ni miniature, ni avertissement.
+    text: 'advice.use.text'
   };
 
   // ---------------------------------------------------------------------------------------------
@@ -629,6 +631,7 @@
   // colonne. Jamais « Région / Région / Somme » : la dimension est une vraie catégorie, la mesure
   // une vraie colonne numérique, distinctes — ou un comptage de lignes s'il n'existe aucun nombre.
   function defaultsForType(type, rows, columnIds) {
+    if (type === 'text') return {}; // une note n'a rien à préremplir
     const ctx = analyzeColumns(rows, columnIds);
     if (!ctx.profiles.length) return null;
     const measure = ctx.measures[0];
@@ -749,7 +752,7 @@
   // filtres croisés actifs : un conseil qui apparaîtrait ou disparaîtrait à chaque clic sur une
   // autre tuile ne serait pas un conseil sur le graphique lui-même.
   function adviceForTile(tile, rows) {
-    if (!tile || !tile.type || !Array.isArray(rows) || !rows.length) return null;
+    if (!tile || !tile.type || tile.type === 'text' || !Array.isArray(rows) || !rows.length) return null;
     const type = tile.type;
     const noDimension = type === 'kpi' || type === 'gauge' || (type === 'bar' && tile.measureMode && tile.measureMode !== 'brut')
       || (type === 'radar' && tile.radarAxisMode === 'columns');
@@ -856,6 +859,7 @@
   // s'y prêtent pas, sinon la phrase générique « quand l'utiliser ». Toujours un objet, jamais null.
   function adviceForType(type, rows, columnIds) {
     const generic = { key: USE_KEYS[type] || USE_KEYS.bar, vars: {}, level: 'info' };
+    if (type === 'text') return generic;
     if (!USE_KEYS[type] || !Array.isArray(rows) || !rows.length) return generic;
     const ctx = analyzeColumns(rows, columnIds);
     if (!ctx.profiles.length) return generic;

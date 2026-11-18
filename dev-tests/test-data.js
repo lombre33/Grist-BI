@@ -3388,6 +3388,53 @@ const SAMPLE_TIME_SERIES = [
       assert.ok(fs.readFileSync(path.join(root, 'index.html'), 'utf8').indexOf('js/models.js') > fs.readFileSync(path.join(root, 'index.html'), 'utf8').indexOf('js/advice.js'), 'models.js après advice.js');
       console.log('OK js/main.js — onOpen/bootstrap lisent `modele` avant « Nouveau », openModelById ne crée aucune table, index.html charge js/models.js');
     }
+
+    // --- Tuile Texte (type 'text') : une note sans donnée, rendue SANS HTML brut ---
+    {
+      // Échappement : rien de ce qu'une personne saisit ne devient une balise, sauf les quatre repères.
+      const html = data.renderTextHtml('# Titre <b>x</b>\n\nUn **gras** & "guillemets"\nsuite\n- un\n- deux **b**\n\n## Sous\n<img src=x onerror=alert(1)>\n<script>alert(1)</script>');
+      assert.strictEqual(html,
+        '<h3>Titre &lt;b&gt;x&lt;/b&gt;</h3><p>Un <strong>gras</strong> &amp; &quot;guillemets&quot;<br>suite</p><ul><li>un</li><li>deux <strong>b</strong></li></ul><h4>Sous</h4><p>&lt;img src=x onerror=alert(1)&gt;<br>&lt;script&gt;alert(1)&lt;/script&gt;</p>');
+      assert.ok(!/<(?!\/?(h3|h4|p|ul|li|strong|br)\b)/.test(html), 'aucune balise hors de la liste fermée');
+      assert.strictEqual(data.renderTextHtml(''), '');
+      assert.strictEqual(data.renderTextHtml(null), '');
+      assert.strictEqual(data.renderTextHtml(undefined), '');
+      // Un `**` seul en début de ligne n'est pas une liste ; deux ** vides ne font pas de gras vide.
+      assert.strictEqual(data.renderTextHtml('**gras** début'), '<p><strong>gras</strong> début</p>');
+      assert.strictEqual(data.renderTextHtml('a ** b'), '<p>a ** b</p>');
+      // Fins de ligne Windows, lignes vides multiples, plafond de longueur.
+      assert.strictEqual(data.renderTextHtml('a\r\nb\r\n\r\n\r\nc'), '<p>a<br>b</p><p>c</p>');
+      assert.ok(data.renderTextHtml('x'.repeat(data.TEXT_TILE_MAX + 500)).length <= '<p></p>'.length + data.TEXT_TILE_MAX);
+      // Texte sans repères pour les exports.
+      assert.strictEqual(data.plainTextOf('# T\n- a\n**b** c\n\n## S'), 'T\n• a\nb c\n\nS');
+      assert.strictEqual(data.plainTextOf(null), '');
+      // Exports : ni feuille Excel (synchrone comme asynchrone), un genre d'export dédié pour PDF/PPTX.
+      const textTile = { id: 'tt', type: 'text', title: 'Note', text: '# Lire\n- source : ERP' };
+      const barTile = { id: 'tb', type: 'bar', dimension: 'Region', measure: 'Montant', aggFn: 'sum', title: 'Montant par Région' };
+      const exState = { rows, activeFilters: [], advancedFilters: [], drillIns: {}, comments: [], pages: [{ id: 'p1', name: 'Page', tiles: [textTile, barTile] }] };
+      assert.strictEqual(data.tileExportKind(textTile), 'text');
+      assert.deepStrictEqual(data.tileExportSheet(textTile, exState), { name: 'Note', header: ['Texte'], rows: [['Lire\n• source : ERP']] });
+      assert.deepStrictEqual(data.buildWorkbookSheets(exState).map((sh) => sh.name), ['Montant par Région']);
+      assert.deepStrictEqual((await data.buildWorkbookSheetsAsync(exState, async () => ({}))).map((sh) => sh.name), ['Montant par Région']);
+      // Le texte n'est ni triable, ni colorable, ni filtré : aucune dimension.
+      assert.strictEqual(data.isSortableTile(textTile), false);
+      assert.strictEqual(data.supportsPalette(textTile), false);
+      // Conseil : une ligne « quand l'utiliser » (avec sa traduction), aucun préremplissage ni avertissement.
+      assert.strictEqual(advice.USE_KEYS.text, 'advice.use.text');
+      assert.ok(i18n.STRINGS['advice.use.text'] && i18n.STRINGS['tileForm.type.text'] && i18n.STRINGS['tileForm.error.textRequired'] && i18n.STRINGS['tileTitle.text']);
+      assert.deepStrictEqual(advice.adviceForType('text', big, ['Region']), { key: 'advice.use.text', vars: {}, level: 'info' });
+      assert.deepStrictEqual(advice.defaultsForType('text', big), {});
+      assert.strictEqual(advice.adviceForTile(textTile, big), null);
+      // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
+      const mainSrc = fs.readFileSync(path.join(root, 'js', 'main.js'), 'utf8');
+      const indexSrc = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+      const chartsSrc = fs.readFileSync(path.join(root, 'js', 'charts.js'), 'utf8');
+      assert.ok(/const TYPE_CARDS = \[[^\]]*'text'\]/.test(mainSrc), 'carte « Texte » dans l\'étape Choisir');
+      assert.ok(/<option value="text"/.test(indexSrc) && /<textarea id="tile-text"[^>]*maxlength="2000"/.test(indexSrc), 'option + zone de texte plafonnée');
+      assert.ok(/tile\.type === 'text'\) \{\s*renderText\(/.test(chartsSrc) || /tile\.type === 'text'\) \{\r?\n\s*renderText\(/.test(chartsSrc), 'renderTile aiguille vers renderText');
+      assert.ok(!/innerHTML = tile\.text|innerHTML = textValue/.test(mainSrc + chartsSrc), 'jamais de texte saisi dans innerHTML sans passer par renderTextHtml');
+      console.log('OK tuile Texte — échappement total (liste fermée de balises), repères # ## - **, plafond, exports sans feuille Excel, conseil et i18n');
+    }
   }
 })().then(() => {
   console.log('\nTous les tests data.js/state.js/demo-data.js/combobox.js/duckdb-engine.js/i18n.js sont passés.');
