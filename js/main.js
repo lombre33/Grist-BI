@@ -156,6 +156,7 @@
   let lastRenderedCurrentPageId = null; // idem, côté page active (changer de page se sauvegarde aussi)
   let lastRenderedBookmarks = null; // idem, côté bookmarks
   let lastRenderedBlend = null; // idem, côté jointure de data blending (voir applyBlend/commitBlendFromForm)
+  let lastRenderedDashStyle = 'standard'; // idem, côté style global des tuiles (js/styles.js) — le Standard est ce que le chargement pose par défaut
   // Consigne GFS 009 : levé par switchTable pendant qu'il CHARGE un rapport (pages/bookmarks/blend
   // posés depuis BI_Dashboard_Config ou depuis un départ vierge), jamais pendant un geste réel de la
   // personne — voir render() et switchTable plus bas.
@@ -382,6 +383,7 @@
   const sharedReadOnlyWarning = document.getElementById('shared-readonly-warning');
   const settingsBtn = document.getElementById('open-settings');
   const settingsModal = document.getElementById('settings-modal');
+  const styleOptionsEl = document.getElementById('settings-style-options'); // cartes de choix du style des tuiles, voir renderStyleOptions
   const settingsCloseBtn = document.getElementById('settings-close');
   const commentsModal = document.getElementById('comments-modal');
   const commentsCloseBtn = document.getElementById('comments-close');
@@ -987,6 +989,7 @@
     if (mode === 'read') closeTilePanel(false); // on ne laisse ni panneau ouvert ni édition en cours derrière un mode qui les masque
     GristBI.appbar.closePopovers();
     applyMode();
+    fitPageTabs(); // le mode Édition ajoute des boutons à la barre
   }
   function autoMode() {
     const hasTiles = store.getState().pages.some((p) => p.tiles && p.tiles.length > 0);
@@ -1041,6 +1044,10 @@
   }
 
   function render(state) {
+    // Style global des tuiles (js/styles.js) : posé AVANT les rendus ci-dessous, que js/charts.js lit à chaque tuile
+    // (`GristBI.styles.current()`) — un changement de style repasse donc par ce `render()` complet, sans rien d'autre à rafraîchir.
+    GristBI.styles.apply(state.dashStyle);
+    refreshStyleOptions(state.dashStyle);
     // Balaie tout le document pour les attributs data-i18n-* (voir js/i18n.js) à CHAQUE rendu, pas
     // seulement au changement de langue : les boutons d'en-tête de tuile (buildTileElement) sont mis
     // en cache et jamais reconstruits tant que la tuile existe (voir juste en dessous), donc un
@@ -1154,6 +1161,7 @@
     setTableDependentControlsEnabled(Boolean(currentTableId) && dashboardReady);
     renderBookmarks(state);
     renderConnectionStatus(state);
+    fitPageTabs();
 
     // `pages`/`currentPageId`/`bookmarks` ne changent de référence/valeur que via leurs actions
     // dédiées (state.js) : un rendu déclenché par un simple rafraîchissement de données (setRows) ne
@@ -1161,17 +1169,18 @@
     // chaque édition externe). Changer de page ne modifie QUE currentPageId (référence de `pages`
     // inchangée) mais mérite quand même d'être sauvegardé, comme la page active dans Power BI.
     if (state.pages !== lastRenderedPages || state.currentPageId !== lastRenderedCurrentPageId ||
-        state.bookmarks !== lastRenderedBookmarks || state.blend !== lastRenderedBlend) {
+        state.bookmarks !== lastRenderedBookmarks || state.blend !== lastRenderedBlend || state.dashStyle !== lastRenderedDashStyle) {
       lastRenderedPages = state.pages;
       lastRenderedCurrentPageId = state.currentPageId;
       lastRenderedBookmarks = state.bookmarks;
       lastRenderedBlend = state.blend;
+      lastRenderedDashStyle = state.dashStyle;
       // Consigne GFS 009 : pendant que switchTable CHARGE un rapport (même vierge, "Nouveau" dans
       // GFS), ce bloc s'exécute une fois par store.set* (jusqu'à 3 fois, un par champ chargé) sans
       // qu'aucun geste de la personne n'ait eu lieu — lastRendered* est quand même mis à jour
       // ci-dessus (pour ne pas se retrouver désynchronisé au prochain geste réel), mais aucune
       // sauvegarde n'est planifiée tant que switchTable n'a pas fini de poser son chargement.
-      if (!suppressNextSave) scheduleSave(state.pages, state.currentPageId, state.bookmarks, state.blend);
+      if (!suppressNextSave) scheduleSave(state.pages, state.currentPageId, state.bookmarks, state.blend, state.dashStyle);
     }
     // Tient la liste du panneau Commentaires à jour s'il est ouvert (ajout d'un commentaire,
     // changement de langue...) sans avoir à le refermer/rouvrir — no-op si fermé
@@ -1192,7 +1201,32 @@
   function updateTabsOverflow() {
     pageTabsEl.classList.toggle('overflows', pageTabsEl.scrollWidth > pageTabsEl.clientWidth + 1);
   }
-  window.addEventListener('resize', updateTabsOverflow);
+  // Les onglets sont la navigation : le reste de la barre s'allège avant qu'un onglet ne soit rogné (bug réel n°51 : « Segments » coupé à
+  // 1100 et 1200 px dès qu'une vue était suivie ; avec 4 pages, réduit à une lettre). Deux paliers, essayés dans l'ordre à partir de la
+  // barre complète, et gardés seulement s'ils servent :
+  // 1. `bar-names-hidden` : le nom de la vue suivie écrit dans le bouton Vues (un rappel : la pastille « Vue » de la rangée des filtres et
+  //    le nom accessible du bouton le disent aussi) ;
+  // 2. `bar-labels-hidden` : les libellés des boutons (icônes seules, comme au-dessous de 900 px) — SEULEMENT si les onglets tiennent alors ;
+  //    sinon (beaucoup de pages) les boutons gardent leur texte et les onglets défilent, avec le fondu de bord (`overflows`).
+  // À rappeler après tout ce qui change la largeur de la barre : `render()` en dernier (le nom de la vue est posé APRÈS le rendu des onglets,
+  // d'où le fondu qui restait faux), le changement de mode ou de langue, la taille de la fenêtre, et un ResizeObserver en filet de sécurité.
+  const appbarEl = document.getElementById('appbar');
+  const tabsClipped = () => pageTabsEl.scrollWidth > pageTabsEl.clientWidth + 1;
+  function fitPageTabs() {
+    if (appbarEl) {
+      GristBI.appbar.fitTabsLevel(tabsClipped, (level) => {
+        appbarEl.classList.toggle('bar-names-hidden', level === 1);
+        appbarEl.classList.toggle('bar-labels-hidden', level === 2);
+      }, !viewsActiveNameEl.hidden);
+    }
+    updateTabsOverflow();
+    // L'onglet actif doit rester visible dans une liste qui défile (la largeur disponible vient peut-être de changer).
+    const activeTab = pageTabsEl.querySelector('.page-tab.active');
+    if (activeTab && typeof activeTab.scrollIntoView === 'function') activeTab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+  window.addEventListener('resize', fitPageTabs);
+  // Différé d'une image : modifier la barre dans le rappel d'un ResizeObserver qui l'observe ferait « loop completed with undelivered notifications ».
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => requestAnimationFrame(fitPageTabs)).observe(pageTabsEl);
   let restoreTabFocus = false; // le rendu qui suit une flèche doit rendre le focus à l'onglet actif
   function renderPageTabs(pages, currentPageId) {
     pageTabsEl.innerHTML = pages.map((p) => {
@@ -1230,7 +1264,6 @@
       restoreTabFocus = false;
       if (activeTab) activeTab.focus();
     }
-    updateTabsOverflow();
     for (const removeBtn of pageTabsEl.querySelectorAll('.page-tab-remove')) {
       removeBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
@@ -2933,10 +2966,10 @@
   // réel trouvé en testant le sélecteur de table — voir flushPendingSave()/HYPOTHESES.md). Même
   // raison pour `reportId`/`authorLabel` (consigne GFS 007) : capturés ici, jamais relus plus tard
   // dans le setTimeout.
-  function scheduleSave(pages, currentPageId, bookmarks, blend) {
+  function scheduleSave(pages, currentPageId, bookmarks, blend, dashStyle) {
     if (!currentTableId) return;
     clearTimeout(saveTimer);
-    pendingSave = { tableId: currentTableId, reportId: currentReportId, authorLabel: currentReportAuthorLabel(), pages, currentPageId, bookmarks, blend };
+    pendingSave = { tableId: currentTableId, reportId: currentReportId, authorLabel: currentReportAuthorLabel(), pages, currentPageId, bookmarks, blend, dashStyle };
     saveTimer = setTimeout(() => {
       saveTimer = null;
       const p = pendingSave;
@@ -2953,7 +2986,7 @@
   // `'new'` : un changement de table/rapport pendant l'écriture (rare, mais possible) l'aurait déjà
   // remplacé, et l'écraser ici serait une course perdante sur l'état affiché à l'écran.
   function runPendingSave(p) {
-    return GristBI.api.saveConfig(p.tableId, p.pages, p.currentPageId, p.bookmarks, p.blend, p.reportId, p.authorLabel).then((rowId) => {
+    return GristBI.api.saveConfig(p.tableId, p.pages, p.currentPageId, p.bookmarks, p.blend, p.reportId, p.authorLabel, p.dashStyle).then((rowId) => {
       if (p.reportId === 'new' && currentReportId === 'new') currentReportId = rowId;
     }).catch((e) => {
       console.error('[GristBI] échec de sauvegarde de la config', e);
@@ -3076,6 +3109,7 @@
         store.setBookmarks(saved.bookmarks);
         currentBlend = saved.blend;
         store.setBlend(currentBlend);
+        store.setDashStyle(saved.style); // absent d'une configuration d'avant ce réglage -> Standard
       } finally {
         suppressNextSave = false;
       }
@@ -3481,6 +3515,63 @@
   // vérité tant que ce widget est hébergé.
   GristBI.i18n.onChange((lang) => { if (gfsLink && gfsLink.hosted) gfsLink.storageSet('gristbi_lang', lang); });
   refreshLangRadios();
+
+  // Style global des tuiles (js/styles.js, css/dash-styles.css) : une carte par style dans le menu Réglages, construites d'après
+  // le registre pour qu'un style ajouté y apparaisse sans toucher au HTML. Le texte vient de `data-i18n` (résolu par
+  // `applyTranslations()` à chaque rendu, donc il suit un changement de langue) ; la pastille est un aperçu fait des MÊMES jetons CSS
+  // que les tuiles (`.style-swatch[data-dash-style]`), jamais une image. Choisir un style passe par le store : `render()` pose le
+  // style, redessine toutes les tuiles et planifie la sauvegarde dans la configuration du tableau de bord.
+  function renderStyleOptions() {
+    if (!styleOptionsEl) return;
+    styleOptionsEl.textContent = '';
+    GristBI.styles.STYLE_IDS.forEach((id) => {
+      const style = GristBI.styles.STYLES[id];
+      const label = document.createElement('label');
+      label.className = 'style-option';
+      label.dataset.styleId = id;
+      const input = document.createElement('input');
+      input.type = 'radio';
+      input.name = 'settings-style';
+      input.value = id;
+      input.addEventListener('change', () => { if (input.checked) store.setDashStyle(id); });
+      const swatch = document.createElement('span');
+      swatch.className = 'style-swatch';
+      swatch.setAttribute('data-dash-style', id);
+      swatch.setAttribute('aria-hidden', 'true');
+      const card = document.createElement('span');
+      card.className = 'sw-card';
+      const title = document.createElement('span');
+      title.className = 'sw-title';
+      const bars = document.createElement('span');
+      bars.className = 'sw-bars';
+      for (let i = 0; i < 4; i++) bars.appendChild(document.createElement('i'));
+      card.append(title, bars);
+      swatch.appendChild(card);
+      const name = document.createElement('span');
+      name.className = 'style-option-name';
+      name.setAttribute('data-i18n', style.nameKey);
+      name.textContent = t(style.nameKey);
+      const desc = document.createElement('span');
+      desc.className = 'style-option-desc';
+      desc.setAttribute('data-i18n', style.descKey);
+      desc.textContent = t(style.descKey);
+      label.append(input, swatch, name, desc);
+      styleOptionsEl.appendChild(label);
+    });
+    refreshStyleOptions(store.getState().dashStyle);
+  }
+  // Coche la carte du style en vigueur (un id inconnu de ce widget s'affiche, et se coche, en Standard).
+  function refreshStyleOptions(dashStyle) {
+    if (!styleOptionsEl) return;
+    const current = GristBI.styles.normalizeStyleId(dashStyle);
+    styleOptionsEl.querySelectorAll('.style-option').forEach((label) => {
+      const selected = label.dataset.styleId === current;
+      label.classList.toggle('is-selected', selected);
+      const input = label.querySelector('input');
+      if (input && input.checked !== selected) input.checked = selected;
+    });
+  }
+  renderStyleOptions();
 
   bootstrap();
 })();

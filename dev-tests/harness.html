@@ -39,6 +39,7 @@
 }
 </script>
 <link rel="stylesheet" href="../css/style.css" />
+<link rel="stylesheet" href="../css/dash-styles.css" />
 <link rel="stylesheet" href="../kit/css/windows.css" />
 </head>
 <body data-mode="read">
@@ -233,6 +234,12 @@
           <label><input type="radio" name="settings-lang" value="fr" id="settings-lang-fr"><span data-i18n="settings.language.fr">Français</span></label>
           <label><input type="radio" name="settings-lang" value="en" id="settings-lang-en"><span data-i18n="settings.language.en">English</span></label>
         </div>
+      </div>
+      
+      <div class="settings-section edit-only" id="settings-style-section">
+        <h4 id="settings-style-title" data-i18n="style.title">Style des tuiles</h4>
+        <p class="settings-hint" data-i18n="style.hint">Change l'apparence de toutes les tuiles de ce tableau de bord. Enregistré avec lui.</p>
+        <div id="settings-style-options" class="style-options" role="radiogroup" aria-labelledby="settings-style-title"></div>
       </div>
       <div class="settings-section">
         <h4 data-i18n="settings.credits.title">Crédits</h4>
@@ -754,6 +761,7 @@
   <script src="../js/i18n.js"></script>
   <script src="../js/data.js"></script>
   <script src="../js/format.js"></script>
+  <script src="../js/styles.js"></script>
   <script src="../js/pbix-layout.js"></script>
   <script src="../js/csv-import.js"></script>
   <script src="../js/advice.js"></script>

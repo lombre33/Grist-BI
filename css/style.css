@@ -221,6 +221,12 @@ body[data-mode="edit"] .read-only { display: none !important; }
 .bar-btn[data-view-active="true"] .icon-bookmark { fill: currentColor; color: var(--accent-ink); }
 .bar-view-name { max-width: 150px; overflow: hidden; text-overflow: ellipsis; color: var(--accent-ink); font-weight: 600; }
 .bar-view-name[hidden], .bar-dot[hidden] { display: none; }
+/* Posés par js/main.js:fitPageTabs quand la barre rognerait un onglet de page (les onglets passent avant) : d'abord le nom de la vue suivie,
+   puis — seulement si cela suffit — les libellés des boutons, comme au-dessous de 900 px (leur nom reste dans `aria-label`/`title`). */
+.appbar.bar-names-hidden .bar-view-name, .appbar.bar-labels-hidden .bar-view-name { display: none; }
+.appbar.bar-labels-hidden .bar-label { display: none; }
+.appbar.bar-labels-hidden .bar-btn { padding: 0 8px; }
+.appbar.bar-labels-hidden .bar-btn-mode .bar-label { display: inline; }
 .bar-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--warning-text); box-shadow: 0 0 0 2px var(--warning-bg); }
 /* « Modifier » est un bouton à contour (action principale du mode lecture) ; en édition il devient
    « Terminer », plein. L'icône change avec l'état (crayon / coche). */

@@ -2006,6 +2006,67 @@ const SAMPLE_TIME_SERIES = [
   console.log('OK appbar — placePopover (bords, marge, hauteur mini), tabKeyTarget, menuKeyTarget');
 }
 
+// Onglets de page rognés quand le bouton Vues porte le nom de la vue suivie (bug réel n°51, 18/11/2026) : `fitTabsLevel` (js/appbar.js, pure) choisit
+// combien alléger la barre pour que les onglets tiennent ; le DOM est remplacé ici par un modèle de largeurs.
+{
+  const appbar = require('../js/appbar.js');
+  const A = 300; // largeur offerte aux onglets par la barre complète
+  const NAME_W = 60; // gagnée en effaçant le nom de la vue
+  const LABELS_W = 100; // gagnée en effaçant en plus les libellés des boutons
+  const run = (need, hasName) => {
+    const calls = [];
+    let level = -1;
+    const avail = () => A + (level >= 1 && hasName ? NAME_W : 0) + (level === 2 ? LABELS_W : 0);
+    const result = appbar.fitTabsLevel(() => need > avail(), (n) => { level = n; calls.push(n); }, hasName);
+    return { result, calls, final: level, clipped: need > avail() };
+  };
+  // Ça tient d'emblée : un seul réglage (barre complète), rien n'est effacé.
+  let r = run(280, true);
+  assert.deepStrictEqual([r.result, r.calls], [0, [0]]);
+  // Le nom de la vue suffit : les libellés des boutons ne sont jamais touchés.
+  r = run(A + 50, true);
+  assert.deepStrictEqual([r.result, r.calls, r.clipped], [1, [0, 1], false]);
+  // Le nom ne suffit pas, les libellés oui.
+  r = run(A + 150, true);
+  assert.deepStrictEqual([r.result, r.calls, r.clipped], [2, [0, 1, 2], false]);
+  // Sans nom de vue : on passe directement aux libellés (le palier 1 n'existe pas), jamais de palier 1.
+  r = run(A + 50, false);
+  assert.deepStrictEqual([r.result, r.calls], [2, [0, 2]]);
+  r = run(A + 150, false);
+  assert.deepStrictEqual([r.result, r.clipped], [0, true], 'sans nom, 100 px ne suffisent pas : on garde les libellés');
+  // Beaucoup de pages : rien ne suffit. Les libellés sont gardés (inutile de les perdre), le nom de la vue reste effacé (il aide un peu).
+  r = run(A + 500, true);
+  assert.deepStrictEqual([r.result, r.final, r.clipped], [1, 1, true]);
+  assert.strictEqual(r.calls[r.calls.length - 1], 1, 'le dernier réglage posé est le palier rendu');
+  r = run(A + 500, false);
+  assert.deepStrictEqual([r.result, r.final], [0, 0]);
+  // Pour tout besoin de largeur : le dernier réglage posé EST le palier rendu, le palier ne baisse jamais quand le besoin augmente,
+  // et si le palier rendu laisse les onglets rognés, aucun palier plus fort n'aurait suffi.
+  for (const hasName of [true, false]) {
+    let previous = -1;
+    for (let need = 200; need <= 600; need += 10) {
+      const x = run(need, hasName);
+      assert.strictEqual(x.final, x.result, `besoin ${need} : état final cohérent`);
+      // Le palier 2 est le plus puissant : s'il avait suffi, il aurait été gardé. Rogné = même tous les paliers ne suffisent pas.
+      if (x.clipped) assert.ok(need > A + (hasName ? NAME_W : 0) + LABELS_W, `besoin ${need} : rogné seulement si même tous les paliers ne suffisent pas`);
+      assert.ok(x.result >= previous || x.clipped, `besoin ${need} : le palier ne baisse pas quand le besoin augmente`);
+      if (!x.clipped) previous = x.result;
+    }
+  }
+  // Câblage : l'ajustement passe APRÈS le rendu du nom de la vue (le bug : il se faisait avant, dans renderPageTabs), au changement de mode,
+  // au redimensionnement et par un ResizeObserver différé ; les deux classes existent dans la feuille.
+  const fs = require('fs');
+  const main = fs.readFileSync(require('path').join(__dirname, '..', 'js', 'main.js'), 'utf8');
+  const css = fs.readFileSync(require('path').join(__dirname, '..', 'css', 'style.css'), 'utf8');
+  assert.ok(/renderBookmarks\(state\);\s*renderConnectionStatus\(state\);\s*fitPageTabs\(\);/.test(main), 'render() ajuste les onglets après le nom de la vue et la pastille de table');
+  assert.ok(!/function renderPageTabs[\s\S]*?updateTabsOverflow\(\);\s*for \(const removeBtn/.test(main), 'renderPageTabs ne mesure plus (avant que le bouton Vues ait changé de largeur)');
+  assert.ok(/applyMode\(\);\s*fitPageTabs\(\);/.test(main), 'le changement de mode (boutons en plus en Édition) réajuste la barre');
+  assert.ok(/window\.addEventListener\('resize', fitPageTabs\)/.test(main) && /new ResizeObserver\(\(\) => requestAnimationFrame\(fitPageTabs\)\)\.observe\(pageTabsEl\)/.test(main), 'redimensionnement : tout de suite, et en filet différé d\'une image');
+  assert.ok(/GristBI\.appbar\.fitTabsLevel\(tabsClipped/.test(main), 'main.js délègue le choix du palier à js/appbar.js');
+  assert.ok(/\.appbar\.bar-names-hidden \.bar-view-name/.test(css) && /\.appbar\.bar-labels-hidden \.bar-label \{ display: none; \}/.test(css) && /\.appbar\.bar-labels-hidden \.bar-btn-mode \.bar-label \{ display: inline; \}/.test(css), 'classes de palier dans la feuille (le libellé du mode reste)');
+  console.log('OK appbar — fitTabsLevel (paliers nom de vue puis libellés, gardés seulement s\'ils servent, 2 x 41 largeurs), câblage');
+}
+
 // `dev-tests/harness.html` recopie le <body> d'index.html (voir dev-tests/sync-harness.js) : un id ajouté
 // à l'un et oublié dans l'autre faisait planter js/main.js dès son chargement dans le harnais (bug réel
 // n°27). Faux ici = lancer `node dev-tests/sync-harness.js`.
