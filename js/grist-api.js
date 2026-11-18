@@ -887,11 +887,14 @@
   //  - écrire les mots-clés d'une ligne (`UpdateRecord`, jamais sur une cellule déjà remplie : c'est
   //    `GristBI.publications.planRows` qui choisit les lignes).
   // Dans GFS, `getAccessToken` n'est ouvert à une app que si son manifeste déclare la capacité `jeton`
-  // (contrats 3.4, point 1) ; Grist-BI l'a demandée (GFS-ETAT.md, « Demandes à GFS »). Sans elle,
-  // `checkAttachmentAccess` rend `{ ok: false }` et la fenêtre le dit avant de lancer quoi que ce soit.
-  // La forme exacte de la réponse de `getAccessToken` (`{ token, baseUrl, ttlMsecs }`) et l'adresse de
-  // téléchargement d'une pièce jointe sont écrites d'après la documentation de Grist : rien de tout
-  // cela n'a encore été rejoué contre un vrai document (voir HYPOTHESES.md).
+  // (contrats 3.4, point 1) : GFS la déclare en lecture seule pour Grist-BI, et l'écriture dans la table de la
+  // personne (`ecrit: ["*"]`) y était déjà couverte (consigne GFS 022). Sans elle, `checkAttachmentAccess` rend
+  // `{ ok: false }` et la fenêtre le dit avant de lancer quoi que ce soit.
+  // MESURÉ par GFS avec cette app dans un vrai Grist 1.7.19 (consigne 022, 18/11/2026) : la réponse de
+  // `getAccessToken` est `{ token, baseUrl, ttlMsecs }`, `GET <baseUrl>/attachments/<id>/download?auth=<jeton>`
+  // rend les octets du PDF octet pour octet, un numéro absent donne `ATTACHMENT_HTTP` 404, `AddColumn` rend le
+  // vrai identifiant de colonne (`MotsCles2` quand le nom est pris). NON rejoué : la fenêtre « Mots-clés des
+  // publications » elle-même dans le vrai GFS (voir HYPOTHESES.md).
   // ---------------------------------------------------------------------------------------------
   const ATTACHMENT_MAX_BYTES = 80 * 1024 * 1024; // une publication plus lourde est laissée de côté, avec son erreur
   let _attachmentAuth = null; // { token, baseUrl, expiresAt }
