@@ -280,9 +280,19 @@
     importPowerBi: () => document.getElementById('open-pbix-import').click()
   });
   const emptyStateReadHintEl = document.getElementById('empty-state-readhint');
-  const bookmarkSelect = document.getElementById('bookmark-select');
-  const deleteBookmarkBtn = document.getElementById('delete-bookmark');
+  // Menu Vues + suivi de la vue active (retours d'Antoine du 18/11/2026, point 4) : la liste des vues,
+  // le bouton de la barre (nom de la vue suivie + point « modifiée ») et la pastille sous la barre.
+  const viewsListEl = document.getElementById('views-list');
+  const viewsEmptyEl = document.getElementById('views-empty');
   const saveBookmarkBtn = document.getElementById('save-bookmark');
+  const updateBookmarkBtn = document.getElementById('update-bookmark');
+  const viewsActiveNameEl = document.getElementById('views-active-name');
+  const viewsActiveDotEl = document.getElementById('views-active-dot');
+  const viewChipEl = document.getElementById('view-chip');
+  const viewChipNameEl = document.getElementById('view-chip-name');
+  const viewChipModifiedEl = document.getElementById('view-chip-modified');
+  const viewChipUpdateBtn = document.getElementById('view-chip-update');
+  const viewChipLeaveBtn = document.getElementById('view-chip-leave');
   const exportExcelBtn = document.getElementById('export-excel');
   const exportPdfBtn = document.getElementById('export-pdf');
   const exportPptxBtn = document.getElementById('export-pptx');
@@ -871,14 +881,14 @@
   // état (voir addTileForm submit, `if (!measure...) return;`), sans le moindre retour pour
   // l'utilisateur — seul le message `status.noTables`, discret dans le bandeau du haut, expliquait
   // pourquoi. Le sélecteur de table principal (`tableSelectInput`) reste volontairement actif : c'est
-  // la seule échappatoire utile dans cet état. `deleteBookmarkBtn` n'est pas listé ici : son état
-  // dépend déjà de la sélection courante et reste correct dans les deux cas (voir renderBookmarks(),
-  // appelé juste après dans render()).
+  // la seule échappatoire utile dans cet état. Les boutons de la liste des vues ne sont pas listés
+  // ici : ils sont reconstruits par renderBookmarks() à chaque rendu, et le menu Vues lui-même ne
+  // s'ouvre pas tant que `viewsToggleBtn` est désactivé.
   function setTableDependentControlsEnabled(enabled) {
     for (const form of [addTileForm, advancedFilterForm]) {
       form.querySelectorAll('input, select, button, textarea').forEach((el) => { el.disabled = !enabled; });
     }
-    for (const el of [bookmarkSelect, saveBookmarkBtn, exportExcelBtn, exportPdfBtn, exportPptxBtn, addPageBtn,
+    for (const el of [saveBookmarkBtn, exportExcelBtn, exportPdfBtn, exportPptxBtn, addPageBtn,
                        filterToggleBtn, viewsToggleBtn, exportToggleBtn, modeToggleBtn,
                        blendSecondaryTableInput, blendPrimaryColumnInput, blendSecondaryColumnInput]) {
       el.disabled = !enabled;
@@ -1037,12 +1047,10 @@
     renderPageTabs(state.pages, state.currentPageId);
     renderFilterBadges(state.activeFilters);
     renderAdvancedFilterBadges(state.advancedFilters);
-    renderFilterSummary(state.activeFilters.length + state.advancedFilters.length);
+    renderFilterSummary(state.activeFilters.length + state.advancedFilters.length, Boolean(state.activeBookmarkId));
     applyMode();
-    // Avant renderBookmarks() : deleteBookmarkBtn doit rester déterminé par la sélection courante
-    // (voir renderBookmarks ci-dessous), pas par ce bascule générique.
     setTableDependentControlsEnabled(Boolean(currentTableId) && dashboardReady);
-    renderBookmarks(state.bookmarks);
+    renderBookmarks(state);
     renderConnectionStatus(state);
 
     // `pages`/`currentPageId`/`bookmarks` ne changent de référence/valeur que via leurs actions
@@ -1152,8 +1160,10 @@
 
   // Rangée de pastilles sous la barre (visible seulement avec au moins un filtre, croisé ou avancé),
   // « Effacer les filtres » (les deux familles) et compteur sur le bouton « Filtre ».
-  function renderFilterSummary(total) {
-    chipsRowEl.hidden = total === 0;
+  // La rangée reste visible tant qu'une vue sauvegardée est suivie, même sans aucun filtre (la vue
+  // peut être « modifiée » justement parce qu'on les a tous levés).
+  function renderFilterSummary(total, viewTracked) {
+    chipsRowEl.hidden = total === 0 && !viewTracked;
     clearFilterBtn.hidden = total === 0;
     filterCountEl.hidden = total === 0;
     filterCountEl.textContent = String(total);
@@ -1207,15 +1217,51 @@
     }
   }
 
-  // Choisir une vue dans la liste l'applique immédiatement (voir le listener 'change' plus bas) :
-  // ce <select> est un menu d'action, pas un indicateur d'état - il ne reflète PAS si les filtres
-  // actuels correspondent encore à la vue choisie après coup (simplification délibérée).
-  function renderBookmarks(bookmarks) {
-    const current = bookmarkSelect.value;
-    bookmarkSelect.innerHTML = `<option value="">${escapeHtml(t('bookmarks.placeholder'))}</option>`
-      + bookmarks.map((b) => `<option value="${escapeHtml(b.id)}">${escapeHtml(b.name)}</option>`).join('');
-    if (bookmarks.some((b) => b.id === current)) bookmarkSelect.value = current;
-    deleteBookmarkBtn.disabled = !bookmarkSelect.value;
+  // Menu Vues + suivi de la vue active (retours d'Antoine du 18/11/2026, point 4). Avant : un <select>
+  // qui appliquait la vue au choix mais n'indiquait ni laquelle on regardait, ni si les filtres s'en
+  // étaient écartés. Maintenant : la liste des vues (la vue suivie cochée, « modifiée » si besoin,
+  // une croix par vue), le nom de la vue suivie sur le bouton de la barre (+ un point quand elle est
+  // modifiée) et une pastille sous la barre pour la mettre à jour ou la quitter. Les écouteurs sont
+  // posés une fois sur la liste (délégation) : elle est reconstruite à chaque rendu.
+  function renderBookmarks(state) {
+    const bookmarks = state.bookmarks;
+    const active = bookmarks.find((b) => b.id === state.activeBookmarkId) || null;
+    const modified = Boolean(active) && state.activeBookmarkModified;
+
+    viewsListEl.innerHTML = bookmarks.map((b) => {
+      const isActive = active && b.id === active.id;
+      return `<li class="views-item${isActive ? ' views-item-active' : ''}">
+        <button type="button" class="views-item-apply" data-id="${escapeHtml(b.id)}"${isActive ? ' aria-current="true"' : ''}
+                aria-label="${escapeHtml(t('views.apply.aria', { name: b.name }))}">
+          <svg class="icon icon-check views-item-check" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M3.5 8.5l3 3 6-7"/></svg>
+          <span class="views-item-name">${escapeHtml(b.name)}</span>
+          ${isActive ? `<span class="views-item-badge${modified ? ' is-modified' : ''}">${escapeHtml(t(modified ? 'views.modified' : 'views.current'))}</span>` : ''}
+        </button>
+        <button type="button" class="views-item-delete" data-id="${escapeHtml(b.id)}"
+                aria-label="${escapeHtml(t('views.delete.aria', { name: b.name }))}" title="${escapeHtml(t('views.delete.title'))}">
+          <svg class="icon icon-close" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+        </button>
+      </li>`;
+    }).join('');
+    viewsEmptyEl.hidden = bookmarks.length > 0;
+
+    updateBookmarkBtn.hidden = !modified;
+    if (modified) updateBookmarkBtn.textContent = t('views.update', { name: active.name });
+    saveBookmarkBtn.textContent = t(active ? 'views.saveNew' : 'bookmarks.save');
+
+    viewsActiveNameEl.hidden = !active;
+    viewsActiveNameEl.textContent = active ? active.name : '';
+    viewsActiveDotEl.hidden = !modified;
+    viewsToggleBtn.dataset.viewActive = active ? 'true' : 'false';
+    const toggleName = active ? t(modified ? 'views.toggle.ariaModified' : 'views.toggle.aria', { name: active.name }) : t('bar.views');
+    viewsToggleBtn.setAttribute('aria-label', toggleName);
+    viewsToggleBtn.title = toggleName;
+
+    viewChipEl.hidden = !active;
+    viewChipEl.dataset.modified = modified ? 'true' : 'false';
+    viewChipNameEl.textContent = active ? active.name : '';
+    viewChipModifiedEl.hidden = !modified;
+    viewChipUpdateBtn.hidden = !modified;
   }
 
   // `opts.preview` : version de l'aperçu du panneau latéral — même corps (c'est ce que cherchent les
@@ -2325,17 +2371,33 @@
   }
   bindFormSubmit(advancedFilterForm, submitAdvancedFilter);
 
-  bookmarkSelect.addEventListener('change', () => {
-    deleteBookmarkBtn.disabled = !bookmarkSelect.value;
-    if (bookmarkSelect.value) {
-      store.applyBookmark(bookmarkSelect.value);
+  viewsListEl.addEventListener('click', async (e) => {
+    const applyBtn = e.target.closest('.views-item-apply');
+    const deleteBtn = e.target.closest('.views-item-delete');
+    if (applyBtn) {
+      store.applyBookmark(applyBtn.dataset.id);
       GristBI.appbar.closePopovers();
+    } else if (deleteBtn) {
+      const id = deleteBtn.dataset.id;
+      const bm = store.getState().bookmarks.find((b) => b.id === id);
+      if (!bm) return;
+      const ok = await GristBI.dialogs.confirm({
+        title: t('views.delete.dialogTitle'), message: t('views.delete.confirm', { name: bm.name }),
+        confirmLabel: t('views.delete.confirmLabel'), danger: true
+      });
+      if (ok) store.removeBookmark(id);
     }
   });
 
-  deleteBookmarkBtn.addEventListener('click', () => {
-    if (bookmarkSelect.value) store.removeBookmark(bookmarkSelect.value);
+  updateBookmarkBtn.addEventListener('click', () => {
+    const id = store.getState().activeBookmarkId;
+    if (id) store.updateBookmark(id);
   });
+  viewChipUpdateBtn.addEventListener('click', () => {
+    const id = store.getState().activeBookmarkId;
+    if (id) store.updateBookmark(id);
+  });
+  viewChipLeaveBtn.addEventListener('click', () => store.leaveBookmark());
 
   saveBookmarkBtn.addEventListener('click', async () => {
     const answer = await GristBI.dialogs.prompt({
@@ -2397,7 +2459,9 @@
     if (name) store.addPage(name);
   });
 
-  clearFilterBtn.addEventListener('click', () => { store.clearFilter(); store.clearAdvancedFilter(); });
+  // « Effacer les filtres » repart d'une page blanche : on quitte aussi la vue suivie (en premier,
+  // pour qu'un rendu intermédiaire ne l'affiche pas « modifiée » une fraction de seconde).
+  clearFilterBtn.addEventListener('click', () => { store.leaveBookmark(); store.clearFilter(); store.clearAdvancedFilter(); });
   modeToggleBtn.addEventListener('click', () => setMode(mode === 'edit' ? 'read' : 'edit'));
 
   // Même convention d'ouverture/fermeture que Publipostage+ (js/settings.js de ce widget frère) :

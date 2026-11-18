@@ -212,6 +212,14 @@ body[data-mode="edit"] .read-only { display: none !important; }
   text-align: center;
 }
 .bar-count[hidden] { display: none; }
+/* Bouton « Vues » quand une vue sauvegardée est suivie (retours d'Antoine du 18/11/2026) : le signet
+   est plein, le nom de la vue s'affiche à côté, et un point d'avertissement apparaît quand les filtres
+   s'écartent de la vue (« modifiée »). Sous 900 px les libellés disparaissent : seuls le signet plein et
+   le point restent, le nom complet est dans `aria-label`/`title`. */
+.bar-btn[data-view-active="true"] .icon-bookmark { fill: currentColor; color: var(--accent-ink); }
+.bar-view-name { max-width: 150px; overflow: hidden; text-overflow: ellipsis; color: var(--accent-ink); font-weight: 600; }
+.bar-view-name[hidden], .bar-dot[hidden] { display: none; }
+.bar-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--warning-text); box-shadow: 0 0 0 2px var(--warning-bg); }
 /* « Modifier » est un bouton à contour (action principale du mode lecture) ; en édition il devient
    « Terminer », plein. L'icône change avec l'état (crayon / coche). */
 .bar-btn-mode { border-color: var(--border-strong); background: var(--surface); }
@@ -280,7 +288,7 @@ body[data-mode="edit"] .bar-btn-mode .icon-mode-done { display: inline-block; }
 .popover-menu { width: 220px; padding: 4px; gap: 0; }
 .pop-title { margin: 0; font-size: 12.5px; font-weight: 700; }
 .pop-field { display: flex; flex-direction: column; gap: 5px; }
-.pop-field label, .pop-group > .pop-field label {
+.pop-field label, .pop-field .pop-label, .pop-group > .pop-field label {
   font-family: var(--font-label, inherit);
   font-size: 11px;
   font-weight: 600;
@@ -291,6 +299,62 @@ body[data-mode="edit"] .bar-btn-mode .icon-mode-done { display: inline-block; }
 .pop-group { display: flex; flex-direction: column; gap: 10px; padding-top: 10px; border-top: var(--bw, 1px) solid var(--border); }
 .pop-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 10px; border-top: var(--bw, 1px) solid var(--border); }
 .pop-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.pop-actions-stack { flex-direction: column; flex-wrap: nowrap; }
+.pop-actions-stack .btn-primary, .pop-actions-stack .btn-secondary { width: 100%; }
+.pop-actions-stack [hidden] { display: none; }
+
+/* Menu Vues : une ligne cliquable par vue sauvegardée (appliquer en un clic), une croix pour la
+   supprimer. La vue suivie porte un coche et une pastille « vue active » / « modifiée ». */
+.views-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.views-list:empty { display: none; }
+.views-item { display: flex; align-items: stretch; gap: 2px; border-radius: var(--radius-sm); }
+.views-item-active { background: var(--accent-soft); }
+.views-item-apply {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.views-item-apply:hover, .views-item-apply:focus-visible { background: var(--surface-sunken); }
+.views-item-active .views-item-apply { font-weight: 600; color: var(--accent-ink); }
+.views-item-active .views-item-apply:hover { background: var(--accent-soft-strong); }
+.views-item-check { flex: none; width: 13px; height: 13px; visibility: hidden; }
+.views-item-active .views-item-check { visibility: visible; }
+.views-item-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.views-item-badge {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft-strong);
+  color: var(--accent-ink);
+  font-size: 11px;
+  font-weight: 600;
+}
+.views-item-badge.is-modified { background: var(--warning-bg); color: var(--warning-text); box-shadow: inset 0 0 0 1px var(--warning-border); }
+.views-item-delete {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.views-item-delete:hover, .views-item-delete:focus-visible { background: var(--danger-soft); color: var(--danger-ink); }
+.views-item-delete .icon { width: 12px; height: 12px; }
 .popover .combobox-input.combobox-input, .popover select { width: 100%; min-width: 0; }
 .popover select {
   border: var(--bw, 1px) solid var(--border-strong);
@@ -409,7 +473,7 @@ body[data-mode="edit"] .bar-btn-mode .icon-mode-done { display: inline-block; }
 }
 /* ≤ 900 px : les libellés des boutons disparaissent (leur nom reste dans `aria-label`/`title`). */
 @media (max-width: 900px) {
-  .bar-label { display: none; }
+  .bar-label, .bar-view-name { display: none; }
   .bar-btn { padding: 0 8px; }
   .bar-btn-mode .bar-label { display: inline; }
 }
@@ -575,6 +639,31 @@ body[data-mode="edit"] .bar-btn-mode .icon-mode-done { display: inline-block; }
 .csv-import-confirm button { margin-right: 8px; }
 
 .filter-badges { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+/* Pastille de la vue sauvegardée suivie, en tête de la rangée : plus sobre que les pastilles de filtre
+   (fond neutre, signet plein) pour qu'on ne la prenne pas pour un filtre ; un liseré d'avertissement
+   et « modifiée » quand les filtres s'en écartent. */
+.view-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px 3px 9px;
+  background: var(--surface);
+  color: var(--text);
+  border: var(--bw, 1px) solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  max-width: 100%;
+}
+.view-chip[hidden] { display: none; }
+.view-chip[data-modified="true"] { border-color: var(--warning-border); background: var(--warning-bg); color: var(--warning-text); }
+.view-chip .icon-bookmark { flex: none; width: 12px; height: 12px; fill: currentColor; color: var(--accent-ink); }
+.view-chip[data-modified="true"] .icon-bookmark { color: inherit; }
+.view-chip-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.view-chip-name { font-weight: 700; }
+.view-chip-state { font-weight: 600; font-style: italic; }
+.view-chip-state[hidden], .view-chip .link-btn[hidden] { display: none; }
+.view-chip .link-btn { color: inherit; padding: 0 2px; }
 
 .filter-chip {
   display: inline-flex;

@@ -1273,6 +1273,112 @@ const rows = [
   console.log('OK state.saveBookmark/applyBookmark capturent advancedFilters (+ compat ascendante bookmark sans ce champ)');
 }
 
+// state: suivi de la vue sauvegardée active (retours d'Antoine du 18/11/2026, point 4) — savoir qu'on
+// regarde une vue déjà sauvegardée, si elle a été modifiée depuis, la mettre à jour ou la quitter
+{
+  // sameSnapshot : pur, insensible à l'ordre des filtres et aux détails de forme
+  assert.ok(state.sameSnapshot(
+    { activeFilters: [{ column: 'A', value: 1 }, { column: 'B', value: 2 }], advancedFilters: [], drillIns: {} },
+    { activeFilters: [{ value: 2, column: 'B' }, { value: 1, column: 'A' }], advancedFilters: [], drillIns: {} }
+  ), 'même ensemble de filtres, ordre et ordre des clés différents -> même vue');
+  assert.ok(state.sameSnapshot(
+    { activeFilters: [], advancedFilters: [], drillIns: { t1: [] } },
+    { activeFilters: [], drillIns: {} }
+  ), 'un chemin de drill-down vide = aucune entrée ; advancedFilters absent = []');
+  assert.ok(!state.sameSnapshot(
+    { activeFilters: [{ column: 'A', value: 1 }], advancedFilters: [], drillIns: {} },
+    { activeFilters: [{ column: 'A', value: 2 }], advancedFilters: [], drillIns: {} }
+  ), 'une valeur différente = autre vue');
+  assert.ok(!state.sameSnapshot(
+    { activeFilters: [], advancedFilters: [], drillIns: { t1: [{ column: 'A', value: 1 }] } },
+    { activeFilters: [], advancedFilters: [], drillIns: {} }
+  ), 'un drill-down de plus = autre vue');
+
+  const store = state.createStore();
+  store.addTile({ id: 't1', type: 'bar', dimension: 'Annee', drillDimension: 'Mois', measure: 'Montant', aggFn: 'sum' });
+  let s = store.getState();
+  assert.strictEqual(s.activeBookmarkId, null, 'aucune vue suivie au départ');
+  assert.strictEqual(s.activeBookmarkModified, false);
+
+  // Sauvegarder = on suit cette vue, non modifiée
+  store.toggleFilter('Region', 'Nord', 'tileA');
+  store.saveBookmark('bm1', 'Nord');
+  s = store.getState();
+  assert.strictEqual(s.activeBookmarkId, 'bm1');
+  assert.strictEqual(s.activeBookmarkModified, false, 'la vue qu\'on vient de sauvegarder n\'est pas modifiée');
+
+  // Toute modification des filtres la rend « modifiée »
+  store.toggleFilter('Produit', 'Widget', 'tileA');
+  assert.strictEqual(store.getState().activeBookmarkId, 'bm1');
+  assert.strictEqual(store.getState().activeBookmarkModified, true);
+  // ... et défaire la modification la rend de nouveau identique (dérivé, pas un drapeau collant)
+  store.toggleFilter('Produit', 'Widget', 'tileA');
+  assert.strictEqual(store.getState().activeBookmarkModified, false);
+  store.setAdvancedFilter('Montant', { type: 'range', min: 0, max: 10 });
+  assert.strictEqual(store.getState().activeBookmarkModified, true, 'un filtre avancé de plus modifie la vue');
+  store.clearAdvancedFilter();
+  store.drillInto('t1', 'Annee', 2026);
+  assert.strictEqual(store.getState().activeBookmarkModified, true, 'un drill-down de plus modifie la vue');
+  store.drillUp('t1');
+  assert.strictEqual(store.getState().activeBookmarkModified, false);
+
+  // Mettre à jour : la vue prend l'état actuel, même id/nom, nouvelle référence de `bookmarks`
+  store.toggleFilter('Canal', 'Web', 'tileA');
+  const before = store.getState().bookmarks;
+  store.updateBookmark('bm1');
+  s = store.getState();
+  assert.notStrictEqual(s.bookmarks, before, 'nouvelle référence : main.js y voit un changement à persister');
+  assert.strictEqual(s.bookmarks.length, 1);
+  assert.strictEqual(s.bookmarks[0].id, 'bm1');
+  assert.strictEqual(s.bookmarks[0].name, 'Nord');
+  assert.strictEqual(s.bookmarks[0].activeFilters.length, 2);
+  assert.strictEqual(s.activeBookmarkModified, false);
+  store.updateBookmark('inconnue'); // id inconnu -> no-op
+  assert.strictEqual(store.getState().bookmarks, s.bookmarks);
+
+  // Quitter : les filtres restent, plus de suivi
+  store.leaveBookmark();
+  s = store.getState();
+  assert.strictEqual(s.activeBookmarkId, null);
+  assert.strictEqual(s.activeBookmarkModified, false);
+  assert.strictEqual(s.activeFilters.length, 2, 'quitter la vue ne touche pas aux filtres');
+
+  // Appliquer une autre vue la rend active
+  store.clearFilter();
+  store.saveBookmark('bm2', 'Sans filtre'); // vue vide : valide
+  store.applyBookmark('bm1');
+  assert.strictEqual(store.getState().activeBookmarkId, 'bm1');
+  assert.strictEqual(store.getState().activeBookmarkModified, false);
+  store.applyBookmark('bm2');
+  assert.strictEqual(store.getState().activeBookmarkId, 'bm2');
+  assert.deepStrictEqual(store.getState().activeFilters, []);
+  store.applyBookmark('inconnue'); // no-op : le suivi ne bouge pas
+  assert.strictEqual(store.getState().activeBookmarkId, 'bm2');
+
+  // Une vue vide suivie devient « modifiée » dès qu'on pose un filtre
+  store.toggleFilter('Region', 'Sud', 'tileA');
+  assert.strictEqual(store.getState().activeBookmarkModified, true);
+
+  // Supprimer la vue suivie libère le suivi ; supprimer une autre vue n'y touche pas
+  store.removeBookmark('bm1');
+  assert.strictEqual(store.getState().activeBookmarkId, 'bm2');
+  store.removeBookmark('bm2');
+  assert.strictEqual(store.getState().activeBookmarkId, null);
+  assert.strictEqual(store.getState().activeBookmarkModified, false);
+
+  // Changer de table (setBookmarks) ne suit plus rien, même si un id identique existait
+  store.saveBookmark('bm3', 'Autre');
+  assert.strictEqual(store.getState().activeBookmarkId, 'bm3');
+  store.setBookmarks([{ id: 'bm3', name: 'Autre table', activeFilters: [], advancedFilters: [], drillIns: {} }]);
+  assert.strictEqual(store.getState().activeBookmarkId, null, 'setBookmarks (changement de table) lève le suivi');
+
+  // Un bookmark d'avant les filtres avancés (pas de champ) se compare comme [] et s'applique sans casse
+  store.setBookmarks([{ id: 'old', name: 'Ancien', activeFilters: [], drillIns: {} }]);
+  store.applyBookmark('old');
+  assert.strictEqual(store.getState().activeBookmarkModified, false);
+  console.log('OK state : suivi de la vue active (sameSnapshot, modifiée dérivée, mettre à jour, quitter, supprimer, changer de table)');
+}
+
 // state: setBlend (data blending multi-tables) — propre à la table de travail courante, comme
 // bookmarks/pages (voir js/grist-api.js/js/main.js), pas capturé par les bookmarks eux-mêmes.
 {

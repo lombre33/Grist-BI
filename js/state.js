@@ -17,6 +17,38 @@
   //   drillDimensions?, drillCrossFilter?, trendDimension?, measureY?, gaugeMin?, gaugeMax? }
   const DEFAULT_PAGE_ID = 'page_default';
 
+  // Sérialisation JSON à clés triées : deux objets de même contenu donnent la même chaîne, quel que
+  // soit l'ordre dans lequel leurs clés ont été posées.
+  function stableStringify(value) {
+    if (Array.isArray(value)) return '[' + value.map(stableStringify).join(',') + ']';
+    if (value && typeof value === 'object') {
+      return '{' + Object.keys(value).filter((k) => value[k] !== undefined).sort()
+        .map((k) => JSON.stringify(k) + ':' + stableStringify(value[k])).join(',') + '}';
+    }
+    return JSON.stringify(value === undefined ? null : value);
+  }
+
+  // Forme canonique de l'état interactif d'une vue (filtres croisés + filtres avancés + chemins de
+  // drill-down) : l'ordre des filtres ne compte pas (cliquer A puis B ou B puis A est la même vue),
+  // un chemin de drill-down vide équivaut à aucune entrée, et une vue sauvegardée avant l'ajout des
+  // filtres avancés (pas de champ) équivaut à « aucun filtre avancé » — même repli que applyBookmark.
+  function canonicalSnapshot(snap) {
+    const byKey = (list) => (list || []).map(stableStringify).sort();
+    const drills = {};
+    for (const tileId of Object.keys((snap && snap.drillIns) || {})) {
+      const path = snap.drillIns[tileId];
+      if (path && path.length) drills[tileId] = path;
+    }
+    return stableStringify({
+      activeFilters: byKey(snap && snap.activeFilters),
+      advancedFilters: byKey(snap && snap.advancedFilters),
+      drillIns: drills
+    });
+  }
+
+  // Vrai si les deux états interactifs sont les mêmes (voir canonicalSnapshot). Pur, testé sous Node.
+  function sameSnapshot(a, b) { return canonicalSnapshot(a) === canonicalSnapshot(b); }
+
   function createStore() {
     let rows = [];
     // pages: [{ id, name, tiles: [...] }, ...] — un dashboard multi-pages est un tableau de pages,
@@ -35,6 +67,13 @@
     let advancedFilters = [];
     let drillIns = {}; // tileId -> [{ column, value }, ...] — chemin de drill-down, [] ou absent = niveau racine
     let bookmarks = []; // [{ id, name, activeFilters, advancedFilters, drillIns }, ...] — vues sauvegardées (voir saveBookmark)
+    // Id de la vue sauvegardée que la personne est en train de suivre (retours d'Antoine du 18/11/2026,
+    // point 4), ou null : posé par applyBookmark/saveBookmark/updateBookmark, levé par leaveBookmark,
+    // la suppression de cette vue ou un changement de table (setBookmarks). SESSION SEULEMENT, jamais
+    // persisté : les filtres eux-mêmes ne le sont pas, donc au rechargement il n'y a plus rien à suivre.
+    // Que les filtres actuels s'écartent ensuite de la vue (« modifiée ») se DÉRIVE de l'état, voir
+    // activeBookmarkModified dans getState — jamais un second indicateur à tenir à jour.
+    let activeBookmarkId = null;
     // { secondaryTableId, primaryColumn, secondaryColumn } ou null (aucune jointure) — data blending
     // multi-tables (voir GristBI.data.blendRows/js/main.js) : propre à la table de travail
     // courante, comme bookmarks/pages, persisté avec elles dans BI_Dashboard_Config.
@@ -59,7 +98,14 @@
     // page (elles disparaissent de `state.tiles`), donc la réconciliation DOM déjà en place dans
     // main.js:render() détruit leurs instances ECharts automatiquement, sans code dédié.
     function getState() {
-      return { rows, pages, currentPageId, tiles: currentPage().tiles, activeFilters, advancedFilters, drillIns, bookmarks, blend, comments };
+      // `activeBookmarkId` : la vue suivie (null si aucune) ; `activeBookmarkModified` : les filtres
+      // ou drill-downs actuels ne sont plus ceux de cette vue (voir activeBookmarkId plus haut).
+      const active = activeBookmarkId && bookmarks.find((b) => b.id === activeBookmarkId);
+      return {
+        rows, pages, currentPageId, tiles: currentPage().tiles, activeFilters, advancedFilters, drillIns, bookmarks, blend, comments,
+        activeBookmarkId: active ? active.id : null,
+        activeBookmarkModified: active ? !sameSnapshot(active, { activeFilters, advancedFilters, drillIns }) : false
+      };
     }
     function notify() { listeners.forEach((fn) => fn(getState())); }
     function subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); }
@@ -246,7 +292,7 @@
       notify();
     }
 
-    function setBookmarks(newBookmarks) { bookmarks = newBookmarks || []; notify(); }
+    function setBookmarks(newBookmarks) { bookmarks = newBookmarks || []; activeBookmarkId = null; notify(); }
 
     function setBlend(newBlend) { blend = newBlend || null; notify(); }
 
@@ -265,6 +311,7 @@
     // Power BI-like sur laquelle revenir en un clic, sans reconstruire les filtres à la main.
     function saveBookmark(id, name) {
       bookmarks = bookmarks.concat([{ id, name, activeFilters, advancedFilters, drillIns }]);
+      activeBookmarkId = id; // la vue qu'on vient de sauvegarder est celle qu'on regarde
       notify();
     }
 
@@ -275,12 +322,32 @@
       // `|| []` : un bookmark sauvegardé avant l'ajout des filtres avancés n'a pas ce champ —
       // le restaurer comme "aucun filtre avancé" plutôt que `undefined` (compat ascendante).
       advancedFilters = bm.advancedFilters || [];
-      drillIns = bm.drillIns;
+      drillIns = bm.drillIns || {};
+      activeBookmarkId = id;
+      notify();
+    }
+
+    // « Mettre à jour la vue » : remplace le contenu d'une vue déjà sauvegardée par l'état actuel
+    // (même id, même nom) — la vue redevient « telle que sauvegardée ». Nouvelle référence de
+    // `bookmarks` : main.js y voit un changement à persister.
+    function updateBookmark(id) {
+      if (!bookmarks.some((b) => b.id === id)) return;
+      bookmarks = bookmarks.map((b) => (b.id === id ? { id: b.id, name: b.name, activeFilters, advancedFilters, drillIns } : b));
+      activeBookmarkId = id;
+      notify();
+    }
+
+    // Cesse de suivre la vue sans toucher aux filtres : ils restent posés, simplement plus rattachés
+    // à une vue sauvegardée.
+    function leaveBookmark() {
+      if (activeBookmarkId === null) return;
+      activeBookmarkId = null;
       notify();
     }
 
     function removeBookmark(id) {
       bookmarks = bookmarks.filter((b) => b.id !== id);
+      if (activeBookmarkId === id) activeBookmarkId = null;
       notify();
     }
 
@@ -289,10 +356,10 @@
       setPages, setCurrentPage, addPage, renamePage, removePage,
       addTile, removeTile, updateTile, moveTile,
       toggleFilter, clearFilter, setAdvancedFilter, clearAdvancedFilter, drillInto, drillUp,
-      setBookmarks, saveBookmark, applyBookmark, removeBookmark, setBlend,
+      setBookmarks, saveBookmark, applyBookmark, updateBookmark, leaveBookmark, removeBookmark, setBlend,
       setComments, addCommentLocal
     };
   }
 
-  return { createStore, DEFAULT_PAGE_ID };
+  return { createStore, sameSnapshot, DEFAULT_PAGE_ID };
 });

@@ -61,13 +61,13 @@
 
       <span class="appbar-spacer"></span>
 
-      <button id="filter-toggle" type="button" class="bar-btn" data-popover="filter-popover" aria-haspopup="dialog" aria-expanded="false">
+      <button id="filter-toggle" type="button" class="bar-btn" data-popover="filter-popover" aria-haspopup="dialog" aria-expanded="false" data-i18n-aria="bar.filter" aria-label="Filtre">
         <svg class="icon icon-filter" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M2 3h12l-4.5 5.5V13l-3-1.5V8.5L2 3Z"/></svg><span class="bar-label" data-i18n="bar.filter">Filtre</span><span id="filter-count" class="bar-count" hidden></span>
       </button>
       <button id="views-toggle" type="button" class="bar-btn" data-popover="views-popover" aria-haspopup="dialog" aria-expanded="false">
-        <svg class="icon icon-bookmark" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M4 2.5h8v11L8 10.5l-4 3v-11Z"/></svg><span class="bar-label" data-i18n="bar.views">Vues</span><svg class="icon icon-chev icon-chev" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M4 6l4 4 4-4"/></svg>
+        <svg class="icon icon-bookmark" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M4 2.5h8v11L8 10.5l-4 3v-11Z"/></svg><span class="bar-label" data-i18n="bar.views">Vues</span><span id="views-active-name" class="bar-view-name" hidden></span><span id="views-active-dot" class="bar-dot" hidden aria-hidden="true"></span><svg class="icon icon-chev icon-chev" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M4 6l4 4 4-4"/></svg>
       </button>
-      <button id="export-toggle" type="button" class="bar-btn" data-popover="export-popover" aria-haspopup="menu" aria-expanded="false">
+      <button id="export-toggle" type="button" class="bar-btn" data-popover="export-popover" aria-haspopup="menu" aria-expanded="false" data-i18n-aria="bar.export" aria-label="Exporter">
         <svg class="icon icon-download" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 2.5v8M4.5 7.5L8 11l3.5-3.5M3 13.5h10"/></svg><span class="bar-label" data-i18n="bar.export">Exporter</span><svg class="icon icon-chev icon-chev" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M4 6l4 4 4-4"/></svg>
       </button>
       <button id="add-tile-open" type="button" class="bar-btn bar-btn-primary bar-btn-add edit-only" aria-haspopup="dialog" aria-controls="tile-panel" aria-expanded="false" data-i18n-aria="tilePanel.open.aria" aria-label="Ajouter une visualisation">
@@ -86,6 +86,16 @@
     </header>
 
     <div id="chips-row" class="chips-row" hidden>
+      
+      <span id="view-chip" class="view-chip" hidden>
+        <svg class="icon icon-bookmark" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M4 2.5h8v11L8 10.5l-4 3v-11Z"/></svg>
+        <span class="view-chip-text"><span data-i18n="views.chip.label">Vue</span> <strong id="view-chip-name" class="view-chip-name"></strong></span>
+        <span id="view-chip-modified" class="view-chip-state" data-i18n="views.modified" hidden>modifiée</span>
+        <button id="view-chip-update" type="button" class="link-btn" data-i18n="views.chip.update" hidden>Mettre à jour</button>
+        <button id="view-chip-leave" type="button" class="filter-chip-remove" data-i18n-aria="views.leave" data-i18n-title="views.leave" aria-label="Quitter la vue" title="Quitter la vue">
+          <svg class="icon icon-close" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+        </button>
+      </span>
       <span id="filter-badges" class="filter-badges"></span>
       <span id="advanced-filter-badges" class="filter-badges"></span>
       <button id="clear-filter" type="button" class="btn-secondary btn-chip" hidden>
@@ -193,12 +203,13 @@
 
   <div id="views-popover" class="popover popover-views" role="dialog" data-i18n-aria="views.popover.aria" aria-label="Vues" hidden>
     <div class="pop-field">
-      <label for="bookmark-select" data-i18n="views.saved">Vues sauvegardées</label>
-      <select id="bookmark-select"><option value="" data-i18n="bookmarks.placeholder">Vues sauvegardées…</option></select>
+      <span id="views-list-label" class="pop-label" data-i18n="views.saved">Vues sauvegardées</span>
+      <ul id="views-list" class="views-list" aria-labelledby="views-list-label"></ul>
+      <p id="views-empty" class="filter-hint" data-i18n="views.empty" hidden>Aucune vue sauvegardée pour l'instant. Posez des filtres, puis sauvegardez-les ici pour y revenir en un clic.</p>
     </div>
-    <div class="pop-actions">
-      <button id="save-bookmark" type="button" class="btn-secondary" data-close-popover data-i18n="bookmarks.save">Sauvegarder la vue actuelle</button>
-      <button id="delete-bookmark" type="button" class="btn-secondary" data-i18n="bookmarks.delete" disabled>Supprimer la vue</button>
+    <div class="pop-actions pop-actions-stack">
+      <button id="update-bookmark" type="button" class="btn-primary" data-close-popover hidden></button>
+      <button id="save-bookmark" type="button" class="btn-secondary" data-close-popover>Sauvegarder la vue actuelle</button>
     </div>
   </div>
 

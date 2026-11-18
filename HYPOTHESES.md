@@ -2999,6 +2999,35 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     nombres au format français ; avant : « 8.504166666666666 »).
   - **Non vérifié** : rien n'a été vu dans un vrai Grist ni un vrai GFS ; clavier réel et lecteur d'écran non essayés.
 
+- **Retours d'Antoine sur la nouvelle interface, 2e partie : suivi d'une vue sauvegardée (18/11/2026, point 4)** — `js/state.js`,
+  `js/main.js`, `index.html`, `css/style.css`, `js/i18n.js`. Demande : « quand une vue filtrée est activée, un meilleur suivi, pour
+  savoir que c'est une vue déjà sauvegardée ». Avant : un `<select>` qui appliquait la vue au choix puis oubliait laquelle (son
+  commentaire de code disait même « ne reflète PAS si les filtres correspondent encore à la vue : simplification délibérée »).
+  - **Ce qui change** : (1) le menu Vues est une LISTE de lignes cliquables (plus de liste déroulante), la vue suivie est cochée
+    avec « vue active » ou « modifiée » ; (2) le bouton Vues de la barre affiche le nom de la vue suivie, avec un point
+    d'avertissement quand elle est modifiée (sous 900 px le libellé disparaît, le signet plein et le point restent, le nom complet
+    est dans `aria-label`/`title`) ; (3) une pastille en tête des pastilles de filtre : « Vue **Région Nord** *modifiée*
+    Mettre à jour ✕ » ; (4) « Mettre à jour « X » » (menu) ou « Mettre à jour » (pastille) remplace le contenu de la vue par les
+    filtres actuels ; « Sauvegarder comme nouvelle vue » en crée une autre ; la croix de la pastille quitte la vue SANS toucher
+    aux filtres ; (5) supprimer une vue demande confirmation (fenêtre du kit) — avant, un clic suffisait.
+  - **Choix de modèle** : « modifiée » est DÉRIVÉ (`sameSnapshot` compare les filtres croisés, les filtres avancés et les
+    chemins de drill-down à ceux de la vue), pas un drapeau posé à chaque action : défaire la modification redonne « non
+    modifiée », et aucune action de l'interface ne peut l'oublier. L'ordre des filtres ne compte pas (cliquer A puis B ou B puis A =
+    même vue), un chemin de drill-down vide équivaut à aucune entrée, une vue d'avant les filtres avancés (champ absent) vaut
+    « aucun filtre avancé ». Les pages, les tuiles et la jointure ne font pas partie d'une vue (comme avant).
+  - **Volontairement PAS fait** : (a) le suivi n'est pas persisté — les filtres ne le sont pas non plus, donc au rechargement du
+    widget il n'y a rien à suivre ; (b) pas de reconnaissance automatique (poser à la main les mêmes filtres qu'une vue
+    n'« active » pas cette vue : le suivi suit un geste explicite) ; (c) pas de renommage d'une vue (la supprimer et la
+    recréer) ; (d) « Effacer les filtres » quitte aussi la vue (page blanche) alors que retirer UNE pastille de filtre la laisse
+    « modifiée ». Une vue vide (aucun filtre) est valide : la rangée de pastilles reste alors visible tant qu'elle est suivie.
+  - **Aussi corrigé en passant** (bug réel n°37) : sous 900 px les boutons Filtre / Vues / Exporter n'avaient plus aucun nom
+    accessible (libellé masqué, icône décorative, ni `aria-label` ni `title`) ; ils en ont un maintenant.
+  - **Testé** : Node (`sameSnapshot` ; état : sauvegarder/appliquer/mettre à jour/quitter/supprimer/changer de table, « modifiée »
+    qui revient à faux quand on défait, vue ancienne sans filtres avancés) ; Playwright contre le vrai `index.html` +
+    `dev-tests/grist-stub.js`, page directe, `<iframe sandbox="allow-scripts">`, anglais, 700 px de large, et la démo à 4 vues.
+    **Non vérifié** : un vrai Grist / GFS ; lecteur d'écran réel ; l'annonce vocale du passage à « modifiée » (pas de zone
+    `aria-live`).
+
 - **Modèles de rapport pour « Nouveau > Depuis un modèle » de GFS** (18/11/2026, fil « Appliquer la nouvelle consigne GFS »,
   consigne 016, facultative) :
   - **Ce qu'est un modèle ici** : un rapport de départ (une page de tuiles) posé sur une table que la personne a DÉJÀ — jamais une
