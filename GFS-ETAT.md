@@ -1,6 +1,6 @@
 # GFS-ETAT : Grist-BI
 
-Mis à jour le 2026-11-18 (demande `pdfjs` refaite : GFS porte déjà cette bibliothèque en module, `js/pdf-text.js` adapté ; ECharts 6.1.0 noté dans « Changements qui touchent GFS » ; consignes 016 et 017 faites (SheetJS remplacé par ExcelJS 4.4.0, choix du porteur), 018 lue ; demandes `vitrine`, `modeles` et `exceljs` sorties de « Demandes à GFS », demande `_grist_DocInfo` ajoutée ; `consignes/bi/INDEX.md` à `2105a66` ou plus récent). La
+Mis à jour le 2026-11-18 (trois questions sur le module graphique commun avec Publipostage+ ; demande `pdfjs` refaite : GFS porte déjà cette bibliothèque en module, `js/pdf-text.js` adapté ; ECharts 6.1.0 noté dans « Changements qui touchent GFS » ; consignes 016 et 017 faites (SheetJS remplacé par ExcelJS 4.4.0, choix du porteur), 018 lue ; demandes `vitrine`, `modeles` et `exceljs` sorties de « Demandes à GFS », demande `_grist_DocInfo` ajoutée ; `consignes/bi/INDEX.md` à `2105a66` ou plus récent). La
 011 n'a pas été lue (remplacée par la 012 avant lecture, consigne explicite d'Antoine).
 
 ## Consignes
@@ -327,7 +327,16 @@ Mis à jour le 2026-11-18 (demande `pdfjs` refaite : GFS porte déjà cette bibl
   ni `gfs.json`, ni stockage par le courtier.
 
 ## Questions pour GFS
-- aucune
+- **Module graphique commun avec Publipostage+** (18/11/2026) · Publipostage+ propose que le volet de création et le dessin des graphiques soient écrits une fois, rangés dans
+  le kit, montés par les deux apps (contrat proposé par Publipostage+, relayé par Antoine). Choix d'Antoine du 18/11 : le dessin de Grist-BI sert de base. Rien n'est encore écrit,
+  aucune bibliothèque nouvelle (ECharts 6.1.0 est déjà dans ton catalogue). Trois points que Grist-BI suppose sans les avoir lus chez toi :
+  1. Le module serait écrit dans un dossier `graphique/` de ce dépôt (modules ES, un seul `lien-kit.js`, comme `calendrier/`), puis rangé par toi dans `js/graphique/` du kit. Lui
+     appliques-tu les règles d'hygiène du calendrier (pas de `window`, pas d'`import()`, pas d'`innerHTML`, 600 lignes de code par fichier, 80 par fonction) ? Nous supposons que
+     oui, et que l'hôte lui passe ECharts plutôt que le module le lise en global.
+  2. Publipostage+ voudra lire `BI_Dashboard_Config` pour importer des tuiles de Grist-BI. Confirmes-tu que cela passe par le manifeste de Publipostage+ et une consigne de ta
+     part, sans rien déclarer côté Grist-BI ? Grist-BI tolère déjà toute colonne `GFS_…` sur cette table (consigne 012).
+  3. Une évolution du module après son rangement est-elle une nouvelle version du kit à chaque fois, comme pour le calendrier ? Cela décide si Grist-BI groupe ses changements de
+     graphique ou les livre un par un.
 
 ## Demandes à GFS
 - **`_grist_DocInfo`** (lecture, table système) · `js/grist-api.js:readColumnFormats`, colonne `documentSettings` seulement · à quoi elle sert : « Format des nombres : comme dans la colonne » (Options

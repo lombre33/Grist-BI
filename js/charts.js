@@ -8,7 +8,7 @@
   const GristBI = global.GristBI || (global.GristBI = {});
   const {
     groupByAggregate, sameValue, aggregateSingle, pivotTable, trendFromGroups, targetProgress, progressRows, sparklineValues, sparklineGeometry, measureSeriesForTile,
-    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, comboSeries, comboModeOf, histogramBins, histogramFilter, histogramBinIsActive, boxStatsByGroup, filterSelects, lineShapeOf, isStackedPercentTile, stackShares, supportsValueLabels, refLineKind, refLineValue, cellFilterToggles, heatStops, heatRange, heatCellColors, heatTextColor, isStackedTile, splitBySeries, assembleSeries, paletteColors, PALETTES, escapeHtml,
+    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, comboSeries, comboModeOf, histogramBins, histogramFilter, histogramBinIsActive, boxStatsByGroup, sankeyFlows, topFlows, SANKEY_MAX_LINKS, isBubbleTile, bubblePoints, bubbleDiameters, filterSelects, lineShapeOf, isStackedPercentTile, stackShares, supportsValueLabels, refLineKind, refLineValue, cellFilterToggles, heatStops, heatRange, heatCellColors, heatTextColor, isStackedTile, splitBySeries, assembleSeries, paletteColors, PALETTES, escapeHtml,
     tileDrillLevels, currentDimension, rowsForTile, wordFrequency
   } = GristBI.data;
   const { t } = GristBI.i18n;
@@ -75,6 +75,19 @@
     return Promise.all(splitBySeries(rows, seriesColumn, t('chart.series.empty')).map(async (sr) => ({
       name: sr.name, groups: await computeGroupBy(sr.rows, dimensionCol, measureCol, aggFn)
     })));
+  }
+
+  // Bulles avec une colonne de couleur (`tile.seriesColumn` d'un nuage de points) : pour chaque valeur de la colonne, les groupes
+  // X, Y et taille de SES lignes, en parallèle (une seule latence DuckDB à payer, comme computeSeriesGroups).
+  async function computeScatterSplit(rows, dimensionCol, tile) {
+    return Promise.all(splitBySeries(rows, tile.seriesColumn, t('chart.series.empty')).map(async (sr) => {
+      const [gx, gy, gs] = await Promise.all([
+        computeGroupBy(sr.rows, dimensionCol, tile.measure, tile.aggFn),
+        computeGroupBy(sr.rows, dimensionCol, tile.measureY, tile.aggFn),
+        tile.measureSize ? computeGroupBy(sr.rows, dimensionCol, tile.measureSize, tile.aggFnSize || tile.aggFn) : Promise.resolve(null)
+      ]);
+      return { name: sr.name, gx, gy, gs };
+    }));
   }
 
   async function computeAggregateSingle(rows, measureCol, aggFn) {
@@ -534,6 +547,24 @@
       const inst = chartInstances.get(tileId);
       const bin = inst && inst.__bins && params ? inst.__bins[params.dataIndex] : null;
       if (bin) GristBI.store.toggleRangeFilter(currentTile.measure, histogramFilter(bin), currentTile.id);
+      return;
+    }
+    // Flux (Sankey) : un NŒUD = une valeur de la source (à gauche) ou de la cible (à droite) -> filtre d'égalité sur SA colonne ; un
+    // FLUX (lien) = une source ET une cible -> les deux filtres, comme une case de la carte de chaleur (toggleCellFilters). Les nœuds
+    // portent un identifiant interne `s:valeur` / `t:valeur` (la même valeur peut figurer des deux côtés) : la table du dernier rendu
+    // (`instance.__sankeyNodes`) donne la colonne et la valeur de chacun. Pas de drill-down.
+    if (currentTile.type === 'sankey') {
+      const inst = chartInstances.get(tileId);
+      const nodes = inst && inst.__sankeyNodes;
+      if (!nodes || !params || !params.data) return;
+      if (params.dataType === 'edge') {
+        const from = nodes.get(params.data.source);
+        const to = nodes.get(params.data.target);
+        if (from && to) toggleCellFilters(currentTile, from.value, to.value);
+      } else if (params.dataType === 'node') {
+        const node = nodes.get(params.data.name);
+        if (node) GristBI.store.toggleFilter(node.column, node.value, currentTile.id);
+      }
       return;
     }
     // Boîte à moustaches : une boîte (ou une valeur aberrante tracée à côté) est UN GROUPE de la dimension — le clic pose un filtre
@@ -1017,6 +1048,12 @@
       renderBox(tile, rows, state, instance);
       return;
     }
+    if (tile.type === 'sankey') {
+      bumpSeq(tile.id);
+      instance.hideLoading();
+      renderSankey(tile, rows, state, instance);
+      return;
+    }
     if (tile.type === 'heatmap') {
       return renderHeatmap(tile, rows, state, instance);
     }
@@ -1054,7 +1091,7 @@
     // l'entité comparée (ses propres lignes seulement) est elle aussi calculée en parallèle du
     // reste plutôt qu'après coup.
     const hasSeries = isSeriesTile(tile);
-    const [agg, aggY, radarColumnValues, radarEntityColumnValues, radarEntityAgg, seriesGroups] = await Promise.all([
+    const [agg, aggY, radarColumnValues, radarEntityColumnValues, radarEntityAgg, seriesGroups, aggSize, scatterSplit] = await Promise.all([
       isRadarColumns ? Promise.resolve(null) : computeGroupBy(rows, dimension, tile.measure, tile.aggFn),
       tile.type === 'scatter' ? computeGroupBy(rows, dimension, tile.measureY, tile.aggFn)
         // Combo : la 2e mesure (courbe) a son propre agrégat ; en Pareto la courbe se déduit des barres.
@@ -1063,7 +1100,10 @@
       isRadarColumns ? Promise.all(radarAxesColumns.map((col) => computeAggregateSingle(rows, col, 'avg'))) : Promise.resolve(null),
       (isRadarColumns && hasRadarEntity) ? Promise.all(radarAxesColumns.map((col) => computeAggregateSingle(radarEntityRows, col, 'avg'))) : Promise.resolve(null),
       (!isRadarColumns && tile.type === 'radar' && hasRadarEntity) ? computeGroupBy(radarEntityRows, dimension, tile.measure, tile.aggFn) : Promise.resolve(null),
-      hasSeries ? computeSeriesGroups(rows, dimension, tile.seriesColumn, tile.measure, tile.aggFn) : Promise.resolve(null)
+      hasSeries ? computeSeriesGroups(rows, dimension, tile.seriesColumn, tile.measure, tile.aggFn) : Promise.resolve(null),
+      // Bulles : la 3e mesure (taille, son propre agrégat) ; avec une colonne de couleur, tout se calcule PAR couleur (computeScatterSplit).
+      (tile.type === 'scatter' && tile.measureSize && !tile.seriesColumn) ? computeGroupBy(rows, dimension, tile.measureSize, tile.aggFnSize || tile.aggFn) : Promise.resolve(null),
+      (tile.type === 'scatter' && tile.seriesColumn) ? computeScatterSplit(rows, dimension, tile) : Promise.resolve(null)
     ]);
     if (isStale(tile.id, seq) || instance.isDisposed()) return; // rendu plus récent entre-temps
     // Inconditionnel, même raison que renderGauge ci-dessus : un rendu qui repasse sous le seuil
@@ -1242,36 +1282,66 @@
       };
     } else if (tile.type === 'scatter') {
       // Version agrégée (pas ligne-à-ligne) : un point par valeur de la dimension, ses coordonnées
-      // X/Y sont les agrégats de deux mesures DIFFÉRENTES sur ce même groupe. Les deux appels à
+      // X/Y sont les agrégats de deux mesures DIFFÉRENTES sur ce même groupe. Les appels à
       // computeGroupBy (ci-dessus, en parallèle) portent sur le même `rows`/`dimension`, donc le
-      // même ensemble de groupes, mais on associe par NOM de dimension (Map) plutôt que par index
-      // pour rester correct même si l'ordre venait à diverger un jour entre les deux appels.
-      const aggYByDimension = new Map(aggY.map((d) => [d.dimension, d.value]));
+      // même ensemble de groupes, mais on associe par NOM de dimension (`bubblePoints`) plutôt que par
+      // index pour rester correct même si l'ordre venait à diverger un jour entre les appels.
+      // Bulles (`tile.measureSize`, `tile.seriesColumn`) : l'aire d'une bulle = la 3e mesure (échelle commune à
+      // toutes les couleurs, voir `bubbleDiameters`), une couleur et une entrée de légende par valeur de la colonne.
+      instance.__refit = undefined;
+      const bubble = isBubbleTile(tile);
+      const fSize = bubble ? fmtFor({ ...tile, aggFn: tile.aggFnSize || tile.aggFn }, tile.measureSize) : null;
+      const sets = scatterSplit
+        ? scatterSplit.map((sr) => ({ name: sr.name, points: bubblePoints(sr.gx, sr.gy, sr.gs).points }))
+        : [{ name: '', points: bubblePoints(agg, aggY, aggSize).points }];
+      const allSizes = [].concat(...sets.map((set) => set.points.map((pt) => pt.size)));
+      // Diamètre maximal : une fraction de la plus petite côté de la tuile (en pixels : suit le redimensionnement, voir __refit).
+      const maxDiameter = () => Math.max(18, Math.min(56, Math.round(Math.min(instance.getWidth() || 300, instance.getHeight() || 220) * 0.18)));
+      const buildSeries = (diameterMax) => {
+        const diameters = bubble ? bubbleDiameters(allSizes, diameterMax) : null;
+        let k = 0;
+        return sets.map((set) => {
+          const items = [];
+          set.points.forEach((pt) => {
+            const diameter = diameters ? diameters[k] : 14;
+            k++;
+            if (diameter === null) return; // taille nulle, négative ou absente : pas d'aire, pas de bulle
+            // `name` explicite : contrairement à bar (axe catégoriel, ECharts déduit params.name de
+            // l'index sur l'axe), scatter a deux axes numériques -> rien n'associe un point à sa
+            // catégorie sans ce champ, et le gestionnaire de clic générique deviendrait muet
+            // (params.name undefined, drill/cross-filter sur une valeur "undefined").
+            items.push({
+              name: pt.dimension,
+              value: bubble ? [pt.x, pt.y, pt.size] : [pt.x, pt.y],
+              symbolSize: diameter,
+              itemStyle: dim(pt.dimension) || (bubble ? { opacity: 0.8 } : undefined)
+            });
+          });
+          return { type: 'scatter', name: set.name || undefined, symbolSize: 14, data: items };
+        });
+      };
+      const showLegend = sets.length > 1;
       option = {
         color: palette,
-        grid: numericGrid,
+        grid: showLegend ? { ...numericGrid, top: 40 } : numericGrid,
+        legend: showLegend ? { top: 0, type: 'scroll' } : undefined,
         tooltip: {
           trigger: 'item',
-          formatter: (params) => `${escapeHtml(String(params.name))}<br/>`
-            + `${escapeHtml(tile.measure)} : ${f.format(params.value[0])}<br/>`
-            + `${escapeHtml(tile.measureY)} : ${fY.format(params.value[1])}`
+          formatter: (params) => {
+            const v = params.value || [];
+            const lines = [escapeHtml(String(params.name))];
+            if (showLegend && params.seriesName) lines.push(`${params.marker || ''}${escapeHtml(tile.seriesColumn)} : ${escapeHtml(String(params.seriesName))}`);
+            lines.push(`${escapeHtml(tile.measure)} : ${f.format(v[0])}`);
+            lines.push(`${escapeHtml(tile.measureY)} : ${fY.format(v[1])}`);
+            if (bubble) lines.push(`${escapeHtml(tile.measureSize)} (${t('chart.bubble.size')}) : ${fSize.format(v[2]) || '–'}`);
+            return lines.join('<br/>');
+          }
         },
         xAxis: { type: 'value', axisLabel: { formatter: f.axis } },
         yAxis: { type: 'value', axisLabel: { formatter: fY.axis } },
-        series: [{
-          type: 'scatter',
-          symbolSize: 14,
-          // `name` explicite : contrairement à bar (axe catégoriel, ECharts déduit params.name de
-          // l'index sur l'axe), scatter a deux axes numériques -> rien n'associe un point à sa
-          // catégorie sans ce champ, et le gestionnaire de clic générique deviendrait muet
-          // (params.name undefined, drill/cross-filter sur une valeur "undefined").
-          data: agg.map((d) => ({
-            name: d.dimension,
-            value: [d.value, aggYByDimension.get(d.dimension)],
-            itemStyle: dim(d.dimension)
-          }))
-        }]
+        series: buildSeries(maxDiameter())
       };
+      if (bubble) instance.__refit = () => instance.setOption({ series: buildSeries(maxDiameter()) });
     } else if (tile.type === 'waterfall') {
       // Pas de série ECharts native "waterfall" (voir ROADMAP.md) : simulation standard par 2
       // séries de barres empilées — une invisible (`base`, la partie du cumul déjà atteinte avant
@@ -1802,6 +1872,85 @@
     };
     finalizeOption(option, instance);
     instance.setOption(option, true);
+  }
+
+  // Flux (type 'sankey') : source = `tile.dimension` (nœuds à gauche, colorés par la palette, les liens prennent leur couleur), cible =
+  // `tile.columnDimension` (nœuds à droite, gris neutre : ce sont les liens qui racontent d'où vient le flux). Calcul : js/data.js:
+  // sankeyFlows (une passe, groupement par paire) ; seuls les SANKEY_MAX_LINKS plus gros flux sont dessinés (la tuile le dit). Les
+  // marges gauche/droite réservent la place des libellés, en pixels : `instance.__refit` les recalcule au redimensionnement (comme
+  // la jauge). Nœuds et liens non retenus par un filtre sur leur colonne sont atténués (`filterSelects`), comme une barre.
+  function renderSankey(tile, rows, state, instance) {
+    const sk = sankeyFlows(rows, tile.dimension, tile.columnDimension, tile.measure, tile.aggFn);
+    const shown = topFlows(sk.flows, SANKEY_MAX_LINKS);
+    instance.__sankeyNodes = new Map();
+    instance.__refit = undefined;
+    if (!shown.length) {
+      // Aucun flux positif : un message au centre plutôt qu'un cadre vide sans explication.
+      instance.setOption({ title: { text: t('chart.sankey.empty'), left: 'center', top: 'middle', textStyle: { fontSize: 12, fontWeight: 'normal' } }, series: [], graphic: [], xAxis: { show: false }, yAxis: { show: false } }, true);
+      return;
+    }
+    const f = fmtFor(tile, tile.measure);
+    const th = chartTheme();
+    const palette = paletteColors(tile.palette);
+    const sources = Array.from(new Set(shown.map((fl) => fl.source)));
+    const targets = Array.from(new Set(shown.map((fl) => fl.target)));
+    const shownTotal = shown.reduce((a, fl) => a + fl.value, 0);
+    const srcFilter = state.activeFilters.find((af) => af.column === tile.dimension);
+    const tgtFilter = state.activeFilters.find((af) => af.column === tile.columnDimension);
+    const sid = (v) => `s:${v}`;
+    const tid = (v) => `t:${v}`;
+    const srcOk = (v) => !srcFilter || filterSelects(srcFilter, v);
+    const tgtOk = (v) => !tgtFilter || filterSelects(tgtFilter, v);
+    const nodes = sources.map((v, i) => ({ name: sid(v), text: v, label: { position: 'left' }, itemStyle: { color: palette[i % palette.length], opacity: srcOk(v) ? 1 : 0.3 } }))
+      .concat(targets.map((v) => ({ name: tid(v), text: v, label: { position: 'right' }, itemStyle: { color: th.muted, opacity: tgtOk(v) ? 1 : 0.3 } })));
+    sources.forEach((v) => instance.__sankeyNodes.set(sid(v), { column: tile.dimension, value: v }));
+    targets.forEach((v) => instance.__sankeyNodes.set(tid(v), { column: tile.columnDimension, value: v }));
+    const links = shown.map((fl) => ({
+      source: sid(fl.source), target: tid(fl.target), value: fl.value,
+      lineStyle: srcOk(fl.source) && tgtOk(fl.target) ? undefined : { opacity: 0.08 }
+    }));
+    const label = (name) => { const n = instance.__sankeyNodes.get(name); return n ? escapeHtml(n.value) : ''; };
+    // Place des libellés : un quart de la largeur de chaque côté, de 56 à 190 px (le nom entier reste dans l'infobulle).
+    const place = () => {
+      const w = instance.getWidth() || 300;
+      const m = Math.max(56, Math.min(190, Math.round(w * 0.24)));
+      return { left: m, right: m, labelWidth: m - 16 };
+    };
+    const p0 = place();
+    const option = {
+      tooltip: {
+        trigger: 'item',
+        formatter: (p) => {
+          const share = (v) => (shownTotal > 0 ? ` (${f.percent((v * 100) / shownTotal)})` : '');
+          if (p.dataType === 'edge') return `${label(p.data.source)} → ${label(p.data.target)}<br/>${escapeHtml(f.format(p.data.value) || String(p.data.value))}${share(p.data.value)}`;
+          return `<b>${label(p.data.name)}</b><br/>${t('chart.sankey.node')} : ${escapeHtml(f.format(p.value) || String(p.value))}${share(p.value)}`;
+        }
+      },
+      series: [{
+        type: 'sankey',
+        data: nodes,
+        links,
+        draggable: false,
+        nodeWidth: 12,
+        nodeGap: 8,
+        left: p0.left,
+        right: p0.right,
+        top: 10,
+        bottom: shown.length < sk.flows.length ? 22 : 10,
+        emphasis: { focus: 'adjacency' },
+        lineStyle: { color: 'source', opacity: 0.35, curveness: 0.5 },
+        label: { color: th.text, fontSize: 11, width: p0.labelWidth, overflow: 'truncate', ellipsis: '…', formatter: (p) => (p.data && p.data.text != null ? String(p.data.text) : '') }
+      }],
+      graphic: shown.length < sk.flows.length
+        ? [{ type: 'text', right: 8, bottom: 4, style: { text: t('chart.sankey.capped', { shown: shown.length, total: sk.flows.length }), fill: th.muted, fontSize: 10 } }]
+        : []
+    };
+    finalizeOption(option, instance);
+    instance.setOption(option, true);
+    instance.__refit = () => {
+      const p = place();
+      instance.setOption({ series: [{ left: p.left, right: p.right, label: { width: p.labelWidth } }] });
+    };
   }
 
   // Tuile bar avec un mode de calcul temporel ('cumulative'/'ytd'/'yoy', voir ROADMAP.md "Mesures

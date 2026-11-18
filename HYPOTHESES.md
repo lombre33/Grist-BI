@@ -3484,6 +3484,25 @@ Retour d'Antoine sur la 1re livraison : « Standard, Fluide, Édito : ok. Les de
 
 **Non vérifié** : rendu dans un vrai Grist/GFS ; interaction avec une VRAIE ambiance GFS (ses jetons en ligne gagnent sur les couleurs d'un style — pour Console et Verre, un accent ou un fond d'ambiance sur le décor propre à ces styles peut détonner) ; `backdrop-filter` dans le navigateur d'un vrai Grist (supporté par les navigateurs récents, mais pas rejoué sur un vieux) ; exports PDF/PPTX avec le vrai CDN (une carte de verre y devient un fond uni, les graphiques gardent leur dégradé).
 
+### Tuiles usuelles des outils BI — lot 3, flux (Sankey) (18/11/2026)
+
+- **Ce qui est livré** (PR 9 du plan, §5.2 de `etudes/tuiles-usuelles-dashboard-2026-11-18.md`) : un type `sankey` (« Flux (Sankey) »). Deux colonnes catégorielles (source à gauche, cible à droite) et une mesure ;
+  chaque lien a l'épaisseur de la mesure agrégée (Somme ou Comptage) pour SA paire source -> cible. Un clic sur un nœud = filtre d'égalité sur sa colonne (les autres nœuds, et les liens qui n'y passent pas,
+  s'estompent) ; un clic sur un lien = filtre source ET cible (comme une case de la carte de chaleur, `cellFilterToggles`). La tuile reste entière sur son propre filtre. Pas de drill-down, de tri, de séries ni de repère.
+- **Choix** : graphe BIPARTI (source à gauche, cible à droite), pas un Sankey à plusieurs étapes. Une valeur qui figure des deux côtés (« Web » en source et en cible) donne deux nœuds, ce qui évite tout cycle
+  (ECharts refuse un graphe cyclique) ; un parcours en plusieurs étapes (A -> B -> C) demanderait de choisir l'ordre des colonnes et un empilement de paires, à décider si le besoin se présente. **Calcul en JS pur à
+  tout volume** (une passe, groupement par paire ; pas de DuckDB, comme l'histogramme et la boîte).
+- **Plafonds et écarts** : 60 liens tracés au plus (les plus gros ; la tuile écrit « 60 flux les plus importants sur 144 » et l'export Excel garde toutes les paires, négatives comprises) ; un flux nul, négatif ou
+  absent n'a pas d'épaisseur et n'est pas tracé (conseil « n flux nuls ou négatifs n'apparaissent pas ») ; lignes sans source ou sans cible ignorées. Conseil au-delà de 15 nœuds (écheveau) et pour une moyenne/min/max
+  (un flux s'additionne ; le préremplissage du formulaire force Somme ou Comptage).
+- **Pas fait, à décider** : Sankey à plus de deux colonnes (étapes), tri des nœuds (ECharts les ordonne pour limiter les croisements), déplacement des nœuds à la souris (`draggable: false`, un déplacement ne
+  s'enregistre pas), choix de la couleur d'un lien par la cible, regroupement des petits flux en « Autres ».
+- **Testé** : Node (bloc « flux (Sankey) » : pair par paire, somme/comptage/moyenne, flux écartés et ignorés, `pairs` pour l'export, même valeur des deux côtés = deux ensembles, types mêlés et `BigInt`, plafond et
+  ordre, store (nœud, lien, retrait, suppression de la tuile), export, défauts, conseils, i18n, câblage) ; Playwright contre le vrai `index.html` + `grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`,
+  220 et 6 000 lignes (formulaire : libellés « Source » / « Cible », 2e dimension obligatoire et différente, message propre ; option ECharts = calcul pur ; **clic réel de souris sur un nœud puis sur un lien**,
+  atténuation des autres, retrait au 2e clic ; filtre d'une autre tuile = flux recalculés ; feuille Excel ; barres -> flux -> barres sans reliquat ; flux sans valeur positive = message ; thème sombre).
+  **Pas testé dans un vrai Grist ni un vrai GFS.**
+
 ### Ligne de repère : libellé hors de la zone de tracé (18/11/2026)
 
 Constat (en testant le style global des tuiles) : sur une courbe ou des barres verticales, le libellé « Moyenne 653 247 » / « Objectif 900 000 » était posé DANS la zone de tracé, au bout du trait (`insideEndTop`), avec un fond opaque : il cachait la fin de la courbe (les deux derniers points d'une série qui monte) et le haut de la dernière barre ou sa valeur. Même défaut en Standard.
@@ -3491,6 +3510,25 @@ Constat (en testant le style global des tuiles) : sur une courbe ou des barres v
 **Fait** : le libellé va à droite de la zone de tracé, sur deux lignes (nom puis valeur), sans rien recouvrir. `GristBI.format.refLabelLayout` (pur) en donne la taille (11 px, réduite jusqu'à 9 px, puis tronquée) et la marge à réserver, plafonnée à ~22 % de la largeur de la tuile ; `addRefLine` la prend sur une COPIE de la grille et `finalizeOption` la retranche de la zone de tracé pour tailler les noms de catégorie. Barres horizontales (trait vertical, libellé en haut) : inchangé.
 
 **Contrepartie assumée** : la zone de tracé perd 45 à 60 px de large ; dans une tuile de 270 px avec 3-4 catégories, un nom long est tronqué (« Bouti… », « Ou… ») alors qu'il tenait avant. À 340 px et plus, tout tient. **Vérifié** : Node (`refLabelLayout` sur 5 largeurs x 5 libellés : marge <= 22 %, texte contenu, taille, troncature) ; rendu réel dans `index.html` + faux Grist, tuiles de 270, 300 et 350 px, clair et sombre, Standard/Fluide/Classique/Éditorial. **Non vérifié** : un vrai Grist.
+
+### Tuiles usuelles des outils BI — lot 3, bulles (18/11/2026)
+
+- **Ce qui est livré** (PR 10 du plan, §5.5 de `etudes/tuiles-usuelles-dashboard-2026-11-18.md`) : le nuage de points devient aussi un graphique à bulles. Deux options facultatives, indépendantes : « Taille des bulles »
+  (une 3e mesure, avec son propre agrégat : le prix est une moyenne, le chiffre d'affaires une somme) et « Couleur » (la colonne « Séries » du formulaire, une couleur et une entrée de légende par valeur). Sans
+  elles, la tuile est exactement le nuage de points d'avant (même option ECharts, même export). Clic sur une bulle = filtre d'égalité sur la dimension (ou drill-down, comme avant).
+- **Choix** : l'aire de la bulle suit la valeur (diamètre ~ racine carrée), échelle commune à toutes les couleurs, diamètre maximal = 18 % de la plus petite côté de la tuile (18 à 56 px) ; une taille nulle ou négative n'est
+  pas dessinée (conseil `advice.bubble.sizeSign`). La couleur se calcule PAR couleur : si une même valeur de la dimension figure dans deux couleurs, elle donne deux bulles (une par couleur), pas une couleur arbitraire
+  (« la première » ou « la plus fréquente »). Une colonne de couleur qui dépend de la dimension (produit -> gamme) donne donc exactement la maquette de l'étude. Réutilise `tile.seriesColumn` mais PAS `isSeriesTile`
+  (voir piège n°37). Calcul en JS ou DuckDB (au-delà de 5 000 lignes), comme le nuage de points.
+- **Pas fait, à décider** : nuage de points LIGNE PAR LIGNE (R6 de l'étude DRANE du 18/11, toujours ouvert : aujourd'hui une bulle = une valeur de la dimension, agrégée), légende de taille (aujourd'hui seulement l'infobulle),
+  taille minimale réglable, couleur par une mesure (dégradé), étiquettes de nom sur les bulles, axes qui ne partent pas de zéro (le comportement d'origine du nuage de points est conservé : les deux axes incluent 0).
+- **Conseils** : colonne de couleur = colonne des points, plus de couleurs que la palette n'en a (8 en Standard), tailles nulles ou négatives écartées.
+- **Testé** : Node (bloc « bulles » : diamètres à aire proportionnelle, plancher, tailles sans aire, `BigInt`, alignement par nom, mesure absente, point sans X ou Y, export simple / taille / couleur, conseils, i18n, câblage) ;
+  Playwright contre le vrai `index.html` + `grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`, 480 et 6 000 lignes (formulaire : champ de taille, agrégat de la taille seulement quand une taille est choisie,
+  libellé « Couleur », tuile enregistrée avec ses 3 mesures et la couleur ; option ECharts = calcul pur sur chaque couleur, **aire ~ taille**, diamètre maximal attendu ; **infobulle survolée** (texte, taille nommée, aucune
+  injection par un nom de valeur) ; **clic réel de souris sur une bulle libre** = filtre, autres bulles à 0,3, 2e clic = filtre retiré ; agrandissement = bulle maximale plus grosse ; filtre d'une autre tuile = tailles
+  recalculées ; feuille Excel ; taille négative = bulle absente + conseil ; nuage de points simple inchangé ; nuage de points -> barres -> bulles sans reliquat ; aucune erreur console). **Pas testé dans un vrai Grist ni un
+  vrai GFS.**
 
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 

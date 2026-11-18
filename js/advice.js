@@ -72,6 +72,7 @@
     combo: 'advice.use.combo',
     histogram: 'advice.use.histogram',
     box: 'advice.use.box',
+    sankey: 'advice.use.sankey',
     pie: 'advice.use.pie',
     treemap: 'advice.use.treemap',
     funnel: 'advice.use.funnel',
@@ -794,11 +795,14 @@
         break;
       }
       case 'pivot':
-      case 'heatmap': {
+      case 'heatmap':
+      case 'sankey': {
         const small = ctx.categories.filter((d) => d.kind === 'text' && d.distinct >= 2 && d.distinct <= 12);
         out.dimension = (small[0] && small[0].id) || dimensionFallback;
         const other = (small[1] && small[1].id) || ctx.categories.map((d) => d.id).find((id) => id !== out.dimension);
         if (other) out.columnDimension = other;
+        // Un flux s'additionne : jamais une moyenne, même si c'est l'agrégat habituel de cette colonne (une note).
+        if (type === 'sankey') out.aggFn = measure ? 'sum' : 'count';
         break;
       }
       case 'kpi':
@@ -867,6 +871,14 @@
       const colCount = new Set(rows.map((r) => r[tile.columnDimension])).size;
       if (n > HEATMAP_MAX_AXIS || colCount > HEATMAP_MAX_AXIS) return warn('advice.heatmap.tooBig', { rows: n, columns: colCount });
     }
+    if (type === 'sankey' && tile.dimension && tile.columnDimension && tile.measure) {
+      // Un flux s'additionne ; au-delà d'une quinzaine de nœuds ce n'est plus qu'un écheveau ; un flux nul ou négatif n'a pas d'épaisseur.
+      if (tile.aggFn === 'avg' || tile.aggFn === 'min' || tile.aggFn === 'max') return warn('advice.sankey.notAdditive');
+      const sk = data.sankeyFlows(rows, tile.dimension, tile.columnDimension, tile.measure, tile.aggFn);
+      const nodes = sk.sources.length + sk.targets.length;
+      if (nodes > data.SANKEY_MAX_NODES) return warn('advice.sankey.tooManyNodes', { nodes });
+      if (sk.dropped > 0) return tip('advice.sankey.dropped', { n: sk.dropped });
+    }
     if (type === 'combo') {
       if (tile.comboMode === 'pareto') {
         if (tile.aggFn === 'avg' || tile.aggFn === 'min' || tile.aggFn === 'max') return warn('advice.combo.paretoAgg');
@@ -883,6 +895,21 @@
     if (type === 'line' && hasDimension) {
       if (!timeLike) return warn('advice.line.notTime', { dimension: tile.dimension });
       if (tile.sortMode === 'value-desc' || tile.sortMode === 'value-asc') return warn('advice.line.valueSort');
+    }
+    if (type === 'scatter' && hasDimension) {
+      // Bulles : la colonne de couleur ne peut pas être celle des points ; au-delà du nombre de couleurs de la palette elles se
+      // répètent ; une taille nulle ou négative n'a pas d'aire (la bulle n'est pas dessinée).
+      if (tile.seriesColumn) {
+        if (tile.seriesColumn === tile.dimension) return warn('advice.bubble.sameAsDimension');
+        const colors = new Set(rows.map((r) => r[tile.seriesColumn])).size;
+        const cap = Math.min(SERIES_MAX, data.paletteColors(tile.palette).length);
+        if (colors > cap) return warn('advice.bubble.tooManyColors', { n: colors, max: cap });
+      }
+      if (tile.measureSize) {
+        const sizes = data.groupByAggregate(rows, tile.dimension, tile.measureSize, tile.aggFnSize || tile.aggFn || 'sum');
+        const flat = sizes.filter((g) => { const v = typeof g.value === 'bigint' ? Number(g.value) : g.value; return !(Number.isFinite(v) && v > 0); }).length;
+        if (flat) return warn('advice.bubble.sizeSign', { n: flat });
+      }
     }
     if (data.isSeriesTile(tile)) {
       if (tile.seriesColumn === tile.dimension) return warn('advice.series.sameAsDimension');
@@ -958,6 +985,7 @@
         return ctx.measures.filter((p) => !p.ordinal).length < 2 ? 'advice.fit.needTwoMeasures' : null;
       case 'pivot':
       case 'heatmap':
+      case 'sankey':
         return ctx.categories.filter((d) => d.distinct >= 2).length < 2 ? 'advice.fit.needTwoDimensions' : null;
       case 'wordcloud':
         return ctx.profiles.some((p) => p.kind === 'text' && p.role !== 'constant') ? null : 'advice.fit.needText';
