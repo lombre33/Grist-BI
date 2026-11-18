@@ -566,7 +566,8 @@ const mk = (types) => types.map((type, i) => ({ id: `${type}${i}`, type }));
       const order = ['js/styles.js', 'js/layouts.js', 'js/charts.js'].map((s) => html.indexOf(s));
       assert.ok(order[0] < order[1] && order[1] < order[2], `${file} : layouts.js après styles.js et avant charts.js`);
       for (const id of ['settings-layout-section', 'settings-layout-hint', 'settings-layout-options']) assert.ok(html.includes(`id="${id}"`), `${file} : ${id}`);
-      assert.ok(/id="settings-layout-section"/.test(html) && /class="settings-section edit-only" id="settings-layout-section"/.test(html), `${file} : section réservée à l'Édition`);
+      assert.ok(/<div class="settings-section" id="settings-layout-section">/.test(html), `${file} : section visible en Lecture comme en Édition (même menu Réglages)`);
+      assert.ok(!/<[^>]*edit-only[^>]*>/.test(html.slice(html.indexOf('id="settings-modal"'), html.indexOf('settings.credits.title'))), `${file} : aucune partie de Langue / Style / Disposition n'est réservée à l'Édition`);
       assert.ok(html.indexOf('settings-layout-section') > html.indexOf('settings-style-section') && html.indexOf('settings-layout-section') < html.indexOf('settings.credits.title'), `${file} : Disposition entre Style et Crédits`);
       assert.ok(html.indexOf('settings-opt-uniform') > html.indexOf('settings-layout-section'), `${file} : les options de la grille suivent le choix de disposition`);
     }

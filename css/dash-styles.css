@@ -257,11 +257,24 @@
 }
 :root[data-dash-uniform] .tile:hover { background: color-mix(in srgb, var(--text) 3%, transparent); box-shadow: none; }
 :root[data-dash-uniform] .tile.tile-zoomed, :root[data-dash-uniform][data-dash-borders="none"] .tile:hover { box-shadow: none; }
+/* « Sans bordure » ET « uni » ensemble : les règles de l'ombre de « sans bordure » (`:not([data-dash-style])` et `[data-dash-style]`, plus
+   spécifiques que `:root[data-dash-uniform] .tile`) redessinaient une ombre autour de chaque tuile d'un tableau de bord censé être UNE surface
+   (retour d'Antoine, 18/11/2026 : « ce n'est toujours pas uni, des sortes d'ombres dessinent les carrés »). « Uni » gagne donc toujours : aucune
+   ombre, au repos comme au survol et agrandie, quel que soit le style. */
+:root[data-dash-uniform][data-dash-borders="none"]:not([data-dash-style]) .tile,
+:root[data-dash-uniform][data-dash-borders="none"]:not([data-dash-style]) .tile:hover,
+:root[data-dash-uniform][data-dash-borders="none"]:not([data-dash-style]) .tile.tile-zoomed,
+:root[data-dash-uniform][data-dash-borders="none"][data-dash-style] .tile,
+:root[data-dash-uniform][data-dash-borders="none"][data-dash-style] .tile:hover,
+:root[data-dash-uniform][data-dash-borders="none"][data-dash-style] .tile.tile-zoomed { box-shadow: none; }
 :root[data-dash-uniform] .tile-preview-body .tile { margin: 0; }
 
 /* ---------- Menu Réglages : choix du style (js/main.js:renderStyleOptions) ---------- */
 /* Le menu grandit (style des tuiles) : il défile dans la fenêtre du widget (souvent ~500 px de haut) au lieu de sortir de l'écran. */
-#settings-modal .settings-modal-content { width: 420px; max-height: calc(100vh - 24px); overflow-y: auto; }
+/* Fenêtre LARGE et horizontale (retour d'Antoine, 18/11/2026 : « super étroite, plutôt un rectangle à l'horizontale ») : les cartes de style et de
+   disposition se rangent en ligne, les deux options de la grille côte à côte, Langue et Crédits en bas sur deux colonnes. Les seuils sont ceux de la
+   fenêtre du widget (le cadre est le viewport) : 5 cartes en ligne dès 900 px, 3 dès 600 px, 2 dessous, 1 dès 440 px. */
+#settings-modal .settings-modal-content { width: min(960px, calc(100vw - 32px)); max-height: calc(100vh - 24px); overflow-y: auto; }
 .settings-hint { margin: 0 0 10px; font-size: 12px; line-height: 1.45; color: var(--text-muted); }
 .style-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .style-option {
@@ -306,10 +319,23 @@
 .sw-bars i:nth-child(2) { height: 100%; }
 .sw-bars i:nth-child(3) { height: 70%; }
 .sw-bars i:nth-child(4) { height: 85%; }
+@media (min-width: 600px) { .style-options { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 900px) { .style-options { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
 @media (max-width: 440px) { .style-options { grid-template-columns: 1fr; } }
 /* Options valables pour tous les styles : deux cases à cocher sous les cartes de style. */
 .style-extra { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
 .style-extra-title { margin: 0; font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+/* Large : les deux cases côte à côte (le titre prend toute la ligne). */
+@media (min-width: 600px) {
+  .style-extra { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 24px; }
+  .style-extra-title { grid-column: 1 / -1; }
+}
+/* Bas de la fenêtre Réglages : Langue (étroite) et Crédits (large) côte à côte quand il y a la place, l'un sous l'autre sinon. */
+.settings-footer .settings-subsection + .settings-subsection { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+@media (min-width: 600px) {
+  .settings-footer { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2.4fr); gap: 0 28px; align-items: start; }
+  .settings-footer .settings-subsection + .settings-subsection { margin-top: 0; padding-top: 0; border-top: 0; }
+}
 .style-check { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; }
 .style-check input[type="checkbox"] { margin: 2px 0 0; accent-color: var(--accent); flex-shrink: 0; }
 .style-check-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
