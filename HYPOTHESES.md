@@ -3118,7 +3118,7 @@ Point de départ : la capture d'une jauge illisible envoyée par Antoine (gradua
 
 **Fait** : jauge en demi-cercle (`GristBI.format.gaugeLayout`, pur) : arc en haut, bornes min/max sous les extrémités, aiguille de 74 % du rayon (jamais sur l'anneau), valeur sous le moyeu ; police de la valeur réduite jusqu'à tenir, puis format compact ; géométrie recalculée au redimensionnement (`__refit`) ; sans borne haute, un « beau » nombre (`niceCeil`) ; couleurs lues sur les jetons CSS. Carte KPI : la police se réduit pour que la valeur tienne dans la tuile (`container-type: inline-size`, `cqw`).
 
-**Choix assumé** : plus de graduations intermédiaires sur la jauge (seulement le minimum et le maximum) — sur une tuile de 250 px, des graduations lisibles n'ont pas de place. Si Antoine en veut, elles reviendront sous forme de petits traits sans libellé.
+**Choix assumé, puis revu le jour même** : plus de graduations intermédiaires DANS l'arc (seulement le minimum et le maximum) — sur une tuile de 250 px, des graduations lisibles n'ont pas de place dans l'arc. Antoine a regardé les captures « après » et a demandé de les rajouter, « peut-être à l'extérieur » : voir « Jauge : graduations à l'extérieur de l'arc » plus bas.
 
 **Vérifié** : voir TEST_PROTOCOL.md (tailles normale, étroite, agrandie, thème sombre). **Non vérifié** : rendu dans un vrai Grist/GFS ; lecteur d'écran sur la jauge (aucun libellé accessible n'a été ajouté).
 
@@ -3330,6 +3330,14 @@ Dernier lot de l'audit : tout ce qui, hors des nombres eux-mêmes, rendait une t
   (langues autres que fr/en).
 - **Testé** : Node (noms reconnus/épargnés, ordre des mesures pour 4 ordres de colonnes, montant à retours/cases vides, « Prix total », prix seul moyenné, suggestions et
   préremplissage) ; Playwright contre le vrai `index.html` + `grist-stub.js` sur la démo v3 anonymisée. **Pas testé dans un vrai Grist.**
+
+### Jauge : graduations à l'extérieur de l'arc (18/11/2026)
+
+Point de départ : sur la capture « après » du lot 2 de l'audit de lisibilité, Antoine remarque que la jauge « semble perdre les graduations intermédiaires » et propose de les rajouter, « peut-être à l'extérieur ».
+
+**Fait** : un trait de 4 à 8 px puis un libellé, SOUS FORME DE `graphic` ECharts, hors de l'arc (jamais dedans : c'est là qu'elles se chevauchaient entre elles et avec l'aiguille). Les valeurs sont des multiples d'un pas rond (1, 2, 2,5, 5 x 10^k : « 1 M, 2 M, 3 M » plutôt que « 825,5 k, 1,65 M »), jamais à moins de 8 % d'une extrémité (`GristBI.format.gaugeTicks`), libellées par `fmt.axis` comme les bornes (donc au format de la tuile, 3 chiffres significatifs, thème clair/sombre, fr/en). Leur place est réservée AVANT de dimensionner l'arc (`gaugeLayout(w, h, ticks)` : plus grand rayon pour lequel le libellé le plus haut et le plus déporté restent dans la zone, par dichotomie) : l'arc rétrécit d'environ 20 % (rayon 113 -> 87 px dans une tuile de 250 px) ; `gaugeTickBudget(r)` fixe le nombre maximal (0 sous 46 px, 5 au plus), et `gaugeOption` en retire (moins, puis aucune) plutôt que de faire descendre l'arc sous 72 % de sa taille sans graduations ou de laisser un libellé sortir de la tuile (`overflow`). `gaugeTickPlacement` (pure) donne le trait, l'ancre et l'alignement de chaque repère : charts.js et les tests partagent donc la même géométrie.
+
+**Vérifié** : Node (valeurs rondes sur 10 plages x 5 plafonds, jamais plus que demandé, jamais -0 ni bruit de flottant, 7 tailles de tuile x 4 plages x 3 plafonds : libellés dans la zone, au-dessus de la ligne de base, hors de l'arc, sans recouvrement entre voisins, l'arc ne grandit jamais ; sans graduation la géométrie est exactement celle d'avant) ; rendu réel dans `index.html`/harnais : six jauges (somme, négative, 0-100, sans borne, valeurs minuscules, années) en clair, en sombre + anglais, à 340 px, agrandie. **Non vérifié** : rendu dans un vrai Grist/GFS. **Limite connue** : une jauge dont les bornes sont des années (1990-2030) affiche « 2 k, 2,01 k, 2,02 k » parce que `axis` est compact dès 1 000 — même défaut que pour n'importe quel axe de valeurs ; pas traité ici (rare, et le format de la tuile « Personnalisé : standard » donne « 2 010 »).
 
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 

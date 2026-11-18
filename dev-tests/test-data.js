@@ -2210,13 +2210,105 @@ const SAMPLE_TIME_SERIES = [
   const fitted = format.fitFont('5 430 335 971 750,50', 160, 40, 11, measure);
   assert.ok(fitted < 40 && measure('5 430 335 971 750,50', fitted) <= 160, 'long : réduit jusqu\'à tenir (' + fitted + ' px)');
   assert.strictEqual(format.fitFont('5 430 335 971 750,50 5 430 335 971 750,50', 20, 40, 11, measure), 11, 'plancher respecté');
+  // graduations intermédiaires (à l'extérieur de l'arc) : des valeurs rondes, jamais aux extrémités, jamais plus que demandé
+  assert.deepStrictEqual(format.gaugeTicks(0, 3266234, 4), [1e6, 2e6, 3e6], '0 -> 3,27 M : 1 M, 2 M, 3 M (pas 825,5 k, 1,65 M)');
+  assert.deepStrictEqual(format.gaugeTicks(-2e6, 2e6, 3), [-1e6, 0, 1e6], 'jauge négative : -1 M, 0, 1 M');
+  assert.deepStrictEqual(format.gaugeTicks(0, 100, 4), [20, 40, 60, 80]);
+  assert.deepStrictEqual(format.gaugeTicks(0, 100, 1), [50]);
+  assert.deepStrictEqual(format.gaugeTicks(0, 1, 3), [0.25, 0.5, 0.75]);
+  assert.deepStrictEqual(format.gaugeTicks(0, 0.0007, 4), [0.0002, 0.0004, 0.0006], 'petites valeurs : pas de bruit de flottant');
+  assert.deepStrictEqual(format.gaugeTicks(1990, 2030, 4), [2000, 2010, 2020]);
+  assert.deepStrictEqual(format.gaugeTicks(5, 5, 3), [], 'intervalle vide');
+  assert.deepStrictEqual(format.gaugeTicks(10, 0, 3), [], 'intervalle inversé');
+  assert.deepStrictEqual(format.gaugeTicks(0, 100, 0), [], 'zéro graduation demandée');
+  assert.deepStrictEqual(format.gaugeTicks(null, 100, 3), [], 'borne absente');
+  for (const [lo, hi] of [[0, 3266234], [-2e6, 2e6], [0, 100], [0, 1], [-7, 13], [0, 0.0007], [1990, 2030], [0, 1e9 + 1], [-5e12, 5e12], [0.3, 0.31]]) {
+    for (const cap of [1, 2, 3, 4, 5]) {
+      const ticks = format.gaugeTicks(lo, hi, cap);
+      assert.ok(ticks.length <= cap, `${lo}..${hi} (${cap}) : pas plus de graduations que demandé (${ticks.length})`);
+      for (let i = 0; i < ticks.length; i++) {
+        const f = (ticks[i] - lo) / (hi - lo);
+        assert.ok(f > 0.08 && f < 0.92, `${lo}..${hi} : ${ticks[i]} loin des extrémités (${f})`);
+        if (i) assert.ok(ticks[i] > ticks[i - 1], 'croissantes');
+        assert.ok(Number.isFinite(ticks[i]) && !Object.is(ticks[i], -0), 'nombre fini, jamais -0');
+      }
+      // un pas régulier : des repères à égale distance
+      for (let i = 2; i < ticks.length; i++) assert.ok(Math.abs((ticks[i] - ticks[i - 1]) - (ticks[i - 1] - ticks[i - 2])) <= Math.abs(hi - lo) * 1e-9, 'pas régulier');
+    }
+  }
+  assert.strictEqual(format.gaugeTickBudget(30), 0);
+  assert.strictEqual(format.gaugeTickBudget(46), 1);
+  assert.strictEqual(format.gaugeTickBudget(100), 4);
+  assert.strictEqual(format.gaugeTickBudget(400), 5);
+  // la place des graduations est réservée AVANT l'arc : les traits et les libellés tiennent dans la zone, à toutes les tailles
+  const approxWidth = (text, px) => text.length * px * 0.6; // largeur d'un libellé (estimation, pas de canvas sous Node)
+  for (const [w, h] of [[240, 150], [270, 160], [316, 162], [420, 200], [600, 400], [1200, 500], [900, 640]]) {
+    const plain = format.gaugeLayout(w, h);
+    for (const [lo, hi] of [[0, 3266234], [-2e6, 2e6], [0, 100], [0, 0.0007]]) {
+      for (const cap of [1, 3, 5]) {
+        const vals = format.gaugeTicks(lo, hi, cap);
+        const items = vals.map((v) => ({ text: String(v), frac: (v - lo) / (hi - lo) }));
+        const L = format.gaugeLayout(w, h, items.map((it) => ({ frac: it.frac, w10: approxWidth(it.text, 10) })));
+        assert.ok(L.r <= plain.r + 1e-9, `${w}x${h} : les graduations ne font jamais grandir l'arc`);
+        assert.ok(L.cx - L.r >= 10 && L.cx + L.r <= w - 10, `${w}x${h} : l'arc tient en largeur`);
+        assert.ok(L.cy + L.below <= h + 0.001, `${w}x${h} : bornes et valeur tiennent en bas`);
+        if (L.overflow) continue; // trop petit : l'appelant renonce aux graduations (testé plus bas)
+        for (const it of items) {
+          const P = format.gaugeTickPlacement(L, it.frac);
+          const tw = approxWidth(it.text, L.tick.font);
+          const th = L.tick.font * 1.25;
+          const x0 = P.align === 'left' ? P.x : P.align === 'right' ? P.x - tw : P.x - tw / 2;
+          const x1 = x0 + tw;
+          const y0 = P.valign === 'bottom' ? P.y - th : P.y - th / 2;
+          const y1 = y0 + th;
+          const where = `${w}x${h} ${lo}..${hi} tick ${it.text}`;
+          assert.ok(x0 >= 0 && x1 <= w && y0 >= 0 && y1 <= h, `${where} : libellé dans la zone (${x0.toFixed(1)}..${x1.toFixed(1)} x ${y0.toFixed(1)}..${y1.toFixed(1)} / ${w}x${h})`);
+          assert.ok(P.y2 >= 0 && P.y1 <= L.cy, `${where} : trait au-dessus de la ligne de base`);
+          // le trait est radial et commence hors de l'arc, le libellé plus loin encore
+          const d1 = Math.hypot(P.x1 - L.cx, P.y1 - L.cy);
+          const d2 = Math.hypot(P.x2 - L.cx, P.y2 - L.cy);
+          const dl = Math.hypot(P.x - L.cx, P.y - L.cy);
+          assert.ok(d1 > L.r && d2 > d1 && dl > d2, `${where} : trait puis libellé, vers l'extérieur de l'arc`);
+          // aucun libellé ne touche la valeur ni les bornes (sous la ligne de base)
+          assert.ok(y1 <= L.cy, `${where} : libellé au-dessus de la ligne de base (bornes et valeur en dessous)`);
+        }
+        // deux libellés voisins ne se recouvrent pas
+        for (let i = 1; i < items.length; i++) {
+          const a = format.gaugeTickPlacement(L, items[i - 1].frac);
+          const b = format.gaugeTickPlacement(L, items[i].frac);
+          const wa = approxWidth(items[i - 1].text, L.tick.font);
+          const wb = approxWidth(items[i].text, L.tick.font);
+          const hh = L.tick.font * 1.25;
+          const ax0 = a.align === 'left' ? a.x : a.align === 'right' ? a.x - wa : a.x - wa / 2;
+          const bx0 = b.align === 'left' ? b.x : b.align === 'right' ? b.x - wb : b.x - wb / 2;
+          const ay0 = a.valign === 'bottom' ? a.y - hh : a.y - hh / 2;
+          const by0 = b.valign === 'bottom' ? b.y - hh : b.y - hh / 2;
+          const overlap = ax0 < bx0 + wb && bx0 < ax0 + wa && ay0 < by0 + hh && by0 < ay0 + hh;
+          assert.ok(!overlap, `${w}x${h} ${lo}..${hi} : « ${items[i - 1].text} » et « ${items[i].text} » ne se recouvrent pas`);
+        }
+      }
+    }
+  }
+  // sans graduation, la géométrie est exactement celle d'avant (aucune place réservée pour rien)
+  for (const [w, h] of [[240, 150], [316, 162], [600, 400]]) {
+    const a = format.gaugeLayout(w, h);
+    const b = format.gaugeLayout(w, h, []);
+    assert.strictEqual(a.r, b.r);
+    assert.strictEqual(a.cy, b.cy);
+    assert.strictEqual(a.cy, 6 + a.r, 'cy = marge + rayon');
+    assert.strictEqual(a.overflow, false);
+  }
+  // une zone minuscule : les graduations ne tiennent pas, `overflow` le dit (l'appelant les retire)
+  assert.strictEqual(format.gaugeLayout(120, 60, [{ frac: 0.5, w10: 30 }]).overflow, true);
   // câblage : la jauge n'a plus de graduations intermédiaires ni d'aiguille sur des libellés ; elle suit le redimensionnement
   const charts = require('fs').readFileSync(require('path').join(__dirname, '..', 'js', 'charts.js'), 'utf8');
+  assert.ok(/F\.gaugeTicks\(g\.min, g\.max, n\)/.test(charts) && /F\.gaugeTickBudget\(base\.r\)/.test(charts) && /F\.gaugeTickPlacement\(L, it\.frac\)/.test(charts), 'graduations calculées, plafonnées par la place, placées à l\'extérieur de l\'arc');
+  assert.ok(/lay\.overflow/.test(charts) && /0\.72 \* base\.r/.test(charts), 'elles disparaissent plutôt que de faire trop rétrécir l\'arc ou de sortir de la tuile');
   assert.ok(/startAngle: 180,\s*endAngle: 0/.test(charts), 'jauge en demi-cercle');
   assert.ok(/axisLabel: \{ show: false \}/.test(charts) && /splitLine: \{ show: false \}/.test(charts), 'plus de graduations dans l\'arc');
   assert.ok(/inst\.__refit/.test(charts) && /instance\.__refit = draw/.test(charts), 'la jauge se redessine à chaque redimensionnement (resizeAll)');
   assert.ok(/container-type: inline-size/.test(require('fs').readFileSync(require('path').join(__dirname, '..', 'css', 'style.css'), 'utf8')), 'carte KPI : conteneur de requête (valeur ajustée à la largeur)');
-  console.log('OK js/format.js — jauge : niceCeil, gaugeLayout (7 tailles de tuile), fitFont, câblage');
+  console.log('OK js/format.js — jauge : niceCeil, gaugeLayout (7 tailles de tuile), graduations extérieures (gaugeTicks, placement, 4 plages), fitFont, câblage');
 }
 
 // js/format.js + panneau : réglage « Format des nombres » par tuile (audit de lisibilité, lot 3, 18/11/2026)
