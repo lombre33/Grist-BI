@@ -1674,22 +1674,8 @@
     return /blocked by[^]*access rules/i.test(text);
   }
 
-  // Un module ES « optionnel » (d3-cloud, pas encore fourni par GFS) est-il déclaré dans l'`importmap` de la page ? `text` est le
-  // contenu JSON de la balise `<script type="importmap">`. Sans entrée, `import('d3-cloud')` est rejeté sur-le-champ par le
-  // navigateur (spécificateur non résolu) : la réponse est donc la même que celle de l'import, sans le tenter ni toucher au réseau.
-  // Illisible/absent -> false (jamais d'exception : appelé au dessin d'une carte).
-  function importMapHas(text, specifier) {
-    try {
-      const map = JSON.parse(text);
-      const imports = map && map.imports;
-      return Boolean(imports && typeof imports === 'object' && typeof imports[specifier] === 'string' && imports[specifier]);
-    } catch (e) {
-      return false;
-    }
-  }
-
   return {
-    importMapHas, tableToRows, epochSecondsToIsoDate, applyFilters, matchesFilter, sameValue, parseDateValue,
+    tableToRows, epochSecondsToIsoDate, applyFilters, matchesFilter, sameValue, parseDateValue,
     relativeDateRange, RELATIVE_DATE_PRESETS, groupByAggregate, aggregateSingle, wordFrequency, pivotTable,
     distinctColumnValues, computeTrend, trendFromGroups, periodLabel, measureSeriesForTile,
     waterfallSeries, sortGroups, isSortableTile, isSeriesTile, isBubbleTile, isColorSplitTile, bubblePoints, bubbleDiameters, calendarDays, isoDayShift, CALENDAR_MAX_DAYS, comboModeOf, paretoSeries, comboSeries, niceStep, histogramBins, histogramFilter, histogramBinIsActive, HISTOGRAM_MAX_BINS, boxStatsByGroup, quantileSorted, BOX_MAX_OUTLIERS, BOX_MIN_RELIABLE, BOX_MAX_GROUPS, sankeyFlows, topFlows, SANKEY_MAX_NODES, SANKEY_MAX_LINKS, filterSelects, LINE_SHAPES, lineShapeOf, supportsValueLabels, isStackedPercentTile, shareOfTotal, stackShares, REF_LINE_KINDS, supportsRefLine, refLineKind, refLineValue, cellFilterToggles, HEAT_RAMPS, heatStops, heatColor, heatTextColor, heatRange, heatCellColors, isStackedTile, splitBySeries, assembleSeries, PALETTES, PALETTE_KEYS, paletteColors, supportsPalette, supportsNumberFormat, NUMBER_FORMAT_TILE_TYPES, escapeHtml,

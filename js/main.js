@@ -14,7 +14,7 @@
   // qui lui donnerait le sien — voir le README du kit, section « L'ambiance de GFS ». `import()`
   // dynamique plutôt qu'un `<script type="module">` séparé dans index.html : `js/main.js` reste un
   // script classique (CLAUDE.md §2), et c'est déjà ainsi que ce widget charge un module ES depuis du
-  // code classique (js/duckdb-engine.js:VENDOR_BASE_URL, js/charts.js:loadD3Cloud). `document.
+  // code classique (js/duckdb-engine.js:VENDOR_BASE_URL). `document.
   // currentScript` n'est fiable qu'ICI, à l'exécution synchrone initiale de CE script (jamais dans
   // du code async) : capturé en tout premier, avant le moindre rendu, pour démarrer l'ambiance aussi
   // tôt que possible dans ce widget sans module d'entrée propre — et pour que le chemin reste juste
@@ -87,6 +87,15 @@
   }
 
   const GristBI = window.GristBI;
+  // Extensions de GFS (consigne 019, js/extensions.js) : reçoit le lien du kit résolu plus haut. Quand l'état d'une extension change
+  // (GFS a répondu, ou la personne en ajoute/retire une pendant que l'app est ouverte), les tuiles qui en dépendent sont repeintes et
+  // les cartes de « Ajouter une visualisation » (grisées ou non) refaites. `store`/`render`/`renderTypeCards` sont définis plus bas :
+  // l'abonné n'est appelé que bien après, jamais à l'exécution synchrone de ce bloc.
+  GristBI.extensions.attach(gfsLinkReady);
+  GristBI.extensions.onChange(() => {
+    if (typeof render === 'function' && store) render(store.getState());
+    if (typeof refreshTilePanelTexts === 'function') refreshTilePanelTexts();
+  });
   const store = (GristBI.store = GristBI.state.createStore());
   const { escapeHtml, tileDrillLevels } = GristBI.data;
   const { t } = GristBI.i18n;
@@ -2462,6 +2471,8 @@
   // =============================================================================================
   const TYPE_CARDS = ['bar', 'histogram', 'box', 'line', 'combo', 'pie', 'treemap', 'funnel', 'sankey', 'calendar', 'scatter', 'waterfall', 'radar', 'wordcloud', 'kpi', 'gauge', 'progress', 'pivot', 'heatmap', 'table', 'text'];
   const PREVIEW_TILE_ID = '__preview__';
+  // Types de tuile portés par une extension de GFS (js/extensions.js:EXTENSIONS).
+  const TYPE_EXTENSION = { wordcloud: 'nuage-de-mots' };
   let panelOpener = null;
   let previewTimer = null;
 
@@ -2479,16 +2490,22 @@
     const rows = store.getState().rows;
     const columns = availableColumns(rows);
     typeGridEl.innerHTML = '';
-    // « Nuage de mots » n'est proposé que si d3-cloud est fourni (importmap d'index.html) ; la tuile qu'on modifie garde sa carte.
-    const wordCloudOffered = GristBI.charts.isWordCloudAvailable() || (Boolean(editingTileId) && tileTypeSelect.value === 'wordcloud');
-    TYPE_CARDS.filter((type) => type !== 'wordcloud' || wordCloudOffered).forEach((type) => {
+    // Un type qui dépend d'une extension de GFS reste proposé, GRISÉ avec « pas encore » comme raison (consigne 019, point 4) ;
+    // son clic ne choisit pas le type : voir `requestExtension`.
+    TYPE_CARDS.forEach((type) => {
+      const extensionId = TYPE_EXTENSION[type];
+      const locked = Boolean(extensionId) && GristBI.extensions.stateOf(extensionId) !== 'active';
       const advice = GristBI.advice ? GristBI.advice.adviceForType(type, rows, columns) : null;
       const card = document.createElement('button');
       card.type = 'button';
       card.className = 'type-card';
       card.dataset.type = type;
+      const adviceText = locked
+        ? t(GristBI.extensions.stateOf(extensionId) === 'inactive' ? 'ext.pending.hosted' : 'ext.pending.standalone', { extension: t('ext.name.' + extensionId) })
+        : (advice ? t(advice.key, advice.vars) : '');
       card.innerHTML = `${icon('type-' + type)}<span class="type-card-name">${escapeHtml(t('tileForm.type.' + type))}</span>`
-        + `<span class="type-card-advice" data-level="${advice ? advice.level : ''}">${advice ? escapeHtml(t(advice.key, advice.vars)) : ''}</span>`;
+        + `<span class="type-card-advice" data-level="${locked ? 'locked' : (advice ? advice.level : '')}">${escapeHtml(adviceText)}</span>`;
+      if (locked) { card.classList.add('type-card-locked'); card.setAttribute('aria-disabled', 'true'); }
       card.addEventListener('click', () => chooseType(type));
       typeGridEl.appendChild(card);
     });
@@ -2583,7 +2600,20 @@
     }
   }
 
+  // Un clic sur une fonction grisée (consigne 019, point 4) : dans GFS, sa fenêtre « Apps et extensions » s'ouvre sur la ligne de
+  // l'extension ; l'app seule montre la fenêtre du grisé du guide (section 5). Rien n'est jamais ajouté sans le geste de la personne.
+  async function requestExtension(extensionId, type) {
+    const state = await GristBI.extensions.requestInstall(extensionId);
+    if (state !== 'standalone') return;
+    await GristBI.dialogs.notice({
+      title: t('ext.standalone.title'),
+      message: t('ext.standalone.body', { feature: t('tileForm.type.' + type), extension: t('ext.name.' + extensionId) })
+    });
+  }
+
   function chooseType(type) {
+    const extensionId = TYPE_EXTENSION[type];
+    if (extensionId && GristBI.extensions.stateOf(extensionId) !== 'active') { requestExtension(extensionId, type); return; }
     applyTypeDefaults(type);
     submitAttempted = false;
     clearFormErrors();
