@@ -101,25 +101,36 @@
     },
     'style.standard.name': { fr: 'Standard', en: 'Standard' },
     'style.standard.desc': { fr: 'Le rendu d’origine du widget.', en: 'The widget’s original look.' },
-    'style.factory.name': { fr: 'Grist Factory', en: 'Grist Factory' },
-    'style.factory.desc': {
-      fr: 'Gris bleuté et un seul bleu d’accent, coins doux : la charte des widgets Grist Factory.',
-      en: 'Cool grey with a single blue accent and soft corners: the Grist Factory widget identity.'
-    },
     'style.fluid.name': { fr: 'Fluide', en: 'Fluid' },
     'style.fluid.desc': {
       fr: 'Cartes très arrondies, ombres douces, barres pastel avec leur valeur, peu d’axes.',
       en: 'Very rounded cards, soft shadows, pastel bars labelled with their value, few axes.'
     },
-    'style.dense.name': { fr: 'Classique dense', en: 'Classic dense' },
-    'style.dense.desc': {
-      fr: 'Façon Power BI : coins presque droits, bordures fines, quadrillage, texte compact.',
-      en: 'Power BI-like: near-square corners, thin borders, gridlines, compact text.'
-    },
     'style.editorial.name': { fr: 'Éditorial', en: 'Editorial' },
     'style.editorial.desc': {
       fr: 'Sobre, façon rapport imprimé : fond papier, filet en tête de carte, titres à empattements.',
       en: 'Sober, like a printed report: paper background, a rule above each card, serif headings.'
+    },
+    'style.console.name': { fr: 'Console', en: 'Console' },
+    'style.console.desc': {
+      fr: 'Toujours sombre, filets fins, chiffres à chasse fixe, courbes qui luisent : façon console de supervision.',
+      en: 'Always dark, thin rules, monospaced figures, glowing lines: like a monitoring console.'
+    },
+    'style.glass.name': { fr: 'Verre dépoli', en: 'Frosted glass' },
+    'style.glass.desc': {
+      fr: 'Fond dégradé, cartes en verre dépoli translucide, barres en dégradé : façon interfaces modernes.',
+      en: 'Gradient backdrop, translucent frosted-glass cards, gradient bars: like modern app interfaces.'
+    },
+    'style.options.title': { fr: 'Options (tous les styles)', en: 'Options (every style)' },
+    'style.option.hideBorders': { fr: 'Tuiles sans bordure apparente', en: 'Tiles without a visible border' },
+    'style.option.hideBorders.desc': {
+      fr: 'Plus de trait de contour : les tuiles se distinguent par leur fond et leur ombre.',
+      en: 'No outline: tiles stand out through their background and shadow.'
+    },
+    'style.option.uniform': { fr: 'Tableau de bord uni', en: 'Uniform dashboard' },
+    'style.option.uniform.desc': {
+      fr: 'Une seule surface : les tuiles prennent le fond de la page, se touchent, sans ombre ni coins arrondis.',
+      en: 'One single surface: tiles take the page background and touch each other, with no shadow or rounded corners.'
     },
     'settings.credits.title': { fr: 'Crédits', en: 'Credits' },
     'settings.credits.author': { fr: 'Auteur', en: 'Author' },
