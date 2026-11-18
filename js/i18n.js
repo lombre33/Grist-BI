@@ -108,6 +108,10 @@
     'filters.range.label': { fr: 'Plage', en: 'Range' },
     'filters.min.placeholder': { fr: 'Min', en: 'Min' },
     'filters.max.placeholder': { fr: 'Max', en: 'Max' },
+    'filters.min.aria': { fr: 'Valeur minimale', en: 'Minimum value' },
+    'filters.max.aria': { fr: 'Valeur maximale', en: 'Maximum value' },
+    'filters.dateStart.aria': { fr: 'Date de début', en: 'Start date' },
+    'filters.dateEnd.aria': { fr: 'Date de fin', en: 'End date' },
     'filters.mode.label': { fr: 'Mode', en: 'Mode' },
     'filters.mode.dateRange': { fr: 'Plage de dates', en: 'Date range' },
     'filters.mode.relativeDate': { fr: 'Période relative', en: 'Relative period' },
@@ -310,6 +314,8 @@
       en: 'Preview: {columns} {columns|column|columns}, {rows} {rows|row|rows}.'
     },
     'pbixImport.csvTableName': { fr: 'Nom de la table', en: 'Table name' },
+    'pbixImport.fileAria': { fr: 'Fichier Power BI (.pbix ou .pbit)', en: 'Power BI file (.pbix or .pbit)' },
+    'pbixImport.csvFileAria': { fr: 'Fichier CSV exporté de Power BI', en: 'CSV file exported from Power BI' },
     'pbixImport.csvCreate': { fr: 'Créer la table', en: 'Create table' },
     'pbixImport.csvNameRequired': { fr: 'Choisissez un nom de table.', en: 'Choose a table name.' },
     'pbixImport.csvConfirmText': {

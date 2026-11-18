@@ -99,6 +99,7 @@ suivants lisent `GristBI.i18n.t()` comme un global déjà prêt.
 | `ROADMAP.md` | **Source unique des priorités** — voir §6. |
 | `HYPOTHESES.md` | **Journal détaillé** de ce qui est implémenté/testé et de ce qui reste à valider en conditions réelles — voir §6. |
 | `TEST_PROTOCOL.md` | Protocole de test qui grandit à chaque feature — voir §5. |
+| `AUDIT-GW.md`, `SECURITY.md`, `js/vendor/SOURCES.md` | **Audit `gwaudit`** (outil `lombre33/Grist-widget-audit`, 18/11/2026) : `AUDIT-GW.md` dit comment le rejouer, ce qui est corrigé, voulu ou resté et pourquoi ; `SECURITY.md` dit où signaler une faille ; `js/vendor/SOURCES.md` donne paquet, version et SHA-256 de chaque bibliothèque embarquée (comparés aux paquets npm). `node dev-tests/test-audit.js` garde les points mesurés (champs étiquetés, boutons nommés, un seul `<main>`, empreintes exactes). Changer une bibliothèque de `js/vendor/` = mettre `SOURCES.md` à jour. |
 | `LICENSE` | **GNU GPL v3.0** pour le code de ce dépôt (passé de MIT le 2026-09-29, identité Grist Factory — voir §8). Chaque dossier `js/vendor/*` contient sa propre licence (Apache-2.0 pour ECharts/SheetJS/Apache Arrow/FlatBuffers, MIT pour DuckDB-WASM, 0BSD pour tslib). |
 | `img/grist-factory-logo.jpg` | Avatar Grist Factory fourni par Antoine (2026-09-29), redimensionné/compressé en local (60×60, ~1,3 Ko) — jamais un asset à recréer ou deviner. Affiché dans le bandeau du haut, juste à droite du bouton Réglages (`index.html`). |
 
@@ -234,6 +235,8 @@ action supplémentaire côté déploiement.
   nécessitent un vrai navigateur) et `js/i18n.js` (complétude du dictionnaire fr/en, `t()`/
   `getLang()`/`setLang()`, substitution de variables/pluriel — l'application des attributs
   `data-i18n-*` au DOM est laissée à des tests navigateur).
+- **`node dev-tests/test-audit.js`** — garde-fous de l'audit `gwaudit` (voir `AUDIT-GW.md`) : champs de formulaire étiquetés,
+  boutons nommés, un seul `<main>`, `SECURITY.md`, empreintes de `js/vendor/SOURCES.md`.
 - **`dev-tests/harness.html`** — rendu visuel dans un navigateur avec un faux `window.grist`, sans
   document Grist réel (voir §4).
 - **Point important à savoir avant de chercher des fichiers de test** : `HYPOTHESES.md` et
