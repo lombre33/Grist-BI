@@ -2289,6 +2289,38 @@ const SAMPLE_TIME_SERIES = [
       }
     }
   }
+  // une échelle d'ENTIERS de moins de 5 chiffres (années, colonne entière) n'est jamais compactée ; au-delà, le compact reste
+  {
+    const fr = format.forTile({}, 'x', 'fr');
+    const en = format.forTile({}, 'x', 'en');
+    const n = (x) => x.replace(/[\u202f\u00a0]/g, ' ');
+    assert.ok(format.plainScale(1990, 2030) && format.plainScale(0, 3000) && format.plainScale(-2000, 2000) && format.plainScale(0, 9999), 'entiers < 10 000 : échelle en toutes lettres');
+    assert.ok(!format.plainScale(0, 10000) && !format.plainScale(0, 3266234) && !format.plainScale(-20000, 5), 'dès 5 chiffres : compact');
+    assert.ok(!format.plainScale(0, 0.0007) && !format.plainScale(0, 2500.5) && !format.plainScale(null, 5) && !format.plainScale(5, undefined) && !format.plainScale('a', 5), 'bouts non entiers ou absents : compact');
+    const years = fr.forScale(1990, 2030);
+    assert.deepStrictEqual([1990, 2000, 2010, 2020, 2030].map(years.axis), ['1990', '2000', '2010', '2020', '2030'], 'années : « 2010 », jamais « 2,01 k » ni « 2 010 »');
+    assert.strictEqual(years.format(2010), '2010');
+    assert.strictEqual(years.format(2010.4), '2010', 'valeur non entière >= 1000 : sans séparateur de milliers non plus');
+    assert.strictEqual(years.format(12.345), n(fr.format(12.345)), 'sous 1000 : le format habituel');
+    assert.deepStrictEqual([0, 1000, 2500, 3000].map(fr.forScale(0, 3000).axis), ['0', '1000', '2500', '3000'], 'colonne entière : pas de « 1 k »');
+    assert.deepStrictEqual([-2000, 0, 1000].map(en.forScale(-2000, 2000).axis), ['-2000', '0', '1000']);
+    assert.strictEqual(Object.is(fr.forScale(0, 100).axis(-0), true), false);
+    assert.strictEqual(fr.forScale(0, 100).axis(-0), '0', 'jamais « -0 »');
+    assert.deepStrictEqual([0, 1e6, 2e6].map(fr.forScale(0, 3266234).axis).map(n), ['0', '1 M', '2 M'], 'grande échelle : compact inchangé');
+    assert.strictEqual(n(fr.forScale(0, 3266234).format(3266234)), '3 266 234', 'grande échelle : format inchangé');
+    // un non-entier sur une échelle entière garde le compact exact (jamais arrondi à l'entier)
+    assert.strictEqual(fr.forScale(0, 100).axis(7.5), fr.axis(7.5));
+    assert.strictEqual(fr.forScale(0, 100).axis(null), '');
+    // les formats choisis restent les leurs : devise, pourcentage, décimales fixes, parenthèses
+    const cur = format.makeFormatter({ locale: 'fr-FR', kind: 'currency', currency: 'EUR', minFD: null, maxFD: null, notation: 'standard', useAuto: false, parens: false });
+    assert.strictEqual(n(cur.forScale(0, 5000).format(2500)), n(cur.format(2500)), 'devise : format de la colonne conservé');
+    const pct = format.makeFormatter({ locale: 'fr-FR', kind: 'percent', useAuto: true, minFD: 0, maxFD: 0, notation: 'standard', parens: false });
+    assert.strictEqual(pct.forScale(0, 1).axis(0.5), pct.axis(0.5), 'pourcentage : inchangé');
+    const fixed = format.forTile({ numberFormat: { mode: 'custom', decimals: 2, notation: 'standard' } }, 'x', 'fr');
+    assert.strictEqual(n(fixed.forScale(0, 5000).format(2500)), n(fixed.format(2500)), 'décimales choisies : respectées');
+    // BigInt de DuckDB
+    assert.strictEqual(years.axis(2010n), '2010');
+  }
   // sans graduation, la géométrie est exactement celle d'avant (aucune place réservée pour rien)
   for (const [w, h] of [[240, 150], [316, 162], [600, 400]]) {
     const a = format.gaugeLayout(w, h);
@@ -2303,15 +2335,18 @@ const SAMPLE_TIME_SERIES = [
   // câblage : la jauge n'a plus de graduations intermédiaires ni d'aiguille sur des libellés ; elle suit le redimensionnement
   const charts = require('fs').readFileSync(require('path').join(__dirname, '..', 'js', 'charts.js'), 'utf8');
   assert.ok(/F\.gaugeTicks\(g\.min, g\.max, n\)/.test(charts) && /F\.gaugeTickBudget\(base\.r\)/.test(charts) && /F\.gaugeTickPlacement\(L, it\.frac\)/.test(charts), 'graduations calculées, plafonnées par la place, placées à l\'extérieur de l\'arc');
+  assert.ok(/g\.fmt\.forScale\(g\.min, g\.max\)/.test(charts) && /scale\.format\(g\.value\)/.test(charts), 'jauge : bornes, graduations et valeur lues sur l\'échelle entière (années jamais compactées)');
+  assert.ok(/f\.forScale\(hist\.bins\[0\]\.lo, hist\.bins\[hist\.bins\.length - 1\]\.hi\)/.test(charts), 'histogramme : les bornes de classes forment une échelle');
+  assert.ok(/axisLabel: \{ interval: 'auto', width: 84, overflow: 'truncate'/.test(charts), 'histogramme : libellé de classe de largeur fixée (finalizeOption ne le tronque pas à la largeur d\'une barre : « 199… »)');
   assert.ok(/lay\.overflow/.test(charts) && /0\.72 \* base\.r/.test(charts), 'elles disparaissent plutôt que de faire trop rétrécir l\'arc ou de sortir de la tuile');
   assert.ok(/startAngle: 180,\s*endAngle: 0/.test(charts), 'jauge en demi-cercle');
   assert.ok(/axisLabel: \{ show: false \}/.test(charts) && /splitLine: \{ show: false \}/.test(charts), 'plus de graduations dans l\'arc');
   assert.ok(/inst\.__refit/.test(charts) && /instance\.__refit = draw/.test(charts), 'la jauge se redessine à chaque redimensionnement (resizeAll)');
   assert.ok(/container-type: inline-size/.test(require('fs').readFileSync(require('path').join(__dirname, '..', 'css', 'style.css'), 'utf8')), 'carte KPI : conteneur de requête (valeur ajustée à la largeur)');
-  console.log('OK js/format.js — jauge : niceCeil, gaugeLayout (7 tailles de tuile), graduations extérieures (gaugeTicks, placement, 4 plages), fitFont, câblage');
+  console.log('OK js/format.js — jauge : niceCeil, gaugeLayout (7 tailles de tuile), graduations extérieures (gaugeTicks, placement, 4 plages), échelles entières jamais compactées (plainScale, forScale), fitFont, câblage');
 }
 
-// js/format.js : radar avec légende (bug réel n°49, 18/11/2026) — la légende « Élève / Moyenne du groupe » recouvrait le nom de l'axe du haut
+// js/format.js : radar avec légende (bug réel n°50, 18/11/2026) — la légende « Élève / Moyenne du groupe » recouvrait le nom de l'axe du haut
 {
   const fs = require('fs');
   const path = require('path');
@@ -4468,6 +4503,65 @@ const SAMPLE_TIME_SERIES = [
     const cssH = fsH.readFileSync(pathH.join(rootH, 'css', 'style.css'), 'utf8');
     assert.ok(/\.pivot-heat \.pivot-cell\.pivot-active/.test(cssH), 'une cellule colorée sélectionnée reste repérable (contour, pas un fond écrasé par la couleur)');
     console.log('OK carte de chaleur et tableau croisé coloré — rampes, contraste du texte (min ' + worst.toFixed(1) + ':1), grille, clic de case, export, défauts, conseil et i18n');
+  }
+
+  // Ligne de repère (`tile.refLine` / `tile.refValue`) : moyenne des valeurs affichées ou objectif saisi, sur barres et courbe.
+  {
+    const fsR = require('fs');
+    const pathR = require('path');
+    const rootR = pathR.join(__dirname, '..');
+    assert.deepStrictEqual(data.REF_LINE_KINDS, ['average', 'value']);
+    // Types : barres (hors mode mesure temporelle) et courbe seulement.
+    for (const tile of [{ type: 'bar' }, { type: 'bar', measureMode: 'brut' }, { type: 'bar', measureMode: undefined }, { type: 'line' }, { type: 'line', areaFill: true }]) assert.strictEqual(data.supportsRefLine(tile), true, JSON.stringify(tile));
+    for (const tile of [{ type: 'bar', measureMode: 'ytd' }, { type: 'bar', measureMode: 'cumulative' }, { type: 'pie' }, { type: 'kpi' }, { type: 'combo' }, { type: 'histogram' }, { type: 'heatmap' }, { type: 'pivot' }, { type: 'radar' }, null, undefined]) assert.strictEqual(data.supportsRefLine(tile), false, JSON.stringify(tile));
+    // Genre tracé : une clé inconnue, un objectif sans nombre valide, un type qui n'en porte pas -> aucune ligne.
+    assert.strictEqual(data.refLineKind({ type: 'bar', refLine: 'average' }), 'average');
+    assert.strictEqual(data.refLineKind({ type: 'line', refLine: 'average', refValue: 'abc' }), 'average', 'la moyenne ignore refValue');
+    assert.strictEqual(data.refLineKind({ type: 'bar', refLine: 'value', refValue: 100 }), 'value');
+    assert.strictEqual(data.refLineKind({ type: 'bar', refLine: 'value', refValue: 0 }), 'value', 'zéro est un objectif valide');
+    assert.strictEqual(data.refLineKind({ type: 'bar', refLine: 'value', refValue: '12,5' }), '', 'texte non numérique');
+    assert.strictEqual(data.refLineKind({ type: 'bar', refLine: 'value', refValue: '12.5' }), 'value', 'chaîne numérique');
+    for (const refValue of [undefined, null, '', 'abc', NaN, Infinity, true, false]) assert.strictEqual(data.refLineKind({ type: 'bar', refLine: 'value', refValue }), '', String(refValue));
+    for (const refLine of [undefined, '', 'median', 'constructor', '__proto__', 1]) assert.strictEqual(data.refLineKind({ type: 'bar', refLine, refValue: 5 }), '', String(refLine));
+    assert.strictEqual(data.refLineKind({ type: 'pie', refLine: 'average' }), '');
+    assert.strictEqual(data.refLineKind({ type: 'bar', measureMode: 'ytd', refLine: 'average' }), '');
+    // Valeur : l'objectif saisi, ou la moyenne des valeurs affichées (vides ignorés, jamais comptés comme 0).
+    const bar = { type: 'bar', refLine: 'average' };
+    assert.strictEqual(data.refLineValue(bar, [10, null, 20, '', 30]), 20);
+    assert.strictEqual(data.refLineValue(bar, [10, 20, 30, 0]), 15, 'un vrai zéro compte');
+    assert.strictEqual(data.refLineValue(bar, [-10, 10, 30]), 10);
+    assert.strictEqual(data.refLineValue(bar, [4n, 6n]), 5, 'BigInt de DuckDB');
+    assert.strictEqual(data.refLineValue(bar, ['4', 6]), 5, 'chaîne numérique');
+    assert.strictEqual(data.refLineValue(bar, [true, 'x', null]), null, 'aucune valeur numérique : pas de ligne');
+    assert.strictEqual(data.refLineValue(bar, []), null); assert.strictEqual(data.refLineValue(bar, undefined), null);
+    assert.strictEqual(data.refLineValue({ type: 'bar', refLine: 'value', refValue: 7.5 }, []), 7.5, 'objectif : indépendant des valeurs');
+    assert.strictEqual(data.refLineValue({ type: 'bar', refLine: 'value', refValue: -3 }, [1, 2]), -3);
+    assert.strictEqual(data.refLineValue({ type: 'bar' }, [1, 2]), null); assert.strictEqual(data.refLineValue({ type: 'pie', refLine: 'average' }, [1, 2]), null);
+    // Moyenne sans bruit de flottant visible : l'affichage passe par js/format.js (« 0,2 »), pas par la valeur brute.
+    assert.ok(Math.abs(data.refLineValue(bar, [0.1, 0.2, 0.3]) - 0.2) < 1e-12);
+    // Le store garde et efface les deux champs ; l'export Excel n'en dépend pas.
+    {
+      const st = state.createStore();
+      st.setRows([{ R: 'A', M: 1 }, { R: 'B', M: 3 }]);
+      st.addTile({ id: 'r1', type: 'bar', dimension: 'R', measure: 'M', aggFn: 'sum', title: 'T', refLine: 'value', refValue: 2 });
+      assert.deepStrictEqual([st.getState().tiles[0].refLine, st.getState().tiles[0].refValue], ['value', 2]);
+      const rState = { rows: [{ R: 'A', M: 1 }, { R: 'B', M: 3 }], activeFilters: [], advancedFilters: [], drillIns: {}, comments: [], pages: [] };
+      const withRef = data.tileExportSheet(st.getState().tiles[0], rState);
+      st.updateTile('r1', { refLine: undefined, refValue: undefined });
+      assert.strictEqual(st.getState().tiles[0].refLine, undefined);
+      assert.deepStrictEqual(data.tileExportSheet(st.getState().tiles[0], rState), withRef, 'la ligne de repère n\'est pas exportée : même feuille');
+    }
+    ['tileForm.refLine.label', 'tileForm.refLine.none', 'tileForm.refLine.average', 'tileForm.refLine.value', 'tileForm.refValue.label', 'tileForm.error.refValueRequired', 'chart.refLine.average', 'chart.refLine.value']
+      .forEach((k) => assert.ok(i18n.STRINGS[k] && i18n.STRINGS[k].fr && i18n.STRINGS[k].en, 'traduction fr/en : ' + k));
+    // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
+    const mainR = fsR.readFileSync(pathR.join(rootR, 'js', 'main.js'), 'utf8');
+    const chartsR = fsR.readFileSync(pathR.join(rootR, 'js', 'charts.js'), 'utf8');
+    const indexR = fsR.readFileSync(pathR.join(rootR, 'index.html'), 'utf8');
+    assert.ok(/id="tile-refline"/.test(indexR) && /id="tile-refvalue"/.test(indexR) && /<label for="tile-refvalue"/.test(indexR), 'champs étiquetés');
+    assert.ok(/supportsRefLine\(\{ type, measureMode/.test(mainR) && /tileData\.refLine = refKind \|\| undefined/.test(mainR));
+    assert.ok(/markLine/.test(chartsR) && /function addRefLine/.test(chartsR) && /refLineValue\(tile, groups\.map/.test(chartsR), 'la moyenne se calcule sur les valeurs AFFICHÉES (groupes triés/drillés)');
+    assert.ok(!/Intl\.NumberFormat|toFixed/.test(chartsR), 'aucun format de nombre en dur dans charts.js');
+    console.log('OK ligne de repère — types, genre tracé, objectif invalide, moyenne (vides, BigInt), store, export inchangé, i18n, câblage');
   }
 
   // Export Excel avec ExcelJS 4.4.0 (consigne GFS 017, 18/11/2026) : le VRAI paquet vendorisé, exécuté sous Node

@@ -75,6 +75,18 @@
     return f;
   }
 
+  // Une échelle de valeurs (jauge, classes d'un histogramme) dont les deux bouts sont des ENTIERS de moins de 5 chiffres
+  // s'écrit en toutes lettres : « 1990, 2000, 2010 » (des années), « 0, 1000, 2000, 3000 » (une colonne entière sans
+  // format), pas « 1,99 k, 2 k, 2,01 k ». En dessous de 10 000, le compact ne gagne que deux caractères et fait perdre
+  // la lecture exacte ; au-delà (« 3,3 M ») il est indispensable. La décision porte sur L'ÉCHELLE ENTIÈRE, jamais sur une
+  // valeur isolée : sur un même axe, « 1000 » à côté de « 1,5 k » se lirait comme deux unités différentes.
+  const PLAIN_SCALE_BELOW = 10000;
+  function plainScale(lo, hi) {
+    const a = toNumber(lo);
+    const b = toNumber(hi);
+    return a != null && b != null && Number.isInteger(a) && Number.isInteger(b) && Math.max(Math.abs(a), Math.abs(b)) < PLAIN_SCALE_BELOW;
+  }
+
   // Règle d'Automatique, par magnitude de la valeur (voir l'en-tête).
   function autoOptions(n) {
     const a = Math.abs(n);
@@ -241,7 +253,26 @@
       return intl(st.locale, { style: 'percent', maximumFractionDigits: 1 }).format(cleanFloat(n) / 100);
     }
 
-    return { format, axis, percent, style: st };
+    // Libellés d'une ÉCHELLE connue de `lo` à `hi` (graduations d'une jauge, bornes de classes d'un histogramme) :
+    // ceux de `axis`/`format`, sauf pour une échelle entière de moins de 5 chiffres (voir `plainScale`) dont les
+    // entiers s'écrivent en toutes lettres, sans compact ni séparateur de milliers (une année n'est jamais « 2 010 »).
+    // Un pourcentage, une devise ou des décimales choisies gardent leur format ; un non-entier garde `axis`.
+    function forScale(lo, hi) {
+      if (st.kind === 'percent' || !plainScale(lo, hi)) return { axis, format };
+      const whole = (n) => intl(st.locale, { useGrouping: false, maximumFractionDigits: 0 }).format(n === 0 ? 0 : n);
+      // `format` : Automatique seulement (des décimales choisies, une devise, des parenthèses restent telles quelles).
+      const plainFormat = st.kind === 'decimal' && st.notation === 'standard' && st.useAuto && !st.parens;
+      return {
+        axis: (v) => { const n = toNumber(v); return n != null && Number.isInteger(n) ? whole(n) : axis(v); },
+        format: (v) => {
+          const n = toNumber(v);
+          if (!plainFormat || n == null || Math.abs(n) < 1000) return format(v);
+          return intl(st.locale, Object.assign({ useGrouping: false }, autoOptions(n))).format(cleanFloat(n));
+        }
+      };
+    }
+
+    return { format, axis, percent, forScale, style: st };
   }
 
   // --- Registre des colonnes de la table de travail ----------------------------------------------
@@ -471,7 +502,7 @@
   }
 
   return {
-    niceCeil, gaugeLayout, gaugeTicks, gaugeTickBudget, gaugeTickPlacement, radarLayout, fitFont, cellNumber,
+    niceCeil, plainScale, gaugeLayout, gaugeTicks, gaugeTickBudget, gaugeTickPlacement, radarLayout, fitFont, cellNumber,
     MODES, MAX_CUSTOM_DECIMALS, localeForLang, normalizeSpec, parseWidgetOptions, parseDocSettings,
     styleFromColumn, resolveStyle, makeFormatter, forTile, setColumnInfo, getColumnInfo, getDocSettings, columnModeState
   };

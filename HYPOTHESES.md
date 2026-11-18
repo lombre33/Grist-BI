@@ -3333,7 +3333,7 @@ Dernier lot de l'audit : tout ce qui, hors des nombres eux-mêmes, rendait une t
 
 ### Correctifs avant l'alpha — légende du radar (18/11/2026)
 
-- **Défaut** (bug réel n°49, TEST_PROTOCOL.md) : un radar à deux séries (élève et moyenne du groupe) a une légende ; dans une tuile normale (zone de dessin 283 x 162 px) elle recouvrait
+- **Défaut** (bug réel n°50, TEST_PROTOCOL.md) : un radar à deux séries (élève et moyenne du groupe) a une légende ; dans une tuile normale (zone de dessin 283 x 162 px) elle recouvrait
   le nom de l'axe du haut et le polygone était minuscule. Vu en préparant les captures de l'annonce forum (qui utilisaient la tuile agrandie pour l'éviter).
 - **Décision** : même méthode que la jauge, une géométrie pure en pixels (`GristBI.format.radarLayout`) plutôt qu'un réglage en pourcentages qu'ECharts ne sait pas tenir : la légende
   prend une bande de 24 px en haut, le polygone se centre dans le reste, son rayon laisse 8 px + 16 px pour le nom de l'axe du haut (sous la légende) et celui du bas. Le polygone d'une
@@ -3350,7 +3350,21 @@ Point de départ : sur la capture « après » du lot 2 de l'audit de lisibilit�
 
 **Fait** : un trait de 4 à 8 px puis un libellé, SOUS FORME DE `graphic` ECharts, hors de l'arc (jamais dedans : c'est là qu'elles se chevauchaient entre elles et avec l'aiguille). Les valeurs sont des multiples d'un pas rond (1, 2, 2,5, 5 x 10^k : « 1 M, 2 M, 3 M » plutôt que « 825,5 k, 1,65 M »), jamais à moins de 8 % d'une extrémité (`GristBI.format.gaugeTicks`), libellées par `fmt.axis` comme les bornes (donc au format de la tuile, 3 chiffres significatifs, thème clair/sombre, fr/en). Leur place est réservée AVANT de dimensionner l'arc (`gaugeLayout(w, h, ticks)` : plus grand rayon pour lequel le libellé le plus haut et le plus déporté restent dans la zone, par dichotomie) : l'arc rétrécit d'environ 20 % (rayon 113 -> 87 px dans une tuile de 250 px) ; `gaugeTickBudget(r)` fixe le nombre maximal (0 sous 46 px, 5 au plus), et `gaugeOption` en retire (moins, puis aucune) plutôt que de faire descendre l'arc sous 72 % de sa taille sans graduations ou de laisser un libellé sortir de la tuile (`overflow`). `gaugeTickPlacement` (pure) donne le trait, l'ancre et l'alignement de chaque repère : charts.js et les tests partagent donc la même géométrie.
 
-**Vérifié** : Node (valeurs rondes sur 10 plages x 5 plafonds, jamais plus que demandé, jamais -0 ni bruit de flottant, 7 tailles de tuile x 4 plages x 3 plafonds : libellés dans la zone, au-dessus de la ligne de base, hors de l'arc, sans recouvrement entre voisins, l'arc ne grandit jamais ; sans graduation la géométrie est exactement celle d'avant) ; rendu réel dans `index.html`/harnais : six jauges (somme, négative, 0-100, sans borne, valeurs minuscules, années) en clair, en sombre + anglais, à 340 px, agrandie. **Non vérifié** : rendu dans un vrai Grist/GFS. **Limite connue** : une jauge dont les bornes sont des années (1990-2030) affiche « 2 k, 2,01 k, 2,02 k » parce que `axis` est compact dès 1 000 — même défaut que pour n'importe quel axe de valeurs ; pas traité ici (rare, et le format de la tuile « Personnalisé : standard » donne « 2 010 »).
+**Vérifié** : Node (valeurs rondes sur 10 plages x 5 plafonds, jamais plus que demandé, jamais -0 ni bruit de flottant, 7 tailles de tuile x 4 plages x 3 plafonds : libellés dans la zone, au-dessus de la ligne de base, hors de l'arc, sans recouvrement entre voisins, l'arc ne grandit jamais ; sans graduation la géométrie est exactement celle d'avant) ; rendu réel dans `index.html`/harnais : six jauges (somme, négative, 0-100, sans borne, valeurs minuscules, années) en clair, en sombre + anglais, à 340 px, agrandie. **Non vérifié** : rendu dans un vrai Grist/GFS. **Limite connue** (traitée ensuite, voir « Échelles d'entiers jamais compactées ») : une jauge dont les bornes sont des années (1990-2030) affichait « 2 k, 2,01 k, 2,02 k » parce que `axis` est compact dès 1 000.
+
+### Échelles d'entiers jamais compactées : années, colonnes entières (18/11/2026)
+
+Point de départ : la limite notée à la fin du lot « graduations de la jauge » (bornes 1990-2030 -> « 2 k, 2,01 k »), reprise sur consigne du coordinateur : « une valeur qui ressemble à une année, ou une colonne entière sans format, ne doit pas être compactée ».
+
+**Cause** : `axis` est toujours compact (3 chiffres significatifs, `k`/`M` dès 1 000) — voulu pour les axes de valeurs d'ECharts, qui partent de 0 (vérifié : `scale: true` n'est utilisé nulle part, une échelle de 1990 à 2030 n'existe donc pas sur un axe ECharts) mais faux pour une échelle dont les bornes sont des années ou de petits entiers.
+
+**Règle** (`GristBI.format.plainScale(lo, hi)`, pure) : une ÉCHELLE dont les deux bouts sont des entiers de moins de 5 chiffres (|valeur| < 10 000) s'écrit en toutes lettres : « 1990, 2000, 2010 », « 0, 1000, 2000, 3000 ». Le compact ne gagne que deux caractères sous 10 000 et fait perdre la lecture exacte ; au-delà (« 3,3 M ») il reste. **La décision porte sur l'échelle entière, jamais sur une valeur isolée** : sur un même axe « 1000 » à côté de « 1,5 k » se lirait comme deux unités. Pas de test « ressemble à une année » : la règle des 5 chiffres couvre les années (1000-9999) ET les colonnes entières sans format, sans seuil arbitraire. `f.forScale(lo, hi)` rend `{ axis, format }` : entiers sans compact ni séparateur de milliers (une année n'est jamais « 2 010 »), un non-entier garde `axis` (jamais arrondi à l'entier) ; `format` ne change que pour l'Automatique (devise, pourcentage, décimales choisies, parenthèses : inchangés).
+
+**Branché** : jauge (bornes, graduations ET valeur lues sur la même échelle) et histogramme (les bornes de classes forment une échelle : « 1995 – 2000 » et plus « 2 k… »).
+
+**Corrigé au passage** : les libellés de classes d'un histogramme (« 1998 – 2003 », deux nombres) étaient tronqués par `finalizeOption` à la largeur d'une barre (« 199… »), quel que soit le format ; ils ont maintenant une largeur fixée à 84 px, ECharts omet ceux qui se touchent.
+
+**Non traité, volontairement** : une valeur isolée (carte KPI, infobulle) qui ressemble à une année reste « 2 010 » en Automatique — impossible de distinguer une année d'un compte à partir d'un seul nombre ; le réglage « Format des nombres » de la tuile (Comme dans la colonne, ou Personnalisé sans séparateur) existe pour ce cas. **Non vérifié** : rendu dans un vrai Grist/GFS.
 
 ### Tuiles usuelles des outils BI — lot 2, carte de chaleur et tableau croisé coloré (18/11/2026)
 
@@ -3374,6 +3388,21 @@ Point de départ : sur la capture « après » du lot 2 de l'audit de lisibilit�
   défauts, conseil, i18n, câblage) ; Playwright contre le vrai `index.html` + `grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">` (formulaire, pixel de chaque case lu
   dans le graphique = couleur calculée à 0 près, clic de case, 2e clic sur la même ligne, 3e clic qui retire, tableau croisé coloré, contour de la cellule active, retour au rendu
   d'avant, édition, thème sombre, 6 000 lignes servies avec CORS). **Pas testé dans un vrai Grist ni un vrai GFS.**
+
+### Tuiles usuelles des outils BI — lot 2, ligne de repère (18/11/2026)
+
+- **Option « Ligne de repère »** (`tile.refLine`, PR 7a du plan, §4.7) sur les **barres** (hors mode mesure temporelle) et la **courbe/aire** : un trait pointillé à une valeur, avec son libellé
+  (« Moyenne 12,4 k » ou « Objectif 100 k », au format de la mesure). Deux genres : `average` = moyenne des valeurs AFFICHÉES (une par catégorie, après tri, drill-down et filtres croisés :
+  elle bouge quand on filtre ailleurs) ; `value` = un objectif saisi (`tile.refValue`, zéro et négatifs admis ; sans nombre valide, le formulaire refuse et une configuration relue sans
+  valeur ne trace rien).
+- **Séries multiples et pile** : le repère se calcule sur la valeur agrégée par catégorie (le total pour une somme), pas par série — sur une pile, c'est la hauteur de la pile qui se compare
+  à l'objectif. Pour une moyenne (`aggFn: 'avg'`) c'est donc la moyenne des moyennes de catégorie : à décider si on veut mieux.
+- **Pas fait, à décider** : une ligne par série, une 2e ligne (objectif ET moyenne), repère sur le combo, l'histogramme ou la tuile Barres en mode mesure, une zone d'objectif (bande), un repère
+  tiré d'une colonne (la Progression et la carte KPI ont déjà `targetColumn`), la médiane ; le repère n'est pas exporté dans Excel (le fichier garde les valeurs seules).
+- **Testé** : Node (bloc « ligne de repère » : types, genre tracé, objectif invalide, moyenne avec vides/`BigInt`/chaînes, store, export inchangé, i18n, câblage) ; Playwright contre le vrai
+  `index.html` + `grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">` (formulaire : champ de valeur seulement pour « Valeur fixe », erreur sous le champ, relecture à l'édition ;
+  objectif hors de la plage des données = axe élargi et ligne dans le cadre ; barres horizontales, courbe, pile, repère négatif, objectif invalide, camembert sans ligne ; moyenne qui suit un filtre croisé).
+  **Pas testé dans un vrai Grist ni un vrai GFS.**
 
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
