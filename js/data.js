@@ -1885,6 +1885,14 @@
   // `computeMeasureSeries` (même contrat que pour measureExportSheet) n'est appelé QUE pour les
   // tuiles qui en ont réellement besoin — toutes les autres tuiles restent calculées de façon pure
   // et synchrone via tileExportSheet, aucun changement de comportement pour elles.
+  // Données d'UNE tuile pour l'export : la même composition que l'écran, y compris le mode de calcul temporel
+  // (calcul injecté, voir plus haut). Partagée par buildWorkbookSheetsAsync (une feuille par tuile) et
+  // buildExportPagesAsync (une feuille par page).
+  function exportSheetFor(tile, state, computeMeasureSeries) {
+    const isTemporalMeasure = tile.type === 'bar' && tile.measureMode && tile.measureMode !== 'brut';
+    return isTemporalMeasure ? measureExportSheet(tile, state, computeMeasureSeries) : tileExportSheet(tile, state);
+  }
+
   async function buildWorkbookSheetsAsync(state, computeMeasureSeries) {
     const usedNames = new Set();
     const sheets = [];
@@ -1892,15 +1900,35 @@
     for (const page of state.pages) {
       for (const tile of page.tiles) {
         if (tile.type === 'text') continue; // idem buildWorkbookSheets
-        const isTemporalMeasure = tile.type === 'bar' && tile.measureMode && tile.measureMode !== 'brut';
-        const sheet = isTemporalMeasure
-          ? await measureExportSheet(tile, state, computeMeasureSeries)
-          : tileExportSheet(tile, state);
+        const sheet = await exportSheetFor(tile, state, computeMeasureSeries);
         const label = multiPage ? `${page.name} - ${sheet.name}` : sheet.name;
         sheets.push({ name: sanitizeSheetName(label, usedNames), header: sheet.header, rows: sheet.rows });
       }
     }
     return sheets;
+  }
+
+  // Le classeur de l'export Excel (js/export.js) : UNE FEUILLE PAR PAGE du tableau de bord, dans l'ordre des pages,
+  // et dans chaque page UN BLOC PAR TUILE dans l'ordre enregistré — le graphique en image (que js/export.js ajoute
+  // pour les blocs `kind === 'image'`) puis les données qui le dessinent. Remplace les « 33 feuilles de chiffres
+  // bruts, aucun graphique » du premier export (retour d'Antoine, 18/11/2026). Une note (tuile Texte) est un bloc
+  // `kind === 'text'` (le texte lui-même) : elle fait partie de la page, comme à l'écran. Une page sans tuile n'a
+  // pas de feuille. `name` = nom de feuille Excel (31 signes, jamais deux pareils sans tenir compte de la casse) ;
+  // `title` = nom de la page tel qu'on le lit. `tile` est la tuile elle-même : js/export.js en a besoin pour la dessiner
+  // (titre affiché, graphique), pas pour les données, déjà dans `header`/`rows` (`truncated` = lignes laissées de côté).
+  async function buildExportPagesAsync(state, computeMeasureSeries) {
+    const usedNames = new Set();
+    const pages = [];
+    for (const page of state.pages) {
+      if (!page.tiles.length) continue;
+      const blocks = [];
+      for (const tile of page.tiles) {
+        const sheet = await exportSheetFor(tile, state, computeMeasureSeries);
+        blocks.push({ tileId: tile.id, tile, kind: tileExportKind(tile), name: sheet.name, header: sheet.header, rows: sheet.rows, truncated: sheet.truncated || 0 });
+      }
+      pages.push({ id: page.id, title: page.name, name: sanitizeSheetName(page.name, usedNames), blocks });
+    }
+    return pages;
   }
 
   // Data blending multi-tables (ROADMAP.md Tier 2) : LEFT JOIN en JS pur entre `primaryRows` (table
@@ -2011,7 +2039,7 @@
     tileDrillLevels, currentDimension, rowsForTile, tileExportSheet, tileExportKind, renderTextHtml, plainTextOf, TEXT_TILE_MAX,
     DEFAULT_GOOD_PCT, DEFAULT_WARN_PCT, targetProgress, progressRows, sparklineValues, sparklineGeometry,
     TABLE_TILE_MAX_ROWS, TABLE_EXPORT_MAX_ROWS, tableColumnsOf, cellText, compareCells, sortRowsBy, moveInOrder, nextSortDir, tableSheet,
-    sanitizeSheetName, buildWorkbookSheets, measureExportSheet, buildWorkbookSheetsAsync,
+    sanitizeSheetName, buildWorkbookSheets, measureExportSheet, buildWorkbookSheetsAsync, buildExportPagesAsync,
     blendRows, deriveDateHierarchyColumns, commentsForTile, isAccessRuleRefusal, AGGREGATORS
   };
 });
