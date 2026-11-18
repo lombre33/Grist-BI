@@ -3343,6 +3343,7 @@ Dernier lot de l'audit : tout ce qui, hors des nombres eux-mêmes, rendait une t
   clignotement entre deux paliers).
 - **Mesuré** (démo v3, vue « Focus En ligne » suivie) : onglets entiers à 1000, 1100, 1200 et 1400 px, en Lecture comme en Édition, en français comme en anglais, y compris en redimensionnant
   la fenêtre en direct ; le nom de la vue revient à 1400 px. Cas qui reste rogné, mais signalé par le fondu : 4 pages en mode Édition à 1200 px (231 px de place pour 431).
+- **Correction du lendemain même** (bug réel n°52) : la première version ramenait l'onglet actif dans la vue par `scrollIntoView`, appelé à chaque redimensionnement ; il fait aussi défiler la page, et la barre étant collante, une capture pleine page laissait la page 232 px plus bas. `revealActiveTab` fait défiler la liste d'onglets seule (`scrollLeft`).
 - **Pas fait, à décider** : un menu « … » pour les pages en trop (comme les onglets d'un navigateur) ; réduire la pastille de la table connectée (223 px à 1200 px) avant les libellés.
 - **Testé** : Node (paliers, 2 x 41 besoins de largeur, ordre dans `render()`) ; Playwright contre le vrai `index.html` + `grist-stub.js`. **Pas testé dans un vrai Grist** (la largeur réelle du
   panneau d'un widget Grist n'est pas celle d'une fenêtre : le redimensionnement passe par l'événement `resize` de l'iframe, supposé).

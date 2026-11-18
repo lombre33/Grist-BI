@@ -1220,9 +1220,18 @@
       }, !viewsActiveNameEl.hidden);
     }
     updateTabsOverflow();
-    // L'onglet actif doit rester visible dans une liste qui défile (la largeur disponible vient peut-être de changer).
-    const activeTab = pageTabsEl.querySelector('.page-tab.active');
-    if (activeTab && typeof activeTab.scrollIntoView === 'function') activeTab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    revealActiveTab();
+  }
+  // L'onglet actif doit rester visible dans une liste qui défile (la largeur disponible vient peut-être de changer). On fait défiler la LISTE
+  // des onglets seulement, jamais `scrollIntoView` : il fait aussi défiler la page, et la barre étant collante (`sticky`), un redimensionnement
+  // de la fenêtre emportait la page plus bas (bug réel n°52, vu en prenant des captures pleine page).
+  function revealActiveTab() {
+    const tab = pageTabsEl.querySelector('.page-tab-group.active');
+    if (!tab) return;
+    const box = pageTabsEl.getBoundingClientRect();
+    const at = tab.getBoundingClientRect();
+    if (at.left < box.left) pageTabsEl.scrollLeft -= box.left - at.left;
+    else if (at.right > box.right) pageTabsEl.scrollLeft += at.right - box.right;
   }
   window.addEventListener('resize', fitPageTabs);
   // Différé d'une image : modifier la barre dans le rappel d'un ResizeObserver qui l'observe ferait « loop completed with undelivered notifications ».
