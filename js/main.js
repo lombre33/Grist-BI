@@ -159,6 +159,9 @@
 
   const tilesContainer = document.getElementById('tiles');
   const emptyState = document.getElementById('empty-state');
+  const emptyStateHintEl = document.getElementById('empty-state-hint');
+  const emptyStateStatusEl = document.getElementById('empty-state-status');
+  const retryConnectBtn = document.getElementById('retry-connect');
   const addTileForm = document.getElementById('add-tile-form');
   const tileTypeSelect = document.getElementById('tile-type');
   const dimensionField = document.getElementById('tile-dimension-field');
@@ -502,7 +505,31 @@
   // Titres de tuile auto-composés (ex. "YTD : sum(Montant)") : du CONTENU généré à partir de noms
   // de colonnes, pas de la chrome — même périmètre volontairement laissé de côté que les titres
   // par défaut de js/demo-data.js et les en-têtes d'export Excel de js/data.js (voir js/i18n.js).
-  const MEASURE_MODE_TITLES = { cumulative: 'Cumul', ytd: 'YTD', yoy: 'Comparaison N-1' };
+  // Clés de titre par mode de mesure (voir `tileTitleFor` plus bas) : un titre auto-composé est
+  // stocké avec sa clé i18n (`titleKey`/`titleVars`) pour suivre la langue de l'interface.
+  const MEASURE_MODE_TITLE_KEYS = { cumulative: 'tileTitle.cumulative', ytd: 'tileTitle.ytd', yoy: 'tileTitle.yoy' };
+
+  // Messages à l'utilisateur : fenêtres du kit (js/dialogs.js) plutôt que `window.alert`, qui ne fait
+  // RIEN dans le cadre isolé de GFS (pas de `allow-modals`). Jamais attendues : un message ne doit
+  // pas retenir le code qui suit, contrairement à la boîte native.
+  function showNotice(message) { GristBI.dialogs.notice({ message }); }
+  function showError(message) { GristBI.dialogs.notice({ title: t('dialog.error.title'), message }); }
+
+  // Titre d'une tuile composé automatiquement à la création/modification. `titleKey: undefined`
+  // pour le seul cas sans texte traduisible (« sum(Montant) », indépendant de la langue) ; les
+  // `undefined` sont gardés explicites parce que `store.updateTile` (Object.assign) n'efface une
+  // clé que si elle est présente dans le patch.
+  function autoTileTitle(p) {
+    let key;
+    let vars;
+    if (p.isPivot) { key = 'tileTitle.pivot'; vars = { measure: p.measure, dimension: p.dimension, columnDimension: p.columnDimension }; }
+    else if (p.isRadarColumns) { key = 'tileTitle.radarColumns'; vars = { axes: p.radarAxes.join(', ') }; }
+    else if (p.isWordCloudSplit) { key = 'tileTitle.wordCloud'; vars = { dimension: p.dimension }; }
+    else if (p.hasDimension) { key = 'tileTitle.measureByDimension'; vars = { measure: p.measure, dimension: p.dimension }; }
+    else if (p.measureMode) { key = MEASURE_MODE_TITLE_KEYS[p.measureMode]; vars = { agg: p.aggFn, measure: p.measure }; }
+    if (!key) return { title: `${p.aggFn}(${p.measure})`, titleKey: undefined, titleVars: undefined };
+    return { title: t(key, vars), titleKey: key, titleVars: vars };
+  }
 
   // Idem pour une tuile "Barres" avec un mode de calcul temporel actif ('cumulative'/'ytd'/'yoy',
   // voir ROADMAP.md "Mesures façon DAX simplifié") : l'axe est TOUJOURS le mois calculé depuis
@@ -697,6 +724,38 @@
     }
   }
 
+  // État de la connexion aux données, distinct de « une table est connectée » : tant que le
+  // démarrage n'a rien tranché, l'écran dit « Connexion… » — jamais « Aucune table dans ce
+  // document » avant que la liste des tables ait été lue (audit UI/UX du 18/11/2026 : ce message
+  // trompeur s'affichait pendant tout le chargement). 'connecting' | 'noTables' | 'failed' ; sans
+  // objet dès qu'une table est connectée (`currentTableId`).
+  let connectionState = 'connecting';
+  function connectionMessage() {
+    if (connectionState === 'noTables') return t('status.noTables');
+    if (connectionState === 'failed') return t('status.connectionFailed');
+    return t('status.connecting');
+  }
+  // `currentTableId` reste `null` tant qu'aucune table n'a pu être rejointe : un rendu déclenché
+  // dans cet état (ex. un changement de langue) ne doit jamais écraser le message de connexion par
+  // « 0 ligne », qui donnerait à tort l'impression qu'une table vide est connectée. Le même message
+  // remplace aussi le conseil habituel de l'état vide (« Ajoutez-une tuile… », trompeur ici puisque
+  // le formulaire est désactivé, voir setTableDependentControlsEnabled), bien plus visible que le
+  // seul badge du bandeau ; un échec y propose « Réessayer ». Le conseil est MASQUÉ plutôt que
+  // remplacé (le `textContent` de l'ancien code détruisait son <span> à jamais : une fois une
+  // première table connectée, le conseil ne revenait plus).
+  function renderConnectionStatus(state) {
+    const connected = Boolean(currentTableId);
+    rowCountEl.textContent = connected ? t('status.rowCount', { n: state.rows.length }) : connectionMessage();
+    emptyStateHintEl.hidden = !connected;
+    emptyStateStatusEl.hidden = connected;
+    emptyStateStatusEl.textContent = connected ? '' : connectionMessage();
+    retryConnectBtn.hidden = connected || connectionState !== 'failed';
+  }
+  function setConnectionState(next) {
+    connectionState = next;
+    renderConnectionStatus(store.getState());
+  }
+
   function render(state) {
     // Balaie tout le document pour les attributs data-i18n-* (voir js/i18n.js) à CHAQUE rendu, pas
     // seulement au changement de langue : les boutons d'en-tête de tuile (buildTileElement) sont mis
@@ -733,6 +792,14 @@
       previousEl = el;
       // Recalculé à chaque rendu (pas seulement à la création) : la position d'une tuile change
       // quand une autre est ajoutée/supprimée/déplacée autour d'elle.
+      // Titre rafraîchi à chaque rendu : suit un changement de langue (titre auto-composé, voir
+      // i18n.js:tileTitle) comme une modification de la tuile (l'élément est mis en cache).
+      const titleEl = el.querySelector('.tile-title');
+      if (titleEl) {
+        const titleText = GristBI.i18n.tileTitle(tile);
+        if (titleEl.textContent !== titleText) titleEl.textContent = titleText;
+        titleEl.title = titleText;
+      }
       const moveLeftBtn = el.querySelector('.tile-move-left');
       const moveRightBtn = el.querySelector('.tile-move-right');
       if (moveLeftBtn) moveLeftBtn.disabled = index === 0;
@@ -749,11 +816,6 @@
     });
 
     emptyState.hidden = state.tiles.length > 0;
-    // Tant qu'aucune table n'est connectée, remplace le conseil habituel ("Ajoutez-en une
-    // ci-dessus") — trompeur ici, puisque le formulaire au-dessus est désactivé (voir
-    // setTableDependentControlsEnabled ci-dessous) — par le même message que le bandeau du haut,
-    // repris bien plus visiblement au centre de la page plutôt que dans le seul badge discret.
-    if (!currentTableId) emptyState.textContent = t('status.noTables');
     // Temps de rendu affiché dans le bandeau : utile pour repérer à l'œil un ralentissement sur une
     // table de travail à fort volume, sans devoir ouvrir les DevTools à chaque fois.
     const renderStart = performance.now();
@@ -773,11 +835,7 @@
     // (voir renderBookmarks ci-dessous), pas par ce bascule générique.
     setTableDependentControlsEnabled(Boolean(currentTableId));
     renderBookmarks(state.bookmarks);
-    // `currentTableId` reste `null` tant qu'aucune table n'a pu être rejointe (document sans
-    // aucune table utilisateur, voir bootstrap()) : un rendu déclenché dans cet état (ex. un
-    // changement de langue) ne doit pas écraser le message "Aucune table..." par "0 ligne(s)",
-    // qui donnerait à tort l'impression qu'une table vide est connectée.
-    rowCountEl.textContent = currentTableId ? t('status.rowCount', { n: state.rows.length }) : t('status.noTables');
+    renderConnectionStatus(state);
 
     // `pages`/`currentPageId`/`bookmarks` ne changent de référence/valeur que via leurs actions
     // dédiées (state.js) : un rendu déclenché par un simple rafraîchissement de données (setRows) ne
@@ -827,20 +885,26 @@
         if (e.target.closest('.page-tab-remove')) return; // géré séparément ci-dessous
         store.setCurrentPage(pageId);
       });
-      tab.addEventListener('dblclick', () => {
+      tab.addEventListener('dblclick', async () => {
         const page = pages.find((p) => p.id === pageId);
-        const name = (prompt(t('pages.rename.prompt'), page ? page.name : '') || '').trim();
+        const answer = await GristBI.dialogs.prompt({
+          title: t('pages.rename.title'), label: t('pages.rename.prompt'),
+          value: page ? page.name : '', confirmLabel: t('pages.rename.confirm')
+        });
+        const name = (answer || '').trim();
         if (name) store.renamePage(pageId, name);
       });
     }
     for (const removeBtn of pageTabsEl.querySelectorAll('.page-tab-remove')) {
-      removeBtn.addEventListener('click', (e) => {
+      removeBtn.addEventListener('click', async (e) => {
         e.stopPropagation(); // ne pas aussi déclencher le clic de l'onglet parent (setCurrentPage, no-op ici)
         const pageId = removeBtn.dataset.pageId;
         const page = pages.find((p) => p.id === pageId);
-        if (confirm(t('pages.remove.confirm', { name: page ? page.name : '' }))) {
-          store.removePage(pageId);
-        }
+        const ok = await GristBI.dialogs.confirm({
+          title: t('pages.remove.dialogTitle'), message: t('pages.remove.confirm', { name: page ? page.name : '' }),
+          confirmLabel: t('pages.remove.confirmLabel'), danger: true
+        });
+        if (ok) store.removePage(pageId);
       });
     }
   }
@@ -929,7 +993,7 @@
     // langue seul ne repasserait jamais ici — c'est GristBI.i18n.applyTranslations(), appelé à
     // chaque render(), qui retrouve ces boutons par leurs attributs et les corrige sans
     // reconstruction (voir le commentaire en tête de render()).
-    const header = `<div class="tile-header"><span>${escapeHtml(tile.title)}</span>
+    const header = `<div class="tile-header"><span class="tile-title" title="${escapeHtml(GristBI.i18n.tileTitle(tile))}">${escapeHtml(GristBI.i18n.tileTitle(tile))}</span>
         <span class="tile-actions">
           <button class="tile-move-left" type="button" data-i18n-aria="tile.moveLeft" data-i18n-title="tile.moveLeft" aria-label="${escapeHtml(t('tile.moveLeft'))}" title="${escapeHtml(t('tile.moveLeft'))}">${icon('chevronLeft')}</button>
           <button class="tile-move-right" type="button" data-i18n-aria="tile.moveRight" data-i18n-title="tile.moveRight" aria-label="${escapeHtml(t('tile.moveRight'))}" title="${escapeHtml(t('tile.moveRight'))}">${icon('chevronRight')}</button>
@@ -952,9 +1016,13 @@
       if (tile.id === editingTileId) stopEditTile(); // formulaire en cours d'édition sur une tuile qui disparaît
       store.removeTile(tile.id);
     });
-    el.querySelector('.tile-edit').addEventListener('click', () => startEditTile(tile));
-    el.querySelector('.tile-comments').addEventListener('click', () => openCommentsModal(tile));
-    el.querySelector('.tile-detail').addEventListener('click', () => openDetailModal(tile));
+    // Toujours la tuile VIVE du store, jamais l'objet capturé à la création de cet élément (mis en
+    // cache et jamais reconstruit, voir render()) : après une modification, ce dernier serait périmé
+    // (le formulaire d'édition rechargerait les anciennes valeurs).
+    const liveTile = () => store.getState().tiles.find((x) => x.id === tile.id) || tile;
+    el.querySelector('.tile-edit').addEventListener('click', () => startEditTile(liveTile()));
+    el.querySelector('.tile-comments').addEventListener('click', () => openCommentsModal(liveTile()));
+    el.querySelector('.tile-detail').addEventListener('click', () => openDetailModal(liveTile()));
     el.querySelector('.tile-move-left').addEventListener('click', () => store.moveTile(tile.id, -1));
     el.querySelector('.tile-move-right').addEventListener('click', () => store.moveTile(tile.id, 1));
     return el;
@@ -1016,7 +1084,7 @@
 
   function openCommentsModal(tile) {
     commentsModalTileId = tile.id;
-    commentsModalTileEl.textContent = tile.title;
+    commentsModalTileEl.textContent = GristBI.i18n.tileTitle(tile);
     // Auteur reconnu automatiquement quand la détection a abouti (voir detectedUserEmail
     // ci-dessus) : champ pré-rempli et verrouillé, cohérence garantie avec la véritable identité
     // Grist plutôt qu'un nom retapé/modifiable. Repli IDENTIQUE à avant cette fonctionnalité sinon.
@@ -1239,7 +1307,7 @@
   function handleCsvImportCreateClick() {
     if (!csvImportParsed) return;
     const tableName = csvImportTableNameInput.value.trim();
-    if (!tableName) { alert(t('pbixImport.csvNameRequired')); return; }
+    if (!tableName) { showNotice(t('pbixImport.csvNameRequired')); return; }
     csvImportPendingTableName = tableName;
     csvImportConfirmTextEl.textContent = t('pbixImport.csvConfirmText', {
       table: tableName, columns: csvImportParsed.columns.length, rows: csvImportParsed.rowCount
@@ -1482,16 +1550,16 @@
     if (!isRadarColumns && !isWordCloudSplit && !measure) return;
     if (hasDimension && !dimension) return;
     if (isScatter && !measureYSelect.value) return; // 2e mesure obligatoire pour un nuage de points
-    if (measureMode && !dateColumn) { alert(t('tileForm.alert.dateColumnRequired')); return; }
+    if (measureMode && !dateColumn) { showNotice(t('tileForm.alert.dateColumnRequired')); return; }
     if (isPivot && !columnDimension) return; // 2e dimension obligatoire pour un tableau croisé
     if (isPivot && columnDimension === dimension) {
-      alert(t('tileForm.alert.pivotDimsDiffer'));
+      showNotice(t('tileForm.alert.pivotDimsDiffer'));
       return;
     }
     const radarAxes = isRadarColumns ? radarAxisSelects.map((s) => s.value).filter(Boolean) : [];
     if (isRadarColumns && !radarAxes.length) return; // au moins un axe requis
     if (isRadarColumns && new Set(radarAxes).size !== radarAxes.length) {
-      alert(t('tileForm.alert.radarAxesDuplicate'));
+      showNotice(t('tileForm.alert.radarAxesDuplicate'));
       return;
     }
     let gaugeMin, gaugeMax;
@@ -1499,7 +1567,7 @@
       gaugeMin = parseFloat(gaugeMinInput.value);
       gaugeMax = parseFloat(gaugeMaxInput.value);
       if (!Number.isFinite(gaugeMin) || !Number.isFinite(gaugeMax) || gaugeMax <= gaugeMin) {
-        alert(t('tileForm.alert.gaugeMinMax'));
+        showNotice(t('tileForm.alert.gaugeMinMax'));
         return;
       }
     }
@@ -1509,16 +1577,17 @@
     // niveaux (voir ROADMAP.md, cluster "Hiérarchies & drill-down").
     const allDims = hasDimension ? [dimension].concat(drillDimensions) : [];
     if (new Set(allDims).size !== allDims.length) {
-      alert(t('tileForm.alert.drillDuplicate'));
+      showNotice(t('tileForm.alert.drillDuplicate'));
       return;
     }
-    const title = isPivot ? `${measure} par ${dimension} × ${columnDimension}`
-      : isRadarColumns ? `Radar : ${radarAxes.join(', ')}`
-      : isWordCloudSplit ? `Nuage de mots : ${dimension}`
-      : hasDimension ? `${measure} par ${dimension}`
-      : measureMode ? `${MEASURE_MODE_TITLES[measureMode]} : ${aggFn}(${measure})`
-      : `${aggFn}(${measure})`;
-    const tileData = { type, dimension, measure, aggFn, title };
+    // Titre auto-composé : stocké EN CLAIR (`title`, repli et exports) ET avec sa clé de traduction
+    // (`titleKey`/`titleVars`, voir i18n.js:tileTitle) pour que l'en-tête de tuile suive la langue
+    // de l'interface au lieu de rester figé dans celle de sa création.
+    const { title, titleKey, titleVars } = autoTileTitle({
+      isPivot, isRadarColumns, isWordCloudSplit, hasDimension, measureMode,
+      measure, dimension, columnDimension, aggFn, radarAxes
+    });
+    const tileData = { type, dimension, measure, aggFn, title, titleKey, titleVars };
     // Nuage de mots "découpage de cellule" : mesure/agrégat ignorés par le rendu (voir
     // js/charts.js), effacés ici plutôt que laissés à une valeur fantôme du formulaire — même
     // principe que les champs spécifiques à un type plus bas.
@@ -1584,8 +1653,8 @@
     if (kind === 'number') {
       const min = filterMinInput.value === '' ? null : parseFloat(filterMinInput.value);
       const max = filterMaxInput.value === '' ? null : parseFloat(filterMaxInput.value);
-      if (min == null && max == null) { alert(t('filters.minBoundRequired')); return; }
-      if (min != null && max != null && max < min) { alert(t('filters.maxGteMin')); return; }
+      if (min == null && max == null) { showNotice(t('filters.minBoundRequired')); return; }
+      if (min != null && max != null && max < min) { showNotice(t('filters.maxGteMin')); return; }
       filter = { type: 'range', min, max };
     } else if (kind === 'date') {
       if (filterDateModeSelect.value === 'relativeDate') {
@@ -1593,13 +1662,13 @@
       } else {
         const start = filterDateStartInput.value || null;
         const end = filterDateEndInput.value || null;
-        if (!start && !end) { alert(t('filters.dateBoundRequired')); return; }
-        if (start && end && end < start) { alert(t('filters.endAfterStart')); return; }
+        if (!start && !end) { showNotice(t('filters.dateBoundRequired')); return; }
+        if (start && end && end < start) { showNotice(t('filters.endAfterStart')); return; }
         filter = { type: 'dateRange', start, end };
       }
     } else {
       const query = filterTextInput.value.trim();
-      if (!query) { alert(t('filters.textRequired')); return; }
+      if (!query) { showNotice(t('filters.textRequired')); return; }
       filter = { type: 'contains', query };
     }
     store.setAdvancedFilter(column, filter);
@@ -1622,8 +1691,11 @@
     if (bookmarkSelect.value) store.removeBookmark(bookmarkSelect.value);
   });
 
-  saveBookmarkBtn.addEventListener('click', () => {
-    const name = (prompt(t('bookmarks.save.prompt')) || '').trim();
+  saveBookmarkBtn.addEventListener('click', async () => {
+    const answer = await GristBI.dialogs.prompt({
+      title: t('bookmarks.save.title'), label: t('bookmarks.save.prompt'), confirmLabel: t('bookmarks.save.confirm')
+    });
+    const name = (answer || '').trim();
     if (!name) return; // annulé ou vide
     store.saveBookmark('bm_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name);
   });
@@ -1638,10 +1710,10 @@
   exportExcelBtn.addEventListener('click', async () => {
     try {
       const exported = await GristBI.exportExcel.exportDashboardToExcel(store.getState());
-      if (!exported) alert(t('export.none'));
+      if (!exported) showNotice(t('export.none'));
     } catch (e) {
       console.error('[GristBI] échec de l\'export Excel', e);
-      alert(t('export.failed'));
+      showError(t('export.failed'));
     }
   });
 
@@ -1652,10 +1724,10 @@
   exportPdfBtn.addEventListener('click', async () => {
     try {
       const exported = await GristBI.exportPdf.exportDashboardToPdf(store.getState());
-      if (!exported) alert(t('export.none'));
+      if (!exported) showNotice(t('export.none'));
     } catch (e) {
       console.error('[GristBI] échec de l\'export PDF', e);
-      alert(t('export.pdf.networkError'));
+      showError(t('export.pdf.networkError'));
     }
   });
 
@@ -1663,15 +1735,19 @@
   exportPptxBtn.addEventListener('click', async () => {
     try {
       const exported = await GristBI.exportPptx.exportDashboardToPptx(store.getState());
-      if (!exported) alert(t('export.none'));
+      if (!exported) showNotice(t('export.none'));
     } catch (e) {
       console.error('[GristBI] échec de l\'export PPTX', e);
-      alert(t('export.pptx.networkError'));
+      showError(t('export.pptx.networkError'));
     }
   });
 
-  addPageBtn.addEventListener('click', () => {
-    const name = (prompt(t('pages.new.prompt'), `Page ${store.getState().pages.length + 1}`) || '').trim();
+  addPageBtn.addEventListener('click', async () => {
+    const answer = await GristBI.dialogs.prompt({
+      title: t('pages.new.title'), label: t('pages.new.prompt'),
+      value: `Page ${store.getState().pages.length + 1}`, confirmLabel: t('pages.new.confirm')
+    });
+    const name = (answer || '').trim();
     if (name) store.addPage(name);
   });
 
@@ -1745,7 +1821,7 @@
         commentTextInput.focus();
       } catch (e) {
         console.error('[GristBI] échec de l\'ajout du commentaire', e);
-        alert(t('comments.addFailed'));
+        showError(t('comments.addFailed'));
       }
     });
   }
@@ -1848,7 +1924,7 @@
       store.setRows(rows);
     } catch (e) {
       console.error('[GristBI] échec de la jointure avec la table secondaire', e);
-      alert(t('blend.failed', { table: blend.secondaryTableId }));
+      showError(t('blend.failed', { table: blend.secondaryTableId }));
       const rows = withDateHierarchies(currentPrimaryRows);
       refreshColumnSelects(rows);
       store.setRows(rows);
@@ -1933,14 +2009,14 @@
     await flushPendingSave();
     try {
       const tables = await GristBI.api.listAvailableTables();
-      if (!tables.length) { rowCountEl.textContent = t('status.noTables'); return; }
+      if (!tables.length) { setConnectionState('noTables'); return; }
       const tableId = tables[0];
       const { rows } = await GristBI.api.loadTable(tableId);
       await switchTable(tableId, rows, { id: 'new', config: GristBI.api.blankConfig() });
       await refreshTablePicker();
     } catch (e) {
       console.error('[GristBI] échec du départ vierge ("Nouveau" dans GFS)', e);
-      rowCountEl.textContent = t('status.connectionFailed');
+      setConnectionState('failed');
     }
   }
 
@@ -2087,7 +2163,7 @@
       await refreshTablePicker();
     } catch (e) {
       console.error('[GristBI] échec de la connexion à la table choisie', e);
-      alert(t('table.connectFailed', { table: tableId }));
+      showError(t('table.connectFailed', { table: tableId }));
       tableSelectInput.value = currentTableId; // revient sur la table encore effectivement active
     }
   });
@@ -2102,9 +2178,30 @@
   // il n'y a rien à connecter automatiquement (voir `status.noTables`) : l'utilisateur peut créer
   // une table dans Grist puis la choisir via le sélecteur ci-dessus SANS recharger le widget — son
   // `beforeOpen` (`refreshTablePicker`) relit toujours la liste à la demande, jamais un instantané.
+  // Connexion automatique à la 1re table du document (voir plus haut) — extraite de bootstrap()
+  // pour que le bouton « Réessayer » de l'état vide (échec de connexion) la rejoue telle quelle.
+  async function connectToFirstTable() {
+    setConnectionState('connecting');
+    try {
+      const tables = await GristBI.api.listAvailableTables();
+      if (tables.length) {
+        const tableId = tables[0];
+        const { rows } = await GristBI.api.loadTable(tableId);
+        await switchTable(tableId, rows);
+        await refreshTablePicker();
+      } else {
+        setConnectionState('noTables');
+      }
+    } catch (e) {
+      console.error('[GristBI] échec de la connexion automatique à la 1re table du document', e);
+      setConnectionState('failed');
+    }
+  }
+  retryConnectBtn.addEventListener('click', connectToFirstTable);
+
   async function bootstrap() {
     await GristBI.api.init();
-    rowCountEl.textContent = t('status.connecting');
+    setConnectionState('connecting');
 
     // Consigne GFS 007, point 3 : si GFS demande d'ouvrir un rapport précis (ou un départ vierge,
     // "Nouveau"), ce départ remplace la connexion automatique habituelle ci-dessous - jamais
@@ -2123,25 +2220,12 @@
         await openReportById(opening.fichier.id);
       } catch (e) {
         console.error('[GristBI] échec de l\'ouverture du rapport demandé par GFS', e);
-        rowCountEl.textContent = t('status.connectionFailed');
+        setConnectionState('failed');
       }
     } else if (opening) {
       await openBlankReport(); // gère déjà son propre try/catch
     } else {
-      try {
-        const tables = await GristBI.api.listAvailableTables();
-        if (tables.length) {
-          const tableId = tables[0];
-          const { rows } = await GristBI.api.loadTable(tableId);
-          await switchTable(tableId, rows);
-          await refreshTablePicker();
-        } else {
-          rowCountEl.textContent = t('status.noTables');
-        }
-      } catch (e) {
-        console.error('[GristBI] échec de la connexion automatique à la 1re table du document', e);
-        rowCountEl.textContent = t('status.connectionFailed');
-      }
+      await connectToFirstTable();
     }
     // Table dédiée, indépendante de la table de travail (voir js/state.js:comments) : chargée UNE
     // SEULE fois par session, jamais rechargée à un changement de table (switchTable) — dans un

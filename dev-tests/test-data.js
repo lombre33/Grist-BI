@@ -1557,6 +1557,26 @@ const SAMPLE_TIME_SERIES = [
   console.log('OK i18n.t — substitution de variables + pluriel fr/en (Intl.PluralRules)');
 }
 
+// Titres de tuile : un titre auto-composé porte sa clé de traduction (`titleKey`/`titleVars`) et suit
+// la langue ; une tuile sans clé (ancienne config, import Power BI, titre libre) garde son `title`
+// stocké tel quel — jamais une chaîne vide ni une exception, même pour une clé devenue inconnue
+// (audit UI/UX du 18/11/2026 : « Montant par Région » restait en français sous une interface EN).
+{
+  const tile = { title: 'Montant par Région', titleKey: 'tileTitle.measureByDimension', titleVars: { measure: 'Montant', dimension: 'Région' } };
+  assert.strictEqual(i18n.tileTitle(tile), 'Montant par Région');
+  i18n.setLang('en');
+  assert.strictEqual(i18n.tileTitle(tile), 'Montant by Région');
+  assert.strictEqual(i18n.tileTitle({ title: 'Mon titre' }), 'Mon titre', 'sans titleKey : le titre stocké tel quel');
+  assert.strictEqual(i18n.tileTitle({ title: 'Repli', titleKey: 'tileTitle.cle.inconnue' }), 'Repli', 'clé inconnue : repli sur le titre stocké, sans avertissement bruyant');
+  assert.strictEqual(i18n.tileTitle({}), '', 'tuile sans aucun titre : chaîne vide, jamais undefined');
+  assert.strictEqual(i18n.tileTitle(null), '');
+  assert.strictEqual(i18n.tileTitle({ title: 'x', titleKey: 'tileTitle.pivot', titleVars: { measure: 'M', dimension: 'A', columnDimension: 'B' } }), 'M by A × B');
+  assert.strictEqual(i18n.tileTitle({ title: 'x', titleKey: 'tileTitle.yoy', titleVars: { agg: 'sum', measure: 'M' } }), 'Year-over-year: sum(M)');
+  i18n.setLang('fr');
+  assert.strictEqual(i18n.tileTitle({ title: 'x', titleKey: 'tileTitle.yoy', titleVars: { agg: 'sum', measure: 'M' } }), 'Comparaison N-1 : sum(M)');
+  console.log('OK i18n.tileTitle — titre auto-composé traduit, repli sur le titre stocké (fr/en)');
+}
+
 // Consigne GFS 007, point 1 : dans le sous-cadre isolé d'un hébergeur comme GFS (sandbox sans
 // allow-same-origin), LIRE `localStorage` lève une exception — y compris à travers un simple
 // `typeof` (un `typeof` ne masque qu'une référence jamais déclarée, pas une exception levée par un

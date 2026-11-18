@@ -321,6 +321,33 @@
       en: 'No table in this document — pick one from the selector above, or create one in Grist.'
     },
     'status.connectionFailed': { fr: 'Échec de la connexion aux données — voir la console (F12).', en: 'Failed to connect to the data — see the console (F12).' },
+    'status.retry': { fr: 'Réessayer', en: 'Retry' },
+
+    // --- Fenêtres de dialogue du kit (js/dialogs.js, audit UI/UX du 18/11/2026) : remplacent
+    // window.prompt/confirm/alert, muets dans le cadre isolé de GFS (pas de `allow-modals`). ---
+    'dialog.confirm': { fr: 'Valider', en: 'OK' },
+    'dialog.cancel': { fr: 'Annuler', en: 'Cancel' },
+    'dialog.close': { fr: 'Fermer', en: 'Close' },
+    'dialog.notice.title': { fr: 'Information', en: 'Notice' },
+    'dialog.error.title': { fr: 'Une erreur est survenue', en: 'Something went wrong' },
+    'pages.new.title': { fr: 'Nouvelle page', en: 'New page' },
+    'pages.new.confirm': { fr: 'Créer la page', en: 'Create page' },
+    'pages.rename.title': { fr: 'Renommer la page', en: 'Rename page' },
+    'pages.rename.confirm': { fr: 'Renommer', en: 'Rename' },
+    'pages.remove.dialogTitle': { fr: 'Supprimer la page', en: 'Delete page' },
+    'pages.remove.confirmLabel': { fr: 'Supprimer', en: 'Delete' },
+    'bookmarks.save.title': { fr: 'Sauvegarder la vue', en: 'Save view' },
+    'bookmarks.save.confirm': { fr: 'Sauvegarder', en: 'Save' },
+
+    // --- Titres de tuile composés automatiquement (js/main.js:autoTileTitle ; la tuile garde aussi
+    // son `title` en clair, voir i18n.js:tileTitle). ---
+    'tileTitle.measureByDimension': { fr: '{measure} par {dimension}', en: '{measure} by {dimension}' },
+    'tileTitle.pivot': { fr: '{measure} par {dimension} × {columnDimension}', en: '{measure} by {dimension} × {columnDimension}' },
+    'tileTitle.radarColumns': { fr: 'Radar : {axes}', en: 'Radar: {axes}' },
+    'tileTitle.wordCloud': { fr: 'Nuage de mots : {dimension}', en: 'Word cloud: {dimension}' },
+    'tileTitle.cumulative': { fr: 'Cumul : {agg}({measure})', en: 'Running total: {agg}({measure})' },
+    'tileTitle.ytd': { fr: 'YTD : {agg}({measure})', en: 'YTD: {agg}({measure})' },
+    'tileTitle.yoy': { fr: 'Comparaison N-1 : {agg}({measure})', en: 'Year-over-year: {agg}({measure})' },
 
     // --- GFS (js/grist-api.js:nextNewReportName, consigne 007) : nom par défaut d'un nouveau
     // rapport, posé au premier enregistrement — seul cas où js/grist-api.js (normalement sans
@@ -408,6 +435,16 @@
     return s;
   }
 
+  // Titre d'affichage d'une tuile : si elle porte la clé de traduction de son titre auto-composé
+  // (`titleKey`/`titleVars`, posés par js/main.js à la création/modification), le titre suit la
+  // langue de l'interface ; sinon (tuile antérieure à ce champ, import Power BI, titre saisi à la
+  // main) le texte stocké (`title`) tel quel. Jamais utilisé pour nommer une feuille d'export
+  // (js/data.js reste pur, sans dépendance à ce module) : ces exports gardent `tile.title`.
+  function tileTitle(tile) {
+    if (tile && tile.titleKey && STRINGS[tile.titleKey]) return t(tile.titleKey, tile.titleVars);
+    return (tile && tile.title) || '';
+  }
+
   function getLang() { return lang; }
 
   // Abonnés notifiés après chaque changement de langue — pour tout ce qu'aucun attribut
@@ -450,5 +487,5 @@
   if (typeof document !== 'undefined') document.documentElement.lang = lang;
   applyTranslations();
 
-  return { t, getLang, setLang, applyTranslations, onChange, STRINGS };
+  return { t, tileTitle, getLang, setLang, applyTranslations, onChange, STRINGS };
 });
