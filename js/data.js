@@ -486,14 +486,22 @@
   // leurs valeurs toutes séries confondues — pour une moyenne, c'est la somme des moyennes, un simple
   // critère d'ordre et non une valeur affichée. Rend `{ categories, series: [{ name, values }] }`.
   function assembleSeries(categories, perSeries, sortMode) {
-    const lookups = perSeries.map((s) => new Map(s.groups.map((g) => [g.dimension, g.value])));
+    // Clés comparées en TEXTE (même règle que sameValue, piège n°7) : les catégories viennent du
+    // groupement de TOUTES les lignes, les séries de celui de leurs lignes seules — or l'un peut passer
+    // par DuckDB-WASM (au-delà de DUCKDB_ROW_THRESHOLD, js/charts.js) et l'autre par le JS pur, et
+    // DuckDB rend une dimension entière (une année) en BigInt (2022n) là où le JS rend 2022 : un `Map`
+    // comparant 2022n et 2022 ne les confond jamais, et toute la série tombait à « pas de valeur » (une
+    // aire empilée par année plate à 0 sur un tableau de plus de 5 000 lignes). Un `null` garde sa
+    // propre clé, jamais celle de la chaîne « null ».
+    const keyOf = (v) => (v === null || v === undefined ? '\u0000' : String(v));
+    const lookups = perSeries.map((s) => new Map(s.groups.map((g) => [keyOf(g.dimension), g.value])));
     let order = categories.map((_, i) => i);
     if (SORT_MODES.indexOf(sortMode) !== -1) {
       const totals = categories.map((category, index) => ({
         dimension: category,
         index,
         value: lookups.reduce((sum, lookup) => {
-          const v = lookup.get(category);
+          const v = lookup.get(keyOf(category));
           return Number.isFinite(v) ? sum + v : sum;
         }, 0)
       }));
@@ -503,7 +511,7 @@
       categories: order.map((i) => categories[i]),
       series: perSeries.map((s, j) => ({
         name: s.name,
-        values: order.map((i) => (lookups[j].has(categories[i]) ? lookups[j].get(categories[i]) : null))
+        values: order.map((i) => (lookups[j].has(keyOf(categories[i])) ? lookups[j].get(keyOf(categories[i])) : null))
       }))
     };
   }
