@@ -1017,6 +1017,22 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 - [ ] Rendu dans un vrai Grist / un vrai GFS ⬜ **[NON TESTABLE ICI]** ; thème sombre non rejoué pour cette tuile ⬜
 - **Piège de test** : les grosses bulles se chevauchent ; viser le centre d'une bulle recouverte par une autre clique sur la voisine. Choisir une bulle dont le centre est libre.
 
+### `js/data.js` + `js/charts.js` + panneau — calendrier (18/11/2026 ; Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`, 400 et 6 000 lignes, clair et sombre)
+
+- [x] `isoDayShift` : fins de mois, année bissextile, décalage nul, entrée invalide ✅
+- [x] `calendarDays` : valeur par jour pour les 5 agrégats (+ inconnu = somme), jours triés, plusieurs lignes le même jour, dates invalides / nulles / nombres ignorées et comptées, aucune date = aucun jour, entrées vides ✅
+- [x] Fenêtre d'un an : 366 jours dessinés, `hidden`/`total` exacts, plafond réglé / invalide / `Infinity` ; un trou n'est pas un jour à 0 ✅
+- [x] Store : clic = filtre d'égalité du jour, tuile source entière, autres tuiles filtrées, même jour = retiré, suppression de la tuile = filtre levé ✅
+- [x] Export Excel : un jour par ligne, tous les jours (au-delà de l'année aussi), filtre d'une autre tuile appliqué, aucune ligne = en-têtes seuls ; `tileExportKind` = `image` ✅
+- [x] Types : palette et format oui ; tri, séries, repère, étiquettes non ✅ ; défauts (vraie colonne de dates, Somme ou Comptage), `noDate`, conseils `notDate` / `fewDays` / `truncated`, jamais à l'accueil, i18n fr/en (7 jours, 12 mois) ✅
+- [x] Formulaire : libellé « Colonne de dates », colonne de regroupement / drill-down / tri / séries masqués, colonne qui n'est pas de dates refusée avec son message, préremplissage, tuile enregistrée sans drill-down 🌐
+- [x] Rendu : série `heatmap` en `calendar` = calcul pur, plage = mois entiers, lundi en premier, légende = min / max ; **pixel de la case du maximum = dernier arrêt de la rampe, pixel d'un jour sans ligne hors rampe** 🌐 ; thème sombre 🌐
+- [x] Infobulle survolée (« mercredi 9 avril 2025 » + valeur) ; **clic réel de souris** sur un jour = filtre, autres jours à 0,3, tuile source entière, 2e clic = retiré, clic sur un jour sans ligne = aucun filtre 🌐
+- [x] Filtre d'une autre tuile : jours recalculés ; agrandissement = cases plus larges ; 500 jours = 366 dessinés + 500 exportés + conseil ; aucune date valide = message (sans exception ECharts) ; calendrier -> barres -> calendrier ; valeurs toutes égales ; aucune erreur console 🌐
+- [x] 6 000 lignes, page directe ET cadre isolé : mêmes vérifications 🌐
+- [ ] Rendu dans un vrai Grist / un vrai GFS ⬜ **[NON TESTABLE ICI]**
+- **Piège de test** : un `setOption` avec `calendar` mais sans `range` lève dans ECharts ; l'état vide ne doit pas écrire de composant `calendar`.
+
 ### CSS — classe de bug à systématiquement re-vérifier
 
 - [x] `.field[hidden]` masque réellement l'élément (pas seulement `display:flex` de `.field` qui gagne à spécificité égale) [BUG RÉEL, trouvé 2 fois sur des champs différents] ✅ (règle en place)

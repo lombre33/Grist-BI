@@ -8,7 +8,7 @@
   const GristBI = global.GristBI || (global.GristBI = {});
   const {
     groupByAggregate, sameValue, aggregateSingle, pivotTable, trendFromGroups, targetProgress, progressRows, sparklineValues, sparklineGeometry, measureSeriesForTile,
-    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, comboSeries, comboModeOf, histogramBins, histogramFilter, histogramBinIsActive, boxStatsByGroup, sankeyFlows, topFlows, SANKEY_MAX_LINKS, isBubbleTile, bubblePoints, bubbleDiameters, filterSelects, lineShapeOf, isStackedPercentTile, stackShares, supportsValueLabels, refLineKind, refLineValue, cellFilterToggles, heatStops, heatRange, heatCellColors, heatTextColor, isStackedTile, splitBySeries, assembleSeries, paletteColors, PALETTES, escapeHtml,
+    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, comboSeries, comboModeOf, histogramBins, histogramFilter, histogramBinIsActive, boxStatsByGroup, sankeyFlows, topFlows, SANKEY_MAX_LINKS, isBubbleTile, bubblePoints, bubbleDiameters, calendarDays, filterSelects, lineShapeOf, isStackedPercentTile, stackShares, supportsValueLabels, refLineKind, refLineValue, cellFilterToggles, heatStops, heatRange, heatCellColors, heatTextColor, isStackedTile, splitBySeries, assembleSeries, paletteColors, PALETTES, escapeHtml,
     tileDrillLevels, currentDimension, rowsForTile, wordFrequency
   } = GristBI.data;
   const { t } = GristBI.i18n;
@@ -578,6 +578,13 @@
       if (names && names[rank] !== undefined) GristBI.store.toggleFilter(currentTile.dimension, names[rank], currentTile.id);
       return;
     }
+    // Calendrier : une case = UN jour ; le clic pose un filtre d'égalité sur la colonne de dates (le jour au format ISO, celui des
+    // cellules). Le jour vient de la donnée de la case (`params.value[0]`), jamais d'un rang ou d'un libellé. Pas de drill-down.
+    if (currentTile.type === 'calendar') {
+      const day = params && Array.isArray(params.value) ? params.value[0] : null;
+      if (typeof day === 'string' && day) GristBI.store.toggleFilter(currentTile.dimension, day, currentTile.id);
+      return;
+    }
     // Carte de chaleur : une case = UNE ligne ET UNE colonne du tableau croisé, le clic pose les deux filtres (comme une cellule du
     // tableau croisé). Les valeurs des deux axes viennent du dernier rendu (`instance.__grid`), retrouvées par rang : jamais
     // `params.name`, qui ne donne que l'abscisse. Pas de drill-down (comme le tableau croisé).
@@ -1052,6 +1059,12 @@
       bumpSeq(tile.id);
       instance.hideLoading();
       renderSankey(tile, rows, state, instance);
+      return;
+    }
+    if (tile.type === 'calendar') {
+      bumpSeq(tile.id);
+      instance.hideLoading();
+      renderCalendar(tile, rows, state, instance);
       return;
     }
     if (tile.type === 'heatmap') {
@@ -1869,6 +1882,79 @@
           itemStyle: { color: 'transparent', borderColor: color, borderWidth: 1.5 }
         }
       ]
+    };
+    finalizeOption(option, instance);
+    instance.setOption(option, true);
+  }
+
+  // Calendrier (type 'calendar') : une case par jour (js/data.js:calendarDays : valeur agrégée du jour, au plus CALENDAR_MAX_DAYS
+  // jours, le reste est compté), semaines en colonnes et jours de la semaine en lignes (lundi en haut), mois en en-tête. Même rampe de
+  // couleur que la carte de chaleur (`heatStops`, légende `visualMap` continue) ; un jour sans valeur n'a PAS de case colorée (une
+  // trame neutre : « aucune ligne » ne se lit pas « la valeur la plus basse »). Jours non retenus par un filtre sur la colonne de
+  // dates : atténués (`filterSelects`). Le clic (handleTileClick) lit le jour dans la donnée de la case.
+  function renderCalendar(tile, rows, state, instance) {
+    const cal = calendarDays(rows, tile.dimension, tile.measure, tile.aggFn);
+    if (!cal.days.length) {
+      // Aucun jour exploitable (colonne qui n'est pas une date, filtre sans ligne) : un message au centre, pas un cadre vide.
+      instance.setOption({ title: { text: t('chart.calendar.empty'), left: 'center', top: 'middle', textStyle: { fontSize: 12, fontWeight: 'normal', color: chartTheme().muted } }, series: [] }, true); // pas de composant `calendar` sans plage : ECharts lèverait une exception
+      return;
+    }
+    const f = fmtFor(tile, tile.measure);
+    const th = chartTheme();
+    const stops = heatStops(tile.palette);
+    const lang = GristBI.i18n.getLang();
+    const dayFilter = state.activeFilters.find((af) => af.column === tile.dimension);
+    let min = Infinity;
+    let max = -Infinity;
+    cal.days.forEach((d) => { if (d.value < min) min = d.value; if (d.value > max) max = d.value; });
+    // Toutes les valeurs égales : l'échelle de la légende s'ouvre autour d'elles (couleur du milieu).
+    const lo = min === max ? min - 1 : min;
+    const hi = min === max ? max + 1 : max;
+    // Plage affichée : du 1er du mois du premier jour au dernier du mois du dernier jour (des mois entiers, jamais coupés au milieu).
+    const first = cal.from.slice(0, 8) + '01';
+    const lastYear = Number(cal.to.slice(0, 4));
+    const lastMonth = Number(cal.to.slice(5, 7));
+    const end = new Date(Date.UTC(lastYear, lastMonth, 0)).toISOString().slice(0, 10);
+    const names = (key) => t(key).split(',');
+    const width = instance.getWidth() || 330;
+    const longDate = (iso) => {
+      const ms = Date.parse(iso + 'T00:00:00Z');
+      try { return new Date(ms).toLocaleDateString(lang, { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }); } catch (e) { return iso; }
+    };
+    const option = {
+      tooltip: {
+        trigger: 'item',
+        // Texte HTML : le jour est une date ISO validée, la valeur est formatée par js/format.js ; rien de saisi n'y entre.
+        formatter: (p) => {
+          const v = p && p.value;
+          if (!Array.isArray(v)) return '';
+          return `${escapeHtml(longDate(String(v[0])))}<br/>${escapeHtml(f.format(v[1]) || '–')}`;
+        }
+      },
+      visualMap: {
+        type: 'continuous', min: lo, max: hi, calculable: false, orient: 'horizontal', left: 'center', bottom: 2,
+        itemWidth: 8, itemHeight: Math.max(60, Math.min(170, Math.round(width * 0.5))),
+        text: [f.axis(max), f.axis(min)], textGap: 6,
+        inRange: { color: stops }, textStyle: { fontSize: 10 }
+      },
+      calendar: {
+        top: 28, left: 26, right: 8, bottom: 40,
+        cellSize: ['auto', 'auto'],
+        range: [first, end],
+        orient: 'horizontal',
+        splitLine: { show: false },
+        itemStyle: { color: th.track, borderWidth: 2, borderColor: th.surface },
+        yearLabel: { show: false },
+        dayLabel: { firstDay: 1, nameMap: names('chart.calendar.dayNames'), color: th.muted, fontSize: 10, margin: 6 },
+        monthLabel: { nameMap: names('chart.calendar.monthNames'), color: th.muted, fontSize: 10, margin: 6 }
+      },
+      series: [{
+        type: 'heatmap',
+        coordinateSystem: 'calendar',
+        data: cal.days.map((d) => ({ value: [d.date, d.value], itemStyle: (!dayFilter || filterSelects(dayFilter, d.date)) ? undefined : { opacity: 0.3 } })),
+        emphasis: { itemStyle: { borderColor: th.text, borderWidth: 1 } },
+        progressive: 0
+      }]
     };
     finalizeOption(option, instance);
     instance.setOption(option, true);

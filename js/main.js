@@ -112,6 +112,7 @@
     'type-bar': '<path d="M3.5 13V8M8 13V3.5M12.5 13V6"/><path d="M2 14h12"/>',
     'type-line': '<path d="M2 12l3.5-4 3 2.5L14 4"/><path d="M2 14h12"/>',
     'type-histogram': '<path d="M2 14v-4h2.6v4M4.6 14V6h2.6v8M7.2 14V3h2.6v11M9.8 14V7h2.6v7M12.4 14v-3H14v3"/><path d="M2 14h12"/>',
+    'type-calendar': '<rect x="2.5" y="3" width="11" height="10" rx="1.2"/><path d="M2.5 6.5h11M5.5 2v2.5M10.5 2v2.5"/><path d="M5 9h1M7.5 9h1M10 9h1M5 11h1M7.5 11h1"/>',
     'type-sankey': '<path d="M2.5 3v4.5M2.5 9v4M13.5 3v10"/><path d="M3 4.5c4 0 6 1 10 1.5M3 6.5c4 0 6 2.2 10 3.5M3 11c4 0 6-1.2 10-1.5"/>',
     'type-box': '<path d="M5 3v2.5M5 10.5V13M3.5 3h3M3.5 13h3"/><rect x="3" y="5.5" width="4" height="5" rx=".5"/><path d="M3 8h4"/><path d="M11.5 4.5v1.5M11.5 11v2M10 4.5h3M10 13h3"/><rect x="9.5" y="6" width="4" height="5" rx=".5"/><path d="M9.5 8.5h4"/>',
     'type-combo': '<path d="M3 13V9M7 13V6M11 13V8"/><path d="M2 14h12"/><path d="M2.5 6l4-2.5L10.5 5l3-2.7"/>',
@@ -769,6 +770,7 @@
     let vars;
     if (p.isText) { key = 'tileTitle.text'; vars = undefined; }
     else if (p.isHistogram) { key = 'tileTitle.histogram'; vars = { measure: p.measure }; }
+    else if (p.isCalendar) { key = 'tileTitle.calendar'; vars = { measure: p.measure, dimension: p.dimension }; }
     else if (p.isSankey) { key = 'tileTitle.sankey'; vars = { measure: p.measure, dimension: p.dimension, columnDimension: p.columnDimension }; }
     else if (p.isBox) { key = 'tileTitle.box'; vars = { measure: p.measure, dimension: p.dimension }; }
     else if (p.isCombo && p.comboPareto) { key = 'tileTitle.pareto'; vars = { measure: p.measure, dimension: p.dimension }; }
@@ -824,7 +826,7 @@
   // générique l'ignore explicitement (voir le garde dans getOrCreateChartInstance). Masquer le
   // formulaire de configuration du drill-down pour ce type plutôt que de laisser l'utilisateur
   // configurer des niveaux qui ne se déclencheront jamais au clic.
-  function supportsDrillDown(type) { return !typeHasNoDimension(type) && type !== 'pivot' && type !== 'heatmap' && type !== 'radar' && type !== 'progress' && type !== 'box' && type !== 'sankey'; }
+  function supportsDrillDown(type) { return !typeHasNoDimension(type) && type !== 'pivot' && type !== 'heatmap' && type !== 'radar' && type !== 'progress' && type !== 'box' && type !== 'sankey' && type !== 'calendar'; }
 
   // Drill-down à N niveaux : un combobox par niveau, créé dynamiquement ("+ Niveau") plutôt que des
   // champs figés dans le HTML — data.js/state.js/charts.js gèrent déjà un tableau drillDimensions
@@ -1958,7 +1960,7 @@
     // une 2e mesure (axe Y). Le pivot et le radar ajoutent une 2e dimension/un axe par valeur mais
     // n'ont pas de drill-down (voir supportsDrillDown).
     dimensionField.hidden = formHasNoDimension();
-    dimensionLabel.textContent = t(isSankey ? 'tileForm.dimension.labelSource' : (isGrid ? 'tileForm.dimension.labelRows' : 'tileForm.dimension.label'));
+    dimensionLabel.textContent = t(isSankey ? 'tileForm.dimension.labelSource' : (isGrid ? 'tileForm.dimension.labelRows' : (type === 'calendar' ? 'tileForm.dimension.labelDate' : 'tileForm.dimension.label')));
     columnDimensionLabel.textContent = t(isSankey ? 'tileForm.columnDimension.labelTarget' : 'tileForm.columnDimension.label');
     columnDimensionField.hidden = !isGrid;
     pivotHeatField.hidden = !isPivot;
@@ -2268,6 +2270,8 @@
     if (usesTarget && (target !== undefined || targetColumn) && !(Number.isFinite(goodPct) && Number.isFinite(warnPct) && warnPct >= 0 && goodPct > warnPct)) fail('tile-good-pct', 'tileForm.error.thresholds');
     if (!isRadarColumns && !isWordCloudSplit && !isText && !isTable && !measure) fail('tile-measure', 'tileForm.error.measureRequired');
     if (hasDimension && !dimension) fail('tile-dimension', 'tileForm.error.dimensionRequired');
+    // Calendrier : une case = un jour, la colonne doit contenir de vraies dates (format ISO, comme toutes les colonnes Date).
+    else if (type === 'calendar' && dimension && inferColumnKind(dimension) !== 'date') fail('tile-dimension', 'tileForm.error.calendarNotDate');
     if (isScatter && !measureYSelect.value) fail('tile-measure-y', 'tileForm.error.measureYRequired'); // 2e mesure obligatoire pour un nuage de points
     if (isHistogram && binsValue !== undefined && !(Number.isInteger(binsValue) && binsValue >= 2 && binsValue <= GristBI.data.HISTOGRAM_MAX_BINS)) fail('tile-bins', 'tileForm.error.binsRange');
     // Ligne de repère : une valeur fixe demande un nombre.
@@ -2305,7 +2309,7 @@
     // voir i18n.js:tileTitle) pour que l'en-tête de tuile suive la langue de l'interface au lieu de
     // rester figé dans celle de sa création.
     const auto = autoTileTitle({
-      isText, isTable, isProgress, isCombo, comboPareto, isHistogram, isBox, isSankey, isBubble: isScatter && !!measureSizeSelect.value, measureSize: measureSizeSelect.value, measureY: measureYSelect.value, tableColumns, isPivot, isHeatmap, isRadarColumns, isWordCloudSplit, hasDimension, measureMode,
+      isText, isTable, isProgress, isCombo, comboPareto, isHistogram, isBox, isSankey, isCalendar: type === 'calendar', isBubble: isScatter && !!measureSizeSelect.value, measureSize: measureSizeSelect.value, measureY: measureYSelect.value, tableColumns, isPivot, isHeatmap, isRadarColumns, isWordCloudSplit, hasDimension, measureMode,
       measure, dimension, columnDimension, aggFn, radarAxes, seriesColumn
     });
     const customTitle = tileTitleInput.value.trim();
@@ -2456,7 +2460,7 @@
   // repliées, aperçu en direct, conseil en direct). Le panneau est en flux normal (voir css/style.css) :
   // il ne recouvre jamais la barre. Toute la lecture du formulaire passe par readTileForm() ci-dessus.
   // =============================================================================================
-  const TYPE_CARDS = ['bar', 'histogram', 'box', 'line', 'combo', 'pie', 'treemap', 'funnel', 'sankey', 'scatter', 'waterfall', 'radar', 'wordcloud', 'kpi', 'gauge', 'progress', 'pivot', 'heatmap', 'table', 'text'];
+  const TYPE_CARDS = ['bar', 'histogram', 'box', 'line', 'combo', 'pie', 'treemap', 'funnel', 'sankey', 'calendar', 'scatter', 'waterfall', 'radar', 'wordcloud', 'kpi', 'gauge', 'progress', 'pivot', 'heatmap', 'table', 'text'];
   const PREVIEW_TILE_ID = '__preview__';
   let panelOpener = null;
   let previewTimer = null;

@@ -2459,13 +2459,13 @@ const SAMPLE_TIME_SERIES = [
   const format = require('../js/format.js');
 
   // types concernés : ceux qui affichent un nombre ; pas de réglage pour un type inconnu ni null
-  for (const type of ['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo', 'histogram', 'heatmap', 'box', 'sankey']) {
+  for (const type of ['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo', 'histogram', 'heatmap', 'box', 'sankey', 'calendar']) {
     assert.strictEqual(data.supportsNumberFormat({ type }), true, type);
   }
   assert.strictEqual(data.supportsNumberFormat({ type: 'text' }), false, 'la tuile Texte ne montre aucun nombre');
   assert.strictEqual(data.supportsNumberFormat({ type: 'inconnu' }), false);
   assert.strictEqual(data.supportsNumberFormat(null), false);
-  assert.deepStrictEqual(data.NUMBER_FORMAT_TILE_TYPES.filter((ty) => !['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo', 'histogram', 'heatmap', 'box', 'sankey'].includes(ty)), []);
+  assert.deepStrictEqual(data.NUMBER_FORMAT_TILE_TYPES.filter((ty) => !['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo', 'histogram', 'heatmap', 'box', 'sankey', 'calendar'].includes(ty)), []);
 
   // verdict de « Comme dans la colonne » : sert l'explication affichée sous le réglage
   format.setColumnInfo({
@@ -2524,8 +2524,8 @@ const SAMPLE_TIME_SERIES = [
   const charts = read('js/charts.js');
   const main = read('js/main.js');
   const css = read('css/style.css');
-  // une seule dernière étape avant setOption, pour les quatre chemins ECharts (graphiques, mesures temporelles, histogramme, carte de chaleur)
-  assert.strictEqual((charts.match(/finalizeOption\(option, instance\);\s*\n\s*instance\.setOption\(option, true\);/g) || []).length, 6, 'finalizeOption avant chaque setOption d\'option');
+  // une seule dernière étape avant setOption, pour les sept chemins ECharts (graphiques, mesures temporelles, histogramme, carte de chaleur, boîte, flux, calendrier)
+  assert.strictEqual((charts.match(/finalizeOption\(option, instance\);\s*\n\s*instance\.setOption\(option, true\);/g) || []).length, 7, 'finalizeOption avant chaque setOption d\'option');
   assert.strictEqual((charts.match(/^\s*confineTooltip\(option\);/gm) || []).length, 1, 'confineTooltip n\'est plus appelée qu\'à l\'intérieur de finalizeOption');
   // les jetons du thème viennent de la page, pas de couleurs en dur
   for (const token of ["'--surface'", "'--border-strong'", "'--border'", "'--text-secondary'"]) assert.ok(charts.includes(token), `chartTheme lit ${token}`);
@@ -4940,7 +4940,7 @@ const SAMPLE_TIME_SERIES = [
     const chartsK = fsK.readFileSync(pathK.join(rootK, 'js', 'charts.js'), 'utf8');
     const indexK = fsK.readFileSync(pathK.join(rootK, 'index.html'), 'utf8');
     assert.ok(/const TYPE_CARDS = \[[^\]]*'sankey'/.test(mainK) && /<option value="sankey"/.test(indexK) && /'type-sankey':/.test(mainK), 'carte, option et icône du type');
-    assert.ok(/type !== 'sankey'; \}/.test(mainK), 'pas de drill-down');
+    assert.ok(/type !== 'sankey' && type !== 'calendar'; \}/.test(mainK), 'pas de drill-down (flux, calendrier)');
     assert.ok(/isGrid = isPivot \|\| isHeatmap \|\| isSankey/.test(mainK) && /sankeyDimsDiffer/.test(mainK) && /sankeyTargetRequired/.test(mainK), 'deux colonnes obligatoires et différentes, messages propres au flux');
     assert.ok(/currentTile\.type === 'sankey'/.test(chartsK) && /params\.dataType === 'edge'/.test(chartsK) && /toggleCellFilters\(currentTile, from\.value, to\.value\)/.test(chartsK) && /toggleFilter\(node\.column, node\.value, currentTile\.id\)/.test(chartsK), 'nœud = filtre de sa colonne, lien = source ET cible');
     assert.ok(/instance\.__refit = \(\) => \{\s*const p = place\(\);/.test(chartsK), 'les marges de libellés suivent le redimensionnement');
@@ -5025,6 +5025,98 @@ const SAMPLE_TIME_SERIES = [
     assert.ok(/escapeHtml\(String\(params\.name\)\)/.test(chartsB) && /escapeHtml\(tile\.measureSize\)/.test(chartsB), 'noms échappés dans l\'infobulle');
     assert.ok(!/Intl\.NumberFormat|toFixed/.test(chartsB), 'aucun format de nombre en dur dans charts.js');
     console.log('OK bulles — points alignés par nom, diamètres à aire proportionnelle, tailles sans aire, export, conseils, i18n, câblage');
+  }
+
+  // Calendrier (type 'calendar', 18/11/2026, lot 3 de l'étude des tuiles usuelles, §5.6) : valeur agrégée par jour, jours sans ligne,
+  // fenêtre d'un an, clic = filtre du jour, export, défauts, conseils, i18n, câblage.
+  {
+    const fsC = require('fs');
+    const pathC = require('path');
+    const rootC = pathC.join(__dirname, '..');
+    // Décalage de jours : fins de mois, année bissextile, entrée invalide.
+    assert.strictEqual(data.isoDayShift('2024-02-28', 1), '2024-02-29'); assert.strictEqual(data.isoDayShift('2023-02-28', 1), '2023-03-01');
+    assert.strictEqual(data.isoDayShift('2024-12-31', 1), '2025-01-01'); assert.strictEqual(data.isoDayShift('2025-03-01', -1), '2025-02-28');
+    assert.strictEqual(data.isoDayShift('2025-01-10', 0), '2025-01-10'); assert.strictEqual(data.isoDayShift('x', 1), null); assert.strictEqual(data.isoDayShift(null, 1), null);
+    // Une valeur par jour, jours triés, plusieurs lignes le même jour agrégées, lignes sans date valide ignorées.
+    const rowsC = [
+      { D: '2025-03-05', M: 10, R: 'a' }, { D: '2025-03-03', M: 4, R: 'a' }, { D: '2025-03-05', M: 6, R: 'b' }, { D: '2025-03-03', M: 1, R: 'b' }, { D: '2025-03-10', M: 2, R: 'a' },
+      { D: 'bad', M: 99 }, { D: null, M: 99 }, { D: '2025-13-45', M: 99 }, { D: 45000, M: 99 }, { M: 99 }
+    ];
+    const cs = data.calendarDays(rowsC, 'D', 'M', 'sum');
+    assert.deepStrictEqual(cs.days, [{ date: '2025-03-03', value: 5 }, { date: '2025-03-05', value: 16 }, { date: '2025-03-10', value: 2 }], 'somme par jour, dates triées');
+    assert.deepStrictEqual([cs.from, cs.to, cs.ignored, cs.hidden, cs.total], ['2025-03-03', '2025-03-10', 5, 0, 3], 'dates invalides ou absentes : ignorées, jamais un jour inventé');
+    assert.deepStrictEqual(data.calendarDays(rowsC, 'D', 'M', 'count').days.map((d) => d.value), [2, 2, 1], 'comptage : lignes par jour');
+    assert.deepStrictEqual(data.calendarDays(rowsC, 'D', 'M', 'avg').days.map((d) => d.value), [2.5, 8, 2]);
+    assert.deepStrictEqual(data.calendarDays(rowsC, 'D', 'M', 'min').days.map((d) => d.value), [1, 6, 2]); assert.deepStrictEqual(data.calendarDays(rowsC, 'D', 'M', 'max').days.map((d) => d.value), [4, 10, 2]);
+    assert.deepStrictEqual(data.calendarDays(rowsC, 'D', 'M', 'inconnu').days.map((d) => d.value), [5, 16, 2], 'agrégat inconnu : somme');
+    assert.deepStrictEqual(data.calendarDays([], 'D', 'M', 'sum'), { days: [], from: null, to: null, ignored: 0, hidden: 0, total: 0 }); assert.deepStrictEqual(data.calendarDays(undefined, 'D', 'M', 'sum').days, []);
+    assert.deepStrictEqual(data.calendarDays([{ D: 'x', M: 1 }], 'D', 'M', 'sum'), { days: [], from: null, to: null, ignored: 1, hidden: 0, total: 0 }, 'aucune date valide : aucun jour');
+    // Fenêtre d'un an : les 366 derniers jours depuis le dernier jour qui a une valeur ; le reste est compté, pas perdu.
+    const long = []; for (let i = 0; i < 500; i++) long.push({ D: data.isoDayShift('2024-01-01', i), M: i });
+    const lg = data.calendarDays(long, 'D', 'M', 'sum');
+    assert.deepStrictEqual([lg.days.length, lg.hidden, lg.total, lg.to, lg.from], [366, 134, 500, data.isoDayShift('2024-01-01', 499), data.isoDayShift('2024-01-01', 134)]);
+    assert.strictEqual(lg.days[0].value, 134, 'le plus ancien jour dessiné est le 135e'); assert.strictEqual(data.CALENDAR_MAX_DAYS, 366);
+    assert.strictEqual(data.calendarDays(long, 'D', 'M', 'sum', 30).days.length, 30, 'plafond réglé'); assert.strictEqual(data.calendarDays(long, 'D', 'M', 'sum', Infinity).days.length, 500, 'sans plafond : tout');
+    assert.strictEqual(data.calendarDays(long, 'D', 'M', 'sum', 'x').days.length, 366, 'plafond invalide : défaut');
+    // Un trou n'est pas un jour à zéro : seuls les jours avec ligne existent.
+    const gaps = data.calendarDays([{ D: '2025-01-01', M: 1 }, { D: '2025-01-05', M: 1 }], 'D', 'M', 'sum'); assert.strictEqual(gaps.days.length, 2);
+    // Store : le clic pose un filtre d'égalité sur le jour ; la tuile reste entière, les autres sont filtrées ; même jour = retiré.
+    {
+      const st = state.createStore();
+      st.setRows(rowsC.slice(0, 5));
+      st.addTile({ id: 'cal', type: 'calendar', dimension: 'D', measure: 'M', aggFn: 'sum', title: 'C' });
+      st.addTile({ id: 'br', type: 'bar', dimension: 'R', measure: 'M', aggFn: 'sum', title: 'B' });
+      st.toggleFilter('D', '2025-03-05', 'cal');
+      assert.strictEqual(data.rowsForTile(st.getState().tiles[0], st.getState()).length, 5, 'le calendrier reste affiché en entier');
+      assert.strictEqual(data.rowsForTile(st.getState().tiles[1], st.getState()).length, 2, 'les autres tuiles ne gardent que les lignes du jour');
+      st.toggleFilter('D', '2025-03-05', 'cal'); assert.deepStrictEqual(st.getState().activeFilters, [], 'même jour : filtre retiré');
+      st.toggleFilter('D', '2025-03-03', 'cal'); st.removeTile('cal'); assert.deepStrictEqual(st.getState().activeFilters, [], 'supprimer la tuile lève son filtre');
+    }
+    // Export : un jour par ligne, TOUS les jours avec une valeur (au-delà de l'année aussi), filtres des autres tuiles appliqués.
+    const stC = { rows: long, activeFilters: [], advancedFilters: [], drillIns: {}, comments: [], pages: [] };
+    const calTile = { id: 'cal', type: 'calendar', title: 'Activité', dimension: 'D', measure: 'M', aggFn: 'sum' };
+    const sheetC = data.tileExportSheet(calTile, stC);
+    assert.deepStrictEqual(sheetC.header, ['D', 'M']); assert.strictEqual(sheetC.rows.length, 500); assert.deepStrictEqual(sheetC.rows[0], ['2024-01-01', 0]);
+    assert.strictEqual(data.tileExportSheet(calTile, Object.assign({}, stC, { rows: [] })).rows.length, 0, 'aucune ligne : en-têtes seuls'); assert.strictEqual(data.tileExportKind(calTile), 'image');
+    assert.deepStrictEqual(data.tileExportSheet(calTile, Object.assign({}, stC, { rows: rowsC, activeFilters: [{ column: 'R', value: 'a', sourceTileId: 'autre' }] })).rows, [['2025-03-03', 4], ['2025-03-05', 10], ['2025-03-10', 2]], 'filtre d\'une autre tuile');
+    // Types : palette et format oui ; ni tri, ni séries, ni repère, ni étiquettes de valeur, ni drill-down.
+    assert.strictEqual(data.supportsPalette({ type: 'calendar' }), true); assert.strictEqual(data.supportsNumberFormat({ type: 'calendar' }), true);
+    assert.strictEqual(data.isSortableTile({ type: 'calendar' }), false); assert.strictEqual(data.isSeriesTile({ type: 'calendar', seriesColumn: 'x' }), false);
+    assert.strictEqual(data.supportsRefLine({ type: 'calendar' }), false); assert.strictEqual(data.supportsValueLabels({ type: 'calendar' }), false);
+    // Défauts : la vraie colonne de dates (jamais l'année dérivée), Somme d'une vraie mesure ou Comptage ; pas de date = type déconseillé.
+    const ventes = [];
+    for (let i = 0; i < 60; i++) ventes.push({ Date: data.isoDayShift('2025-01-01', i), Region: ['Nord', 'Sud', 'Est'][i % 3], Montant: 100.5 + i * 3.25 });
+    const dc = advice.defaultsForType('calendar', ventes, ['Date', 'Region', 'Montant']);
+    assert.strictEqual(dc.dimension, 'Date'); assert.strictEqual(dc.measure, 'Montant'); assert.strictEqual(dc.aggFn, 'sum');
+    const cnt = advice.defaultsForType('calendar', ventes.map((r) => ({ Date: r.Date, Region: r.Region })), ['Date', 'Region']); assert.strictEqual(cnt.dimension, 'Date'); assert.strictEqual(cnt.aggFn, 'count', 'aucune mesure : comptage');
+    assert.strictEqual(advice.defaultsForType('calendar', ventes.map((r) => ({ Region: r.Region, Montant: r.Montant })), ['Region', 'Montant']), null, 'aucune colonne de dates : rien à préremplir');
+    assert.strictEqual(advice.adviceForType('calendar', ventes.map((r) => ({ Region: r.Region, Montant: r.Montant })), ['Region', 'Montant']).key, 'advice.fit.noDate');
+    assert.strictEqual(advice.adviceForType('calendar', ventes, ['Date', 'Region', 'Montant']).key, 'advice.use.calendar'); assert.strictEqual(advice.TILE_TYPES.includes('calendar'), false, 'jamais proposé à l\'accueil');
+    // Conseils : colonne sans date, moins d'une semaine, au-delà d'un an ; rien pour un calendrier sain ; colonnes absentes sans exception.
+    const tc = { type: 'calendar', dimension: 'Date', measure: 'Montant', aggFn: 'sum' };
+    assert.strictEqual(advice.adviceForTile(tc, ventes), null);
+    assert.deepStrictEqual(advice.adviceForTile(Object.assign({}, tc, { dimension: 'Region' }), ventes), { key: 'advice.calendar.notDate', vars: { dimension: 'Region' }, level: 'warn' });
+    assert.deepStrictEqual(advice.adviceForTile(tc, ventes.slice(0, 4)), { key: 'advice.calendar.fewDays', vars: { n: 4 }, level: 'warn' });
+    assert.deepStrictEqual(advice.adviceForTile(tc, long.map((r) => ({ Date: r.D, Montant: r.M }))), { key: 'advice.calendar.truncated', vars: { days: 366, hidden: 134 }, level: 'tip' });
+    assert.doesNotThrow(() => advice.adviceForTile({ type: 'calendar', dimension: 'Absente', measure: 'Autre', aggFn: 'sum' }, ventes));
+    // i18n : textes, 7 jours (dimanche en premier) et 12 mois dans les deux langues, pluriels sans objet.
+    ['tileForm.type.calendar', 'tileTitle.calendar', 'tileForm.dimension.labelDate', 'tileForm.error.calendarNotDate', 'chart.calendar.empty', 'chart.calendar.dayNames', 'chart.calendar.monthNames',
+      'advice.use.calendar', 'advice.fit.noDate', 'advice.calendar.notDate', 'advice.calendar.fewDays', 'advice.calendar.truncated'].forEach((k) => assert.ok(i18n.STRINGS[k] && i18n.STRINGS[k].fr && i18n.STRINGS[k].en, 'traduction fr/en : ' + k));
+    for (const lang of ['fr', 'en']) { i18n.setLang(lang); assert.strictEqual(i18n.t('chart.calendar.dayNames').split(',').length, 7, lang); assert.strictEqual(i18n.t('chart.calendar.monthNames').split(',').length, 12, lang); }
+    i18n.setLang('fr'); assert.strictEqual(i18n.t('tileTitle.calendar', { measure: 'Montant', dimension: 'Date' }), 'Montant par jour (Date)'); i18n.setLang('en'); assert.strictEqual(i18n.t('tileTitle.calendar', { measure: 'Montant', dimension: 'Date' }), 'Montant per day (Date)'); i18n.setLang('fr');
+    assert.strictEqual(i18n.t('chart.calendar.dayNames').split(',')[0], 'D', 'le tableau commence par dimanche (convention d\'ECharts), lundi en premier par `firstDay: 1`');
+    // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
+    const mainC = fsC.readFileSync(pathC.join(rootC, 'js', 'main.js'), 'utf8');
+    const chartsC = fsC.readFileSync(pathC.join(rootC, 'js', 'charts.js'), 'utf8');
+    const indexC = fsC.readFileSync(pathC.join(rootC, 'index.html'), 'utf8');
+    assert.ok(/const TYPE_CARDS = \[[^\]]*'calendar'/.test(mainC) && /<option value="calendar"/.test(indexC) && /'type-calendar':/.test(mainC), 'carte, option et icône du type');
+    assert.ok(/inferColumnKind\(dimension\) !== 'date'\) fail\('tile-dimension', 'tileForm\.error\.calendarNotDate'\)/.test(mainC), 'la colonne doit contenir de vraies dates');
+    assert.ok(/currentTile\.type === 'calendar'/.test(chartsC) && /toggleFilter\(currentTile\.dimension, day, currentTile\.id\)/.test(chartsC), 'clic = filtre du jour');
+    assert.ok(/firstDay: 1/.test(chartsC) && /escapeHtml\(longDate\(/.test(chartsC) && /heatStops\(tile\.palette\)/.test(chartsC), 'lundi en premier, date de l\'infobulle échappée, rampe de la carte de chaleur');
+    const emptyCal = chartsC.slice(chartsC.indexOf('function renderCalendar'), chartsC.indexOf('const f = fmtFor(tile, tile.measure);', chartsC.indexOf('function renderCalendar')));
+    assert.ok(!/calendar: \{/.test(emptyCal) && !/visualMap/.test(emptyCal), 'aucun composant `calendar` sans plage (ECharts lèverait une exception)');
+    assert.ok(!/Intl\.NumberFormat|toFixed/.test(chartsC), 'aucun format de nombre en dur dans charts.js');
+    console.log('OK calendrier — valeur par jour, jours sans ligne, fenêtre d\'un an, clic = filtre du jour, export, défauts, conseils, i18n, câblage');
   }
 
   // Export Excel avec ExcelJS 4.4.0 (consigne GFS 017, 18/11/2026) : le VRAI paquet vendorisé, exécuté sous Node
