@@ -71,6 +71,7 @@
     line: 'advice.use.line',
     combo: 'advice.use.combo',
     histogram: 'advice.use.histogram',
+    box: 'advice.use.box',
     pie: 'advice.use.pie',
     treemap: 'advice.use.treemap',
     funnel: 'advice.use.funnel',
@@ -709,6 +710,18 @@
         delete out.aggFn;
         break;
       }
+      case 'box': {
+        // Une vraie colonne numérique (valeurs brutes, jamais un agrégat) réparties entre quelques groupes : une catégorie de 2 à
+        // BOX_MAX_GROUPS valeurs, de préférence avec assez de lignes par groupe pour que des quartiles aient un sens.
+        const real = ctx.measures.filter((p) => !p.ordinal);
+        if (!(real[0] || measure)) return null;
+        out.measure = (real[0] || measure).id;
+        const fit = ctx.categories.filter((d) => d.id !== out.measure && d.kind === 'text' && d.distinct >= 2 && d.distinct <= data.BOX_MAX_GROUPS);
+        const roomy = fit.filter((d) => rows.length / d.distinct >= data.BOX_MIN_RELIABLE);
+        out.dimension = ((roomy[0] || fit[0] || {}).id) || dimensionFallback;
+        delete out.aggFn;
+        break;
+      }
       case 'combo': {
         // Barres = la mesure principale ; courbe = une AUTRE vraie mesure s'il y en a une. Sinon (une seule
         // mesure) un Pareto, qui n'en demande pas d'autre : barres triées + part cumulée.
@@ -842,6 +855,12 @@
     }
     if (type === 'treemap' && agg.some((g) => g.value < 0)) return warn('advice.treemap.negative');
     if (type === 'histogram' && measureProfile && measureProfile.distinct < 5) return warn('advice.histogram.fewValues');
+    if (type === 'box' && hasDimension && tile.measure) {
+      // Trop de boîtes pour la largeur d'une tuile, ou trop peu de valeurs par boîte pour que des quartiles disent quelque chose.
+      const stats = data.boxStatsByGroup(rows, tile.dimension, tile.measure).groups;
+      if (stats.length > data.BOX_MAX_GROUPS) return warn('advice.box.tooManyGroups', { n: stats.length });
+      if (stats.length && stats.every((g) => g.n < data.BOX_MIN_RELIABLE)) return warn('advice.box.fewValues');
+    }
     if (type === 'heatmap' && tile.columnDimension) {
       // Une case lisible demande de la place : au-delà de ~24 lignes ou colonnes, plus de nombre dans la case, des libellés
       // masqués un sur deux — mieux vaut regrouper (par mois plutôt que par jour, par famille plutôt que par produit).
@@ -947,6 +966,7 @@
       case 'kpi':
       case 'gauge':
       case 'histogram':
+      case 'box':
         return hasMeasure ? null : 'advice.fit.noMeasure';
       default:
         return null;

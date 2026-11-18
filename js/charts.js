@@ -8,7 +8,7 @@
   const GristBI = global.GristBI || (global.GristBI = {});
   const {
     groupByAggregate, sameValue, aggregateSingle, pivotTable, trendFromGroups, targetProgress, progressRows, sparklineValues, sparklineGeometry, measureSeriesForTile,
-    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, comboSeries, comboModeOf, histogramBins, histogramFilter, histogramBinIsActive, filterSelects, lineShapeOf, isStackedPercentTile, stackShares, supportsValueLabels, refLineKind, refLineValue, cellFilterToggles, heatStops, heatRange, heatCellColors, heatTextColor, isStackedTile, splitBySeries, assembleSeries, paletteColors, PALETTES, escapeHtml,
+    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, comboSeries, comboModeOf, histogramBins, histogramFilter, histogramBinIsActive, boxStatsByGroup, filterSelects, lineShapeOf, isStackedPercentTile, stackShares, supportsValueLabels, refLineKind, refLineValue, cellFilterToggles, heatStops, heatRange, heatCellColors, heatTextColor, isStackedTile, splitBySeries, assembleSeries, paletteColors, PALETTES, escapeHtml,
     tileDrillLevels, currentDimension, rowsForTile, wordFrequency
   } = GristBI.data;
   const { t } = GristBI.i18n;
@@ -534,6 +534,17 @@
       if (bin) GristBI.store.toggleRangeFilter(currentTile.measure, histogramFilter(bin), currentTile.id);
       return;
     }
+    // Boîte à moustaches : une boîte (ou une valeur aberrante tracée à côté) est UN GROUPE de la dimension — le clic pose un filtre
+    // d'égalité sur ce groupe, jamais de drill-down (les valeurs sont brutes, pas agrégées). Le groupe est retrouvé par son RANG dans
+    // le dernier rendu (`instance.__boxGroups`) : pour la série de boîtes c'est `params.dataIndex`, pour celle des valeurs
+    // aberrantes (points [rang, valeur]) le rang est `params.value[0]` — leur `dataIndex` ne compte que parmi les aberrantes.
+    if (currentTile.type === 'box') {
+      const inst = chartInstances.get(tileId);
+      const names = inst && inst.__boxGroups;
+      const rank = params && params.seriesType === 'scatter' && Array.isArray(params.value) ? params.value[0] : (params ? params.dataIndex : -1);
+      if (names && names[rank] !== undefined) GristBI.store.toggleFilter(currentTile.dimension, names[rank], currentTile.id);
+      return;
+    }
     // Carte de chaleur : une case = UNE ligne ET UNE colonne du tableau croisé, le clic pose les deux filtres (comme une cellule du
     // tableau croisé). Les valeurs des deux axes viennent du dernier rendu (`instance.__grid`), retrouvées par rang : jamais
     // `params.name`, qui ne donne que l'abscisse. Pas de drill-down (comme le tableau croisé).
@@ -996,6 +1007,12 @@
       bumpSeq(tile.id); // un rendu asynchrone encore en vol pour cette tuile (ancien type) ne doit plus s'appliquer
       instance.hideLoading();
       renderHistogram(tile, rows, state, instance);
+      return;
+    }
+    if (tile.type === 'box') {
+      bumpSeq(tile.id);
+      instance.hideLoading();
+      renderBox(tile, rows, state, instance);
       return;
     }
     if (tile.type === 'heatmap') {
@@ -1696,6 +1713,73 @@
           itemStyle: mine && !histogramBinIsActive(mine, b) ? { opacity: 0.3 } : undefined
         }))
       }]
+    };
+    finalizeOption(option, instance);
+    instance.setOption(option, true);
+  }
+
+  // Boîte à moustaches (type 'box') : une boîte par valeur de `tile.dimension`, sur les valeurs BRUTES de `tile.measure`
+  // (js/data.js:boxStatsByGroup : médiane, quartiles, moustaches de Tukey, valeurs aberrantes tracées une à une, au plus
+  // BOX_MAX_OUTLIERS par groupe). Deux séries ECharts : `boxplot` (les boîtes) et `scatter` (les aberrantes, cercles creux). Les
+  // nombres ont le format de la colonne ; l'effectif a celui d'un comptage. Le clic (handleTileClick) filtre sur le groupe ; les
+  // groupes non retenus par un filtre sur cette dimension sont atténués, comme une barre.
+  function renderBox(tile, rows, state, instance) {
+    const box = boxStatsByGroup(rows, tile.dimension, tile.measure);
+    instance.__boxGroups = box.groups.map((g) => g.name);
+    if (!box.groups.length) {
+      // Aucune valeur numérique : un message au centre plutôt qu'un cadre vide sans explication.
+      instance.setOption({ title: { text: t('chart.box.empty'), left: 'center', top: 'middle', textStyle: { fontSize: 12, fontWeight: 'normal' } }, series: [], xAxis: { show: false }, yAxis: { show: false } }, true);
+      return;
+    }
+    const f = fmtFor(tile, tile.measure);
+    const fCount = fmtFor({ ...tile, aggFn: 'count' }, tile.measure);
+    const color = paletteColors(tile.palette)[0];
+    let fill = color;
+    try { fill = echarts.color.modifyAlpha(color, 0.22); } catch (e) { /* repli : la couleur pleine, la boîte reste lisible */ }
+    const filter = state.activeFilters.find((af) => af.column === tile.dimension);
+    const dimmed = (g) => (filter && !filterSelects(filter, g.dimension) ? { opacity: 0.3 } : undefined);
+    const num = (v) => escapeHtml(f.format(v) || String(v));
+    const outliers = [];
+    box.groups.forEach((g, i) => g.outliers.forEach((v) => outliers.push({ value: [i, v], itemStyle: dimmed(g) })));
+    const option = {
+      color: [color],
+      grid: { ...numericGrid },
+      tooltip: {
+        trigger: 'item',
+        // Texte HTML : le nom du groupe vient des données (échappé), les nombres sont formatés.
+        formatter: (p) => {
+          const rank = p.seriesType === 'scatter' ? p.value[0] : p.dataIndex;
+          const g = box.groups[rank];
+          if (!g) return '';
+          const head = `<b>${escapeHtml(g.name)}</b> · ${t('chart.box.count', { n: fCount.format(g.n) || g.n, count: g.n })}`;
+          if (p.seriesType === 'scatter') return `${head}<br/>${t('chart.box.outlier')} : ${num(p.value[1])}`;
+          const lines = [
+            `${t('chart.box.max')} : ${num(g.high)}`, `${t('chart.box.q3')} : ${num(g.q3)}`, `<b>${t('chart.box.median')} : ${num(g.median)}</b>`,
+            `${t('chart.box.q1')} : ${num(g.q1)}`, `${t('chart.box.min')} : ${num(g.low)}`
+          ];
+          if (g.outlierCount) lines.push(t('chart.box.outliers', { n: fCount.format(g.outlierCount) || g.outlierCount, count: g.outlierCount }));
+          return `${head}<br/>${lines.join('<br/>')}`;
+        }
+      },
+      xAxis: { type: 'category', data: box.groups.map((g) => g.name), axisTick: { alignWithLabel: true } },
+      // Pas de zéro imposé : des notes entre 8 et 18 se lisent sur 8-18, pas sur 0-18 (la boîte n'est pas une barre).
+      yAxis: { type: 'value', scale: true, axisLabel: { formatter: f.axis } },
+      series: [
+        {
+          type: 'boxplot',
+          data: box.groups.map((g) => ({ value: [g.low, g.q1, g.median, g.q3, g.high], itemStyle: dimmed(g) })),
+          itemStyle: { color: fill, borderColor: color, borderWidth: 1.5 },
+          emphasis: { itemStyle: { borderWidth: 2.5 } },
+          boxWidth: [8, 48]
+        },
+        {
+          type: 'scatter',
+          data: outliers,
+          symbolSize: 6,
+          z: 3,
+          itemStyle: { color: 'transparent', borderColor: color, borderWidth: 1.5 }
+        }
+      ]
     };
     finalizeOption(option, instance);
     instance.setOption(option, true);
