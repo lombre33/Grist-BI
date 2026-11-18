@@ -2568,35 +2568,123 @@ const SAMPLE_TIME_SERIES = [
   console.log('OK carte KPI — piste d\'objectif : [hidden] respecté (piège n°10), cachée sans objectif, visible avec');
 }
 
-// Nuage de mots : plus proposé dans « Ajouter une visualisation » tant que d3-cloud n'est pas fourni (18/11/2026)
+// Extensions de GFS (consigne 019, 18/11/2026) : « Nuage de mots » grisé, jamais masqué, bibliothèque reçue de GFS (js/extensions.js)
 {
   const fs = require('fs');
   const path = require('path');
   const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
-  // importMapHas : pure, ne lève jamais
-  const withCloud = '{"imports":{"apache-arrow":"./a.mjs","d3-cloud":"./js/vendor/d3-cloud/index.js"}}';
-  const withoutCloud = '{"imports":{"apache-arrow":"./a.mjs","flatbuffers":"./f.js","tslib":"./t.js"}}';
-  assert.strictEqual(data.importMapHas(withCloud, 'd3-cloud'), true, 'entrée présente');
-  assert.strictEqual(data.importMapHas(withoutCloud, 'd3-cloud'), false, 'entrée absente');
-  assert.strictEqual(data.importMapHas(withCloud, 'd3'), false, 'pas de correspondance partielle');
-  for (const bad of ['', 'pas du json', 'null', '[]', '{}', '{"imports":null}', '{"imports":[]}', '{"imports":{"d3-cloud":""}}', '{"imports":{"d3-cloud":null}}', undefined, null, 42]) {
-    assert.strictEqual(data.importMapHas(bad, 'd3-cloud'), false, 'illisible ou vide -> false : ' + JSON.stringify(bad));
-  }
-  // câblage : la carte n'est filtrée que dans renderTypeCards, la tuile en cours de modification garde la sienne,
-  // la liste TYPE_CARDS et le <select> (qui sert à relire une tuile existante) ne changent pas
-  const main = read('js/main.js');
-  const charts = read('js/charts.js');
-  const html = read('index.html');
-  assert.ok(/isWordCloudAvailable\(\) \|\| \(Boolean\(editingTileId\) && tileTypeSelect\.value === 'wordcloud'\)/.test(main), 'carte Nuage de mots : seulement si d3-cloud est fourni ou si on modifie une tuile Nuage de mots');
-  assert.ok(/TYPE_CARDS\.filter\(\(type\) => type !== 'wordcloud' \|\| wordCloudOffered\)/.test(main), 'le filtre ne retire que wordcloud');
-  assert.ok(/'wordcloud'/.test(main.match(/const TYPE_CARDS = \[[^\]]*\]/)[0]), 'TYPE_CARDS garde wordcloud (l\'ajouter à l\'importmap suffit à le rendre)');
-  assert.ok(/<option value="wordcloud"/.test(html), 'le <select> garde l\'option (relecture d\'une tuile enregistrée)');
-  assert.ok(/importMapHas\(el\.textContent, 'd3-cloud'\)/.test(charts) && /isWordCloudAvailable \}/.test(charts), 'charts.js lit l\'importmap et expose isWordCloudAvailable');
-  // l'importmap réel d'index.html ne déclare pas encore d3-cloud : si GFS le fournit, ce test doit être mis à jour avec la carte
-  const map = html.match(/<script type="importmap">([\s\S]*?)<\/script>/)[1];
-  assert.strictEqual(data.importMapHas(map, 'd3-cloud'), false, 'index.html : d3-cloud pas encore déclaré (en attente de GFS)');
-  assert.strictEqual(data.importMapHas(map, 'apache-arrow'), true, 'index.html : importmap lisible (apache-arrow)');
-  console.log('OK nuage de mots — carte proposée seulement si d3-cloud est dans l\'importmap (importMapHas), tuile existante conservée');
+  const ext = require('../js/extensions.js');
+  const link = (opts) => {
+    const o = Object.assign({ hosted: true, libs: {}, ready: Promise.resolve(), installs: [], onExt: null }, opts || {});
+    return {
+      hosted: o.hosted, ready: o.ready,
+      library: (id) => o.libs[id] || null,
+      onExtensions: (fn) => { o.onExt = fn; },
+      install: async (id) => { o.installs.push(id); if (o.reject) throw new Error('annulé'); return []; },
+      _o: o
+    };
+  };
+  const SRC = { src: 'https://gfs.example/vendor/d3-cloud/1.0.0/d3-cloud.js', integrite: 'sha384-AAAA', forme: 'module' };
+
+  // état : seule, hébergée sans l'extension, hébergée avec elle ; id inconnu -> seule (jamais « active » par défaut)
+  assert.strictEqual(ext.stateFor(null, 'nuage-de-mots'), 'standalone', 'pas de lien -> seule');
+  assert.strictEqual(ext.stateFor(link({ hosted: false }), 'nuage-de-mots'), 'standalone', 'lien non hébergé -> seule');
+  assert.strictEqual(ext.stateFor(link(), 'nuage-de-mots'), 'inactive', 'hébergée, bibliothèque non donnée -> pas encore ajoutée');
+  assert.strictEqual(ext.stateFor(link({ libs: { 'd3-cloud': SRC } }), 'nuage-de-mots'), 'active', 'hébergée avec la bibliothèque -> active');
+  assert.strictEqual(ext.stateFor(link({ libs: { 'd3-cloud': { src: SRC.src } } }), 'nuage-de-mots'), 'inactive', 'sans empreinte la source ne vaut rien');
+  assert.strictEqual(ext.stateFor(link({ libs: { 'd3-cloud': SRC } }), 'inconnue'), 'standalone', 'extension inconnue -> jamais active');
+  assert.strictEqual(ext.stateFor(link({ libs: { pdfjs: SRC } }), 'mots-cles-pdf'), 'active', 'mots-clés des PDF : même état, bibliothèque pdfjs');
+
+  // module posé par GFS : lu à chaque appel, jamais figé
+  class FakeCloud {}
+  const scopeWith = { GfsPaquets: { 'd3-cloud': { modules: { 'd3-cloud': { default: FakeCloud } } } } };
+  assert.strictEqual(ext.moduleFrom(scopeWith, 'nuage-de-mots').default, FakeCloud, 'GfsPaquets["d3-cloud"].modules["d3-cloud"].default');
+  assert.strictEqual(ext.moduleFrom({}, 'nuage-de-mots'), null);
+  assert.strictEqual(ext.moduleFrom({ GfsPaquets: { 'd3-cloud': {} } }, 'nuage-de-mots'), null);
+  assert.strictEqual(ext.moduleFrom({ GfsPaquets: { pdfjs: { modules: { 'pdfjs-dist/build/pdf.min.mjs': { getDocument() {} } } } } }, 'mots-cles-pdf').getDocument !== undefined, true, 'pdf.js : clé du module de la demande');
+
+  // Rejoué dans la chaîne asynchrone du fichier (`await extensionsAsyncTest()` plus bas) : un faux `document` posé ici ne doit pas
+  // rester en place pendant les essais synchrones qui suivent.
+  globalThis.extensionsAsyncTest = async () => {
+    const savedDoc = global.document;
+    const scripts = [];
+    global.document = {
+      createElement: () => ({}),
+      head: { append(script) { scripts.push(script); setTimeout(() => { global.GfsPaquets = scopeWith.GfsPaquets; script.onload(); }, 0); } }
+    };
+    try {
+      // sans lien (hors GFS) : null, rien n'est chargé, aucun abonné réveillé
+      let changes = 0;
+      const off = ext.onChange(() => { changes++; });
+      await ext.attach(Promise.resolve(null));
+      assert.strictEqual(await ext.load('nuage-de-mots'), null);
+      assert.strictEqual(scripts.length, 0, 'seule : aucune balise <script>');
+      assert.strictEqual(changes, 0, 'seule : rien ne change, personne n\'est réveillé');
+      assert.strictEqual(await ext.requestInstall('nuage-de-mots'), 'standalone', 'seule : le clic rend « standalone » (l\'appelant montre la fenêtre du grisé)');
+
+      // hébergée sans l'extension : null (non gardé), un clic appelle GfsLink.install, une annulation ne lève rien
+      const hosted = link();
+      await ext.attach(Promise.resolve(hosted));
+      assert.strictEqual(changes, 1, 'hébergée : un réveil quand GFS a répondu');
+      assert.strictEqual(ext.stateOf('nuage-de-mots'), 'inactive');
+      assert.strictEqual(await ext.load('nuage-de-mots'), null);
+      assert.strictEqual(scripts.length, 0, 'sans l\'extension : aucune balise <script>');
+      assert.strictEqual(await ext.requestInstall('nuage-de-mots'), 'inactive');
+      assert.deepStrictEqual(hosted._o.installs, ['nuage-de-mots'], 'un clic ouvre « Apps et extensions » sur la ligne de l\'extension');
+      hosted._o.reject = true;
+      assert.strictEqual(await ext.requestInstall('nuage-de-mots'), 'inactive', 'installation annulée : pas d\'exception');
+
+      // l'extension est ajoutée pendant que l'app est ouverte : l'événement réveille l'abonné, la bibliothèque se charge
+      hosted._o.libs['d3-cloud'] = SRC;
+      hosted._o.onExt(['nuage-de-mots']);
+      assert.strictEqual(changes, 2, 'l\'événement `extensions` réveille l\'abonné');
+      assert.strictEqual(ext.stateOf('nuage-de-mots'), 'active');
+      const mod = await ext.load('nuage-de-mots');
+      assert.strictEqual(mod.default, FakeCloud, 'le module posé par le fichier de GFS');
+      assert.strictEqual(scripts.length, 1);
+      assert.strictEqual(scripts[0].type, 'module', '<script type="module">, jamais import()');
+      assert.strictEqual(scripts[0].src, SRC.src);
+      assert.strictEqual(scripts[0].integrity, SRC.integrite, 'empreinte de GFS');
+      assert.strictEqual(scripts[0].crossOrigin, 'anonymous');
+      assert.strictEqual((await ext.load('nuage-de-mots')).default, FakeCloud);
+      assert.strictEqual(scripts.length, 1, 'déjà posé : pas de deuxième balise');
+      // l'extension est retirée alors que son fichier est déjà en mémoire : la fonction se grise (null), jamais à moitié
+      hosted._o.libs = {};
+      hosted._o.onExt([]);
+      assert.strictEqual(await ext.load('nuage-de-mots'), null, 'retirée : plus de module, même déjà chargé');
+      hosted._o.libs['d3-cloud'] = SRC;
+      assert.strictEqual((await ext.load('nuage-de-mots')).default, FakeCloud, 'ré-ajoutée : le module déjà posé sert, sans deuxième balise');
+      assert.strictEqual(scripts.length, 1);
+      // GFS muet : link.ready rejeté ne bloque pas
+      await ext.attach(Promise.resolve(link({ ready: Promise.reject(new Error('muet')) })));
+      assert.strictEqual(ext.stateOf('nuage-de-mots'), 'inactive');
+      off();
+    } finally {
+      global.document = savedDoc;
+      delete global.GfsPaquets;
+    }
+
+    // câblage : le type reste proposé (grisé), plus aucun import map ni import() pour d3-cloud
+    const main = read('js/main.js');
+    const charts = read('js/charts.js');
+    const html = read('index.html');
+    const css = read('css/style.css');
+    assert.ok(/'wordcloud'/.test(main.match(/const TYPE_CARDS = \[[^\]]*\]/)[0]), 'TYPE_CARDS garde wordcloud');
+    assert.ok(!/TYPE_CARDS\.filter\(/.test(main), 'aucune carte n\'est retirée : grisée, jamais masquée');
+    assert.ok(/const TYPE_EXTENSION = \{ wordcloud: 'nuage-de-mots' \}/.test(main), 'le type nuage de mots dépend de l\'extension nuage-de-mots');
+    assert.ok(/aria-disabled/.test(main) && /type-card-locked/.test(main) && /\.type-card-locked/.test(css), 'carte grisée : aria-disabled + classe + règle CSS');
+    assert.ok(/function chooseType\(type\) \{\s*const extensionId = TYPE_EXTENSION\[type\];\s*if \(extensionId && GristBI\.extensions\.stateOf\(extensionId\) !== 'active'\) \{ requestExtension/.test(main), 'un type grisé ne se choisit pas : il appelle requestExtension');
+    assert.ok(/GristBI\.extensions\.attach\(gfsLinkReady\)/.test(main) && /GristBI\.extensions\.onChange\(/.test(main), 'main.js donne le lien à js/extensions.js et repeint à chaque changement');
+    assert.ok(/dialogs\.notice\(\{[^}]*ext\.standalone\.title/.test(main.replace(/\s+/g, ' ')), 'seule : la fenêtre du grisé');
+    assert.ok(!/import\('d3-cloud'\)|importMapHas|isWordCloudAvailable/.test(charts + main), 'plus d\'import() nu ni de lecture de l\'importmap');
+    assert.ok(/GristBI\.extensions\.load\('nuage-de-mots'\)/.test(charts), 'charts.js reçoit d3-cloud de js/extensions.js');
+    assert.ok(/<option value="wordcloud"/.test(html), 'le <select> garde l\'option (relecture d\'une tuile enregistrée)');
+    const map = JSON.parse(html.match(/<script type="importmap">([\s\S]*?)<\/script>/)[1]);
+    assert.ok(!('d3-cloud' in map.imports) && !('pdfjs-dist' in map.imports), 'l\'import map ne nomme aucune bibliothèque d\'extension (règle 9 du guide)');
+    assert.ok(html.indexOf('js/extensions.js') > html.indexOf('js/data.js') && html.indexOf('js/extensions.js') < html.indexOf('js/charts.js'), 'js/extensions.js chargé entre data.js et charts.js');
+    assert.ok(!/https?:\/\//.test(read('js/extensions.js').replace(/\/\*[\s\S]*?\*\//, '')), 'aucune adresse en dur dans js/extensions.js');
+    console.log('OK extensions de GFS — états seule/pas encore/active, module de GfsPaquets, <script type="module"> avec empreinte, événement `extensions`, clic -> GfsLink.install ou fenêtre du grisé, carte grisée jamais masquée');
+  };
 }
 
 // Assistant de démarrage : un montant passe avant un prix unitaire (18/11/2026, constaté sur la table de démo où PrixUnitaire précédait Montant)
@@ -2667,6 +2755,8 @@ const SAMPLE_TIME_SERIES = [
 // que son achèvement précède le message final ci-dessous plutôt que de le laisser s'afficher avant
 // que ces assertions n'aient tourné.
 (async () => {
+  await globalThis.extensionsAsyncTest();
+  delete globalThis.extensionsAsyncTest;
   const fakeTimeSeries = [
     { period: '2025-01-01', value: 100, cumulative: 100, ytd: 100, previousYear: null },
     { period: '2025-02-01', value: 50, cumulative: 150, ytd: 150, previousYear: null },
