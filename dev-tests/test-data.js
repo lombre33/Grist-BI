@@ -2178,6 +2178,71 @@ const SAMPLE_TIME_SERIES = [
   console.log('OK js/format.js — jauge : niceCeil, gaugeLayout (7 tailles de tuile), fitFont, câblage');
 }
 
+// js/format.js + panneau : réglage « Format des nombres » par tuile (audit de lisibilité, lot 3, 18/11/2026)
+{
+  const fs = require('fs');
+  const path = require('path');
+  const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+  const format = require('../js/format.js');
+
+  // types concernés : ceux qui affichent un nombre ; pas de réglage pour un type inconnu ni null
+  for (const type of ['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table']) {
+    assert.strictEqual(data.supportsNumberFormat({ type }), true, type);
+  }
+  assert.strictEqual(data.supportsNumberFormat({ type: 'text' }), false, 'la tuile Texte ne montre aucun nombre');
+  assert.strictEqual(data.supportsNumberFormat({ type: 'inconnu' }), false);
+  assert.strictEqual(data.supportsNumberFormat(null), false);
+  assert.deepStrictEqual(data.NUMBER_FORMAT_TILE_TYPES.filter((ty) => !['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table'].includes(ty)), []);
+
+  // verdict de « Comme dans la colonne » : sert l'explication affichée sous le réglage
+  format.setColumnInfo({
+    Montant: { type: 'Numeric', widgetOptions: JSON.stringify({ numMode: 'currency', currency: 'EUR' }) },
+    Qte: { type: 'Int', widgetOptions: '{"decimals":0}' },
+    Libre: { type: 'Numeric', widgetOptions: '' },
+    Plain: { type: 'Numeric', widgetOptions: '{"numMode":"decimal"}' },
+    Nom: { type: 'Text', widgetOptions: '' }
+  }, null);
+  assert.strictEqual(format.columnModeState({ aggFn: 'sum' }, 'Montant'), 'ok');
+  assert.strictEqual(format.columnModeState({ aggFn: 'avg' }, 'Qte'), 'ok');
+  assert.strictEqual(format.columnModeState({ aggFn: 'sum' }, 'Libre'), 'none');
+  assert.strictEqual(format.columnModeState({ aggFn: 'sum' }, 'Plain'), 'none');
+  assert.strictEqual(format.columnModeState({ aggFn: 'sum' }, 'Nom'), 'unknown', 'colonne non numérique');
+  assert.strictEqual(format.columnModeState({ aggFn: 'sum' }, 'Absente'), 'unknown', 'colonne inconnue (calculée, fusionnée)');
+  assert.strictEqual(format.columnModeState({ aggFn: 'count' }, 'Montant'), 'count', 'un comptage n\'a jamais de format de colonne');
+  // et le rendu suit : la même valeur, trois réglages
+  const tileBase = { measure: 'Montant', aggFn: 'sum' };
+  assert.strictEqual(format.forTile(tileBase, 'Montant', 'fr').format(600688.2299999992), '600\u202f688', 'Automatique : entier dès 1 000 (pas 600688.2299999992)');
+  assert.ok(/600\s688,23\s€/.test(format.forTile({ ...tileBase, numberFormat: { mode: 'column' } }, 'Montant', 'fr').format(600688.2299999992).replace(/[\u202f\u00a0]/g, ' ')), 'Comme dans la colonne : euros');
+  assert.strictEqual(format.forTile({ ...tileBase, numberFormat: { mode: 'custom', decimals: 2, notation: 'standard' } }, 'Montant', 'fr').format(600688.2299999992), '600\u202f688,23', 'Personnalisé : 2 décimales fixes');
+  assert.strictEqual(format.forTile({ ...tileBase, numberFormat: { mode: 'custom', decimals: 1, notation: 'compact' } }, 'Montant', 'fr').format(1542980.88), '1,5\u00a0M', 'Personnalisé : compact, 1 décimale');
+  format.setColumnInfo({}, null);
+
+  // câblage du panneau : champ, lecture/écriture du formulaire, chargement des formats à chaque table
+  const html = read('index.html');
+  for (const id of ['tile-numfmt-field', 'tile-numfmt', 'tile-numfmt-decimals', 'tile-numfmt-compact', 'tile-numfmt-hint']) {
+    assert.ok(html.includes(`id="${id}"`), `index.html : #${id}`);
+  }
+  assert.ok(/<option value="column" data-i18n="tileForm\.numFormat\.column">/.test(html), 'option « Comme dans la colonne »');
+  const main = read('js/main.js');
+  assert.ok(/tileData\.numberFormat = GristBI\.data\.supportsNumberFormat\(\{ type \}\) \? numberFormatFromForm\(\) : undefined/.test(main), 'readTileForm écrit numberFormat (undefined = Automatique)');
+  assert.ok(/setNumberFormatForm\(tile\.numberFormat\)/.test(main), 'startEditTile relit le réglage de la tuile');
+  assert.ok(/setNumberFormatForm\(null\)/.test(main), 'resetTileForm remet Automatique');
+  assert.ok(/await refreshColumnFormats\(tableId, isNewTable\)/.test(main), 'switchTable charge les formats de colonne à chaque (re)chargement');
+  assert.ok(/GristBI\.format\.setColumnInfo\(\{\}, null\)/.test(main), 'registre vidé au changement de table');
+  // chaque clé i18n du réglage existe en fr et en
+  const keys = [...html.matchAll(/data-i18n="(tileForm\.numFormat\.[\w.]+)"/g)].map((m) => m[1])
+    .concat(['tileForm.numFormat.hint.auto', 'tileForm.numFormat.hint.columnCount', 'tileForm.numFormat.hint.columnUnknown', 'tileForm.numFormat.hint.columnNone', 'tileForm.numFormat.hint.columnOk', 'tileForm.numFormat.hint.columnEach']);
+  for (const k of keys) {
+    for (const lang of ['fr', 'en']) {
+      i18n.setLang(lang);
+      assert.notStrictEqual(i18n.t(k, { column: 'X' }), k, `${k} (${lang})`);
+    }
+  }
+  i18n.setLang('fr');
+  assert.ok(/X/.test(i18n.t('tileForm.numFormat.hint.columnOk', { column: 'X' })), 'le nom de la colonne est injecté');
+  console.log(`OK js/format.js — réglage « Format des nombres » : types concernés, verdict « Comme dans la colonne », rendu des trois modes, câblage du panneau, ${keys.length} clés i18n fr/en`);
+}
+
 // measureExportSheet / buildWorkbookSheetsAsync : export Excel RÉEL (plus un simple message) pour
 // une tuile Barres en mode de calcul temporel (Cumul/YTD/N-1) — voir js/export.js. `computeMeasureSeries`
 // est ici FACTICE (une Promise résolue avec un timeSeries écrit à la main), jamais le vrai
@@ -3267,6 +3332,77 @@ const SAMPLE_TIME_SERIES = [
       assert.ok(!kinds(r.calls).includes('ModifyColumn'), 'pas de réparation hors cellule en erreur');
     }
     console.log('OK grist-api:getCurrentUserEmail — colonne déclenchée, ancienne colonne réparée, jamais une valeur d\'erreur comme auteur');
+  }
+
+  // grist-api.js:readColumnFormats — type + widgetOptions de chaque colonne de la table de travail et réglages du
+  // document, lus dans les tables système (forme exacte NON vérifiée sur un vrai Grist, voir HYPOTHESES.md).
+  {
+    const vm = require('vm');
+    const fsG = require('fs');
+    const pathG = require('path');
+    const format = require('../js/format.js');
+    const source = fsG.readFileSync(pathG.join(__dirname, '..', 'js', 'grist-api.js'), 'utf8');
+    async function runRead(fetchTable, tableId) {
+      const warns = [];
+      const sandbox = { console: { error() {}, log() {}, warn: (...a) => warns.push(a.join(' ')) }, setTimeout: (fn) => { fn(); return 0; } };
+      sandbox.window = sandbox;
+      sandbox.GristBI = { data, format };
+      sandbox.grist = { docApi: { fetchTable } };
+      vm.runInNewContext(source, sandbox);
+      const out = await sandbox.GristBI.api.readColumnFormats(tableId);
+      return { out: JSON.parse(JSON.stringify(out)), warns };
+    }
+    const system = {
+      _grist_Tables: { id: [1, 2], tableId: ['Ventes', 'Autre'] },
+      _grist_Tables_column: {
+        id: [10, 11, 12, 13, 14, 20],
+        parentId: [1, 1, 1, 1, 1, 2],
+        colId: ['Montant', 'Qte', 'Nom', 'manualSort', 'gristHelper_Display', 'Montant'],
+        type: ['Numeric', 'Int', 'Text', 'ManualSortPos', 'Any', 'Numeric'],
+        widgetOptions: ['{"numMode":"currency","currency":"EUR"}', '{"decimals":0}', '', '', '', '{"decimals":5}']
+      },
+      _grist_DocInfo: { id: [1], documentSettings: ['{"locale":"fr-FR","currency":"EUR"}'] }
+    };
+    const fetchOk = async (id) => { if (!system[id]) throw new Error('inconnue ' + id); return JSON.parse(JSON.stringify(system[id])); };
+
+    // 1. Cas nominal : les colonnes de LA table (pas celles de « Autre »), sans colonne d'aide, + réglages du document
+    let r = await runRead(fetchOk, 'Ventes');
+    assert.deepStrictEqual(Object.keys(r.out.columns).sort(), ['Montant', 'Nom', 'Qte', 'manualSort']);
+    assert.strictEqual(r.out.columns.Montant.type, 'Numeric');
+    assert.strictEqual(r.out.columns.Montant.widgetOptions, '{"numMode":"currency","currency":"EUR"}', 'le JSON reste brut ici, interprété par js/format.js');
+    assert.deepStrictEqual(r.out.docSettings, { locale: 'fr-FR', currency: 'EUR' });
+    // et de bout en bout : ce que lit l'API produit bien un format monétaire
+    format.setColumnInfo(r.out.columns, r.out.docSettings);
+    assert.ok(/€/.test(format.forTile({ numberFormat: { mode: 'column' }, aggFn: 'sum' }, 'Montant', 'fr').format(1234.5)));
+    format.setColumnInfo({}, null);
+
+    // 2. Table inconnue : vide, sans avertissement ni exception
+    r = await runRead(fetchOk, 'Fantome');
+    assert.deepStrictEqual(r.out, { columns: {}, docSettings: null });
+
+    // 3. Tables système illisibles (droits restreints, version de Grist différente) : vide + avertissement
+    r = await runRead(async () => { throw new Error('refusé'); }, 'Ventes');
+    assert.deepStrictEqual(r.out, { columns: {}, docSettings: null });
+    assert.strictEqual(r.warns.length, 1, 'un avertissement, jamais une exception');
+
+    // 4. Réglages du document illisibles : les options de colonne restent utilisables
+    r = await runRead(async (id) => { if (id === '_grist_DocInfo') throw new Error('absente'); return fetchOk(id); }, 'Ventes');
+    assert.strictEqual(r.out.docSettings, null);
+    assert.ok(r.out.columns.Montant, 'colonnes lues malgré tout');
+
+    // 5. `widgetOptions` absent de _grist_Tables_column (ancien moteur / mock sans cette colonne) : chaînes vides
+    r = await runRead(async (id) => {
+      const t = await fetchOk(id);
+      if (id === '_grist_Tables_column') delete t.widgetOptions;
+      return t;
+    }, 'Ventes');
+    assert.strictEqual(r.out.columns.Montant.widgetOptions, '');
+    // 6. `documentSettings` vide, invalide ou sans locale : null, jamais une exception
+    for (const raw of ['', '{}', 'pas du json', '[1]']) {
+      r = await runRead(async (id) => { const t = await fetchOk(id); if (id === '_grist_DocInfo') t.documentSettings = [raw]; return t; }, 'Ventes');
+      assert.strictEqual(r.out.docSettings, null, JSON.stringify(raw));
+    }
+    console.log('OK grist-api:readColumnFormats — colonnes de la bonne table, réglages du document, replis sans exception');
   }
 
   // --- js/models.js + modeles/modeles.json : modèles de « Nouveau > Depuis un modèle » (consigne GFS 016) ---
