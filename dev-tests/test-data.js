@@ -171,6 +171,27 @@ const rows = [
   console.log('OK séries multiples — isSeriesTile / splitBySeries / assembleSeries (trous null, tri sur total, ordre d\'apparition) / export Excel');
 }
 
+// Empilé (`tile.stacked`) : barres et AIRE avec une colonne Séries.
+{
+  const mk = (type, extra) => Object.assign({ id: 't', type, title: 'x', dimension: 'Region', measure: 'Montant', aggFn: 'sum', seriesColumn: 'Produit', stacked: true }, extra);
+  assert.strictEqual(data.isStackedTile(mk('bar')), true);
+  assert.strictEqual(data.isStackedTile(mk('bar', { horizontal: true })), true);
+  assert.strictEqual(data.isStackedTile(mk('line', { areaFill: true })), true);
+  assert.strictEqual(data.isStackedTile(mk('line')), false, 'courbe sans remplissage : pas de pile');
+  assert.strictEqual(data.isStackedTile(mk('bar', { stacked: false })), false);
+  assert.strictEqual(data.isStackedTile(mk('bar', { stacked: undefined })), false);
+  assert.strictEqual(data.isStackedTile(mk('bar', { seriesColumn: '' })), false, 'sans série, rien à empiler');
+  assert.strictEqual(data.isStackedTile(mk('bar', { measureMode: 'ytd' })), false, 'mode mesure temporelle : une seule série');
+  for (const type of ['pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'kpi', 'gauge', 'pivot']) {
+    assert.strictEqual(data.isStackedTile(mk(type, { areaFill: true })), false, type);
+  }
+  assert.strictEqual(data.isStackedTile(null), false);
+  // L'empilement est purement visuel : l'export Excel d'une tuile empilée est celui de la même tuile non empilée
+  const st = { rows: [{ Region: 'Nord', Produit: 'A', Montant: 10 }, { Region: 'Nord', Produit: 'B', Montant: 5 }, { Region: 'Sud', Produit: 'A', Montant: 30 }], activeFilters: [], advancedFilters: [], drillIns: {} };
+  assert.deepStrictEqual(data.tileExportSheet(mk('bar'), st), data.tileExportSheet(mk('bar', { stacked: false }), st));
+  console.log('OK empilé — isStackedTile (barres et aire seulement, avec une colonne Séries), export Excel inchangé');
+}
+
 {
   const agg = data.groupByAggregate(rows, 'Region', 'Montant', 'count');
   assert.strictEqual(agg.find((d) => d.dimension === 'Sud').value, 2);
@@ -2564,6 +2585,17 @@ const SAMPLE_TIME_SERIES = [
       assert.ok(!noSeries || !/^advice\.series\./.test(noSeries.key), 'sans série : aucun avertissement de série');
       const fewS = advice.adviceForTile({ type: 'line', dimension: 'Region', measure: 'V', aggFn: 'sum', seriesColumn: 'Region2' }, sr.map((r) => Object.assign({}, r, { Region2: r.id % 3 })));
       assert.ok(!fewS || !/^advice\.series\./.test(fewS.key), 'trois séries : pas d\'avertissement de série');
+      // Empilé : une pile additionne, donc moyenne/min/max avertissent ; somme/comptage non ; sans « empilé » non
+      const stk = (extra) => advice.adviceForTile(Object.assign({ type: 'bar', dimension: 'Region', measure: 'V', aggFn: 'sum', seriesColumn: 'Region2', stacked: true }, extra), sr.map((r) => Object.assign({}, r, { Region2: r.id % 3 })));
+      for (const agg of ['avg', 'min', 'max']) {
+        const w = stk({ aggFn: agg });
+        assert.ok(w && w.key === 'advice.stacked.notAdditive' && w.level === 'warn', agg + ' : ' + JSON.stringify(w));
+      }
+      for (const agg of ['sum', 'count']) assert.strictEqual(stk({ aggFn: agg }), null, agg);
+      assert.strictEqual(stk({ aggFn: 'avg', stacked: false }), null, 'moyenne NON empilée : rien à dire');
+      // Courbe sans aire : jamais empilée (isStackedTile) -> jamais l'avertissement de pile (un autre conseil de courbe peut s'appliquer)
+      const lineNoArea = stk({ aggFn: 'avg', type: 'line' });
+      assert.ok(!lineNoArea || lineNoArea.key !== 'advice.stacked.notAdditive', JSON.stringify(lineNoArea));
       console.log('OK advice — séries multiples (trop de séries, série = dimension)');
     }
 

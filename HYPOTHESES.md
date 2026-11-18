@@ -2887,6 +2887,34 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     **Non vérifié** : un vrai Grist / GFS ; une série par DuckDB sur plusieurs dizaines de milliers de lignes (une requête
     par série : coût non mesuré) ; plus de 8 séries à l'écran ; l'aire non empilée de plusieurs séries se recouvre (voir
     le suivant « empilé ») ; thème sombre.
+- **Empilé (barres et aire)** (18/11/2026, fil « Passer à ECharts 6 et ajouter 4 graphiques », 3e des 4 fonctionnalités ;
+  `js/data.js`, `js/charts.js`, `js/advice.js`, `js/main.js`, `index.html`, `js/i18n.js`) : case « Empiler les séries »
+  (`tile.stacked`) qui superpose les séries au lieu de les mettre côte à côte. Aucune nouvelle bibliothèque.
+  - **Quand** (`data.isStackedTile`) : seulement avec une colonne Séries (sinon une seule série, rien à empiler), pour les
+    BARRES (verticales ou horizontales) et l'AIRE (courbe + `areaFill`). Une courbe sans remplissage empilée serait une
+    courbe cumulée — un autre graphique, que personne ne lit comme tel : la case est masquée dans ce cas et, si l'indicateur
+    traînait sur la tuile, il est ignoré au rendu. Le formulaire écrit `stacked` à `undefined` dès qu'une des conditions
+    manque (série retirée, Aire décochée).
+  - **Rendu** : toutes les séries partagent la pile ECharts `'total'`. Aire empilée à opacité 0,65 (à 0,25, deux bandes
+    voisines se confondent) ; aire non empilée toujours 0,25. Info-bulle sur l'axe avec une ligne **Total** (la seule chose
+    qu'on ne lit pas sur la hauteur d'une pile), noms de séries échappés.
+  - **Combinaison absente** : barres -> `null` conservé (aucune barre) ; aire -> **0** (un `null` rompt la bande de TOUTES
+    les séries au-dessus dans ECharts). Conséquence visible : dans une aire empilée, l'info-bulle affiche 0 là où une
+    barre affiche « – » ; le total est juste dans les deux cas.
+  - **Export Excel** : inchangé (l'empilement est purement visuel) — la feuille d'une tuile empilée est celle de la même
+    tuile non empilée (testé).
+  - **Conseil** : moyenne, minimum ou maximum empilés -> avertissement (`advice.stacked.notAdditive` : le total d'une pile
+    n'a pas de sens pour ces agrégats) ; somme et comptage non. Valeurs négatives : non traitées à part (ECharts les empile
+    de l'autre côté de l'axe, c'est le comportement attendu d'une pile « signée »).
+  - **Pas de « 100 % empilé »** (parts relatives) : non demandé, hors de cette PR.
+  - **Testé** : Node — `isStackedTile` (types, horizontal, mode mesure, absence de série), export Excel inchangé,
+    avertissements (avg/min/max oui ; sum/count, non empilé, courbe sans aire non) ; Playwright (vrai `index.html` +
+    `dev-tests/grist-stub.js`) — case masquée sans série, visible avec série pour les barres, masquée pour une courbe
+    jusqu'à ce que « Aire » soit cochée, retrait de la série la masque ; aperçu vivant empilé ; ajout ; `stack: 'total'` sur
+    les 3 séries ; trou d'une barre `null`, trou d'une aire 0 ; info-bulle réelle « Sud · Widget A : 441 · Widget B : 516 ·
+    Widget C : 591 · Total : 1 548 » (441 + 516 + 591) ; clic souris réel -> filtre sur la catégorie ; Aire décochée ->
+    plus de pile ; édition (case reprise) ; libellé anglais ; aucun message de console. **Non vérifié** : un vrai Grist /
+    GFS ; l'aspect avec plusieurs valeurs négatives ; plus de 8 séries empilées ; thème sombre.
 
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 

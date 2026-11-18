@@ -784,6 +784,8 @@
       if (tile.seriesColumn === tile.dimension) return warn('advice.series.sameAsDimension');
       const seriesCount = new Set(rows.map((r) => r[tile.seriesColumn])).size;
       if (seriesCount > SERIES_MAX) return warn('advice.series.tooMany', { n: seriesCount });
+      // Une pile additionne les hauteurs : sans sens pour une moyenne, un minimum ou un maximum.
+      if (data.isStackedTile(tile) && (tile.aggFn === 'avg' || tile.aggFn === 'min' || tile.aggFn === 'max')) return warn('advice.stacked.notAdditive');
     }
     if (type === 'radar') {
       const axes = tile.radarAxisMode === 'columns' ? (tile.radarAxes || []).length : n;

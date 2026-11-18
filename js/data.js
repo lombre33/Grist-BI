@@ -422,6 +422,14 @@
     return tile.type === 'bar' && !(tile.measureMode && tile.measureMode !== 'brut');
   }
 
+  // Empilé (`tile.stacked`) : séries superposées au lieu de côte à côte. Seulement avec une colonne
+  // Séries, et pour les barres ou l'AIRE (courbe + `areaFill`) : une courbe sans remplissage empilée
+  // serait une courbe cumulée — un autre graphique, que personne ne lit comme tel.
+  function isStackedTile(tile) {
+    if (!tile || !tile.stacked || !isSeriesTile(tile)) return false;
+    return tile.type === 'bar' || (tile.type === 'line' && !!tile.areaFill);
+  }
+
   // Lignes de `rows` rangées par valeur de `seriesColumn` : `[{ key, name, rows }]`. `name` est le
   // libellé affiché (la valeur en texte, ou `emptyLabel` pour une cellule vide).
   function splitBySeries(rows, seriesColumn, emptyLabel) {
@@ -828,7 +836,7 @@
     tableToRows, epochSecondsToIsoDate, applyFilters, matchesFilter, sameValue, parseDateValue,
     relativeDateRange, RELATIVE_DATE_PRESETS, groupByAggregate, aggregateSingle, wordFrequency, pivotTable,
     distinctColumnValues, computeTrend, trendFromGroups, periodLabel, measureSeriesForTile,
-    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, splitBySeries, assembleSeries, escapeHtml,
+    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, isStackedTile, splitBySeries, assembleSeries, escapeHtml,
     tileDrillLevels, currentDimension, rowsForTile, tileExportSheet, tileExportKind,
     sanitizeSheetName, buildWorkbookSheets, measureExportSheet, buildWorkbookSheetsAsync,
     blendRows, deriveDateHierarchyColumns, commentsForTile, isAccessRuleRefusal, AGGREGATORS
