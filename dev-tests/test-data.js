@@ -154,6 +154,28 @@ const rows = [
   assert.deepStrictEqual(none.categories, []);
   assert.deepStrictEqual(none.series.map((x) => x.values), [[], []]);
 
+  // Bug réel du 18/11/2026 : DuckDB-WASM rend une dimension entière en BigInt (2022n), le JS pur en
+  // nombre (2022) ; `assembleSeries` recevait les catégories d'un moteur et les séries de l'autre (au-delà
+  // de 5 000 lignes au total, chaque série reste sous le seuil) et ne retrouvait aucune valeur.
+  {
+    const bigCats = [2022n, 2023n, 2024n];
+    const mixed = [
+      { name: 'A', groups: [{ dimension: 2022, value: 10 }, { dimension: 2024, value: 30 }] },
+      { name: 'B', groups: [{ dimension: 2023, value: 5 }] }
+    ];
+    const m = data.assembleSeries(bigCats, mixed, undefined);
+    assert.deepStrictEqual(m.series[0].values, [10, null, 30], 'BigInt contre nombre : la valeur est retrouvée');
+    assert.deepStrictEqual(m.series[1].values, [null, 5, null]);
+    const sorted = data.assembleSeries(bigCats, mixed, 'value-desc');
+    assert.deepStrictEqual(sorted.series[0].values, [30, 10, null], 'le tri sur le total voit aussi les valeurs');
+    // L'inverse (catégories en nombre, séries en BigInt) et la chaîne « 2022 » : même clé.
+    assert.deepStrictEqual(data.assembleSeries([2022, 2023], [{ name: 'A', groups: [{ dimension: 2023n, value: 7 }] }], undefined).series[0].values, [null, 7]);
+    assert.deepStrictEqual(data.assembleSeries(['2022'], [{ name: 'A', groups: [{ dimension: 2022, value: 1 }] }], undefined).series[0].values, [1]);
+    // null reste une catégorie à part, jamais confondue avec la chaîne « null ».
+    assert.deepStrictEqual(data.assembleSeries([null, 'null'], [{ name: 'A', groups: [{ dimension: null, value: 3 }] }], undefined).series[0].values, [3, null]);
+    console.log('OK assembleSeries — catégories BigInt (DuckDB) contre séries en nombre (JS) : valeurs retrouvées, null distinct de « null »');
+  }
+
   // Export Excel : une colonne par série, mêmes catégories/ordre que le rendu, cellule vide (pas 0) pour un trou
   const st = { rows: sRows, activeFilters: [], advancedFilters: [], drillIns: {} };
   const sheet = data.tileExportSheet(mk('bar'), st);
