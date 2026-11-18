@@ -8,7 +8,7 @@
   const GristBI = global.GristBI || (global.GristBI = {});
   const {
     groupByAggregate, sameValue, aggregateSingle, pivotTable, trendFromGroups, targetProgress, progressRows, sparklineValues, sparklineGeometry, measureSeriesForTile,
-    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, isSmallMultiplesTile, smallMultiplesPanels, smallMultiplesGrid, smallMultiplesRange, comboSeries, comboModeOf, histogramBins, histogramFilter, histogramBinIsActive, boxStatsByGroup, sankeyFlows, topFlows, SANKEY_MAX_LINKS, isBubbleTile, bubblePoints, bubbleDiameters, calendarDays, ganttTasks, ganttLayout, filterSelects, lineShapeOf, isStackedPercentTile, stackShares, supportsValueLabels, refLineKind, refLineValue, cellFilterToggles, heatStops, heatRange, heatCellColors, heatTextColor, isStackedTile, splitBySeries, assembleSeries, paletteColors, PALETTES, escapeHtml,
+    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, sunburstLevels, sunburstTree, sunburstFilterToggles, sunburstNodeSelected, isSmallMultiplesTile, smallMultiplesPanels, smallMultiplesGrid, smallMultiplesRange, comboSeries, comboModeOf, histogramBins, histogramFilter, histogramBinIsActive, boxStatsByGroup, sankeyFlows, topFlows, SANKEY_MAX_LINKS, isBubbleTile, bubblePoints, bubbleDiameters, calendarDays, ganttTasks, ganttLayout, filterSelects, lineShapeOf, isStackedPercentTile, stackShares, supportsValueLabels, refLineKind, refLineValue, cellFilterToggles, heatStops, heatRange, heatCellColors, heatTextColor, isStackedTile, splitBySeries, assembleSeries, paletteColors, PALETTES, escapeHtml,
     tileDrillLevels, currentDimension, rowsForTile, wordFrequency
   } = GristBI.data;
   const { t } = GristBI.i18n;
@@ -681,6 +681,17 @@
       if (names && names[rank] !== undefined) GristBI.store.toggleFilter(currentTile.dimension, names[rank], currentTile.id);
       return;
     }
+    // Soleil : une part = UNE valeur de SON anneau dans ses parents ; le clic pose le filtre de chaque anneau jusqu'à elle (et retire ceux des
+    // anneaux plus profonds de cette tuile, voir `sunburstFilterToggles`). Les colonnes sont celles du DERNIER rendu (`instance.__sunburstLevels`),
+    // les valeurs celles du chemin porté par la part (`params.data.path`), jamais son libellé seul. Pas de drill-down : tous les anneaux se voient.
+    if (currentTile.type === 'sunburst') {
+      const inst = chartInstances.get(tileId);
+      const columns = inst && inst.__sunburstLevels;
+      const path = params && params.data && Array.isArray(params.data.path) ? params.data.path : null;
+      if (!columns || !path) return;
+      sunburstFilterToggles(liveState.activeFilters, columns, path, currentTile.id).forEach((c) => GristBI.store.toggleFilter(c.column, c.value, currentTile.id));
+      return;
+    }
     // Calendrier : une case = UN jour ; le clic pose un filtre d'égalité sur la colonne de dates (le jour au format ISO, celui des
     // cellules). Le jour vient de la donnée de la case (`params.value[0]`), jamais d'un rang ou d'un libellé. Pas de drill-down.
     if (currentTile.type === 'calendar') {
@@ -1234,6 +1245,12 @@
       bumpSeq(tile.id);
       instance.hideLoading();
       renderSankey(tile, rows, state, instance);
+      return;
+    }
+    if (tile.type === 'sunburst') {
+      bumpSeq(tile.id);
+      instance.hideLoading();
+      renderSunburst(tile, rows, state, instance);
       return;
     }
     if (tile.type === 'calendar') {
@@ -2226,6 +2243,75 @@
     };
   }
 
+  // Soleil (`type: 'sunburst'`, 8e chemin avant `finalizeOption`/`setOption`) : série ECharts `sunburst`, un anneau par niveau (`sunburstLevels` : la
+  // dimension, puis la liste « drill-down » de la tuile), un arbre calculé en JS pur à tout volume (`sunburstTree`). Une couleur par part de l'anneau
+  // central, ses descendantes en teintes de plus en plus pâles vers le fond de la carte (un anneau se lit comme une famille) ; texte de chaque part
+  // noir ou blanc selon son fond (`heatTextColor`). Les parts qui n'ont plus la place d'écrire leur nom n'en écrivent pas (`label.minAngle`), le nom
+  // entier est dans l'infobulle. Clic : filtre jusqu'à la part (handleTileClick) ; les parts non retenues par un filtre sont estompées à 0,3.
+  function renderSunburst(tile, rows, state, instance) {
+    const tree = sunburstTree(rows, sunburstLevels(tile), tile.measure, tile.aggFn, tile.sortMode);
+    instance.__sunburstLevels = tree.levels;
+    instance.__refit = undefined;
+    if (!tree.roots.length) {
+      instance.setOption({ title: { text: t('chart.sunburst.empty'), left: 'center', top: 'middle', textStyle: { fontSize: 12, fontWeight: 'normal', color: chartTheme().muted } }, series: [], graphic: [], xAxis: { show: false }, yAxis: { show: false } }, true);
+      return;
+    }
+    const f = fmtFor(tile, tile.measure);
+    const th = chartTheme();
+    const palette = paletteColors(tile.palette);
+    const filters = state.activeFilters;
+    const mix = (c, amount) => (GristBI.styles ? GristBI.styles.mixColors(c, th.surface, amount) : c);
+    const toNode = (n, depth, base) => {
+      const fill = mix(base, Math.min(0.5, 0.17 * (depth - 1)));
+      const selected = sunburstNodeSelected(filters, tree.levels, n.path);
+      // Le nom se pose sur ce qu'on VOIT : une part estompée (0,3) est à 70 % la couleur du fond de la carte, noir pur sur un fond sombre ne se lirait plus.
+      return {
+        name: n.name,
+        value: n.value,
+        path: n.path,
+        itemStyle: { color: fill, opacity: selected ? 1 : 0.3 },
+        label: { color: heatTextColor(selected ? fill : mix(fill, 0.7)) },
+        children: n.children.map((c) => toNode(c, depth + 1, base))
+      };
+    };
+    const data = tree.roots.map((r, i) => toNode(r, 1, palette[i % palette.length]));
+    // Place d'un nom dans son anneau : l'épaisseur d'un anneau (rayon / nombre d'anneaux) divisée par ~6 px par signe ; relu à chaque dessin,
+    // donc à jour quand la tuile est agrandie. Le nom entier reste dans l'infobulle.
+    const fit = (name) => {
+      const radius = Math.max(40, Math.min(instance.getWidth() || 200, instance.getHeight() || 200) / 2 * 0.9);
+      const budget = Math.max(3, Math.floor(radius / Math.max(1, tree.depth) / 6));
+      const text = String(name == null ? '' : name);
+      return text.length > budget ? `${text.slice(0, Math.max(1, budget - 1))}…` : text;
+    };
+    const option = {
+      tooltip: {
+        trigger: 'item',
+        formatter: (p) => {
+          const path = p.data && Array.isArray(p.data.path) ? p.data.path : [p.name];
+          const share = tree.total > 0 ? ` (${f.percent((Number(p.value) * 100) / tree.total)})` : '';
+          return `${path.map((v) => escapeHtml(v)).join(' › ')}<br/>${escapeHtml(f.format(p.value) || String(p.value))}${share}`;
+        }
+      },
+      series: [{
+        type: 'sunburst',
+        data,
+        radius: [0, '90%'],
+        center: ['50%', tree.hidden > 0 ? '46%' : '50%'],
+        sort: null, // l'ordre est celui de l'arbre (apparition ou tri choisi), pas un tri d'ECharts
+        nodeClick: false, // un clic filtre, il ne zoome pas sur la part
+        itemStyle: { borderColor: th.surface, borderWidth: 1 },
+        // Par défaut ECharts estompe tout sauf la part survolée et ses descendantes : on le confondrait avec un filtre posé (0,3 d'opacité).
+        emphasis: { focus: 'none', itemStyle: { opacity: 1, borderColor: th.text, borderWidth: 1.5 } },
+        label: { rotate: 'radial', minAngle: 12, fontSize: 10, formatter: (p) => fit(p.name) }
+      }],
+      graphic: tree.hidden > 0
+        ? [{ type: 'text', left: 8, bottom: 4, silent: true, style: { text: t('chart.sunburst.hidden', { n: tree.hidden }), fill: th.muted, fontSize: 10, fontFamily: th.font } }]
+        : []
+    };
+    finalizeOption(option, instance);
+    instance.setOption(option, true);
+  }
+
   // Tuile bar avec un mode de calcul temporel ('cumulative'/'ytd'/'yoy', voir ROADMAP.md "Mesures
   // façon DAX simplifié") : contrairement à toutes les autres tuiles, ce chemin de rendu est
   // ASYNCHRONE (le calcul passe par GristBI.duckdbEngine.timeSeriesMeasures, une vraie requête SQL
@@ -2286,7 +2372,8 @@
     const el = container.querySelector(`[data-tile-id="${tile.id}"] .tile-breadcrumb`);
     if (!el) return;
     const levels = tileDrillLevels(tile);
-    if (!levels.length) {
+    // Un soleil n'a pas de drill-down (ses anneaux sont déjà tous dessinés, un clic filtre) : « cliquer pour détailler » serait faux.
+    if (!levels.length || tile.type === 'sunburst') {
       el.hidden = true;
       return;
     }
