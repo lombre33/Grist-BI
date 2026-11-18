@@ -248,24 +248,17 @@
           <svg class="icon icon-close" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M4 4l8 8M12 4l-8 8"/></svg>
         </button>
       </div>
-      <div class="settings-section">
-        <h4 data-i18n="settings.language.title">Langue</h4>
-        <div class="settings-radio-row">
-          <label><input type="radio" name="settings-lang" value="fr" id="settings-lang-fr"><span data-i18n="settings.language.fr">Français</span></label>
-          <label><input type="radio" name="settings-lang" value="en" id="settings-lang-en"><span data-i18n="settings.language.en">English</span></label>
-        </div>
-      </div>
       <!-- Style des tuiles (js/styles.js, css/dash-styles.css) : un réglage du TABLEAU DE BORD, enregistré avec lui dans
-           BI_Dashboard_Config, donc réservé à l'Édition (la langue, elle, reste un choix personnel, toujours visible). Les
+           BI_Dashboard_Config, mais proposé en Lecture COMME en Édition (retour d'Antoine, 18/11/2026 : le menu Réglages doit être le même dans les deux modes). Les
            cartes de choix sont construites par js/main.js:renderStyleOptions d'après GristBI.styles.STYLE_IDS. -->
-      <div class="settings-section edit-only" id="settings-style-section">
+      <div class="settings-section" id="settings-style-section">
         <h4 id="settings-style-title" data-i18n="style.title">Style des tuiles</h4>
         <p class="settings-hint" data-i18n="style.hint">Change l'apparence de toutes les tuiles de ce tableau de bord. Enregistré avec lui.</p>
         <div id="settings-style-options" class="style-options" role="radiogroup" aria-labelledby="settings-style-title"></div>
       </div>
       <!-- Disposition de la PAGE courante (js/layouts.js, css/layouts.css) : distincte du style, réglée page par page, enregistrée avec la page
-           dans BI_Dashboard_Config, donc réservée à l'Édition. Les cartes sont construites par js/main.js:renderLayoutOptions. -->
-      <div class="settings-section edit-only" id="settings-layout-section">
+           dans BI_Dashboard_Config, mais proposée en Lecture comme en Édition (même menu dans les deux modes). Les cartes sont construites par js/main.js:renderLayoutOptions. -->
+      <div class="settings-section" id="settings-layout-section">
         <h4 id="settings-layout-title" data-i18n="layout.title">Disposition de la page</h4>
         <p class="settings-hint" id="settings-layout-hint"></p>
         <div id="settings-layout-options" class="style-options layout-options" role="radiogroup" aria-labelledby="settings-layout-title"></div>
@@ -290,20 +283,31 @@
           </label>
         </div>
       </div>
-      <div class="settings-section">
-        <h4 data-i18n="settings.credits.title">Crédits</h4>
-        <dl class="settings-credits-list">
-          <dt data-i18n="settings.credits.author">Auteur</dt>
-          <dd>Grist Factory</dd>
-          <dt data-i18n="settings.credits.website">Site</dt>
-          <dd><a href="https://grist-factory.fr" target="_blank" rel="noopener noreferrer">grist-factory.fr</a></dd>
-          <dt data-i18n="settings.credits.license">Licence</dt>
-          <dd><a href="https://github.com/lombre33/Grist-BI/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">GNU GPL v3.0</a></dd>
-          <dt data-i18n="settings.credits.bio">Bio</dt>
-          <dd data-i18n="settings.credits.bioText">Grist Factory conçoit des widgets libres pour Grist. Dashboard BI en est un : croiser vos
-            données Grist dans des tableaux de bord multi-tuiles avec cross-filtering et drill-down,
-            directement dans Grist.</dd>
-        </dl>
+      <!-- Bas de la fenêtre : Langue (choix personnel) et Crédits côte à côte quand la fenêtre est large (le menu est horizontal,
+           retour d'Antoine du 18/11/2026 : « super étroit, plutôt un rectangle à l'horizontale »), l'un sous l'autre sinon. -->
+      <div class="settings-section settings-footer">
+        <div class="settings-subsection">
+          <h4 data-i18n="settings.language.title">Langue</h4>
+          <div class="settings-radio-row">
+            <label><input type="radio" name="settings-lang" value="fr" id="settings-lang-fr"><span data-i18n="settings.language.fr">Français</span></label>
+            <label><input type="radio" name="settings-lang" value="en" id="settings-lang-en"><span data-i18n="settings.language.en">English</span></label>
+          </div>
+        </div>
+        <div class="settings-subsection">
+          <h4 data-i18n="settings.credits.title">Crédits</h4>
+          <dl class="settings-credits-list">
+            <dt data-i18n="settings.credits.author">Auteur</dt>
+            <dd>Grist Factory</dd>
+            <dt data-i18n="settings.credits.website">Site</dt>
+            <dd><a href="https://grist-factory.fr" target="_blank" rel="noopener noreferrer">grist-factory.fr</a></dd>
+            <dt data-i18n="settings.credits.license">Licence</dt>
+            <dd><a href="https://github.com/lombre33/Grist-BI/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">GNU GPL v3.0</a></dd>
+            <dt data-i18n="settings.credits.bio">Bio</dt>
+            <dd data-i18n="settings.credits.bioText">Grist Factory conçoit des widgets libres pour Grist. Dashboard BI en est un : croiser vos
+              données Grist dans des tableaux de bord multi-tuiles avec cross-filtering et drill-down,
+              directement dans Grist.</dd>
+          </dl>
+        </div>
       </div>
     </div>
   </div>

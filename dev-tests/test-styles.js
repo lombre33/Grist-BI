@@ -613,6 +613,52 @@ const ALL = ['standard'].concat(NEW_STYLES);
     // Aucune option ne fixe de hauteur : piège n°8.
     for (const r of dashRules.filter((x) => x.selector.includes('data-dash-uniform'))) assert.strictEqual(r.decls.height, undefined, r.selector);
   }
+  // « Sans bordure » + « uni » : la règle GAGNANTE de l'ombre d'une tuile est `none`, au repos, au survol et agrandie, pour chaque style (retour
+  // d'Antoine du 18/11/2026 : « ce n'est toujours pas uni, des sortes d'ombres dessinent les carrés » — les règles de l'ombre de « sans bordure »
+  // sont plus spécifiques que celle d'« uni » et la battaient). On rejoue la cascade : sélecteurs de la forme `:root` + [attr] / :not([attr]) +
+  // ` .tile` (+ `.tile-zoomed` / `:hover`), spécificité = nombre de jetons, à égalité la règle écrite en dernier.
+  {
+    const parts = (sel) => {
+      const m = /^(:root(?:\[[^\]]+\]|:not\(\[[^\]]+\]\))*) (\.tile(?:\.tile-zoomed)?(?::hover)?)$/.exec(sel.trim());
+      if (!m) return null;
+      const conds = (m[1].slice(':root'.length).match(/:not\(\[[^\]]+\]\)|\[[^\]]+\]/g) || []);
+      return { conds, tail: m[2] };
+    };
+    const winner = (attrs, zoomed, hover) => {
+      let best = null;
+      dashRules.forEach((r, order) => {
+        if (r.media !== null || r.decls['box-shadow'] === undefined) return;
+        for (const sel of r.selector.split(',')) {
+          const p = parts(sel);
+          if (!p) continue;
+          const ok = p.conds.every((c) => {
+            const neg = c.startsWith(':not(');
+            const inner = neg ? c.slice(5, -1) : c;
+            const mm = /^\[([^=\]]+)(?:="([^"]*)")?\]$/.exec(inner);
+            const has = Object.prototype.hasOwnProperty.call(attrs, mm[1]) && (mm[2] === undefined || attrs[mm[1]] === mm[2]);
+            return neg ? !has : has;
+          });
+          if (!ok) continue;
+          if (p.tail.includes('.tile-zoomed') && !zoomed) continue;
+          if (p.tail.includes(':hover') && !hover) continue;
+          const spec = 1 + p.conds.length + 1 + (p.tail.includes('.tile-zoomed') ? 1 : 0) + (p.tail.includes(':hover') ? 1 : 0);
+          if (!best || spec > best.spec || (spec === best.spec && order >= best.order)) best = { spec, order, value: r.decls['box-shadow'] };
+        }
+      });
+      return best && best.value;
+    };
+    for (const style of [null, 'fluid', 'editorial', 'console', 'glass']) {
+      const attrs = { 'data-dash-borders': 'none', 'data-dash-uniform': 'true' };
+      if (style) attrs['data-dash-style'] = style;
+      for (const [zoomed, hover] of [[false, false], [false, true], [true, false], [true, true]]) {
+        assert.strictEqual(winner(attrs, zoomed, hover), 'none', `uni + sans bordure (${style || 'standard'}${zoomed ? ', agrandie' : ''}${hover ? ', survol' : ''}) : aucune ombre autour de la tuile`);
+      }
+    }
+    // Le rejeu voit bien la règle qui posait le défaut : « sans bordure » seul garde son ombre.
+    assert.notStrictEqual(winner({ 'data-dash-borders': 'none' }, false, false), 'none', 'sans bordure seul : ombre discrète conservée (Standard)');
+    assert.notStrictEqual(winner({ 'data-dash-borders': 'none', 'data-dash-style': 'fluid' }, false, false), 'none', 'sans bordure seul : l\'ombre du style conservée');
+    assert.strictEqual(winner({ 'data-dash-uniform': 'true' }, false, false), 'none', 'uni seul : aucune ombre');
+  }
   // Les règles de tuile gardent `.tile.tile-zoomed` plus précis que les règles génériques : hauteur et police de l'agrandissement.
   {
     const css = read('css', 'dash-styles.css');
@@ -829,7 +875,7 @@ const ALL = ['standard'].concat(NEW_STYLES);
       const scriptAt = (name) => html.indexOf(`<script src="${prefix}js/${name}"></script>`);
       assert.ok(scriptAt('charts.js') > tag && scriptAt('main.js') > tag, `${file} : styles.js chargé avant charts.js et main.js`);
       assert.ok(html.includes('id="settings-style-options"'), `${file} : conteneur des cartes de style`);
-      assert.ok(/id="settings-style-section"[^>]*class="[^"]*edit-only|class="[^"]*edit-only[^"]*"[^>]*id="settings-style-section"/.test(html), `${file} : section réservée à l'Édition`);
+      assert.ok(/<div class="settings-section" id="settings-style-section">/.test(html) && !/id="settings-style-section"[^>]*edit-only/.test(html), `${file} : section visible en Lecture comme en Édition (même menu Réglages)`);
     }
     const main = read('js', 'main.js');
     assert.ok(main.includes('GristBI.styles.apply(state.dashStyle)'), 'render() pose le style avant de dessiner les tuiles');

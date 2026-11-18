@@ -133,13 +133,13 @@ réellement (voir HYPOTHESES.md).
   (`js/grist-api.js`) ajoute la colonne manquante à la table déjà présente (`AddColumn`) et remplit
   les lignes déjà là avec de vraies valeurs calculées côté JS — jamais une nouvelle table à recréer
   (voir HYPOTHESES.md pour l'historique de ce correctif, antérieur à ce retrait).
-- **Style des tuiles** (Réglages, en Édition) : un réglage du tableau de bord, enregistré avec lui, qui change d'un coup l'apparence de TOUTES les
+- **Style des tuiles** (Réglages, en Lecture comme en Édition : le menu est le même dans les deux modes) : un réglage du tableau de bord, enregistré avec lui, qui change d'un coup l'apparence de TOUTES les
   cartes et de leurs graphiques — Standard (le rendu d'origine, par défaut), Fluide/moderne, Éditorial, Console (toujours sombre, façon console de
   supervision) et Verre dépoli (fond dégradé, cartes translucides, barres en dégradé). Deux options valent pour TOUS les styles, Standard compris :
   « Tuiles sans bordure apparente » et « Tableau de bord uni » (une seule surface : les tuiles prennent le fond de la page et se touchent) — elles
   valent pour la disposition « Grille » (voir ci-dessous). Clair et sombre, palettes de tuile, formats de nombres et exports inchangés ; une
   ambiance GFS garde la main sur les couleurs de l'interface.
-- **Disposition de la page** (Réglages, en Édition) : où se posent les tuiles, **réglée page par page** et enregistrée avec la page, en plus du style.
+- **Disposition de la page** (Réglages, en Lecture comme en Édition) : où se posent les tuiles, **réglée page par page** et enregistrée avec la page, en plus du style.
   Cinq choix : **Grille** (des cartes de même taille côte à côte, le rendu d'origine, par défaut), **Rapport** (sans cartes : les chiffres en tête, deux
   graphiques par ligne, un filet fin au-dessus de chaque bloc), **Planche** (une seule surface arrondie, bandeau de chiffres teinté, filets entre les
   cellules), **Vedette** (les chiffres en tête, un grand graphique — le premier en barres, courbe ou combo — et deux plus petits à côté, le reste en
