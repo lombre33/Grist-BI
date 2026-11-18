@@ -14,6 +14,16 @@ fixture de test Node pure, plus chargée par `index.html`/`dev-tests/harness.htm
 noms de colonne — la logique pure seulement, voir plus bas pour le moteur SQL réel) sans navigateur
 ni API Grist.
 
+## Garde-fous de l'audit `gwaudit` (Node, aucune dépendance)
+
+```
+node dev-tests/test-audit.js
+```
+
+Ce que l'outil d'audit mesure et qu'une modification peut défaire sans bruit (voir `AUDIT-GW.md`) : chaque champ de
+`index.html` a une étiquette, aucun bouton n'est vide, un seul `<main>`, `SECURITY.md` existe, et `js/vendor/SOURCES.md` dit
+vrai (empreintes SHA-256 des bibliothèques embarquées).
+
 ## Harness visuelle (navigateur, sans document Grist)
 
 `dev-tests/harness.html` charge les mêmes fichiers `index.html`/`css`/`js` que le widget réel
