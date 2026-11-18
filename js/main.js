@@ -111,6 +111,7 @@
     // Une icône par type de visualisation (cartes de l'étape « Choisir » du panneau latéral).
     'type-bar': '<path d="M3.5 13V8M8 13V3.5M12.5 13V6"/><path d="M2 14h12"/>',
     'type-line': '<path d="M2 12l3.5-4 3 2.5L14 4"/><path d="M2 14h12"/>',
+    'type-histogram': '<path d="M2 14v-4h2.6v4M4.6 14V6h2.6v8M7.2 14V3h2.6v11M9.8 14V7h2.6v7M12.4 14v-3H14v3"/><path d="M2 14h12"/>',
     'type-combo': '<path d="M3 13V9M7 13V6M11 13V8"/><path d="M2 14h12"/><path d="M2.5 6l4-2.5L10.5 5l3-2.7"/>',
     'type-pie': '<circle cx="8" cy="8" r="5.5"/><path d="M8 8V2.5M8 8l4.7 2.9"/>',
     'type-treemap': '<rect x="2" y="2.5" width="12" height="11" rx="1"/><path d="M8.5 2.5v11M8.5 8H14"/>',
@@ -247,6 +248,8 @@
   const comboModeSelect = document.getElementById('tile-combo-mode');
   const aggField = document.getElementById('tile-agg-field');
   const aggLabel = document.getElementById('tile-agg-label');
+  const binsField = document.getElementById('tile-bins-field');
+  const binsInput = document.getElementById('tile-bins');
   const aggSelect = document.getElementById('tile-agg');
   // Options d'affichage propres à certains types (tri, barres horizontales, aire, anneau,
   // pourcentages) : voir updateFormFieldsForType pour la visibilité par type.
@@ -714,7 +717,7 @@
 
   // KPI et jauge : une seule valeur agrégée, pas de dimension de regroupement ni de drill-down. Texte : aucune
   // donnée du tout (ni mesure, ni dimension, voir updateFormFieldsForType).
-  function typeHasNoDimension(type) { return type === 'kpi' || type === 'gauge' || type === 'text' || type === 'table'; }
+  function typeHasNoDimension(type) { return type === 'kpi' || type === 'gauge' || type === 'text' || type === 'table' || type === 'histogram'; }
 
   // Titres de tuile auto-composés (ex. "YTD : sum(Montant)") : du CONTENU généré à partir de noms
   // de colonnes, pas de la chrome — même périmètre volontairement laissé de côté que les titres
@@ -737,6 +740,7 @@
     let key;
     let vars;
     if (p.isText) { key = 'tileTitle.text'; vars = undefined; }
+    else if (p.isHistogram) { key = 'tileTitle.histogram'; vars = { measure: p.measure }; }
     else if (p.isCombo && p.comboPareto) { key = 'tileTitle.pareto'; vars = { measure: p.measure, dimension: p.dimension }; }
     else if (p.isCombo) { key = 'tileTitle.combo'; vars = { measure: p.measure, measureY: p.measureY, dimension: p.dimension }; }
     else if (p.isProgress) { key = 'tileTitle.progress'; vars = { measure: p.measure, dimension: p.dimension }; }
@@ -1230,7 +1234,7 @@
   function renderFilterBadges(activeFilters) {
     filterBadgesEl.innerHTML = activeFilters.map((f) => `
       <span class="filter-chip">
-        ${escapeHtml(f.column)} = ${escapeHtml(String(f.value))}
+        ${f.type && f.type !== 'eq' ? escapeHtml(describeAdvancedFilter(f)) : `${escapeHtml(f.column)} = ${escapeHtml(String(f.value))}`}
         <button type="button" class="filter-chip-remove" data-column="${escapeHtml(f.column)}" aria-label="${escapeHtml(t('filters.remove.aria'))}">${icon('close')}</button>
       </span>
     `).join('');
@@ -1263,6 +1267,8 @@
   function describeAdvancedFilter(f) {
     switch (f.type) {
       case 'range': {
+        // Classe d'histogramme : borne haute exclue (voir data.js:matchesFilter, `maxExclusive`).
+        if (f.min != null && f.max != null && f.maxExclusive) return t('filters.rangeExclusive', { column: f.column, min: f.min, max: f.max });
         if (f.min != null && f.max != null) return `${f.column} : ${f.min} – ${f.max}`;
         if (f.min != null) return `${f.column} ≥ ${f.min}`;
         if (f.max != null) return `${f.column} ≤ ${f.max}`;
@@ -1862,6 +1868,7 @@
     const isProgress = type === 'progress';
     const isCombo = type === 'combo';
     const isComboPareto = isCombo && comboModeSelect.value === 'pareto';
+    const isHistogram = type === 'histogram';
     // KPI/jauge/tuile "Barres" en mode de calcul temporel : pas de dimension de regroupement ni de
     // drill-down, juste un agrégat sur toute la sélection (le KPI peut en plus le comparer à une
     // période via "Tendance vs", la jauge le positionne sur un cadran Min/Max, la tuile Barres en
@@ -1879,7 +1886,9 @@
     radarModeField.hidden = !isRadar;
     radarAxesField.hidden = !isRadarColumns;
     measureField.hidden = isRadarColumns || isWordCloudSplit || isText || isTable;
-    aggField.hidden = isRadarColumns || isWordCloudSplit || isText || isTable;
+    // Histogramme : une colonne numérique et un nombre de classes, jamais d'agrégat (on compte des lignes).
+    aggField.hidden = isRadarColumns || isWordCloudSplit || isText || isTable || isHistogram;
+    binsField.hidden = !isHistogram;
     tileTextField.hidden = !isText;
     tileColumnsField.hidden = !isTable;
     // Objectif et seuils : la carte KPI (facultatif) et la tuile Progression (obligatoire). La courbe de la carte KPI
@@ -1931,7 +1940,7 @@
     else { measureField.after(measureYField); measureYField.after(aggField); }
     aggLabel.textContent = t(isCombo && !isComboPareto ? 'tileForm.agg.labelBars' : 'tileForm.agg.label');
     measureYLabel.textContent = t(isCombo ? 'tileForm.measureY.labelLine' : 'tileForm.measureY.label');
-    measureLabel.textContent = t(isScatter ? 'tileForm.measure.labelX' : (isCombo && !isComboPareto ? 'tileForm.measure.labelBars' : 'tileForm.measure.label'));
+    measureLabel.textContent = t(isScatter ? 'tileForm.measure.labelX' : (isCombo && !isComboPareto ? 'tileForm.measure.labelBars' : (isHistogram ? 'tileForm.measure.labelHistogram' : 'tileForm.measure.label')));
     updateDrillLevelsUI();
     updateRadarAxesUI();
     updateSuggestDateHierarchyVisibility();
@@ -1988,6 +1997,7 @@
     seriesSelect.value = tile.seriesColumn || '';
     measureYSelect.value = tile.measureY || '';
     comboModeSelect.value = tile.comboMode === 'pareto' ? 'pareto' : 'measure';
+    binsInput.value = Number.isFinite(tile.bins) ? tile.bins : '';
     gaugeMinInput.value = Number.isFinite(tile.gaugeMin) ? tile.gaugeMin : 0;
     gaugeMaxInput.value = Number.isFinite(tile.gaugeMax) ? tile.gaugeMax : 100;
     // Avant updateFormFieldsForType() : elle lit measureModeSelect.value/radarModeSelect.value
@@ -2112,6 +2122,9 @@
     const isProgress = type === 'progress';
     const isCombo = type === 'combo';
     const comboPareto = isCombo && comboModeSelect.value === 'pareto';
+    const isHistogram = type === 'histogram';
+    const binsRaw = isHistogram ? binsInput.value.trim() : '';
+    const binsValue = binsRaw === '' ? undefined : Number(binsRaw);
     const tableColumns = isTable ? readColumnsPicker() : [];
     // Objectif (carte KPI : facultatif ; Progression : obligatoire, valeur OU colonne) et seuils de couleur.
     const usesTarget = isKpi || isProgress;
@@ -2139,6 +2152,7 @@
     if (!isRadarColumns && !isWordCloudSplit && !isText && !isTable && !measure) fail('tile-measure', 'tileForm.error.measureRequired');
     if (hasDimension && !dimension) fail('tile-dimension', 'tileForm.error.dimensionRequired');
     if (isScatter && !measureYSelect.value) fail('tile-measure-y', 'tileForm.error.measureYRequired'); // 2e mesure obligatoire pour un nuage de points
+    if (isHistogram && binsValue !== undefined && !(Number.isInteger(binsValue) && binsValue >= 2 && binsValue <= GristBI.data.HISTOGRAM_MAX_BINS)) fail('tile-bins', 'tileForm.error.binsRange');
     if (isCombo && !comboPareto && !measureYSelect.value) fail('tile-measure-y', 'tileForm.error.comboMeasureRequired'); // la courbe d'un combo a sa propre mesure
     if (measureMode && !dateColumn) fail('tile-date-column', 'tileForm.alert.dateColumnRequired');
     if (isPivot && !columnDimension) fail('tile-column-dimension', 'tileForm.error.columnDimensionRequired'); // 2e dimension obligatoire pour un tableau croisé
@@ -2168,7 +2182,7 @@
     // voir i18n.js:tileTitle) pour que l'en-tête de tuile suive la langue de l'interface au lieu de
     // rester figé dans celle de sa création.
     const auto = autoTileTitle({
-      isText, isTable, isProgress, isCombo, comboPareto, measureY: measureYSelect.value, tableColumns, isPivot, isRadarColumns, isWordCloudSplit, hasDimension, measureMode,
+      isText, isTable, isProgress, isCombo, comboPareto, isHistogram, measureY: measureYSelect.value, tableColumns, isPivot, isRadarColumns, isWordCloudSplit, hasDimension, measureMode,
       measure, dimension, columnDimension, aggFn, radarAxes, seriesColumn
     });
     const customTitle = tileTitleInput.value.trim();
@@ -2179,6 +2193,9 @@
     // Tuile Texte : aucune donnée. Les champs de données sont effacés (`undefined`) plutôt que laissés à la
     // valeur fantôme du formulaire, et `text` n'existe que sur ce type.
     if (isText || isTable) { tileData.dimension = undefined; tileData.measure = undefined; tileData.aggFn = undefined; }
+    // Histogramme : la colonne est `measure` ; ni dimension ni agrégat (on compte des lignes).
+    if (isHistogram) { tileData.dimension = undefined; tileData.aggFn = undefined; }
+    tileData.bins = isHistogram ? binsValue : undefined;
     tileData.text = isText ? textValue : undefined;
     tileData.columns = isTable ? tableColumns : undefined;
     // Nuage de mots "découpage de cellule" : mesure/agrégat ignorés par le rendu (voir
@@ -2305,7 +2322,7 @@
   // repliées, aperçu en direct, conseil en direct). Le panneau est en flux normal (voir css/style.css) :
   // il ne recouvre jamais la barre. Toute la lecture du formulaire passe par readTileForm() ci-dessus.
   // =============================================================================================
-  const TYPE_CARDS = ['bar', 'line', 'combo', 'pie', 'treemap', 'funnel', 'scatter', 'waterfall', 'radar', 'wordcloud', 'kpi', 'gauge', 'progress', 'pivot', 'table', 'text'];
+  const TYPE_CARDS = ['bar', 'histogram', 'line', 'combo', 'pie', 'treemap', 'funnel', 'scatter', 'waterfall', 'radar', 'wordcloud', 'kpi', 'gauge', 'progress', 'pivot', 'table', 'text'];
   const PREVIEW_TILE_ID = '__preview__';
   let panelOpener = null;
   let previewTimer = null;
@@ -2347,6 +2364,7 @@
     measureYSelect.value = '';
     aggYSelect.value = 'sum';
     comboModeSelect.value = 'measure';
+    binsInput.value = '';
     columnDimensionSelect.value = '';
     seriesSelect.value = '';
     resetDrillLevels();

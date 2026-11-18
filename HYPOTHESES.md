@@ -3295,6 +3295,28 @@ Dernier lot de l'audit : tout ce qui, hors des nombres eux-mêmes, rendait une t
 - **Testé** : Node (`importMapHas` : présent/absent/illisible, câblage lu dans la source, importmap réel d'index.html) ; Playwright contre le vrai `index.html` +
   `grist-stub.js` : 15 cartes sans d3-cloud, 16 avec une entrée d'importmap ajoutée à la volée, carte conservée en modifiant une tuile Nuage de mots. **Pas testé dans un vrai Grist.**
 
+### Tuiles usuelles des outils BI — lot 2, histogramme (18/11/2026)
+
+- **Tuile « Histogramme »** (`type: 'histogram'`, PR 5 du plan de l'étude, §4.3) : la répartition d'UNE colonne numérique (`tile.measure`) en classes de même largeur,
+  un nombre de lignes par classe. Ni dimension ni agrégat (la tuile compte des lignes) ; `tile.bins` facultatif (vide = automatique).
+- **Classes** : nombre automatique par la règle de Sturges (log2(n) + 1, entre 5 et 20) ; largeur ARRONDIE à 1, 2 ou 5 x 10^n (des classes 0-5, 5-10 plutôt que 0-4,76) — un
+  nombre de classes saisi est donc indicatif, borné à 2-60 ; une colonne d'entiers n'a jamais de classe plus étroite que 1 ; classe [bas ; haut[, la dernière fermée à
+  droite ; valeurs vides, texte et booléens ignorés (jamais comptés comme 0). Les lignes ignorées ne sont pas affichées (le total des barres peut être inférieur au nombre de
+  lignes) : à décider si une mention est utile.
+- **Écart avec l'étude** : le plan disait « `floor((x-min)/pas)` côté DuckDB au-delà de 5 000 lignes ». Fait en JS pur à tout volume : un seul passage sur les lignes coûte
+  moins que la sérialisation CSV vers DuckDB (et évite le piège des `BigInt`) ; testé à 6 000 lignes.
+- **Filtre croisé par plage** : un clic sur une classe pose un filtre `range` (`store.toggleRangeFilter`), borne haute exclue sauf dernière classe ; la même classe le retire, une autre le
+  remplace, un filtre d'égalité sur la colonne est remplacé. L'histogramme reste affiché en entier (classe cliquée en couleur, les autres estompées), les autres tuiles sont filtrées ;
+  la pastille dit « Montant : de 80 à moins de 100 ». **Correction au passage** : `matchesFilter('range')` prenait une cellule vide pour 0 ; elle ne passe plus jamais une plage
+  (change aussi les filtres avancés de plage : une ligne sans valeur n'est plus retenue par « de -5 à 5 »).
+- **Grille stable** : les classes viennent de TOUTES les lignes, les comptes des lignes visibles ; filtrer ailleurs fait rétrécir les barres sans déplacer l'axe.
+- **Pas fait, à décider** : courbe de densité, classes de largeur inégale, bornes saisies à la main, choix d'afficher la part en % plutôt que le nombre, colonne de dates (classes
+  de temps : ce sera la tuile Calendrier).
+- **Testé** : Node (bloc « histogramme » : pas ronds, bornes sur 4 jeux de données dont flottants et négatifs, cohérence classe/filtre, store, export, conseil, i18n) ; Playwright contre
+  le vrai `index.html` + `grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">` (formulaire, clic sur une classe, effet sur une tuile Barres, re-clic, filtre d'une autre
+  tuile, édition, valeur invalide, 6 000 lignes servies avec CORS). **Pas testé dans un vrai Grist ni un vrai GFS.**
+
+
 ### Correctifs avant l'alpha — l'assistant préfère un montant à un prix unitaire (18/11/2026)
 
 - **Défaut** (bug réel n°47, TEST_PROTOCOL.md) : sur la table de démo, les cartes d'accueil, le préremplissage du formulaire et le KPI prenaient `PrixUnitaire` en somme au

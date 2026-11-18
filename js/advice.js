@@ -68,6 +68,7 @@
     bar: 'advice.use.bar',
     line: 'advice.use.line',
     combo: 'advice.use.combo',
+    histogram: 'advice.use.histogram',
     pie: 'advice.use.pie',
     treemap: 'advice.use.treemap',
     funnel: 'advice.use.funnel',
@@ -696,6 +697,15 @@
           && !appearsAscending(rows, time.dimension)) out.sortMode = 'label';
         break;
       }
+      case 'histogram': {
+        // Une colonne numérique, de préférence une vraie mesure (pas un identifiant ni un rang) ; ni dimension ni agrégat.
+        const real = ctx.measures.filter((p) => !p.ordinal);
+        if (!(real[0] || measure)) return null;
+        out.measure = (real[0] || measure).id;
+        out.dimension = '';
+        delete out.aggFn;
+        break;
+      }
       case 'combo': {
         // Barres = la mesure principale ; courbe = une AUTRE vraie mesure s'il y en a une. Sinon (une seule
         // mesure) un Pareto, qui n'en demande pas d'autre : barres triées + part cumulée.
@@ -827,6 +837,7 @@
       if (n > PIE_MAX_SLICES) return warn('advice.pie.tooManySlices', { n });
     }
     if (type === 'treemap' && agg.some((g) => g.value < 0)) return warn('advice.treemap.negative');
+    if (type === 'histogram' && measureProfile && measureProfile.distinct < 5) return warn('advice.histogram.fewValues');
     if (type === 'combo') {
       if (tile.comboMode === 'pareto') {
         if (tile.aggFn === 'avg' || tile.aggFn === 'min' || tile.aggFn === 'max') return warn('advice.combo.paretoAgg');
@@ -922,6 +933,7 @@
         return ctx.time ? null : 'advice.fit.noTime';
       case 'kpi':
       case 'gauge':
+      case 'histogram':
         return hasMeasure ? null : 'advice.fit.noMeasure';
       default:
         return null;
