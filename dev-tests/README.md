@@ -30,9 +30,10 @@ vrai (empreintes SHA-256 des bibliothèques embarquées).
 node dev-tests/test-styles.js
 ```
 
-`js/styles.js` (registre, passe sur les options ECharts de chaque style, couleurs), `css/dash-styles.css` (jetons complets en clair et en
-sombre, contrastes, accord avec `kit/css/tokens.css` quand le sous-module est initialisé), le réglage du store, l'aller-retour de la
-configuration par le vrai `js/grist-api.js` (faux `grist`) et le câblage d'`index.html`/`harness.html`. Le rendu à l'écran (cartes, graphiques,
+`js/styles.js` (registre, passe sur les options ECharts de chaque style, dégradés, couleurs, options d'affichage), `css/dash-styles.css`
+(jetons complets en clair et en sombre — un seul bloc pour `console`, toujours sombre —, contrastes, le verre contre sa pire carte
+translucide, règles des deux options), le réglage du store (style et options), l'aller-retour de la configuration par le vrai
+`js/grist-api.js` (faux `grist`) et le câblage d'`index.html`/`harness.html`. Le rendu à l'écran (cartes, graphiques,
 menu Réglages, cadre isolé) se rejoue dans un navigateur : voir `HYPOTHESES.md`.
 
 ## Harness visuelle (navigateur, sans document Grist)

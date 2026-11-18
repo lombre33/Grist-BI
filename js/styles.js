@@ -2,10 +2,12 @@
  * Style global des tuiles (demande d'Antoine, 18/11/2026) : UN réglage au niveau du TABLEAU DE BORD, enregistré dans sa
  * configuration (`BI_Dashboard_Config`, champ `style`), qui change l'apparence de TOUTES les tuiles d'un coup — cartes (CSS)
  * ET graphiques (options ECharts). Cinq entrées : `standard` (le rendu d'origine, jamais modifié, c'est le défaut) puis quatre
- * directions artistiques : `factory` (la charte Grist Factory), `fluid` (fluide/moderne), `dense` (classique façon Power BI) et
- * `editorial` (sobre, façon rapport imprimé).
+ * directions artistiques : `fluid` (fluide/moderne), `editorial` (sobre, façon rapport imprimé), `console` (sombre en toute
+ * circonstance, façon console de supervision) et `glass` (fond dégradé, cartes en verre dépoli, barres en dégradé). Deux OPTIONS,
+ * valables pour tous les styles Standard compris, s'y ajoutent : `hideBorders` (tuiles sans bordure apparente) et `uniform`
+ * (tableau de bord uni : les tuiles prennent le fond de la page, se touchent, sans ombre ni coins arrondis).
  *
- * Pur JS, testable sous Node (UMD), sans dépendance : trois choses seulement.
+ * Pur JS, testable sous Node (UMD), sans dépendance : quatre choses seulement.
  *  1. Le REGISTRE (`STYLES`) : id, clés i18n du nom et de la description, et `chart` = les réglages que la passe sur les options
  *     ECharts sait lire (rayon des barres, valeurs au bout des barres, quadrillage, tracé des courbes...). `chart: null` = rien.
  *  2. `applyToOption(option, style, th)` : la passe qui s'ajoute à `js/charts.js:finalizeOption` et retouche l'option ECharts d'une
@@ -14,6 +16,9 @@
  *     à la palette : la palette reste celle que la tuile a choisie (`tile.palette`), le style ne fait que la TRANSFORMER (teinte pastel
  *     d'une couleur unique, bord des parts).
  *  3. `apply(id)` : pose `data-dash-style` sur `<html>` (aucun attribut pour `standard`) ; `css/dash-styles.css` lit cet attribut.
+ *  4. Les OPTIONS : `normalizeOptions`/`optionsConfigValue`/`applyOptions` (attributs `data-dash-borders="none"` et
+ *     `data-dash-uniform` sur `<html>`, absents tant qu'une option n'est pas cochée : un tableau de bord d'avant ces options
+ *     s'affiche exactement comme avant, et sa configuration reste identique octet pour octet).
  *
  * Les COULEURS et la géométrie des cartes vivent dans `css/dash-styles.css` (jetons `--dash-*` + les jetons de couleur de la
  * charte), pas ici : les graphiques lisent les mêmes jetons par `chartTheme()` (js/charts.js), donc cartes et graphiques ne peuvent
@@ -41,7 +46,11 @@
   //                   valeurs, devenu redondant, est alors masqué
   //  soft             { amount, toward, darkToward?, darkAmount? } : une couleur UNIQUE (barres d'une seule série) est mélangée à `surface`
   //                   ou `text` (sur carte sombre : `darkToward`/`darkAmount`, voir softColor) ; la couleur pleine revient au survol
-  //  grid             quadrillage de l'axe des valeurs : 'solid' | 'dashed' | 'none'
+  //  barGradient      { from, to } : opacité de la couleur de la barre à son extrémité puis à sa base (dégradé vertical ou horizontal) ;
+  //                   barres empilées exclues (le dégradé coupe la pile) ; la couleur doit être lisible (#hex ou rgb), sinon rien n'est posé
+  //  areaGradient     { from, to } : opacité de la couleur d'une aire NON empilée en haut puis en bas (remplace `areaOpacity`)
+  //  glow             flou (px) du halo de la couleur de la courbe
+  //  grid             quadrillage de l'axe des valeurs : 'solid' | 'dashed' | 'dotted' | 'none'
   //  axisLine         { category, value } : trait d'axe affiché ou non
   //  axisTick         graduations (petits traits) de l'axe des catégories
   //  labelSize        taille (px) des libellés d'axe
@@ -55,15 +64,6 @@
   //  tooltipRadius    rayon (px) des coins de l'infobulle
   const STYLES = {
     standard: { id: 'standard', chart: null },
-    factory: {
-      id: 'factory',
-      chart: {
-        barRadius: 4, barMaxWidth: 44, grid: 'solid',
-        axisLine: { category: true, value: false }, axisTick: false,
-        lineWidth: 2.4, symbol: 'circle', symbolSize: 7,
-        sliceGap: 2, sliceRadius: 4, legendIcon: 'roundRect', tooltipRadius: 8
-      }
-    },
     fluid: {
       id: 'fluid',
       chart: {
@@ -75,15 +75,6 @@
         sliceGap: 3, sliceRadius: 5, legendIcon: 'circle', tooltipRadius: 12
       }
     },
-    dense: {
-      id: 'dense',
-      chart: {
-        barMaxWidth: 60, barGap: '30%', grid: 'solid',
-        axisLine: { category: true, value: true }, axisTick: true, labelSize: 10.5,
-        lineWidth: 1.8, symbol: 'circle', symbolSize: 5,
-        sliceGap: 1, legendIcon: 'rect', tooltipRadius: 2
-      }
-    },
     editorial: {
       id: 'editorial',
       chart: {
@@ -92,6 +83,27 @@
         grid: 'dashed', axisLine: { category: true, value: false }, axisTick: false,
         lineWidth: 1.6, symbol: 'circle', symbolSize: 5, areaOpacity: 0.12,
         sliceGap: 2, legendIcon: 'rect', tooltipRadius: 0
+      }
+    },
+    // Console : barres fines à dégradé (plein en haut, 45 % de la couleur à la base), courbes qui luisent, aire qui s'efface vers
+    // le bas, quadrillage en pointillés, petits libellés — le traitement d'une console de supervision.
+    console: {
+      id: 'console',
+      chart: {
+        barRadius: 2, barMaxWidth: 26, barGap: '46%', barGradient: { from: 1, to: 0.45 },
+        grid: 'dotted', axisLine: { category: true, value: false }, axisTick: false, labelSize: 10,
+        lineWidth: 1.8, symbol: 'circle', symbolSize: 5, symbolRing: 2, glow: 8, areaGradient: { from: 0.32, to: 0 },
+        sliceGap: 1.5, sliceRadius: 2, legendIcon: 'rect', tooltipRadius: 3
+      }
+    },
+    // Verre : grosses barres en pilule à dégradé, aire en dégradé, points cerclés, quadrillage à peine visible.
+    glass: {
+      id: 'glass',
+      chart: {
+        barRadius: 10, barPill: true, barMaxWidth: 34, barGap: '38%', barGradient: { from: 1, to: 0.55 },
+        grid: 'dotted', axisLine: { category: false, value: false }, axisTick: false, labelSize: 11,
+        lineWidth: 3, symbol: 'circle', symbolSize: 7, symbolRing: 2, areaGradient: { from: 0.34, to: 0.02 },
+        sliceGap: 3, sliceRadius: 6, legendIcon: 'circle', tooltipRadius: 14
       }
     }
   };
@@ -163,6 +175,85 @@
     return mixColors(color, toward, dark && soft.darkAmount != null ? soft.darkAmount : soft.amount);
   }
 
+  function contrastRatio(a, b) {
+    const la = luminance(a);
+    const lb = luminance(b);
+    if (la === null || lb === null) return null;
+    return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+  }
+  // Sur une carte SOMBRE, une couleur de palette très foncée (le début d'une palette séquentielle : bleu marine) disparaît, et un
+  // dégradé qui l'estompe encore vers la base la fait disparaître tout à fait. On l'éclaircit vers la couleur du texte juste ce qu'il
+  // faut pour atteindre `min`:1 contre la carte ; sur carte claire, ou si une couleur n'est pas lisible, rien n'est touché.
+  function legibleOnSurface(color, th, min) {
+    const lum = th && th.surface ? luminance(th.surface) : null;
+    if (lum === null || lum >= 0.2 || !th.text) return color;
+    for (let amount = 0; amount <= 0.8; amount += 0.08) {
+      const c = amount === 0 ? color : mixColors(color, th.text, amount);
+      const ratio = contrastRatio(c, th.surface);
+      if (ratio === null) return color;
+      if (ratio >= min) return c;
+    }
+    return mixColors(color, th.text, 0.8);
+  }
+  // `color` à l'opacité `alpha` (0..1), en `rgba()` ; null si la couleur n'est pas lisible (var(), nom, dégradé déjà posé).
+  function withAlpha(color, alpha) {
+    const rgb = parseColor(color);
+    if (!rgb) return null;
+    const a = Math.max(0, Math.min(1, Number(alpha)));
+    return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${Math.round(a * 1000) / 1000})`;
+  }
+  // Dégradé linéaire ECharts (objet simple, sans classe : ce fichier ne dépend pas d'ECharts) de `color`, d'une opacité `from` à une
+  // opacité `to`. `direction` : 'down' (haut -> bas), 'right' (gauche -> droite). null si la couleur n'est pas lisible.
+  function fadeGradient(color, from, to, direction) {
+    const c0 = withAlpha(color, from);
+    const c1 = withAlpha(color, to);
+    if (!c0 || !c1) return null;
+    const right = direction === 'right';
+    return { type: 'linear', x: 0, y: 0, x2: right ? 1 : 0, y2: right ? 0 : 1, colorStops: [{ offset: 0, color: c0 }, { offset: 1, color: c1 }] };
+  }
+  // Couleur de la série n° `index` : celle que le rendu lui a posée (chaîne), sinon celle que la palette lui donne.
+  function seriesColor(option, sr, index) {
+    if (sr && sr.itemStyle && typeof sr.itemStyle.color === 'string') return sr.itemStyle.color;
+    if (sr && sr.lineStyle && typeof sr.lineStyle.color === 'string') return sr.lineStyle.color;
+    const palette = Array.isArray(option.color) ? option.color : null;
+    return palette && palette.length ? palette[index % palette.length] : null;
+  }
+
+  // --- Options valables pour TOUS les styles (Standard compris) ---------------------------------------------------------------
+  // `hideBorders` : tuiles sans bordure apparente. `uniform` : tableau de bord uni. Chacune est tout-ou-rien ; seule une valeur `true`
+  // est retenue (une clé inconnue, d'une version future, ou un autre type est ignoré : jamais de réglage mal formé dans l'état).
+  const OPTION_KEYS = ['hideBorders', 'uniform'];
+  const OPTION_ATTRS = { hideBorders: ['data-dash-borders', 'none'], uniform: ['data-dash-uniform', 'true'] };
+  function normalizeOptions(raw) {
+    const out = {};
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) OPTION_KEYS.forEach((k) => { if (Object.prototype.hasOwnProperty.call(raw, k) && raw[k] === true) out[k] = true; });
+    return out;
+  }
+  function sameOptions(a, b) { return OPTION_KEYS.every((k) => !!(a && a[k]) === !!(b && b[k])); }
+  // Valeur à ÉCRIRE dans la configuration : rien tant qu'aucune option n'est cochée (une configuration d'avant ces options reste
+  // identique octet pour octet) ; sinon seulement les options cochées.
+  function optionsConfigValue(raw) {
+    const o = normalizeOptions(raw);
+    return OPTION_KEYS.some((k) => o[k]) ? o : undefined;
+  }
+  let currentOptions = {};
+  function currentOptionsValue() { return currentOptions; }
+  // Pose les options sur la page : un attribut par option cochée, rien sinon. Rend vrai si quelque chose a changé.
+  function applyOptions(raw) {
+    const next = normalizeOptions(raw);
+    const changed = !sameOptions(currentOptions, next);
+    currentOptions = next;
+    if (typeof document !== 'undefined' && document.documentElement) {
+      const el = document.documentElement;
+      OPTION_KEYS.forEach((k) => {
+        const [attr, val] = OPTION_ATTRS[k];
+        if (next[k]) { if (el.getAttribute(attr) !== val) el.setAttribute(attr, val); }
+        else if (el.hasAttribute(attr)) el.removeAttribute(attr);
+      });
+    }
+    return changed;
+  }
+
   // --- La passe sur l'option ECharts -----------------------------------------------------------------------------------------
   function seriesList(option) {
     if (Array.isArray(option.series)) return option.series;
@@ -198,6 +289,7 @@
     const valAx = valueAxis(option);
     const fmt = valAx && valAx.axisLabel && typeof valAx.axisLabel.formatter === 'function' ? valAx.axisLabel.formatter : null;
 
+    const allSeries = seriesList(option);
     bars.forEach((sr) => {
       const itemStyle = Object.assign({}, sr.itemStyle);
       if (c.barRadius && !sr.stack) {
@@ -207,6 +299,17 @@
       if (alone && c.soft && base && !itemStyle.color) {
         itemStyle.color = softColor(base, c.soft, th);
         sr.emphasis = Object.assign({}, sr.emphasis, { itemStyle: Object.assign({ color: base }, sr.emphasis && sr.emphasis.itemStyle) });
+      }
+      // Dégradé de la barre (jamais sur une pile : il couperait chaque segment) : plein au bout, estompé à la base. La couleur est celle
+      // de la série (palette de la tuile) ; si le style a déjà posé une teinte douce ou si elle est illisible, on n'y touche pas.
+      if (c.barGradient && !sr.stack && typeof itemStyle.color !== 'object' && !(alone && c.soft)) {
+        const raw = seriesColor(option, sr, allSeries.indexOf(sr));
+        const base = raw && legibleOnSurface(raw, th, 3);
+        // Barres horizontales : la base est à gauche ; verticales : en bas.
+        const g = base && (horizontal
+          ? fadeGradient(base, c.barGradient.to, c.barGradient.from, 'right')
+          : fadeGradient(base, c.barGradient.from, c.barGradient.to, 'down'));
+        if (g) itemStyle.color = g;
       }
       sr.itemStyle = itemStyle;
       if (c.barMaxWidth && sr.barMaxWidth == null) sr.barMaxWidth = c.barMaxWidth;
@@ -236,13 +339,24 @@
   }
 
   function styleLines(option, c, th) {
-    seriesList(option).forEach((sr) => {
+    const all = seriesList(option);
+    all.forEach((sr) => {
       if (!sr || sr.type !== 'line') return;
+      const color = (c.glow || c.areaGradient) ? seriesColor(option, sr, all.indexOf(sr)) : null;
       if (c.lineWidth) sr.lineStyle = Object.assign({ width: c.lineWidth }, sr.lineStyle);
+      // Halo de la couleur de la courbe (canvas : `shadowBlur`) ; pas sur une pile, où il déborderait sur la bande voisine.
+      if (c.glow && color && !sr.stack) {
+        const halo = withAlpha(color, 0.55);
+        if (halo) sr.lineStyle = Object.assign({ shadowBlur: c.glow, shadowColor: halo }, sr.lineStyle);
+      }
       if (c.symbol) sr.symbol = c.symbol;
       if (c.symbolSize) sr.symbolSize = c.symbolSize;
       if (c.symbolRing && th.surface) sr.itemStyle = Object.assign({ borderColor: th.surface, borderWidth: c.symbolRing }, sr.itemStyle);
-      if (c.areaOpacity != null && sr.areaStyle && !sr.stack) sr.areaStyle = Object.assign({}, sr.areaStyle, { opacity: c.areaOpacity });
+      if (sr.areaStyle && !sr.stack) {
+        const g = c.areaGradient && color ? fadeGradient(color, c.areaGradient.from, c.areaGradient.to, 'down') : null;
+        if (g) sr.areaStyle = Object.assign({}, sr.areaStyle, { color: g, opacity: 1 });
+        else if (c.areaOpacity != null) sr.areaStyle = Object.assign({}, sr.areaStyle, { opacity: c.areaOpacity });
+      }
     });
   }
 
@@ -273,7 +387,7 @@
         const hiddenByRender = axis.splitLine && axis.splitLine.show === false;
         if (!hiddenByRender) {
           if (c.grid === 'none') out.splitLine = Object.assign({}, out.splitLine, { show: false });
-          else out.splitLine = Object.assign({}, out.splitLine, { show: true, lineStyle: Object.assign({}, out.splitLine && out.splitLine.lineStyle, { type: c.grid === 'dashed' ? 'dashed' : 'solid' }) });
+          else out.splitLine = Object.assign({}, out.splitLine, { show: true, lineStyle: Object.assign({}, out.splitLine && out.splitLine.lineStyle, { type: c.grid === 'dashed' ? 'dashed' : (c.grid === 'dotted' ? 'dotted' : 'solid') }) });
         }
       }
       if (isValue && state.valueLabels) {
@@ -314,6 +428,7 @@
   return {
     DEFAULT_STYLE, STYLES, STYLE_IDS, isKnown, normalizeStyleId, get, configValue,
     current, currentId, apply,
-    parseColor, luminance, mixColors, softColor, applyToOption
+    parseColor, luminance, mixColors, softColor, contrastRatio, legibleOnSurface, withAlpha, fadeGradient, applyToOption,
+    OPTION_KEYS, normalizeOptions, sameOptions, optionsConfigValue, applyOptions, currentOptions: currentOptionsValue
   };
 });

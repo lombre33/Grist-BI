@@ -2,17 +2,25 @@
  * Styles globaux des tuiles (demande d'Antoine du 18/11/2026) — un réglage du TABLEAU DE BORD, enregistré dans sa
  * configuration (js/styles.js, `style`), qui pose l'attribut `data-dash-style` sur <html>. Cinq entrées :
  *   standard   le rendu d'origine : AUCUN attribut, donc aucune règle de ce fichier ne s'applique (css/style.css seul) ;
- *   factory    la charte Grist Factory (jetons de kit/css/tokens.css : gris bleuté, un seul bleu d'accent, coins de 8 px) ;
  *   fluid      fluide/moderne : cartes très arrondies, ombres douces, gros chiffres, titres gras ;
- *   dense      classique façon Power BI : coins presque droits, bordures fines, texte compact, peu d'espace perdu ;
- *   editorial  sobre, façon rapport imprimé : fond papier, un filet en tête de carte, titres et chiffres à empattements.
+ *   editorial  sobre, façon rapport imprimé : fond papier, un filet en tête de carte, titres et chiffres à empattements ;
+ *   console    sombre EN TOUTE CIRCONSTANCE (clair comme sombre côté système), filets fins, titres en petites capitales, chiffres à
+ *              chasse fixe en couleur d'accent : façon console de supervision ;
+ *   glass      fond dégradé, cartes en verre dépoli translucide (`backdrop-filter`), grands rayons, barres en dégradé.
+ * Deux OPTIONS valent pour tous les styles, Standard compris, et se posent par deux autres attributs de <html> :
+ *   data-dash-borders="none"   tuiles sans bordure apparente ;
+ *   data-dash-uniform          tableau de bord uni (les tuiles prennent le fond de la page et se touchent).
  * Les graphiques suivent par `chartTheme()` (js/charts.js), qui lit les MÊMES jetons de couleur, plus la passe
- * `GristBI.styles.applyToOption` pour leur forme (barres arrondies, valeurs au bout des barres, quadrillage...).
+ * `GristBI.styles.applyToOption` pour leur forme (barres arrondies ou en dégradé, valeurs au bout des barres, quadrillage...).
  *
  * Règles de ce fichier :
- *  - Chaque style pose, dans UN bloc clair et UN bloc sombre, la liste COMPLÈTE de ses jetons de couleur. Le sélecteur
- *    `:root[data-dash-style]` bat `:root` de css/style.css quelle que soit la préférence de couleur : un jeton posé seulement dans
- *    le bloc clair resterait donc clair en mode sombre (dev-tests/test-styles.js le vérifie).
+ *  - Chaque style pose, dans UN bloc clair et UN bloc sombre, la liste COMPLÈTE de ses jetons de couleur — sauf `console`, toujours
+ *    sombre : UN seul bloc, qui pose en plus les jetons que css/style.css ne définit que sous `prefers-color-scheme: dark`
+ *    (`--on-accent`, `--good-ink`, `--danger-*`...) et `color-scheme: dark`. Le sélecteur `:root[data-dash-style]` bat `:root` de
+ *    css/style.css quelle que soit la préférence de couleur : un jeton posé seulement dans le bloc clair resterait donc clair en mode
+ *    sombre (dev-tests/test-styles.js le vérifie).
+ *  - `--surface` reste TOUJOURS une couleur opaque (les graphiques, les menus et les fenêtres la lisent) : le fond translucide d'une
+ *    carte de verre est un autre jeton, `--dash-card-bg`, que seule la règle `.tile` consomme.
  *  - Les sélecteurs de tuile gardent leur spécificité propre : `.tile.tile-zoomed` et `.tile-zoomed .tile-header` (css/style.css)
  *    restent plus précis que les règles génériques ci-dessous (`:not(.tile-zoomed)`), pour que l'agrandissement garde sa taille
  *    de police et sa hauteur FIXE (piège n°8 : jamais de hauteur qui dépende du contenu).
@@ -20,6 +28,8 @@
  *    standard). Rayons, ombres, densité et typographie des tuiles viennent de jetons `--dash-*` que l'ambiance ne connaît pas.
  *  - Les couleurs d'état (`--good`, `--critical`, `--caution`) et les couleurs des séries (palette de la tuile) ne sont jamais
  *    redites ici.
+ *  - Jamais de `backdrop-filter` sur `.chrome` : il en ferait le bloc conteneur des menus `position: fixed` (js/appbar.js) et les
+ *    décalerait. La barre de verre reprend donc le MÊME dégradé fixe que la page, sans transparence.
  * Le même bloc de jetons sert les pastilles d'aperçu du menu Réglages (`.style-swatch[data-dash-style]`).
  */
 
@@ -34,31 +44,6 @@
   .style-swatch[data-dash-style="standard"] {
     --bg: #0d0d0d; --surface: #1a1a19; --border: rgba(255, 255, 255, 0.10); --text: #ffffff; --text-muted: #9b9992;
     --dash-shadow: none;
-  }
-}
-
-/* ---------- Jetons : factory — la charte Grist Factory (kit/css/tokens.css) ---------- */
-:root[data-dash-style="factory"], .style-swatch[data-dash-style="factory"] {
-  --bg: #f4f6fa; --surface: #ffffff; --surface-sunken: #eef1f6;
-  --border: #dde2ea; --border-strong: #c3cad6;
-  --text: #1b2430; --text-secondary: #445066; --text-muted: #5f6b7e;
-  --accent: #2f6fed;
-  --dash-radius: 8px; --dash-gap: 14px; --dash-pad: 12px 14px;
-  --dash-bw: 1px; --dash-border-color: var(--border);
-  --dash-shadow: 0 1px 2px rgba(20, 28, 46, 0.05);
-  --dash-shadow-hover: 0 4px 14px -4px rgba(20, 28, 46, 0.14);
-  --dash-title-font: var(--font-ui); --dash-title-size: 12.5px; --dash-title-weight: 600;
-  --dash-kpi-font: var(--font-ui); --dash-kpi-max: 30px; --dash-kpi-weight: 700;
-  --dash-bar: #2a78d6; --dash-bar-radius: 2px;
-}
-@media (prefers-color-scheme: dark) {
-  :root[data-dash-style="factory"], .style-swatch[data-dash-style="factory"] {
-    --bg: #171b23; --surface: #1e2430; --surface-sunken: #262e3c;
-    --border: #323b4b; --border-strong: #465166;
-    --text: #e7ecf5; --text-secondary: #c3cbda; --text-muted: #9aa6bb;
-    --accent: #5b91f5;
-    --dash-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
-    --dash-shadow-hover: 0 6px 18px -6px rgba(0, 0, 0, 0.6);
   }
 }
 
@@ -88,29 +73,6 @@
   }
 }
 
-/* ---------- Jetons : dense — classique, façon Power BI ---------- */
-:root[data-dash-style="dense"], .style-swatch[data-dash-style="dense"] {
-  --bg: #f3f2f1; --surface: #ffffff; --surface-sunken: #f3f2f1;
-  --border: #e1dfdd; --border-strong: #c8c6c4;
-  --text: #201f1e; --text-secondary: #3b3a39; --text-muted: #605e5c;
-  --accent: #0078d4;
-  --dash-radius: 2px; --dash-gap: 8px; --dash-pad: 8px 10px;
-  --dash-bw: 1px; --dash-border-color: var(--border);
-  --dash-shadow: none;
-  --dash-shadow-hover: 0 0 0 1px var(--border-strong);
-  --dash-title-font: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif; --dash-title-size: 12px; --dash-title-weight: 600;
-  --dash-kpi-font: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif; --dash-kpi-max: 28px; --dash-kpi-weight: 600;
-  --dash-bar: #2a78d6; --dash-bar-radius: 0;
-}
-@media (prefers-color-scheme: dark) {
-  :root[data-dash-style="dense"], .style-swatch[data-dash-style="dense"] {
-    --bg: #1b1a19; --surface: #252423; --surface-sunken: #2d2c2b;
-    --border: #3b3a39; --border-strong: #484644;
-    --text: #f3f2f1; --text-secondary: #d2d0ce; --text-muted: #a19f9d;
-    --accent: #4ba0e8;
-  }
-}
-
 /* ---------- Jetons : editorial — sobre, façon rapport imprimé ---------- */
 :root[data-dash-style="editorial"], .style-swatch[data-dash-style="editorial"] {
   --bg: #f8f6f1; --surface: #f8f6f1; --surface-sunken: #efece4;
@@ -136,10 +98,97 @@
   }
 }
 
-/* ---------- Cartes : une seule série de règles pour les quatre styles ---------- */
+/* ---------- Jetons : console — sombre en toute circonstance, façon console de supervision ---------- */
+/* Un seul bloc (pas de variante claire) : on y pose aussi les jetons que css/style.css ne définit que SOUS `prefers-color-scheme: dark`,
+   sans quoi un système en thème clair mélangerait un fond sombre et des textes d'erreur ou d'avertissement pensés pour du clair. */
+:root[data-dash-style="console"], .style-swatch[data-dash-style="console"] {
+  color-scheme: dark;
+  --bg: #0b0e14; --surface: #121722; --surface-sunken: #1a2030;
+  --border: #232b3b; --border-strong: #323d52;
+  --text: #e6edf6; --text-secondary: #b7c3d6; --text-muted: #8f9db3;
+  --accent: #38bdf8; --on-accent: #06121c;
+  --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+  --good-ink: #3fc16a; --critical: #e66767;
+  --pp-scrim: rgba(3, 6, 12, 0.62);
+  --danger-ink: #f08a8a; --danger-soft: #3a2426;
+  --warning-bg: #3a2e00; --warning-text: #f1d27a; --warning-border: #5c4900;
+  --dash-radius: 4px; --dash-gap: 10px; --dash-pad: 10px 12px;
+  --dash-bw: 1px; --dash-border-color: var(--border);
+  --dash-shadow: none;
+  --dash-shadow-hover: 0 0 0 1px var(--border-strong), 0 0 20px -6px color-mix(in srgb, var(--accent) 55%, transparent);
+  --dash-title-font: var(--font-ui); --dash-title-size: 11px; --dash-title-weight: 600;
+  --dash-title-transform: uppercase; --dash-title-ls: 0.07em; --dash-title-color: var(--text-secondary);
+  --dash-kpi-font: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
+  --dash-kpi-max: 34px; --dash-kpi-weight: 600; --dash-kpi-lh: 1.2;
+  --dash-bar: #38bdf8; --dash-bar-radius: 1px;
+}
+:root[data-dash-style="console"] .warning-banner { background: #3a1512; color: #f5b8b0; border-color: #6b241c; }
+:root[data-dash-style="console"] .warning-banner code { background: rgba(255, 255, 255, 0.12); }
+
+/* ---------- Jetons : glass — fond dégradé, cartes en verre dépoli ---------- */
+:root[data-dash-style="glass"], .style-swatch[data-dash-style="glass"] {
+  --bg: #e8ebfa; --surface: #f4f5fd; --surface-sunken: #e9ecf9;
+  --border: rgba(60, 64, 130, 0.16); --border-strong: #c3c9ee;
+  --text: #16183a; --text-secondary: #3d4170; --text-muted: #53578a;
+  --accent: #6d5ef0;
+  /* Le décor : trois halos de couleur sur le fond de page, FIXÉS à la fenêtre (la barre collante reprend le même dégradé). */
+  --dash-page-bg:
+    radial-gradient(900px 520px at 6% -8%, rgba(139, 92, 246, 0.34), transparent 62%),
+    radial-gradient(760px 520px at 100% 2%, rgba(56, 189, 248, 0.32), transparent 60%),
+    radial-gradient(900px 600px at 55% 112%, rgba(244, 114, 182, 0.26), transparent 60%);
+  /* Le même décor, à la taille d'une pastille du menu Réglages. */
+  --dash-swatch-bg:
+    radial-gradient(70px 44px at 0% 0%, rgba(139, 92, 246, 0.55), transparent),
+    radial-gradient(80px 44px at 100% 0%, rgba(56, 189, 248, 0.5), transparent),
+    radial-gradient(90px 50px at 55% 110%, rgba(244, 114, 182, 0.45), transparent);
+  --dash-card-bg: rgba(255, 255, 255, 0.58);
+  --dash-backdrop: blur(18px) saturate(1.5);
+  --dash-radius: 22px; --dash-gap: 18px; --dash-pad: 15px 18px;
+  --dash-bw: 1px; --dash-border-color: rgba(255, 255, 255, 0.75);
+  --dash-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 10px 32px -10px rgba(70, 60, 160, 0.3);
+  --dash-shadow-nb: 0 10px 32px -10px rgba(70, 60, 160, 0.3);
+  --dash-shadow-hover: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 16px 40px -10px rgba(70, 60, 160, 0.42);
+  --dash-title-font: var(--font-ui); --dash-title-size: 13px; --dash-title-weight: 650;
+  --dash-kpi-font: var(--font-ui); --dash-kpi-max: 38px; --dash-kpi-weight: 700; --dash-kpi-lh: 1.15;
+  --dash-bar: #8b8cf8; --dash-bar-radius: 5px;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-dash-style="glass"], .style-swatch[data-dash-style="glass"] {
+    --bg: #0c0e2b; --surface: #1b1e48; --surface-sunken: #14173a;
+    --border: rgba(255, 255, 255, 0.14); --border-strong: #3a3f78;
+    --text: #eef0ff; --text-secondary: #c5c9ee; --text-muted: #b6bbe9;
+    --accent: #9a9cfa;
+    --dash-page-bg:
+      radial-gradient(900px 520px at 6% -8%, rgba(124, 58, 237, 0.42), transparent 62%),
+      radial-gradient(760px 520px at 100% 2%, rgba(14, 165, 233, 0.32), transparent 60%),
+      radial-gradient(900px 600px at 55% 112%, rgba(236, 72, 153, 0.26), transparent 60%);
+    --dash-swatch-bg:
+      radial-gradient(70px 44px at 0% 0%, rgba(124, 58, 237, 0.7), transparent),
+      radial-gradient(80px 44px at 100% 0%, rgba(14, 165, 233, 0.5), transparent),
+      radial-gradient(90px 50px at 55% 110%, rgba(236, 72, 153, 0.45), transparent);
+    --dash-card-bg: rgba(255, 255, 255, 0.07);
+    --dash-border-color: rgba(255, 255, 255, 0.16);
+    --dash-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 12px 36px -12px rgba(0, 0, 0, 0.6);
+    --dash-shadow-nb: 0 12px 36px -12px rgba(0, 0, 0, 0.6);
+    --dash-shadow-hover: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 18px 44px -12px rgba(0, 0, 0, 0.75);
+    --dash-bar: #8b8cf8;
+  }
+}
+/* Le décor de la page et de la barre collante : le MÊME dégradé fixe, pour qu'ils se raccordent. Un dégradé d'ambiance (`--wash`) cède
+   la place : le style choisit ici son propre décor. */
+:root[data-dash-style="glass"] body,
+:root[data-dash-style="glass"] .chrome {
+  background-image: var(--dash-page-bg);
+  background-size: auto;
+  background-attachment: fixed;
+}
+
+/* ---------- Cartes : une seule série de règles pour tous les styles ---------- */
 :root[data-dash-style] .tiles, :root[data-dash-style] .tiles-focus-grid { gap: var(--dash-gap); }
 :root[data-dash-style] .tile {
-  background: var(--surface);
+  background: var(--dash-card-bg, var(--surface));
+  -webkit-backdrop-filter: var(--dash-backdrop, none);
+  backdrop-filter: var(--dash-backdrop, none);
   border-style: solid;
   border-width: var(--dash-bw);
   border-color: var(--dash-border-color, var(--border));
@@ -158,15 +207,57 @@
   font-weight: var(--dash-title-weight);
 }
 :root[data-dash-style] .tile-zoomed .tile-header { font-family: var(--dash-title-font); font-weight: var(--dash-title-weight); }
+/* Titre en petites capitales (console) : le premier `span` est le titre, les boutons d'action ne sont pas touchés. */
+:root[data-dash-style] .tile-header > span:first-child {
+  text-transform: var(--dash-title-transform, none);
+  letter-spacing: var(--dash-title-ls, normal);
+  color: var(--dash-title-color, var(--text));
+}
 /* Chiffre de la carte KPI : `--kpi-max` plafonne sa taille (js/charts.js:renderKpi pose `--kpi-chars`), la valeur se réduit
    toujours pour tenir sur une ligne ; agrandie, la tuile garde son plafond de css/style.css. */
 :root[data-dash-style] .tile:not(.tile-zoomed) .tile-kpi-value { --kpi-max: var(--dash-kpi-max); }
 :root[data-dash-style] .tile-kpi-value { font-family: var(--dash-kpi-font); font-weight: var(--dash-kpi-weight); line-height: var(--dash-kpi-lh, 1.5); }
 :root[data-dash-style="editorial"] .tile-kpi-value { letter-spacing: -0.01em; }
 :root[data-dash-style="editorial"] .tile-text-body h3, :root[data-dash-style="editorial"] .tile-text-body h4 { font-family: var(--dash-title-font); }
-:root[data-dash-style="dense"] .data-table { font-size: 11px; }
-:root[data-dash-style="dense"] .data-table th, :root[data-dash-style="dense"] .data-table td { padding-top: 3px; padding-bottom: 3px; }
-:root[data-dash-style="dense"] .prog-list { gap: 5px; }
+/* Console : le chiffre vedette prend la couleur d'accent, comme une valeur en direct sur un écran de supervision. */
+:root[data-dash-style="console"] .tile-kpi-value { color: var(--accent); letter-spacing: -0.02em; }
+:root[data-dash-style="console"] .data-table td { font-variant-numeric: tabular-nums; }
+
+/* ---------- Options valables pour TOUS les styles (css/dash-styles.css se lit après css/style.css) ---------- */
+/* Tuiles sans bordure apparente (`data-dash-borders="none"`). On rend le trait TRANSPARENT plutôt que de le retirer : la tuile garde
+   exactement sa taille (jamais un décalage d'un pixel, jamais de graphique redimensionné pour rien). Une carte qui n'avait pour se
+   distinguer que son trait garde une ombre discrète ; les styles qui ont déjà la leur la gardent (`--dash-shadow-nb` : sans le filet
+   lumineux intérieur du verre, qui se lirait encore comme une bordure). */
+:root[data-dash-borders="none"] .tile,
+:root[data-dash-borders="none"] .tile.tile-zoomed { border-color: transparent; }
+:root[data-dash-borders="none"]:not([data-dash-style]) .tile { box-shadow: 0 1px 2px rgba(11, 11, 11, 0.06), 0 8px 20px -12px rgba(11, 11, 11, 0.22); }
+:root[data-dash-borders="none"]:not([data-dash-style]) .tile:hover { box-shadow: var(--shadow-float); }
+@media (prefers-color-scheme: dark) {
+  :root[data-dash-borders="none"]:not([data-dash-style]) .tile { box-shadow: none; }
+}
+:root[data-dash-borders="none"][data-dash-style] .tile { box-shadow: var(--dash-shadow-nb, var(--dash-shadow)); }
+:root[data-dash-borders="none"][data-dash-style] .tile:hover,
+:root[data-dash-borders="none"][data-dash-style] .tile.tile-zoomed { box-shadow: var(--dash-shadow-hover); }
+
+/* Tableau de bord uni (`data-dash-uniform`) : une seule surface, celle de la page. Les tuiles n'ont plus de fond propre (ni ombre, ni
+   coins arrondis, ni verre) et se touchent ; leur trait, s'il est affiché, est PARTAGÉ avec la voisine (marge de -1 px, la grille
+   gagne 1 px de remplissage en haut et à gauche : un seul filet entre deux tuiles, jamais deux). Dans une tuile, `--surface` redevient
+   le fond de la page — l'en-tête collant d'une table, par exemple, ne dessine pas une bande d'une autre couleur —, et `chartTheme()`
+   (js/charts.js) lit `--dash-tile-surface` pour les graphiques. */
+:root[data-dash-uniform] { --dash-tile-surface: var(--bg); }
+:root[data-dash-uniform] .tiles, :root[data-dash-uniform] .tiles-focus-grid { gap: 0; padding: 1px 0 0 1px; }
+:root[data-dash-uniform] .tile {
+  --surface: var(--dash-tile-surface);
+  margin: -1px 0 0 -1px;
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+:root[data-dash-uniform] .tile:hover { background: color-mix(in srgb, var(--text) 3%, transparent); box-shadow: none; }
+:root[data-dash-uniform] .tile.tile-zoomed, :root[data-dash-uniform][data-dash-borders="none"] .tile:hover { box-shadow: none; }
+:root[data-dash-uniform] .tile-preview-body .tile { margin: 0; }
 
 /* ---------- Menu Réglages : choix du style (js/main.js:renderStyleOptions) ---------- */
 /* Le menu grandit (style des tuiles) : il défile dans la fenêtre du widget (souvent ~500 px de haut) au lieu de sortir de l'écran. */
@@ -191,14 +282,17 @@
 .style-option input[type="radio"] { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; pointer-events: none; }
 .style-option-name { font-size: 12.5px; font-weight: 600; color: var(--text); }
 .style-option-desc { font-size: 11.5px; line-height: 1.4; color: var(--text-muted); }
-.style-swatch { display: block; height: 64px; padding: 8px; border-radius: 6px; background: var(--bg); }
+/* Les jetons que seuls certains styles posent (fond translucide de carte, décor de la pastille) s'HÉRITENT de <html> : sans cette remise
+   à zéro, le style actif du tableau de bord (le verre, par exemple) teinterait toutes les autres pastilles. */
+.style-swatch { --dash-card-bg: var(--surface); --dash-swatch-bg: none; }
+.style-swatch { display: block; height: 64px; padding: 8px; border-radius: 6px; background-color: var(--bg); background-image: var(--dash-swatch-bg, none); }
 .sw-card {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   height: 100%;
   padding: 6px 8px;
-  background: var(--surface);
+  background: var(--dash-card-bg, var(--surface));
   border-style: solid;
   border-width: var(--dash-bw);
   border-color: var(--dash-border-color, var(--border));
@@ -213,3 +307,10 @@
 .sw-bars i:nth-child(3) { height: 70%; }
 .sw-bars i:nth-child(4) { height: 85%; }
 @media (max-width: 440px) { .style-options { grid-template-columns: 1fr; } }
+/* Options valables pour tous les styles : deux cases à cocher sous les cartes de style. */
+.style-extra { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
+.style-extra-title { margin: 0; font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.style-check { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; }
+.style-check input[type="checkbox"] { margin: 2px 0 0; accent-color: var(--accent); flex-shrink: 0; }
+.style-check-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.style-check-name { font-size: 12.5px; font-weight: 600; color: var(--text); }

@@ -152,12 +152,13 @@
   let detailModalTileId = null; // tuile actuellement affichée dans #detail-modal, ou null si fermé
   const DETAIL_MODAL_MAX_ROWS = 500; // voir renderDetailModal : au-delà, l'export Excel reste la voie pour tout voir
   let saveTimer = null;
-  let pendingSave = null; // { tableId, reportId, authorLabel, pages, currentPageId, bookmarks, blend } en attente d'écriture, voir flushPendingSave()
+  let pendingSave = null; // { tableId, reportId, authorLabel, pages, currentPageId, bookmarks, blend, dashStyle, dashStyleOptions } en attente d'écriture, voir flushPendingSave()
   let lastRenderedPages = null; // référence, pour ne pas re-sauvegarder la config à chaque rafraîchissement de données
   let lastRenderedCurrentPageId = null; // idem, côté page active (changer de page se sauvegarde aussi)
   let lastRenderedBookmarks = null; // idem, côté bookmarks
   let lastRenderedBlend = null; // idem, côté jointure de data blending (voir applyBlend/commitBlendFromForm)
   let lastRenderedDashStyle = 'standard'; // idem, côté style global des tuiles (js/styles.js) — le Standard est ce que le chargement pose par défaut
+  let lastRenderedDashStyleOptions = store.getState().dashStyleOptions; // idem, côté options d'affichage globales (une référence : le store n'en crée une neuve que si elles changent)
   // Consigne GFS 009 : levé par switchTable pendant qu'il CHARGE un rapport (pages/bookmarks/blend
   // posés depuis BI_Dashboard_Config ou depuis un départ vierge), jamais pendant un geste réel de la
   // personne — voir render() et switchTable plus bas.
@@ -392,6 +393,7 @@
   const settingsBtn = document.getElementById('open-settings');
   const settingsModal = document.getElementById('settings-modal');
   const styleOptionsEl = document.getElementById('settings-style-options'); // cartes de choix du style des tuiles, voir renderStyleOptions
+  const styleExtraInputs = { hideBorders: document.getElementById('settings-opt-hideBorders'), uniform: document.getElementById('settings-opt-uniform') }; // options valables pour tous les styles
   const settingsCloseBtn = document.getElementById('settings-close');
   const commentsModal = document.getElementById('comments-modal');
   const commentsCloseBtn = document.getElementById('comments-close');
@@ -1058,7 +1060,8 @@
     // Style global des tuiles (js/styles.js) : posé AVANT les rendus ci-dessous, que js/charts.js lit à chaque tuile
     // (`GristBI.styles.current()`) — un changement de style repasse donc par ce `render()` complet, sans rien d'autre à rafraîchir.
     GristBI.styles.apply(state.dashStyle);
-    refreshStyleOptions(state.dashStyle);
+    GristBI.styles.applyOptions(state.dashStyleOptions);
+    refreshStyleOptions(state.dashStyle, state.dashStyleOptions);
     // Balaie tout le document pour les attributs data-i18n-* (voir js/i18n.js) à CHAQUE rendu, pas
     // seulement au changement de langue : les boutons d'en-tête de tuile (buildTileElement) sont mis
     // en cache et jamais reconstruits tant que la tuile existe (voir juste en dessous), donc un
@@ -1180,18 +1183,20 @@
     // chaque édition externe). Changer de page ne modifie QUE currentPageId (référence de `pages`
     // inchangée) mais mérite quand même d'être sauvegardé, comme la page active dans Power BI.
     if (state.pages !== lastRenderedPages || state.currentPageId !== lastRenderedCurrentPageId ||
-        state.bookmarks !== lastRenderedBookmarks || state.blend !== lastRenderedBlend || state.dashStyle !== lastRenderedDashStyle) {
+        state.bookmarks !== lastRenderedBookmarks || state.blend !== lastRenderedBlend || state.dashStyle !== lastRenderedDashStyle ||
+        state.dashStyleOptions !== lastRenderedDashStyleOptions) {
       lastRenderedPages = state.pages;
       lastRenderedCurrentPageId = state.currentPageId;
       lastRenderedBookmarks = state.bookmarks;
       lastRenderedBlend = state.blend;
       lastRenderedDashStyle = state.dashStyle;
+      lastRenderedDashStyleOptions = state.dashStyleOptions;
       // Consigne GFS 009 : pendant que switchTable CHARGE un rapport (même vierge, "Nouveau" dans
       // GFS), ce bloc s'exécute une fois par store.set* (jusqu'à 3 fois, un par champ chargé) sans
       // qu'aucun geste de la personne n'ait eu lieu — lastRendered* est quand même mis à jour
       // ci-dessus (pour ne pas se retrouver désynchronisé au prochain geste réel), mais aucune
       // sauvegarde n'est planifiée tant que switchTable n'a pas fini de poser son chargement.
-      if (!suppressNextSave) scheduleSave(state.pages, state.currentPageId, state.bookmarks, state.blend, state.dashStyle);
+      if (!suppressNextSave) scheduleSave(state.pages, state.currentPageId, state.bookmarks, state.blend, state.dashStyle, state.dashStyleOptions);
     }
     // Tient la liste du panneau Commentaires à jour s'il est ouvert (ajout d'un commentaire,
     // changement de langue...) sans avoir à le refermer/rouvrir — no-op si fermé
@@ -3001,10 +3006,10 @@
   // réel trouvé en testant le sélecteur de table — voir flushPendingSave()/HYPOTHESES.md). Même
   // raison pour `reportId`/`authorLabel` (consigne GFS 007) : capturés ici, jamais relus plus tard
   // dans le setTimeout.
-  function scheduleSave(pages, currentPageId, bookmarks, blend, dashStyle) {
+  function scheduleSave(pages, currentPageId, bookmarks, blend, dashStyle, dashStyleOptions) {
     if (!currentTableId) return;
     clearTimeout(saveTimer);
-    pendingSave = { tableId: currentTableId, reportId: currentReportId, authorLabel: currentReportAuthorLabel(), pages, currentPageId, bookmarks, blend, dashStyle };
+    pendingSave = { tableId: currentTableId, reportId: currentReportId, authorLabel: currentReportAuthorLabel(), pages, currentPageId, bookmarks, blend, dashStyle, dashStyleOptions };
     saveTimer = setTimeout(() => {
       saveTimer = null;
       const p = pendingSave;
@@ -3021,7 +3026,7 @@
   // `'new'` : un changement de table/rapport pendant l'écriture (rare, mais possible) l'aurait déjà
   // remplacé, et l'écraser ici serait une course perdante sur l'état affiché à l'écran.
   function runPendingSave(p) {
-    return GristBI.api.saveConfig(p.tableId, p.pages, p.currentPageId, p.bookmarks, p.blend, p.reportId, p.authorLabel, p.dashStyle).then((rowId) => {
+    return GristBI.api.saveConfig(p.tableId, p.pages, p.currentPageId, p.bookmarks, p.blend, p.reportId, p.authorLabel, p.dashStyle, p.dashStyleOptions).then((rowId) => {
       if (p.reportId === 'new' && currentReportId === 'new') currentReportId = rowId;
     }).catch((e) => {
       console.error('[GristBI] échec de sauvegarde de la config', e);
@@ -3145,6 +3150,7 @@
         currentBlend = saved.blend;
         store.setBlend(currentBlend);
         store.setDashStyle(saved.style); // absent d'une configuration d'avant ce réglage -> Standard
+        store.setDashStyleOptions(saved.styleOptions); // idem : aucune option cochée
       } finally {
         suppressNextSave = false;
       }
@@ -3517,7 +3523,7 @@
   // système, ambiance de GFS posée sur <html> par le CSSOM. On compare une signature des jetons lus (jamais un rendu à
   // chaque mutation de <html> : `--chrome-h` y est réécrit à chaque redimensionnement de la barre).
   (function watchChartTheme() {
-    const TOKENS = ['--text', '--text-secondary', '--text-muted', '--surface', '--border', '--border-strong'];
+    const TOKENS = ['--text', '--text-secondary', '--text-muted', '--surface', '--dash-tile-surface', '--border', '--border-strong'];
     const signature = () => {
       const cs = getComputedStyle(document.documentElement);
       return TOKENS.map((n) => cs.getPropertyValue(n).trim()).join('|');
@@ -3593,11 +3599,16 @@
       label.append(input, swatch, name, desc);
       styleOptionsEl.appendChild(label);
     });
-    refreshStyleOptions(store.getState().dashStyle);
+    refreshStyleOptions(store.getState().dashStyle, store.getState().dashStyleOptions);
   }
   // Coche la carte du style en vigueur (un id inconnu de ce widget s'affiche, et se coche, en Standard).
-  function refreshStyleOptions(dashStyle) {
+  function refreshStyleOptions(dashStyle, dashStyleOptions) {
     if (!styleOptionsEl) return;
+    const opts = dashStyleOptions || {};
+    Object.keys(styleExtraInputs).forEach((key) => {
+      const input = styleExtraInputs[key];
+      if (input && input.checked !== !!opts[key]) input.checked = !!opts[key];
+    });
     const current = GristBI.styles.normalizeStyleId(dashStyle);
     styleOptionsEl.querySelectorAll('.style-option').forEach((label) => {
       const selected = label.dataset.styleId === current;
@@ -3606,6 +3617,12 @@
       if (input && input.checked !== selected) input.checked = selected;
     });
   }
+  // Options valables pour tous les styles (cases sous les cartes de style) : tout-ou-rien chacune, passent par le store comme le style.
+  Object.keys(styleExtraInputs).forEach((key) => {
+    const input = styleExtraInputs[key];
+    if (!input) return;
+    input.addEventListener('change', () => store.setDashStyleOptions(Object.assign({}, store.getState().dashStyleOptions, { [key]: input.checked })));
+  });
   renderStyleOptions();
 
   bootstrap();

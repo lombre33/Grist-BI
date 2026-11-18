@@ -8,11 +8,17 @@
  *  - la passe sur les options ECharts (`applyToOption`) : Standard intact, barres/courbes/parts/axes de chaque style, ce qu'elle
  *    NE touche PAS (palette choisie, couleur posée par le rendu, écart d'un histogramme, quadrillage masqué du combo) ;
  *  - la teinte douce d'une couleur unique, y compris sur carte sombre (une palette qui commence par un bleu marine y disparaissait) ;
+ *  - les dégradés de `console` et `glass` (barres, aire, halo des courbes) : couleur de la série, jamais sur une pile, jamais sur une
+ *    couleur illisible, éclaircie sur carte sombre (une palette qui commence par un bleu marine y disparaîtrait) ;
  *  - le CSS : chaque style pose la liste COMPLÈTE de ses jetons dans un bloc clair ET un bloc sombre (un jeton oublié en sombre
- *    resterait clair : `:root[data-dash-style]` bat `:root`), contrastes AA des textes, jetons de `factory` = ceux du kit
- *    Grist Factory, pastille « Standard » = le rendu de css/style.css ;
- *  - le store (`setDashStyle`) et l'aller-retour de la configuration (`BI_Dashboard_Config`) : rien d'écrit pour Standard, anciens
- *    formats lus en Standard, valeur mal formée ignorée, id inconnu mais bien formé conservé ;
+ *    resterait clair : `:root[data-dash-style]` bat `:root`) — sauf `console`, toujours sombre : UN bloc, qui reprend aussi les jetons
+ *    que css/style.css ne pose que sous `prefers-color-scheme: dark` ; contrastes AA des textes (le verre : contre sa pire carte
+ *    translucide), pastille « Standard » = le rendu de css/style.css, aucun `backdrop-filter` sur la barre collante ;
+ *  - les OPTIONS valables pour tous les styles (tuiles sans bordure, tableau de bord uni) : registre, état, attributs de <html>, règles
+ *    CSS, store, configuration (champ `styleOptions` écrit seulement s'il en faut un) ;
+ *  - le store (`setDashStyle`, `setDashStyleOptions`) et l'aller-retour de la configuration (`BI_Dashboard_Config`) : rien d'écrit pour
+ *    Standard, anciens formats lus en Standard, valeur mal formée ignorée, id inconnu mais bien formé conservé (`factory` et `dense`,
+ *    retirés le 18/11/2026, s'affichent en Standard sans être effacés) ;
  *  - le câblage de index.html/harness.html.
  */
 'use strict';
@@ -28,7 +34,8 @@ const i18n = require('../js/i18n.js');
 const data = require('../js/data.js');
 const { createStore } = require('../js/state.js');
 
-const NEW_STYLES = ['factory', 'fluid', 'dense', 'editorial'];
+const NEW_STYLES = ['fluid', 'editorial', 'console', 'glass'];
+const ALWAYS_DARK = ['console']; // un seul bloc de jetons, sombre quelle que soit la préférence du système
 const ALL = ['standard'].concat(NEW_STYLES);
 
 (async () => {
@@ -48,7 +55,7 @@ const ALL = ['standard'].concat(NEW_STYLES);
     }
   }
   i18n.setLang('fr');
-  for (const key of ['style.title', 'style.hint']) {
+  for (const key of ['style.title', 'style.hint', 'style.options.title', 'style.option.hideBorders', 'style.option.hideBorders.desc', 'style.option.uniform', 'style.option.uniform.desc']) {
     for (const lang of ['fr', 'en']) { i18n.setLang(lang); assert.ok(i18n.t(key) && i18n.t(key) !== key, `${key} en ${lang}`); }
   }
   i18n.setLang('fr');
@@ -71,7 +78,54 @@ const ALL = ['standard'].concat(NEW_STYLES);
   assert.strictEqual(styles.apply('fluid'), false);
   assert.strictEqual(styles.apply('zzz'), true);
   assert.strictEqual(styles.currentId(), 'standard');
-  console.log('OK styles — registre, clés fr/en, ids inconnus ou hostiles -> Standard, valeur écrite');
+  // `factory` et `dense` (remplacés le 18/11/2026 par `console` et `glass`) ne sont plus des styles : une configuration qui les porte
+  // s'affiche en Standard (et l'id traverse la sauvegarde, voir la section Configuration).
+  for (const removed of ['factory', 'dense']) {
+    assert.strictEqual(styles.isKnown(removed), false);
+    assert.strictEqual(styles.normalizeStyleId(removed), 'standard');
+    assert.strictEqual(styles.configValue(removed), undefined);
+    assert.ok(!(`style.${removed}.name` in i18n.STRINGS), `${removed} : clé i18n retirée`);
+  }
+  // Avec un document simulé : `apply` pose `data-dash-style` (rien pour Standard) et `applyOptions` un attribut par option cochée.
+  {
+    const attrs = {};
+    global.document = { documentElement: {
+      getAttribute: (k) => (k in attrs ? attrs[k] : null), setAttribute: (k, v) => { attrs[k] = String(v); },
+      removeAttribute: (k) => { delete attrs[k]; }, hasAttribute: (k) => k in attrs
+    } };
+    try {
+      styles.apply('glass');
+      assert.deepStrictEqual(attrs, { 'data-dash-style': 'glass' });
+      styles.apply('standard');
+      assert.deepStrictEqual(attrs, {}, 'Standard : aucun attribut');
+      assert.strictEqual(styles.applyOptions({ hideBorders: true }), true);
+      assert.deepStrictEqual(attrs, { 'data-dash-borders': 'none' });
+      assert.strictEqual(styles.applyOptions({ hideBorders: true }), false, 'même valeur : rien ne change');
+      assert.strictEqual(styles.applyOptions({ hideBorders: true, uniform: true }), true);
+      assert.deepStrictEqual(attrs, { 'data-dash-borders': 'none', 'data-dash-uniform': 'true' });
+      styles.apply('console');
+      assert.strictEqual(attrs['data-dash-style'], 'console', 'les options ne dépendent pas du style');
+      assert.strictEqual(styles.applyOptions({ uniform: true }), true);
+      assert.deepStrictEqual(attrs, { 'data-dash-style': 'console', 'data-dash-uniform': 'true' }, 'une option décochée retire son attribut');
+      assert.strictEqual(styles.applyOptions(undefined), true);
+      assert.deepStrictEqual(attrs, { 'data-dash-style': 'console' });
+      assert.deepStrictEqual(styles.currentOptions(), {});
+    } finally { delete global.document; styles.apply('standard'); styles.applyOptions({}); }
+  }
+  // Options : seules les valeurs `true` des deux clés connues sont retenues, rien d'autre ne passe.
+  assert.deepStrictEqual(styles.OPTION_KEYS, ['hideBorders', 'uniform']);
+  for (const [raw, expected] of [
+    [undefined, {}], [null, {}], [[], {}], ['hideBorders', {}], [12, {}], [{}, {}],
+    [{ hideBorders: true }, { hideBorders: true }], [{ uniform: true, hideBorders: true }, { hideBorders: true, uniform: true }],
+    [{ hideBorders: 'true', uniform: 1 }, {}], [{ hideBorders: false, uniform: false }, {}],
+    [{ hideBorders: true, evil: true, __proto__: { uniform: true } }, { hideBorders: true }], [{ constructor: true }, {}]
+  ]) assert.deepStrictEqual(styles.normalizeOptions(raw), expected, JSON.stringify(raw));
+  assert.strictEqual(styles.optionsConfigValue({}), undefined, 'aucune option : rien à écrire');
+  assert.strictEqual(styles.optionsConfigValue({ hideBorders: false }), undefined);
+  assert.deepStrictEqual(styles.optionsConfigValue({ uniform: true, junk: 1 }), { uniform: true });
+  assert.strictEqual(styles.sameOptions({ uniform: true }, { uniform: true, hideBorders: false }), true);
+  assert.strictEqual(styles.sameOptions({ uniform: true }, {}), false);
+  console.log('OK styles — registre, clés fr/en, ids inconnus ou hostiles -> Standard, valeur écrite, factory/dense retirés, attributs de <html>, options');
 
   // --- 2. Couleurs ----------------------------------------------------------------------------------------------------------
   assert.deepStrictEqual(styles.parseColor('#2a78d6'), [42, 120, 214]);
@@ -100,7 +154,28 @@ const ALL = ['standard'].concat(NEW_STYLES);
   const edSoft = styles.STYLES.editorial.chart.soft;
   assert.ok(styles.luminance(styles.softColor('#2a78d6', edSoft, { surface: '#f8f6f1', text: '#1d1c1a' })) < styles.luminance('#2a78d6'));
   assert.strictEqual(styles.softColor('#2a78d6', null, lightTh), '#2a78d6');
-  console.log('OK styles — couleurs : lecture, mélange, teinte douce claire et sombre');
+  // Dégradés (console, verre) : `rgba()` de la couleur de la série, objet linéaire simple (aucune classe ECharts), null si illisible.
+  assert.strictEqual(styles.withAlpha('#2a78d6', 0.5), 'rgba(42, 120, 214, 0.5)');
+  assert.strictEqual(styles.withAlpha('#2a78d6', 7), 'rgba(42, 120, 214, 1)', 'opacité bornée');
+  assert.strictEqual(styles.withAlpha('var(--x)', 0.5), null);
+  assert.deepStrictEqual(styles.fadeGradient('#2a78d6', 1, 0.4, 'down'), {
+    type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+    colorStops: [{ offset: 0, color: 'rgba(42, 120, 214, 1)' }, { offset: 1, color: 'rgba(42, 120, 214, 0.4)' }]
+  });
+  assert.deepStrictEqual(styles.fadeGradient('#2a78d6', 0.4, 1, 'right').x2, 1);
+  assert.strictEqual(styles.fadeGradient('red', 1, 0.4, 'down'), null);
+  // Lisibilité sur carte SOMBRE : une couleur trop foncée s'éclaircit vers le texte jusqu'à 3:1 ; claire ou lisible : intacte.
+  const consoleTh = { surface: '#121722', text: '#e6edf6' };
+  for (const base of ['#002f63', '#303030', '#511f00', '#003c17']) {
+    const lifted = styles.legibleOnSurface(base, consoleTh, 3);
+    assert.ok(styles.contrastRatio(lifted, consoleTh.surface) >= 3, `${base} -> ${lifted}`);
+    assert.ok(styles.luminance(lifted) > styles.luminance(base));
+  }
+  assert.strictEqual(styles.legibleOnSurface('#2a78d6', consoleTh, 3), '#2a78d6', 'déjà lisible : intacte');
+  assert.strictEqual(styles.legibleOnSurface('#002f63', { surface: '#ffffff', text: '#000000' }, 3), '#002f63', 'carte claire : jamais touchée');
+  assert.strictEqual(styles.legibleOnSurface('var(--x)', consoleTh, 3), 'var(--x)');
+  assert.strictEqual(styles.legibleOnSurface('#002f63', {}, 3), '#002f63');
+  console.log('OK styles — couleurs : lecture, mélange, teinte douce claire et sombre, dégradés, lisibilité sur carte sombre');
 
   // --- 3. La passe sur les options ECharts ----------------------------------------------------------------------------------
   const TH = { text: '#131a2b', surface: '#ffffff', muted: '#586381' };
@@ -128,18 +203,62 @@ const ALL = ['standard'].concat(NEW_STYLES);
     assert.strictEqual(styles.applyToOption(null, styles.STYLES.fluid, TH), null);
   }
 
-  // factory : barres arrondies en haut, axe des valeurs sans trait, quadrillage plein, infobulle arrondie.
+  // console : petites barres à dégradé (plein au bout, 45 % à la base), quadrillage en pointillés, axe des valeurs sans trait, infobulle presque droite.
   {
-    const o = styles.applyToOption(barOption(5), styles.STYLES.factory, TH);
-    assert.deepStrictEqual(o.series[0].itemStyle.borderRadius, [4, 4, 0, 0]);
-    assert.strictEqual(o.series[0].barMaxWidth, 44);
+    const o = styles.applyToOption(barOption(5), styles.STYLES.console, TH);
+    const sr = o.series[0];
+    assert.deepStrictEqual(sr.itemStyle.borderRadius, [2, 2, 0, 0]);
+    assert.strictEqual(sr.barMaxWidth, 26);
+    assert.deepStrictEqual(sr.itemStyle.color, styles.fadeGradient('#2a78d6', 1, 0.45, 'down'), 'dégradé de la couleur de la 1re série de la palette');
     assert.strictEqual(o.yAxis.axisLine.show, false);
     assert.strictEqual(o.xAxis.axisLine.show, true);
     assert.strictEqual(o.yAxis.splitLine.show, true);
-    assert.strictEqual(o.yAxis.splitLine.lineStyle.type, 'solid');
-    assert.ok(/border-radius: 8px;$/.test(o.tooltip.extraCssText) && o.tooltip.extraCssText.startsWith('max-width: 85%'), o.tooltip.extraCssText);
-    assert.strictEqual(o.series[0].label, undefined, 'factory n\'écrit pas de valeurs');
-    assert.strictEqual(o.series[0].itemStyle.color, undefined, 'factory ne teinte pas');
+    assert.strictEqual(o.yAxis.splitLine.lineStyle.type, 'dotted');
+    assert.ok(/border-radius: 3px;$/.test(o.tooltip.extraCssText) && o.tooltip.extraCssText.startsWith('max-width: 85%'), o.tooltip.extraCssText);
+    assert.strictEqual(sr.label, undefined, 'console n\'écrit pas de valeurs');
+    assert.strictEqual(o.yAxis.axisLabel.fontSize, 10);
+  }
+  // Dégradés de barres : horizontales (base à gauche), plusieurs séries (une couleur chacune), carte sombre (couleur éclaircie).
+  {
+    const h = styles.applyToOption({ ...barOption(4), xAxis: valAxis(), yAxis: { ...catAxis(4), inverse: true } }, styles.STYLES.glass, TH);
+    const g = h.series[0].itemStyle.color;
+    assert.strictEqual(g.x2, 1);
+    assert.strictEqual(g.y2, 0);
+    assert.strictEqual(g.colorStops[0].color, 'rgba(42, 120, 214, 0.55)', 'base (gauche) estompée');
+    assert.strictEqual(g.colorStops[1].color, 'rgba(42, 120, 214, 1)', 'bout (droite) plein');
+    assert.deepStrictEqual(h.series[0].itemStyle.borderRadius, [10, 10, 10, 10], 'pilule');
+
+    const two = barOption(5, { series: [{ type: 'bar', name: 'A', data: [1, 2, 3, 4, 5] }, { type: 'bar', name: 'B', data: [2, 3, 4, 5, 6] }] });
+    const m = styles.applyToOption(two, styles.STYLES.console, TH);
+    assert.strictEqual(m.series[0].itemStyle.color.colorStops[0].color, 'rgba(42, 120, 214, 1)');
+    assert.strictEqual(m.series[1].itemStyle.color.colorStops[0].color, 'rgba(235, 104, 52, 1)', 'chaque série garde SA couleur de palette');
+
+    const dark = styles.applyToOption(barOption(5, { color: ['#002f63'] }), styles.STYLES.console, { surface: '#121722', text: '#e6edf6' });
+    const base = dark.series[0].itemStyle.color.colorStops[0].color;
+    const rgb = base.match(/\d+/g).slice(0, 3).map(Number);
+    assert.ok(styles.contrastRatio(`#${rgb.map((v) => v.toString(16).padStart(2, '0')).join('')}`, '#121722') >= 3, 'palette marine éclaircie sur carte sombre');
+    const light = styles.applyToOption(barOption(5, { color: ['#002f63'] }), styles.STYLES.console, TH);
+    assert.strictEqual(light.series[0].itemStyle.color.colorStops[0].color, 'rgba(0, 47, 99, 1)', 'carte claire : couleur de la palette intacte');
+  }
+  // Ce que les dégradés ne font PAS : pile (le dégradé couperait chaque segment), couleur posée par le rendu (chaîne ou dégradé),
+  // couleur illisible, estompage par donnée.
+  for (const id of ['console', 'glass']) {
+    const stacked = styles.applyToOption(barOption(5, { series: [{ type: 'bar', stack: 'total', data: [1, 2, 3, 4, 5] }, { type: 'bar', stack: 'total', data: [2, 3, 4, 5, 6] }] }), styles.STYLES[id], TH);
+    assert.ok(stacked.series.every((x) => x.itemStyle.color === undefined && x.itemStyle.borderRadius === undefined), `${id} : empilé, ni dégradé ni arrondi`);
+    const own = barOption(5);
+    own.series[0].itemStyle = { color: '#123456' };
+    assert.strictEqual(styles.applyToOption(own, styles.STYLES[id], TH).series[0].itemStyle.color.colorStops[0].color, 'rgba(18, 52, 86, 1)', `${id} : le dégradé part de la couleur posée par le rendu`);
+    const grad = barOption(5);
+    const posed = { type: 'linear', x: 0, y: 0, x2: 1, y2: 0, colorStops: [{ offset: 0, color: '#000' }, { offset: 1, color: '#fff' }] };
+    grad.series[0].itemStyle = { color: posed };
+    assert.strictEqual(styles.applyToOption(grad, styles.STYLES[id], TH).series[0].itemStyle.color, posed, `${id} : un dégradé déjà posé est respecté`);
+    const css = barOption(5, { color: ['var(--accent)'] });
+    assert.strictEqual(styles.applyToOption(css, styles.STYLES[id], TH).series[0].itemStyle.color, undefined, `${id} : couleur illisible -> rien de posé`);
+    const dim = barOption(3);
+    dim.series[0].data = [{ value: 1, itemStyle: { opacity: 0.3 } }, { value: 2 }, { value: 3 }];
+    const d = styles.applyToOption(dim, styles.STYLES[id], TH);
+    assert.strictEqual(d.series[0].data[0].itemStyle.opacity, 0.3, `${id} : estompage par donnée gardé`);
+    assert.strictEqual(d.series[0].label, undefined, `${id} : pas de valeurs ajoutées`);
   }
 
   // fluid, barres verticales : valeurs au bout des barres (formateur d'axe de la tuile), axe des valeurs masqué, teinte douce.
@@ -195,9 +314,11 @@ const ALL = ['standard'].concat(NEW_STYLES);
     const c = styles.applyToOption(makeCombo(), styles.STYLES.fluid, TH);
     assert.strictEqual(c.series[0].label, undefined, 'combo : pas de valeurs sur les barres (la courbe y est)');
     assert.strictEqual(c.series[0].itemStyle.color, undefined);
-    const dense = styles.applyToOption(makeCombo(), styles.STYLES.dense, TH);
-    assert.strictEqual(dense.yAxis[1].splitLine.show, false, 'quadrillage que le rendu a masqué : reste masqué');
-    assert.strictEqual(dense.yAxis[0].splitLine.show, true);
+    const cons = styles.applyToOption(makeCombo(), styles.STYLES.console, TH);
+    assert.strictEqual(cons.yAxis[1].splitLine.show, false, 'quadrillage que le rendu a masqué : reste masqué');
+    assert.strictEqual(cons.yAxis[0].splitLine.show, true);
+    assert.strictEqual(cons.series[1].lineStyle.shadowBlur, 8, 'la courbe du combo garde son halo');
+    assert.ok(cons.series[0].itemStyle.color && cons.series[0].itemStyle.color.type === 'linear', 'barres du combo en dégradé');
 
     // Ligne de repère (markLine) : le style n'ajoute pas de valeurs au bout des barres et garde l'axe qu'elle se lit contre.
     const ref = barOption(5);
@@ -228,14 +349,16 @@ const ALL = ['standard'].concat(NEW_STYLES);
     styles.applyToOption(o, styles.STYLES[id], TH);
     assert.deepStrictEqual(o.color, data.paletteColors('okabe'), `${id} : palette de la tuile intacte`);
   }
-  // dense : barres droites, quadrillage et traits d'axe, graduations.
+  // glass : barres en pilule, quadrillage en pointillés, aucun trait d'axe, repère de légende rond, infobulle très arrondie.
   {
-    const o = styles.applyToOption(barOption(5), styles.STYLES.dense, TH);
-    assert.strictEqual(o.series[0].itemStyle.borderRadius, undefined);
-    assert.strictEqual(o.xAxis.axisLine.show, true);
-    assert.strictEqual(o.yAxis.axisLine.show, true);
-    assert.strictEqual(o.xAxis.axisTick.show, true);
-    assert.strictEqual(o.yAxis.axisLabel.fontSize, 10.5);
+    const o = styles.applyToOption(barOption(5, { legend: { top: 0 } }), styles.STYLES.glass, TH);
+    assert.deepStrictEqual(o.series[0].itemStyle.borderRadius, [10, 10, 0, 0], 'verticales : seul le haut est arrondi');
+    assert.strictEqual(o.series[0].barMaxWidth, 34);
+    assert.strictEqual(o.xAxis.axisLine.show, false);
+    assert.strictEqual(o.yAxis.axisLine.show, false);
+    assert.strictEqual(o.yAxis.splitLine.lineStyle.type, 'dotted');
+    assert.strictEqual(o.legend.icon, 'circle');
+    assert.ok(/border-radius: 14px;$/.test(o.tooltip.extraCssText));
   }
   // editorial : quadrillage en tirets, barres fines teintées d'encre.
   {
@@ -266,8 +389,28 @@ const ALL = ['standard'].concat(NEW_STYLES);
       assert.strictEqual(shaped.series[1].step, 'middle', `${id} : escalier de la tuile gardé`);
       assert.ok(shaped.series[1].smooth === undefined && shaped.series[2].smooth === undefined && shaped.series[2].step === undefined, `${id} : jamais de forme ajoutée`);
     }
-    const d = styles.applyToOption(lineOption([{ type: 'line', data: [1, 2, 3] }]), styles.STYLES.dense, TH);
-    assert.strictEqual(d.series[0].symbolSize, 5);
+    const c = styles.applyToOption(lineOption([{ type: 'line', data: [1, 2, 3] }]), styles.STYLES.console, TH);
+    assert.strictEqual(c.series[0].symbolSize, 5);
+    assert.strictEqual(c.series[0].lineStyle.width, 1.8);
+    assert.strictEqual(c.series[0].lineStyle.shadowBlur, 8, 'halo de la couleur de la courbe');
+    assert.strictEqual(c.series[0].lineStyle.shadowColor, 'rgba(42, 120, 214, 0.55)');
+    assert.strictEqual(c.series[0].areaStyle, undefined, 'pas d\'aire là où la tuile n\'en veut pas');
+    // Aire non empilée : dégradé de la couleur de la courbe (opacité 1 : le dégradé porte la transparence) ; empilée : intacte.
+    for (const id of ['console', 'glass']) {
+      const a = styles.applyToOption(lineOption([
+        { type: 'line', areaStyle: { opacity: 0.25 }, data: [1, 2, 3] },
+        { type: 'line', stack: 'total', areaStyle: { opacity: 0.65 }, data: [1, 2, 3] }
+      ]), styles.STYLES[id], TH);
+      assert.strictEqual(a.series[0].areaStyle.color.type, 'linear', `${id} : aire en dégradé`);
+      assert.strictEqual(a.series[0].areaStyle.opacity, 1);
+      assert.deepStrictEqual(a.series[0].areaStyle.color, styles.fadeGradient('#2a78d6', styles.STYLES[id].chart.areaGradient.from, styles.STYLES[id].chart.areaGradient.to, 'down'));
+      assert.deepStrictEqual(a.series[1].areaStyle, { opacity: 0.65 }, `${id} : aire empilée intacte`);
+      assert.strictEqual(a.series[1].lineStyle.shadowBlur, undefined, `${id} : pas de halo sur une pile`);
+      assert.strictEqual(a.series[0].smooth, undefined);
+    }
+    assert.strictEqual(styles.applyToOption(lineOption([{ type: 'line', data: [1] }]), styles.STYLES.glass, TH).series[0].lineStyle.shadowBlur, undefined, 'le verre n\'a pas de halo');
+    const noColor = styles.applyToOption({ xAxis: catAxis(2), yAxis: valAxis(), series: [{ type: 'line', areaStyle: { opacity: 0.25 }, data: [1, 2] }] }, styles.STYLES.console, TH);
+    assert.deepStrictEqual(noColor.series[0].areaStyle, { opacity: 0.25 }, 'sans couleur lisible : aire du rendu gardée');
   }
   // Parts : couleur de la carte entre les parts (jamais du blanc en dur), arrondis, entonnoir sans rayon, carte proportionnelle avec écart.
   {
@@ -331,43 +474,93 @@ const ALL = ['standard'].concat(NEW_STYLES);
     '--dash-title-weight', '--dash-kpi-font', '--dash-kpi-max', '--dash-kpi-weight', '--dash-bar', '--dash-bar-radius'];
   const hex = (v) => { assert.ok(/^#[0-9a-f]{6}$/i.test(v), `couleur « ${v} » attendue en #rrggbb`); return v; };
 
+  const wcagSafe = (fg, bg) => wcag(hex(fg), hex(bg));
   for (const id of NEW_STYLES) {
     const light = tokenBlock(id, false);
     const dark = tokenBlock(id, true);
-    assert.ok(light, `${id} : bloc clair`);
-    assert.ok(dark, `${id} : bloc sombre`);
-    assert.ok(light.selector.includes(`:root[data-dash-style="${id}"]`) && dark.selector.includes(`:root[data-dash-style="${id}"]`), `${id} : le même bloc sert la page et la pastille`);
-    for (const t of COLOR_TOKENS.concat(SHAPE_TOKENS)) assert.ok(light.decls[t] !== undefined, `${id} : ${t} manque en clair`);
-    // Un jeton de COULEUR posé en clair doit l'être en sombre aussi, sinon il resterait clair (`:root[data-dash-style]` bat `:root`).
-    for (const t of COLOR_TOKENS) assert.ok(dark.decls[t] !== undefined, `${id} : ${t} manque en SOMBRE`);
-    assert.ok(dark.decls['--dash-shadow'] !== undefined || /none|^0px?$/.test(light.decls['--dash-shadow']) || id === 'editorial', `${id} : ombres du mode sombre`);
-    // Contrastes (WCAG AA : 4,5:1) des trois textes sur les trois fonds, dans chaque mode.
-    for (const [mode, block] of [['clair', light], ['sombre', dark]]) {
-      const tokens = Object.assign({}, mode === 'sombre' ? light.decls : {}, block.decls);
+    const alwaysDark = ALWAYS_DARK.includes(id);
+    assert.ok(light, `${id} : bloc de jetons`);
+    assert.ok(light.selector.includes(`:root[data-dash-style="${id}"]`) && light.selector.includes(`.style-swatch[data-dash-style="${id}"]`), `${id} : le même bloc sert la page et la pastille`);
+    for (const t of COLOR_TOKENS.concat(SHAPE_TOKENS)) assert.ok(light.decls[t] !== undefined, `${id} : ${t} manque`);
+    if (alwaysDark) {
+      // Toujours sombre : UN seul bloc (une variante sombre serait morte), et `color-scheme: dark`.
+      assert.strictEqual(dark, undefined, `${id} : toujours sombre, pas de bloc @media dark`);
+      assert.strictEqual(light.decls['color-scheme'], 'dark', `${id} : color-scheme: dark`);
+    } else {
+      assert.ok(dark, `${id} : bloc sombre`);
+      assert.ok(dark.selector.includes(`:root[data-dash-style="${id}"]`) && dark.selector.includes(`.style-swatch[data-dash-style="${id}"]`), `${id} : le même bloc sombre sert la page et la pastille`);
+      // Un jeton de COULEUR posé en clair doit l'être en sombre aussi, sinon il resterait clair (`:root[data-dash-style]` bat `:root`).
+      for (const t of COLOR_TOKENS) assert.ok(dark.decls[t] !== undefined, `${id} : ${t} manque en SOMBRE`);
+      assert.ok(dark.decls['--dash-shadow'] !== undefined || /none|^0px?$/.test(light.decls['--dash-shadow']) || id === 'editorial', `${id} : ombres du mode sombre`);
+    }
+    // Contrastes (WCAG AA : 4,5:1) des trois textes sur les trois fonds, dans chaque mode que le style peut montrer.
+    for (const [mode, block] of (alwaysDark ? [['sombre', light]] : [['clair', light], ['sombre', dark]])) {
+      const tokens = Object.assign({}, mode === 'sombre' && !alwaysDark ? light.decls : {}, block.decls);
       for (const text of ['--text', '--text-secondary', '--text-muted']) {
         for (const bg of ['--surface', '--surface-sunken', '--bg']) {
-          const ratio = wcag(hex(tokens[text]), hex(tokens[bg]));
+          const ratio = wcagSafe(tokens[text], tokens[bg]);
           assert.ok(ratio >= 4.5, `${id} ${mode} : ${text} sur ${bg} = ${ratio.toFixed(2)}:1`);
         }
       }
+      // L'accent sert de texte (onglet actif, lien) : lisible sur la carte ; le texte d'un bouton plein sur l'accent aussi.
+      assert.ok(wcagSafe(tokens['--accent'], tokens['--surface']) >= 3, `${id} ${mode} : accent sur la carte (${wcagSafe(tokens['--accent'], tokens['--surface']).toFixed(2)}:1)`);
     }
   }
   assert.ok(/--dash-bw:\s*2px 0 0 0/.test(tokenBlock('editorial', false).decls['--dash-bw'] ? `--dash-bw: ${tokenBlock('editorial', false).decls['--dash-bw']}` : ''), 'editorial : un filet en tête de carte seulement');
 
-  // `factory` = les jetons du kit Grist Factory (kit/css/tokens.css), quand le sous-module est là.
-  const kitPath = path.join(ROOT, 'kit', 'css', 'tokens.css');
-  if (fs.existsSync(kitPath)) {
-    const kit = parseCss(fs.readFileSync(kitPath, 'utf8'));
-    const kitLight = kit.find((r) => r.media === null && r.selector === ':root');
-    const kitDark = kit.find((r) => r.media === null && r.selector.startsWith(':root[data-theme="dark"]'));
-    const map = { '--bg': '--bg', '--surface': '--surface', '--surface-sunken': '--surface-sunken', '--border': '--border', '--border-strong': '--border-strong', '--text': '--text', '--text-muted': '--text-muted', '--accent': '--accent' };
-    for (const [token, kitToken] of Object.entries(map)) {
-      assert.strictEqual(tokenBlock('factory', false).decls[token].toLowerCase(), kitLight.decls[kitToken].toLowerCase(), `factory clair ${token} = kit`);
-      assert.strictEqual(tokenBlock('factory', true).decls[token].toLowerCase(), kitDark.decls[kitToken].toLowerCase(), `factory sombre ${token} = kit`);
+  // Console, toujours sombre : reprend les jetons que css/style.css ne définit que SOUS `prefers-color-scheme: dark`, avec les mêmes valeurs.
+  {
+    const base = parseCss(read('css', 'style.css'));
+    const baseDark = base.find((r) => r.media === DARK && r.selector === ':root');
+    const cons = tokenBlock('console', false);
+    for (const t of ['--accent-soft', '--good-ink', '--critical', '--pp-scrim', '--danger-ink', '--danger-soft', '--warning-bg', '--warning-text', '--warning-border']) {
+      assert.ok(baseDark.decls[t] !== undefined, `style.css sombre pose ${t}`);
+      assert.strictEqual(cons.decls[t], baseDark.decls[t], `console : ${t} = celui du mode sombre de style.css`);
     }
-    console.log('OK styles — factory reprend les jetons de kit/css/tokens.css (clair et sombre)');
-  } else {
-    console.log('-- kit/ absent (sous-module non initialisé) : accord factory/kit non vérifié');
+    const solid = styles.mixColors(cons.decls['--accent'], cons.decls['--text'], 0.08); // --accent-solid de style.css : 92 % d'accent, 8 % de texte
+    assert.ok(wcagSafe(cons.decls['--on-accent'], solid) >= 4.5, `console : texte d'un bouton plein = ${wcagSafe(cons.decls['--on-accent'], solid).toFixed(2)}:1`);
+    assert.ok(dashRules.some((r) => r.selector === ':root[data-dash-style="console"] .warning-banner' && r.decls.color), 'console : bannière d\'erreur sombre');
+    // Les pastilles du menu restent sombres même quand la page est en thème clair (un seul bloc, jamais d'écart).
+    assert.ok(!dashRules.some((r) => r.media === DARK && r.selector.includes('"console"')), 'console : aucune règle @media dark');
+  }
+
+  // Verre : `--surface` reste OPAQUE (graphiques, menus, fenêtres) ; le fond translucide est `--dash-card-bg`, que seule la tuile consomme.
+  // Les textes doivent rester lisibles sur la PIRE carte : le fond de la page sous la carte translucide, avec chaque halo à pleine intensité.
+  {
+    const blend = (top, bottomRgb) => {
+      const m = top.match(/rgba?\(([^)]+)\)/)[1].split(',').map((v) => Number(v.trim()));
+      const a = m.length > 3 ? m[3] : 1;
+      return [0, 1, 2].map((i) => Math.round(m[i] * a + bottomRgb[i] * (1 - a)));
+    };
+    const hexToRgb = (h) => styles.parseColor(h);
+    const toHex = (rgb) => `#${rgb.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+    for (const dark of [false, true]) {
+      const b = tokenBlock('glass', dark);
+      const t = Object.assign({}, dark ? tokenBlock('glass', false).decls : {}, b.decls);
+      assert.ok(/^#[0-9a-f]{6}$/i.test(t['--surface']), `glass ${dark ? 'sombre' : 'clair'} : --surface opaque`);
+      assert.ok(/^rgba\(/.test(t['--dash-card-bg']), 'glass : fond de carte translucide');
+      assert.ok(/blur\(/.test(t['--dash-backdrop']), 'glass : verre dépoli');
+      const halos = (t['--dash-page-bg'].match(/rgba\([^)]+\)/g) || []);
+      assert.strictEqual(halos.length, 3, 'glass : trois halos de couleur');
+      for (const halo of halos.concat([null])) {
+        const page = halo ? blend(halo, hexToRgb(t['--bg'])) : hexToRgb(t['--bg']);
+        const card = toHex(blend(t['--dash-card-bg'], page));
+        for (const text of ['--text', '--text-secondary', '--text-muted']) {
+          const ratio = wcagSafe(t[text], card);
+          assert.ok(ratio >= 4.5, `glass ${dark ? 'sombre' : 'clair'} : ${text} sur la pire carte ${card} (halo ${halo}) = ${ratio.toFixed(2)}:1`);
+        }
+      }
+    }
+    // Pas de `backdrop-filter` sur la barre collante : il en ferait le bloc conteneur des menus `position: fixed` (js/appbar.js).
+    for (const r of dashRules.filter((x) => x.selector.includes('.chrome'))) {
+      assert.ok(r.decls['backdrop-filter'] === undefined && r.decls['-webkit-backdrop-filter'] === undefined, `${r.selector} : pas de backdrop-filter`);
+    }
+    // Les jetons que seuls certains styles posent s'héritent de <html> : la pastille les remet à zéro (sinon le verre teinterait toutes les pastilles).
+    const sw = dashRules.find((r) => r.selector === '.style-swatch');
+    assert.ok(sw && sw.decls['--dash-card-bg'] && sw.decls['--dash-swatch-bg'] === 'none', 'pastille : remise à zéro des jetons optionnels');
+    // Le décor de la page et celui de la barre collante sont le MÊME dégradé fixe (sinon une marche visible à la jonction).
+    const decor = dashRules.find((r) => r.selector.includes(':root[data-dash-style="glass"] body') && r.selector.includes('.chrome'));
+    assert.ok(decor && decor.decls['background-image'] === 'var(--dash-page-bg)' && decor.decls['background-attachment'] === 'fixed');
   }
 
   // La pastille « Standard » montre le rendu de css/style.css.
@@ -380,10 +573,45 @@ const ALL = ['standard'].concat(NEW_STYLES);
     const baseDark = base.find((r) => r.media === DARK && r.selector === ':root');
     const swatchDark = tokenBlock('standard', true);
     for (const t of ['--bg', '--surface', '--text', '--text-muted']) assert.strictEqual(swatchDark.decls[t], baseDark.decls[t], `pastille Standard sombre ${t}`);
-    // Et le Standard n'a AUCUNE règle sur la page : tout ce qui touche <html> passe par `[data-dash-style]`, que `standard` ne pose pas.
-    const onPage = dashRules.filter((r) => r.selector.split(',').some((s) => /^:root(?!\[data-dash-style)/.test(s.trim()) && !s.includes('.style-swatch')));
-    assert.deepStrictEqual(onPage.map((r) => r.selector), [], 'aucune règle de dash-styles.css hors `:root[data-dash-style…]`');
+    // Et le Standard n'a AUCUNE règle sur la page : tout ce qui touche <html> passe par `[data-dash-style]`, que `standard` ne pose pas —
+    // sauf les deux OPTIONS (`[data-dash-borders]`, `[data-dash-uniform]`), qui valent aussi pour lui mais n'agissent que si elles sont cochées.
+    const onPage = dashRules.filter((r) => r.selector.split(',').some((s) => {
+      const sel = s.trim();
+      return /^:root/.test(sel) && !sel.startsWith(':root[data-dash-style') && !/^:root\[data-dash-(borders|uniform)/.test(sel) && !sel.includes('.style-swatch');
+    }));
+    assert.deepStrictEqual(onPage.map((r) => r.selector), [], 'aucune règle de dash-styles.css hors `:root[data-dash-style…]` ni options');
     assert.ok(!dashRules.some((r) => r.selector.includes('data-dash-style="standard"') && r.selector.includes(':root')), 'pas de règle :root pour standard');
+  }
+  // Options : tuiles sans bordure (le trait devient transparent, la tuile garde sa taille) et tableau de bord uni (traits partagés).
+  {
+    const rule = (sel, media = null) => dashRules.find((r) => r.media === media && r.selector.split(',').map((x) => x.trim()).includes(sel));
+    const nb = rule(':root[data-dash-borders="none"] .tile');
+    assert.ok(nb && nb.decls['border-color'] === 'transparent', 'sans bordure : trait transparent');
+    assert.ok(rule(':root[data-dash-borders="none"] .tile.tile-zoomed').decls['border-color'] === 'transparent', 'sans bordure : aussi quand la tuile est agrandie');
+    for (const r of dashRules.filter((x) => x.selector.includes('data-dash-borders'))) {
+      for (const bad of ['border', 'border-width', 'border-style', 'padding', 'margin', 'height', 'min-height', 'width']) {
+        assert.strictEqual(r.decls[bad], undefined, `${r.selector} : ne touche pas à ${bad} (la tuile garde sa taille, le graphique n'est pas redimensionné pour rien)`);
+      }
+    }
+    assert.ok(rule(':root[data-dash-borders="none"]:not([data-dash-style]) .tile').decls['box-shadow'], 'Standard sans bordure : ombre discrète pour distinguer la carte');
+    assert.ok(rule(':root[data-dash-borders="none"][data-dash-style] .tile').decls['box-shadow'].includes('--dash-shadow-nb'), 'styles : ombre `--dash-shadow-nb` sinon la leur');
+    assert.ok(tokenBlock('glass', false).decls['--dash-shadow-nb'] && !/inset/.test(tokenBlock('glass', false).decls['--dash-shadow-nb']), 'verre sans bordure : sans le filet lumineux intérieur');
+    const uni = rule(':root[data-dash-uniform] .tile');
+    assert.strictEqual(uni.decls.margin, '-1px 0 0 -1px', 'uni : un seul filet entre deux tuiles (marge négative)');
+    assert.strictEqual(uni.decls.background, 'transparent');
+    assert.strictEqual(uni.decls['border-radius'], '0');
+    assert.strictEqual(uni.decls['box-shadow'], 'none');
+    assert.strictEqual(uni.decls['--surface'], 'var(--dash-tile-surface)', 'uni : --surface redevient le fond de la page dans une tuile');
+    assert.strictEqual(uni.decls['backdrop-filter'], 'none', 'uni : pas de verre');
+    const grid = rule(':root[data-dash-uniform] .tiles');
+    assert.strictEqual(grid.decls.gap, '0');
+    assert.strictEqual(grid.decls.padding, '1px 0 0 1px', 'le remplissage de la grille compense la marge négative des tuiles');
+    assert.ok(rule(':root[data-dash-uniform] .tiles-focus-grid'), 'uni : la zone des tuiles agrandies aussi');
+    assert.strictEqual(rule(':root[data-dash-uniform]').decls['--dash-tile-surface'], 'var(--bg)');
+    assert.ok(read('js', 'charts.js').includes("cssVar('--dash-tile-surface', '') || cssVar('--surface'"), 'chartTheme lit le fond réel de la tuile (uni)');
+    assert.ok(read('js', 'main.js').includes("'--dash-tile-surface'"), 'watchChartTheme suit ce jeton');
+    // Aucune option ne fixe de hauteur : piège n°8.
+    for (const r of dashRules.filter((x) => x.selector.includes('data-dash-uniform'))) assert.strictEqual(r.decls.height, undefined, r.selector);
   }
   // Les règles de tuile gardent `.tile.tile-zoomed` plus précis que les règles génériques : hauteur et police de l'agrandissement.
   {
@@ -407,7 +635,7 @@ const ALL = ['standard'].concat(NEW_STYLES);
     assert.strictEqual(notified, 1, 'même valeur : aucune notification, donc aucun rendu ni sauvegarde');
     // Mal formé -> Standard ; bien formé mais inconnu (version future) -> gardé tel quel (la sauvegarde ne le perd pas).
     for (const bad of ['', 'Fluid', 'a b', '1abc', 12, null, undefined, {}, 'x'.repeat(40), '<img>']) {
-      store.setDashStyle('dense');
+      store.setDashStyle('glass');
       store.setDashStyle(bad);
       assert.strictEqual(store.getState().dashStyle, 'standard', `valeur ${JSON.stringify(bad)}`);
     }
@@ -425,7 +653,41 @@ const ALL = ['standard'].concat(NEW_STYLES);
     assert.strictEqual(store.getState().dashStyle, 'editorial');
     const bm = store.getState().bookmarks[0];
     assert.ok(!('dashStyle' in bm) && !('style' in bm), 'une vue sauvegardée ne porte pas le style');
-    console.log('OK styles — store : défaut, notification, valeurs mal formées, id inconnu conservé, indépendant des vues');
+    // Options d'affichage : objet vide par défaut, une référence NEUVE à chaque changement (render() les compare par référence pour décider
+    // d'une sauvegarde), aucune notification si rien ne change, seules les valeurs `true` des clés connues retenues.
+    const opts = createStore();
+    let n = 0;
+    opts.subscribe(() => n++);
+    const initial = opts.getState().dashStyleOptions;
+    assert.deepStrictEqual(initial, {});
+    opts.setDashStyleOptions({ hideBorders: true });
+    assert.deepStrictEqual(opts.getState().dashStyleOptions, { hideBorders: true });
+    assert.strictEqual(n, 1);
+    const first = opts.getState().dashStyleOptions;
+    opts.setDashStyleOptions({ hideBorders: true });
+    opts.setDashStyleOptions({ hideBorders: true, uniform: false, evil: true });
+    assert.strictEqual(n, 1, 'même contenu : aucune notification, donc aucune sauvegarde');
+    assert.strictEqual(opts.getState().dashStyleOptions, first, 'même référence tant que rien ne change');
+    opts.setDashStyleOptions({ hideBorders: true, uniform: true });
+    assert.deepStrictEqual(opts.getState().dashStyleOptions, { hideBorders: true, uniform: true });
+    assert.notStrictEqual(opts.getState().dashStyleOptions, first, 'référence neuve au changement');
+    assert.strictEqual(n, 2);
+    for (const bad of [null, undefined, 'uniform', 12, [], { uniform: 'true' }, { uniform: 1 }, { __proto__: { uniform: true } }]) {
+      opts.setDashStyleOptions({ uniform: true });
+      opts.setDashStyleOptions(bad);
+      assert.deepStrictEqual(opts.getState().dashStyleOptions, {}, `valeur ${JSON.stringify(bad)}`);
+    }
+    // Indépendantes du style, des vues et des pages ; une vue sauvegardée ne les porte pas.
+    opts.setDashStyleOptions({ uniform: true });
+    opts.setDashStyle('console');
+    opts.setDashStyle('standard');
+    opts.saveBookmark('b1', 'Vue');
+    opts.applyBookmark('b1');
+    opts.addPage('p2', 'Page 2');
+    opts.setCurrentPage('p2');
+    assert.deepStrictEqual(opts.getState().dashStyleOptions, { uniform: true });
+    assert.ok(!('dashStyleOptions' in opts.getState().bookmarks[0]) && !('styleOptions' in opts.getState().bookmarks[0]));
+    console.log('OK styles — store : défaut, notification, valeurs mal formées, id inconnu conservé, indépendant des vues, options (référence neuve, rien si inchangé)');
   }
 
   // --- 6. Configuration : aller-retour par grist-api.js (vrai module, faux `grist`) ---------------------------------------------
@@ -461,9 +723,12 @@ const ALL = ['standard'].concat(NEW_STYLES);
     const api = sandbox.GristBI.api;
     const pages = [{ id: 'page_default', name: 'Page 1', tiles: [{ id: 't1', type: 'bar' }] }];
     const stored = () => JSON.parse(cfg.ConfigJSON[cfg.ConfigJSON.length - 1]);
+    const plain = (x) => JSON.parse(JSON.stringify(x)); // les objets d'un contexte vm n'ont pas le prototype d'ici
 
     assert.strictEqual((await api.loadConfig('T')).style, 'standard', 'document sans configuration');
     assert.strictEqual(api.blankConfig().style, 'standard');
+    assert.deepStrictEqual(plain(api.blankConfig().styleOptions), {}, 'rapport vierge : aucune option');
+    assert.deepStrictEqual(plain((await api.loadConfig('T')).styleOptions), {});
 
     // Standard : rien d'écrit — une configuration sans choix reste identique à celle d'avant ce réglage.
     await api.saveConfig('T', pages, 'page_default', [], null, null, null, 'standard');
@@ -502,11 +767,54 @@ const ALL = ['standard'].concat(NEW_STYLES);
       assert.ok(loaded.pages.length >= 1);
     }
     // Un style lu d'une ligne (y compris sans pages : ancien format + style) ne casse pas la lecture.
-    row(JSON.stringify({ tiles: [], bookmarks: [], style: 'dense' }));
-    assert.strictEqual((await api.loadConfig('T')).style, 'dense');
+    row(JSON.stringify({ tiles: [], bookmarks: [], style: 'neon' }));
+    assert.strictEqual((await api.loadConfig('T')).style, 'neon');
+    // Un style RETIRÉ (`factory`, `dense`, 18/11/2026) est un id bien formé que ce widget ne connaît plus : il s'affiche en Standard SANS
+    // être effacé — la sauvegarde suivante le réécrit tel quel (pas de perte silencieuse du choix fait par une version précédente).
+    for (const removed of ['factory', 'dense']) {
+      row(JSON.stringify({ pages, currentPageId: 'page_default', bookmarks: [], style: removed }));
+      const loaded = await api.loadConfig('T');
+      assert.strictEqual(loaded.style, removed);
+      assert.strictEqual(styles.normalizeStyleId(loaded.style), 'standard', `${removed} : affiché en Standard`);
+      await api.saveConfig('T', pages, 'page_default', [], null, null, null, loaded.style);
+      assert.strictEqual(stored().style, removed, `${removed} : conservé à la sauvegarde`);
+    }
     row(JSON.stringify({ pages, currentPageId: 'page_default', bookmarks: [], style: 'Pas valide !' }));
     assert.strictEqual((await api.loadConfig('T')).style, 'standard', 'config éditée à la main avec un style hostile : Standard');
-    console.log('OK styles — configuration : Standard jamais écrit, aller-retour, id inconnu conservé, valeur hostile ignorée, anciens formats en Standard');
+
+    // Options d'affichage (`styleOptions`) : le champ n'existe que si une option est cochée, ne contient que celles-là, se relit à l'identique.
+    await api.saveConfig('T', pages, 'page_default', [], null, null, null, 'standard', {});
+    assert.deepStrictEqual(Object.keys(stored()), ['pages', 'currentPageId', 'bookmarks', 'blend'], 'aucune option : configuration identique à celle d\'avant');
+    await api.saveConfig('T', pages, 'page_default', [], null, null, null, 'standard', { hideBorders: false, uniform: false });
+    assert.ok(!('styleOptions' in stored()), 'options décochées : rien d\'écrit');
+    await api.saveConfig('T', pages, 'page_default', [], null, null, null, 'standard', { uniform: true, evil: true, hideBorders: 'oui' });
+    assert.deepStrictEqual(stored().styleOptions, { uniform: true }, 'seule la valeur true d\'une clé connue est écrite');
+    assert.deepStrictEqual(Object.keys(stored()), ['pages', 'currentPageId', 'bookmarks', 'blend', 'styleOptions'], 'Standard + option : pas de clé style');
+    assert.deepStrictEqual(plain((await api.loadConfig('T')).styleOptions), { uniform: true });
+    await api.saveConfig('T', pages, 'page_default', [], null, null, null, 'glass', { hideBorders: true, uniform: true });
+    assert.strictEqual(stored().style, 'glass');
+    assert.deepStrictEqual(stored().styleOptions, { hideBorders: true, uniform: true });
+    const both = await api.loadConfig('T');
+    assert.strictEqual(both.style, 'glass');
+    assert.deepStrictEqual(plain(both.styleOptions), { hideBorders: true, uniform: true });
+    await api.saveConfig('T', pages, 'page_default', [], null, null, null, 'standard');
+    assert.ok(!('styleOptions' in stored()), 'sans le paramètre : rien d\'écrit');
+    // Lecture : anciens formats et lignes éditées à la main -> aucune option ; une valeur hostile n'entre jamais dans l'état.
+    for (const raw of [
+      JSON.stringify([{ id: 't1' }]), JSON.stringify({ tiles: [], bookmarks: [] }), JSON.stringify({ pages, currentPageId: 'page_default', bookmarks: [] }),
+      JSON.stringify({ pages, currentPageId: 'page_default', bookmarks: [], styleOptions: 'uniform' }),
+      JSON.stringify({ pages, currentPageId: 'page_default', bookmarks: [], styleOptions: ['uniform'] }),
+      JSON.stringify({ pages, currentPageId: 'page_default', bookmarks: [], styleOptions: { uniform: 'true', hideBorders: 1 } }),
+      JSON.stringify({ tiles: [], styleOptions: null }), '{pas du json'
+    ]) {
+      row(raw);
+      assert.deepStrictEqual(plain((await api.loadConfig('T')).styleOptions), {}, raw.slice(0, 50));
+    }
+    row(JSON.stringify({ pages, currentPageId: 'page_default', bookmarks: [], styleOptions: { hideBorders: true, evil: true, '__proto__': { uniform: true } } }));
+    assert.deepStrictEqual(plain((await api.loadConfig('T')).styleOptions), { hideBorders: true }, 'clé inconnue ignorée');
+    row(JSON.stringify({ tiles: [], bookmarks: [], styleOptions: { uniform: true } }));
+    assert.deepStrictEqual(plain((await api.loadConfig('T')).styleOptions), { uniform: true }, 'ancien format + options');
+    console.log('OK styles — configuration : Standard jamais écrit, aller-retour, id inconnu conservé (factory/dense compris), valeur hostile ignorée, anciens formats en Standard, styleOptions écrit seulement s\'il en faut un');
   }
 
   // --- 7. Câblage : index.html et harnais -------------------------------------------------------------------------------------
@@ -526,8 +834,23 @@ const ALL = ['standard'].concat(NEW_STYLES);
     const main = read('js', 'main.js');
     assert.ok(main.includes('GristBI.styles.apply(state.dashStyle)'), 'render() pose le style avant de dessiner les tuiles');
     assert.ok(main.includes('store.setDashStyle(saved.style)'), 'le chargement d\'un rapport pose son style');
-    assert.ok(/scheduleSave\(state\.pages, state\.currentPageId, state\.bookmarks, state\.blend, state\.dashStyle\)/.test(main), 'un changement de style planifie la sauvegarde');
-    assert.ok(main.includes('state.dashStyle !== lastRenderedDashStyle'), 'et il est détecté par render()');
+    assert.ok(/scheduleSave\(state\.pages, state\.currentPageId, state\.bookmarks, state\.blend, state\.dashStyle, state\.dashStyleOptions\)/.test(main), 'un changement de style ou d\'option planifie la sauvegarde');
+    assert.ok(main.includes('state.dashStyle !== lastRenderedDashStyle'), 'et un changement de style est détecté par render()');
+    assert.ok(main.includes('GristBI.styles.applyOptions(state.dashStyleOptions)'), 'render() pose les options avant de dessiner les tuiles');
+    assert.ok(main.includes('state.dashStyleOptions !== lastRenderedDashStyleOptions'), 'et un changement d\'option est détecté par render()');
+    assert.ok(main.includes('store.setDashStyleOptions(saved.styleOptions)'), 'le chargement d\'un rapport pose ses options (absentes d\'un ancien rapport : aucune)');
+    assert.ok(/p\.authorLabel, p\.dashStyle, p\.dashStyleOptions\)/.test(main), 'la sauvegarde planifiée écrit les options capturées au moment du geste');
+    // Les cases à cocher : dans les Réglages (section Édition), liées au store.
+    for (const file of ['index.html', path.join('dev-tests', 'harness.html')]) {
+      const html = read(file);
+      for (const id of ['settings-opt-hideBorders', 'settings-opt-uniform']) assert.ok(html.includes(`<input type="checkbox" id="${id}">`), `${file} : case ${id}`);
+      assert.ok(html.indexOf('settings-opt-uniform') > html.indexOf('id="settings-style-section"') && html.indexOf('settings-opt-uniform') < html.indexOf('settings.credits.title'), `${file} : les options sont dans la section Style, avant les Crédits`);
+    }
+    assert.ok(/store\.setDashStyleOptions\(Object\.assign\(\{\}, store\.getState\(\)\.dashStyleOptions, \{ \[key\]: input\.checked \}\)\)/.test(main), 'une case coche/décoche son option dans le store');
+    // Les trois listes de clés (js/styles.js, js/state.js, js/grist-api.js) ne doivent jamais diverger.
+    const keysIn = (file, name) => JSON.parse(read('js', file).match(new RegExp(`${name} = (\\[[^\\]]*\\])`))[1].replace(/'/g, '"'));
+    assert.deepStrictEqual(keysIn('state.js', 'DASH_STYLE_OPTION_KEYS'), styles.OPTION_KEYS);
+    assert.deepStrictEqual(keysIn('grist-api.js', 'STYLE_OPTION_KEYS'), styles.OPTION_KEYS);
     const charts = read('js', 'charts.js');
     assert.ok(charts.includes('GristBI.styles.applyToOption(option, GristBI.styles.current(), th)'), 'finalizeOption applique le style en dernier');
     console.log('OK styles — câblage : index.html et harnais (feuille, script, section Édition), render/chargement/sauvegarde, finalizeOption');
