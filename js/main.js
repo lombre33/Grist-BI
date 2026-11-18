@@ -67,9 +67,13 @@
         await flushPendingSave();
         return true;
       });
-      GfsLink.onOpen(async ({ fichier }) => {
-        // openReportById/openBlankReport (plus bas) appellent déjà flushPendingSave() en premier -
-        // pas la peine de le refaire ici.
+      GfsLink.onOpen(async ({ fichier, type, modele }) => {
+        // openReportById/openBlankReport/openModelById (plus bas) appellent déjà flushPendingSave()
+        // en premier - pas la peine de le refaire ici.
+        // Consigne GFS 016 (kit 0.24.0+) : `modele: { id }` = « Nouveau > Depuis un modèle », un
+        // rapport de départ NON enregistré. Rendre `false` (donc `{ ouvert: false }` pour GFS) quand
+        // l'`id` est inconnu ou qu'aucune table ne convient : JAMAIS un rapport vierge à la place.
+        if (modele) return openModelById(modele.id, type);
         if (fichier) await openReportById(fichier.id);
         else await openBlankReport();
         return true;
@@ -2668,6 +2672,55 @@
     }
   }
 
+  // Plafond de tables lues pour trouver celle qui convient à un modèle : sur un gros document, relire
+  // toutes les tables pour un seul clic serait long ; la table déjà connectée passe d'abord.
+  const MODEL_TABLE_SCAN_LIMIT = 8;
+
+  // « Nouveau > Depuis un modèle » dans GFS (consigne 016, contrats 5.4 point 13 ; `GfsLink.opening()`/
+  // `onOpen` avec `modele: { id }`) : un rapport de départ NON enregistré, fait d'après le modèle `id`
+  // (js/models.js) sur la première table du document qui a ce qu'il lui faut (une date, des
+  // catégories…). Comme openBlankReport, rien n'est écrit ici : la ligne de BI_Dashboard_Config ne naît
+  // qu'au premier geste de la personne (jeton `'new'`, voir switchTable/scheduleSave) ; ce modèle ne
+  // crée AUCUNE table (CLAUDE.md §8). Rend `true` si le modèle est ouvert, sinon `false` après avoir
+  // dit pourquoi dans une fenêtre — jamais un rapport vierge à la place, et rien n'est changé à
+  // l'écran : le rapport en cours reste affiché.
+  async function openModelById(modelId, type) {
+    await flushPendingSave();
+    if (!GristBI.models.has(modelId) || (type && type !== GristBI.models.REPORT_TYPE)) {
+      console.error(`[GristBI] modèle "${modelId}" inconnu de cette version, ou de type "${type}" : rien n'est ouvert`);
+      showNotice(t('models.unknown'));
+      return false;
+    }
+    try {
+      const names = await GristBI.api.listAvailableTables();
+      if (!names.length) { showNotice(t('models.noTables')); return false; }
+      const ordered = (currentTableId && names.indexOf(currentTableId) !== -1)
+        ? [currentTableId].concat(names.filter((n) => n !== currentTableId)) : names;
+      let firstMissing = null;
+      for (const tableId of ordered.slice(0, MODEL_TABLE_SCAN_LIMIT)) {
+        const { rows } = await GristBI.api.loadTable(tableId);
+        const enriched = withDateHierarchies(rows);
+        const built = GristBI.models.build(modelId, enriched, availableColumns(enriched), { t });
+        if (!built.ok) { if (!firstMissing) firstMissing = built.missing; continue; }
+        const config = GristBI.api.blankConfig();
+        config.pages = [{ id: config.currentPageId, name: built.pageName,
+          tiles: built.tiles.map((tile, i) => Object.assign({ id: genTileId(i) }, tile)) }];
+        await switchTable(tableId, rows, { id: 'new', config });
+        await refreshTablePicker();
+        return true;
+      }
+      const needs = (firstMissing && firstMissing.length ? firstMissing : ['data'])
+        .map((role) => t('models.need.' + role)).join(' ' + t('models.needAnd') + ' ');
+      showNotice(t('models.noFit', { needs }));
+      return false;
+    } catch (e) {
+      console.error(`[GristBI] échec de l'ouverture du modèle "${modelId}"`, e);
+      showNotice(t('models.failed'));
+      return false;
+    }
+  }
+  GristBI.openModel = openModelById; // essais navigateur (dev-tests/) : même chemin que `onOpen`
+
   store.subscribe(render);
   // Premier rendu explicite, synchrone, AVANT que bootstrap() (plus bas, jamais attendu ici) n'ait pu
   // résoudre quoi que ce soit : `store.subscribe` seul ne peint rien tant qu'aucune mutation d'état
@@ -2870,6 +2923,12 @@
         console.error('[GristBI] échec de l\'ouverture du rapport demandé par GFS', e);
         setConnectionState('failed');
       }
+    } else if (opening && opening.modele) {
+      // Consigne GFS 016 : le modèle choisi dans GFS démarre l'app. S'il ne s'ouvre pas (id inconnu,
+      // aucune table qui convienne), la raison est dite dans une fenêtre (openModelById) et l'app
+      // démarre comme d'habitude sur la première table, avec son rapport déjà enregistré — jamais
+      // un rapport vierge qui ferait croire que le modèle s'est ouvert.
+      if (!(await openModelById(opening.modele.id, opening.type))) await connectToFirstTable();
     } else if (opening) {
       await openBlankReport(); // gère déjà son propre try/catch
     } else {

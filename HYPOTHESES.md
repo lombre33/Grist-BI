@@ -2883,7 +2883,11 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     auto « Montant par Region et Produit », 3 séries et trou `null` dans les données ECharts, clic souris réel sur une barre
     de chaque série -> bon filtre de catégorie, édition (valeur reprise), retrait de la série -> retour à une seule série,
     courbe+aire, libellé anglais, aucun message de console ; **DuckDB réel** (table de 6 050 lignes, au-delà de
-    `DUCKDB_ROW_THRESHOLD`, moteur chargé) : séries, catégories, trous et tri strictement identiques à la référence JS pure.
+    `DUCKDB_ROW_THRESHOLD`, moteur chargé) : séries, catégories, trous et tri identiques à la référence JS pure — **mais
+    avec une dimension TEXTE seulement** (Region). Le cas d'une dimension ENTIÈRE (une année) n'était pas couvert et cachait
+    un vrai bug, trouvé ensuite par un autre fil et corrigé dans la PR #65 : DuckDB rend un entier en BigInt (`2022n`),
+    le JS pur en nombre, et `assembleSeries` comparait les clés avec un `Map` — toute la série tombait à « pas de
+    valeur » (aire plate à 0, sans erreur). Clés désormais comparées en texte (`sameValue`, piège n°7).
     **Non vérifié** : un vrai Grist / GFS ; une série par DuckDB sur plusieurs dizaines de milliers de lignes (une requête
     par série : coût non mesuré) ; plus de 8 séries à l'écran ; l'aire non empilée de plusieurs séries se recouvre (voir
     le suivant « empilé ») ; thème sombre.
@@ -2959,7 +2963,7 @@ dans une seule instance de widget, avec ses propres tuiles internes.
 - **Retours d'Antoine sur la nouvelle interface, 1re série (18/11/2026)** — `js/grist-api.js`, `js/main.js`,
   `js/appbar.js`, `js/charts.js`, `index.html`, `css/style.css`. Huit retours ; ce lot en traite six, les deux
   autres (suivi d'une vue sauvegardée, zoom d'une tuile sur place) ont leur PR.
-  - **« E,NameError » dans le champ Auteur d'un commentaire** (bug réel n°34) : la colonne `Email` de la
+  - **« E,NameError » dans le champ Auteur d'un commentaire** (bug réel n°35) : la colonne `Email` de la
     table-sonde `BI_Dashboard_UserProbe` était créée comme formule ORDINAIRE (`isFormula: true`). Or `user` n'existe
     que dans une formule DÉCLENCHÉE (`isFormula: false` + `formula`) et dans les règles d'accès : dans un vrai
     document la cellule valait `NameError`, que `fetchTable` rend sous la forme `['E', 'NameError']`, affichée telle
@@ -2989,11 +2993,48 @@ dans une seule instance de widget, avec ses propres tuiles internes.
   - **« Effacer les filtres »** (retour 1) : un vrai bouton (`.btn-secondary.btn-chip`, icône ×) au lieu d'un lien souligné.
   - **Roue crantée** (retour 6) : l'icône de Réglages était un soleil (cercle + 8 rayons). Remplacée par la roue de
     Publipostage+ (`css/toolbar-v2.css`, `#v2-btn-settings`), tracée sur une grille de 24.
-  - **Infobulle du radar hors de la carte** (retour 7, bug réel n°35) : reproduit — la bulle d'un radar de 224 px de
+  - **Infobulle du radar hors de la carte** (retour 7, bug réel n°36) : reproduit — la bulle d'un radar de 224 px de
     haut se posait à x = −66 px (hors de l'écran à gauche), à 72 px au-dessus de la tuile. `confine: true` est posé sur
     TOUTES les bulles juste avant `setOption` (`confineTooltip`), et celle du radar est formatée (une ligne par axe,
     nombres au format français ; avant : « 8.504166666666666 »).
   - **Non vérifié** : rien n'a été vu dans un vrai Grist ni un vrai GFS ; clavier réel et lecteur d'écran non essayés.
+
+- **Modèles de rapport pour « Nouveau > Depuis un modèle » de GFS** (18/11/2026, fil « Appliquer la nouvelle consigne GFS »,
+  consigne 016, facultative) :
+  - **Ce qu'est un modèle ici** : un rapport de départ (une page de tuiles) posé sur une table que la personne a DÉJÀ — jamais une
+    table créée. Trois modèles : `vue-d-ensemble` (2 chiffres clés avec tendance, aire dans le temps, barres, anneau),
+    `evolution` (chiffre clé, aire, aire empilée par catégorie, barres par mois `<date>.Mois`), `repartition` (barres sur deux
+    dimensions différentes, anneau, treemap s'il y a au moins 9 valeurs, tableau croisé). Chaque modèle est défini par des RÔLES
+    (une date, des catégories, une mesure) que `advice.analyzeColumns` lit dans les VALEURS, et pioche ses tuiles parmi
+    `advice.suggestTiles` : mêmes heuristiques que l'écran d'accueil, aucune copie à tenir à jour. Choix de produit : pas de
+    `tables: true` (la règle « aucune table de données » ne bouge pas, voir CLAUDE.md §8) ; un modèle qui crée des tables, avec
+    des données d'exemple, serait une décision à part d'Antoine.
+  - **Quelle table** : `openModelById` essaie d'abord la table déjà connectée, puis les autres dans l'ordre de GFS (8 au plus,
+    pour ne pas relire un gros document entier pour un clic), et prend la première où `models.build` réussit. `vue-d-ensemble` et
+    `repartition` veulent une colonne de catégories ; `evolution` veut une date (ou une année). Sans mesure, on compte les lignes.
+  - **Contrat d'ouverture** (contrats GFS 5.4, point 13) : un modèle s'ouvre NON enregistré (jeton `'new'`, comme « Nouveau » : rien
+    n'est écrit avant un geste de la personne) ; un `id` inconnu, un type autre que `rapport` ou aucune table qui convienne rendent
+    `{ ouvert: false }` (une fenêtre dit pourquoi, le rapport affiché ne change pas), JAMAIS un rapport vierge à la place. À
+    l'ouverture initiale (`bootstrap`), un modèle qui ne s'ouvre pas laisse l'app démarrer comme d'habitude sur la première table
+    avec son rapport enregistré — pas un rapport vierge qui ferait croire que le modèle s'est ouvert.
+  - **Kit 0.9.0 -> 0.24.0** (`7aa030c`) : seul `kit/js/gfs-link.js` change parmi les fichiers que cette app importe (`ambiance.js`,
+    `dialogs.js`, `windows.css` identiques entre les deux commits, vérifié par `git diff`) ; les ajouts sont facultatifs (correcteurs,
+    copies, `attach`, `onDelete`…), `modele` est le seul qui nous concerne.
+  - **Bug réel trouvé en route** : une aire empilée par année restait PLATE À 0 au-delà de 5 000 lignes (BigInt de DuckDB contre
+    nombre du JS pur dans `assembleSeries`) — PR #65, voir TEST_PROTOCOL.md n°34.
+  - **Testé** : Node — `models.build` sur le jeu de test (vraies colonnes, agrégats valides, fr/en, sans `id`), contenu de chaque
+    modèle, tables sans date / sans catégorie / vide / `id` inconnu (`__proto__` compris), résultats indépendants d'un appel à
+    l'autre, clés i18n `models.*` fr/en à variables identiques, `modeles/modeles.json` contre les règles de GFS (id, 60/140 signes,
+    étiquettes bilingues, WebP 240 × 320 ≤ 12 Ko, aucune vignette orpheline, aucun `tables`/`extensions`) et correspondance exacte
+    avec les modèles du code ; Playwright — le vrai `index.html` dans un `<iframe sandbox="allow-scripts">` servi par un FAUX GFS
+    parent qui répond `contexte` et envoie `ouvrir` avec le vrai kit 0.24.0 (9 scénarios : ouverture initiale avec `modele`, rien
+    d'écrit avant un geste puis UNE ligne avec les 5 tuiles, `ouvrir` d'un second modèle sans seconde ligne, `id` inconnu et type
+    `document` -> `{ ouvert: false }` écran inchangé, « Nouveau » toujours vierge, table de nombres seulement -> `{ ouvert: false }`
+    + message, ouverture initiale d'un `id` inconnu, anglais). **Non vérifié** : le vrai GFS (la fenêtre « Depuis un modèle », le
+    clic « Créer », la copie du catalogue par `outils/modeles.mjs`) ; un vrai Grist ; les modèles sur des tables réelles variées
+    (testés sur le jeu de ventes de test et une table de nombres). **Limites** : les titres reprennent les noms de colonnes
+    (`Montant par Date.Annee`) comme les suggestions de l'accueil ; les vignettes sont des captures du vrai `index.html` avec le
+    faux Grist du dépôt (même réserve que `vitrine/`), sur un jeu de ventes d'exemple sans nom de personne.
 
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 

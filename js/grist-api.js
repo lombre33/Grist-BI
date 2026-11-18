@@ -61,7 +61,7 @@
   // déclenchée (et dans les règles d'accès). Avec `isFormula: true` — ce que ce widget a créé jusqu'au
   // 18/11/2026 — la cellule vaut `NameError` dans un vrai document, et `fetchTable` la rend sous la
   // forme `['E', 'NameError']` que le champ Auteur affichait tel quel (« E,NameError », retour
-  // d'Antoine du 18/11/2026, bug réel n°34). Voir aussi `repairUserProbeColumn` plus bas pour les
+  // d'Antoine du 18/11/2026, bug réel n°35). Voir aussi `repairUserProbeColumn` plus bas pour les
   // documents qui ont déjà la mauvaise colonne.
   const USER_PROBE_FORMULA = 'user.Email';
   const USER_PROBE_COLUMNS = [
