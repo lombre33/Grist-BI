@@ -2883,7 +2883,11 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     auto « Montant par Region et Produit », 3 séries et trou `null` dans les données ECharts, clic souris réel sur une barre
     de chaque série -> bon filtre de catégorie, édition (valeur reprise), retrait de la série -> retour à une seule série,
     courbe+aire, libellé anglais, aucun message de console ; **DuckDB réel** (table de 6 050 lignes, au-delà de
-    `DUCKDB_ROW_THRESHOLD`, moteur chargé) : séries, catégories, trous et tri strictement identiques à la référence JS pure.
+    `DUCKDB_ROW_THRESHOLD`, moteur chargé) : séries, catégories, trous et tri identiques à la référence JS pure — **mais
+    avec une dimension TEXTE seulement** (Region). Le cas d'une dimension ENTIÈRE (une année) n'était pas couvert et cachait
+    un vrai bug, trouvé ensuite par un autre fil et corrigé dans la PR #65 : DuckDB rend un entier en BigInt (`2022n`),
+    le JS pur en nombre, et `assembleSeries` comparait les clés avec un `Map` — toute la série tombait à « pas de
+    valeur » (aire plate à 0, sans erreur). Clés désormais comparées en texte (`sameValue`, piège n°7).
     **Non vérifié** : un vrai Grist / GFS ; une série par DuckDB sur plusieurs dizaines de milliers de lignes (une requête
     par série : coût non mesuré) ; plus de 8 séries à l'écran ; l'aire non empilée de plusieurs séries se recouvre (voir
     le suivant « empilé ») ; thème sombre.
