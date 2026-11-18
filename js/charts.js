@@ -8,7 +8,7 @@
   const GristBI = global.GristBI || (global.GristBI = {});
   const {
     groupByAggregate, sameValue, aggregateSingle, pivotTable, trendFromGroups, measureSeriesForTile,
-    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, isStackedTile, splitBySeries, assembleSeries, escapeHtml,
+    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, isStackedTile, splitBySeries, assembleSeries, paletteColors, PALETTES, escapeHtml,
     tileDrillLevels, currentDimension, rowsForTile, wordFrequency
   } = GristBI.data;
   const { t } = GristBI.i18n;
@@ -92,9 +92,10 @@
   // cyclé au hasard). Camembert : ECharts assigne une couleur par part dans cet ordre. Barres :
   // une seule série -> une seule couleur (le 1er slot, l'accent bleu) plutôt qu'une couleur par
   // catégorie, redondant avec les libellés déjà présents sur l'axe.
-  const CATEGORICAL_PALETTE = [
-    '#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948'
-  ];
+  // Elle vit désormais dans GristBI.data.PALETTES.standard (avec les autres palettes au choix, voir
+  // `tile.palette` et paletteColors) ; cette constante reste la couleur des éléments qui n'ont PAS à
+  // suivre le choix : indicateur de chargement, hausse/baisse de la cascade (vert/rouge = un sens).
+  const CATEGORICAL_PALETTE = PALETTES.standard;
 
   // `containLabel: true` : sans ça, ECharts réserve une marge estimée AVANT de savoir combien de
   // place le formatter compact va réellement prendre (variable selon la valeur : "0" vs "2,7 M")
@@ -195,7 +196,7 @@
         // la taille d'une tuile [BUG RÉEL trouvé en capturant un screenshot] : 4 divisions (5
         // libellés : min, 1/4, 1/2, 3/4, max) restent lisibles à n'importe quelle taille de jauge.
         splitNumber: 4,
-        itemStyle: { color: CATEGORICAL_PALETTE[0] },
+        itemStyle: { color: paletteColors(tile.palette)[0] },
         progress: { show: true, width: 12 },
         axisLine: { lineStyle: { width: 12 } },
         axisTick: { show: false },
@@ -322,7 +323,7 @@
   // posé sur CETTE colonne depuis une AUTRE tuile ne correspondra jamais à un mot découpé via
   // `sameValue`, donc tout le nuage s'estompe uniformément dans ce cas précis — déjà le
   // comportement de la version fusionnée dans la PR #38, pas un changement introduit ici).
-  function placeWordCloud(CloudLayout, wordCloudAgg, dim, cssWidth, cssHeight) {
+  function placeWordCloud(CloudLayout, wordCloudAgg, dim, cssWidth, cssHeight, palette) {
     const values = wordCloudAgg.map((d) => d.value);
     const minV = Math.min(...values);
     const maxV = Math.max(...values);
@@ -350,7 +351,7 @@
         rotate: word.rotate,
         size: word.size,
         width: measureCtx.measureText(word.text).width,
-        color: CATEGORICAL_PALETTE[i % CATEGORICAL_PALETTE.length],
+        color: palette[i % palette.length],
         opacity: style ? style.opacity : 1
       });
     });
@@ -516,7 +517,7 @@
 
     const cssWidth = el.clientWidth || 1;
     const cssHeight = el.clientHeight || 1;
-    const placedWords = placeWordCloud(CloudLayout, wordCloudAgg, dim, cssWidth, cssHeight);
+    const placedWords = placeWordCloud(CloudLayout, wordCloudAgg, dim, cssWidth, cssHeight, paletteColors(tile.palette));
     if (isStale(tile.id, seq) || instance.isDisposed()) return; // rendu plus récent entre-temps
     instance.render(placedWords, cssWidth, cssHeight, isSplit);
   }
@@ -720,6 +721,8 @@
       }
     };
 
+    // Palette choisie sur la tuile (`tile.palette`, js/data.js:PALETTES) ; `standard` sans choix.
+    const palette = paletteColors(tile.palette);
     let option;
     if (tile.type === 'pie') {
       // `tile.donut` : même série `pie` qu'un camembert plein, seul le rayon change (un tableau
@@ -730,7 +733,7 @@
       // format français que formatNumber (texte canvas d'ECharts, jamais interprété comme du HTML,
       // voir GFS-ETAT.md consigne 005).
       option = {
-        color: CATEGORICAL_PALETTE,
+        color: palette,
         tooltip: { trigger: 'item' },
         series: [{
           type: 'pie',
@@ -747,7 +750,7 @@
       };
     } else if (tile.type === 'treemap') {
       option = {
-        color: CATEGORICAL_PALETTE,
+        color: palette,
         tooltip: { trigger: 'item' },
         series: [{
           type: 'treemap',
@@ -775,7 +778,7 @@
       // coupé sur les dernières étapes, étroites).
       const firstValue = groups.length ? Number(groups[0].value) : 0;
       option = {
-        color: CATEGORICAL_PALETTE,
+        color: palette,
         tooltip: {
           trigger: 'item',
           formatter: (p) => {
@@ -804,7 +807,7 @@
       // pour rester correct même si l'ordre venait à diverger un jour entre les deux appels.
       const aggYByDimension = new Map(aggY.map((d) => [d.dimension, d.value]));
       option = {
-        color: CATEGORICAL_PALETTE,
+        color: palette,
         grid: numericGrid,
         tooltip: {
           trigger: 'item',
@@ -841,7 +844,7 @@
       // radar ci-dessous.
       const { base, rise, fall } = waterfallSeries(agg);
       option = {
-        color: CATEGORICAL_PALETTE,
+        color: palette,
         grid: { ...numericGrid, top: 40 },
         legend: { top: 0, data: [t('chart.waterfall.increase'), t('chart.waterfall.decrease')] },
         tooltip: { trigger: 'axis' },
@@ -925,7 +928,7 @@
       const maxVal = Math.max(0, ...allValues);
       const minVal = Math.min(0, ...allValues);
       option = {
-        color: CATEGORICAL_PALETTE,
+        color: palette,
         tooltip: { trigger: 'item' },
         legend: series.length > 1 ? { top: 0, data: series.map((s) => s.name) } : undefined,
         radar: {
@@ -951,7 +954,7 @@
         ? multi.series.map((sr) => ({ name: sr.name, values: sr.values }))
         : [{ name: undefined, values: groups.map((d) => d.value) }];
       option = {
-        color: CATEGORICAL_PALETTE,
+        color: palette,
         grid: seriesGrid,
         legend: seriesLegend,
         tooltip: stacked ? stackedTooltip : { trigger: 'axis' },
@@ -981,7 +984,7 @@
         : [{ name: undefined, values: groups.map((d) => d.value) }];
       const valueAxis = { type: 'value', axisLabel: { formatter: formatCompactNumber } };
       option = {
-        color: CATEGORICAL_PALETTE,
+        color: palette,
         grid: seriesGrid,
         legend: seriesLegend,
         tooltip: stacked ? stackedTooltip : { trigger: 'axis' },
@@ -1044,8 +1047,9 @@
     instance.hideLoading();
 
     const { categories, series } = measureSeriesForTile(tile.measureMode, timeSeries);
+    const palette = paletteColors(tile.palette);
     const option = {
-      color: CATEGORICAL_PALETTE,
+      color: palette,
       grid: { ...numericGrid, top: series.length > 1 ? 40 : numericGrid.top },
       legend: series.length > 1 ? { top: 0 } : undefined,
       tooltip: { trigger: 'axis' },

@@ -35,6 +35,10 @@ réellement (voir HYPOTHESES.md).
   tuile). Le nuage de points est une version **agrégée** (un point par catégorie, deux mesures en
   X/Y), pas ligne-à-ligne. La jauge compare une valeur agrégée à un Min/Max défini dans son
   formulaire.
+- **Séries multiples, empilé, palettes** (Options avancées d'une tuile) : barres et courbe/aire peuvent
+  tracer une série par valeur d'une colonne (« Séries »), côte à côte ou **empilées** (barres et aire,
+  info-bulle avec le total) ; chaque tuile peut aussi choisir sa **palette** (Standard 8 couleurs,
+  Okabe-Ito pour le daltonisme, ou un dégradé bleu/orange/vert/gris pour des catégories ordonnées).
 - Constructeur de tuile simple : dimension + mesure + agrégat (somme/moyenne/comptage/min/max) —
   volontairement **pas** un langage de mesures façon DAX complet (voir HYPOTHESES.md). Une tuile
   barres peut cependant activer un sous-ensemble ciblé (« Mode » : Cumul / YTD / Comparaison N-1,
