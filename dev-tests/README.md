@@ -56,6 +56,26 @@ bonne et à fausse empreinte, les refus, DuckDB au-delà de 5 000 lignes, la fen
 dans un script CLASSIQUE n'a pas d'adresse de base dans ce cadre (« The base URL is about:blank »), alors qu'écrit dans un module il se résout ;
 un essai fait seulement dans une page directe ne voit pas ce défaut (`CLAUDE.md` §7 piège n°49).
 
+## Politique de sécurité du contenu (`index.html`)
+
+```
+node dev-tests/test-csp.js
+```
+
+La balise `<meta http-equiv="Content-Security-Policy">` d'`index.html` : une seule, dans `<head>`, avant toute balise de script, de feuille ou de style ; les directives exactes
+(`default-src 'none'`, `script-src` = `'self'` + `'wasm-unsafe-eval'` + `https:` + une empreinte, jamais `'unsafe-inline'`/`'unsafe-eval'`/joker/`data:`/`blob:`/`http:`, `form-action 'none'`, `worker-src 'self' blob:`) ;
+**l'empreinte de l'`importmap` recalculée sur son texte réel** (retoucher l'`importmap` sans changer l'empreinte empêche DuckDB de se charger, et le widget retombe en silence sur le calcul JS) ; aucun
+`on…=`, `javascript:`, `<style>` ni `<iframe>` ; `frame-ancestors`/`report-uri`/`sandbox` absents (ignorés dans une balise `<meta>`). Ce que la politique laisse passer ou bloque se mesure dans un navigateur :
+
+- **Servir avec `Access-Control-Allow-Origin: *`** et ouvrir `index.html` (faux `grist` posé par la route, comme pour le chargeur) en page directe puis dans un
+  `<iframe sandbox="allow-scripts allow-downloads">` ; écouter `securitypolicyviolation` (`document.addEventListener`, ajouté par `page.addInitScript`) et attendre 0 violation sur le parcours : 22 types de tuile,
+  DuckDB au-delà de 5 000 lignes (Worker `blob:`, `.wasm`), fenêtre du kit, menus, exports Excel / PPTX (vraie bibliothèque servie à la place de jsDelivr, `context.route()`) / PDF, extension à bonne puis à fausse empreinte.
+- **Prouver que la politique bloque** : `page.evaluate` de Playwright CONTOURNE la politique (`eval` y paraît permis) — la sonde doit être un fichier SERVI par le site (`/__probe.js`, `<script src>`) qui tente `eval`, `new Function`,
+  un script et un gestionnaire en ligne, et lit `securitypolicyviolation`. Mesuré : tous bloqués.
+- Piège : une extension de GFS d'essai se sert par `context.route('https://gfs.test/…')` avec `access-control-allow-origin: *` (sinon l'empreinte `integrity` refuse la réponse).
+
+Voir `CLAUDE.md` §7 piège n°50.
+
 ## Aides communes aux essais (`dev-tests/lib/helpers.js`)
 
 `test-layouts.js` et `test-styles.js` en tirent ce qu'ils recopiaient à l'identique : lecture d'un fichier du dépôt (`read`), lecteur de

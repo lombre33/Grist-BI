@@ -208,6 +208,15 @@ site de la page, empreinte `integrity` obligatoire pour tout autre site, hôte d
 balises, d'attributs et de styles ; jamais `innerHTML`). Les données de la personne ne quittent jamais le navigateur hors de Grist : aucune
 requête sortante ne les porte (les seules adresses contactées sont celles du tableau ci-dessus).
 
+**Politique de sécurité du contenu** (balise `<meta http-equiv="Content-Security-Policy">` en tête d'`index.html`, le filet quand une autre défense
+cède) : tout est refusé par défaut (`default-src 'none'`), puis ouvert au strict nécessaire. Les scripts ne viennent que du site lui-même
+(`'self'`), de l'empreinte de l'unique script en ligne (l'`importmap` de DuckDB-WASM) et d'adresses `https:` (le script d'API de Grist, PptxGenJS, les
+extensions de GFS : leurs adresses ne sont pas connues d'avance, le chargeur exige une empreinte `integrity` pour tout autre site) ; jamais
+`'unsafe-inline'` ni `'unsafe-eval'` (DuckDB-WASM n'a besoin que de `'wasm-unsafe-eval'`). Aucun formulaire ne part (`form-action 'none'`), aucun
+objet ni `<base>` détourné, le Worker de DuckDB ne vient que du site ou d'une adresse `blob:`. Les styles en ligne restent permis
+(`style-src 'unsafe-inline'` : la photographie du tableau de bord pour les exports et ECharts en posent). `frame-ancestors` ne peut pas s'écrire
+dans une balise `<meta>` (le navigateur l'ignore) : GFS et Grist cadrent le widget comme avant. `node dev-tests/test-csp.js` fige la politique.
+
 ## Tests
 
 - `node dev-tests/test-data.js` — logique pure (agrégation, filtrage, store), sans navigateur.
@@ -215,6 +224,7 @@ requête sortante ne les porte (les seules adresses contactées sont celles du t
 - `node dev-tests/test-layouts.js` — dispositions de page (plan, ordre affiché, flèches, store par page, configuration, CSS et seuils de largeur).
 - `node dev-tests/test-safe-html.js` — écriture de HTML dans la page (liste blanche) ; `dev-tests/safe-html-test.html` rejoue 51 charges dans un navigateur.
 - `node dev-tests/test-loader.js` — chargeur unique de code (politique, empreintes, modules par nom, garde-fous des sources).
+- `node dev-tests/test-csp.js` — politique de sécurité du contenu (directives, empreinte de l'`importmap`, aucun script ni gestionnaire en ligne).
 - `node dev-tests/test-audit.js` — garde-fous de l'audit `gwaudit` (champs étiquetés, empreintes des bibliothèques, ECharts modifié).
 - `dev-tests/harness.html` — rendu visuel dans un navigateur avec un faux `window.grist` et des
   données d'exemple, sans document Grist réel. Détails dans `dev-tests/README.md`.
