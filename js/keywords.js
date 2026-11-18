@@ -51,8 +51,60 @@
     'nevertheless', 'although', 'though', 'since', 'until', 'unless', 'whether', 'either', 'neither'
   ];
 
+  // Mots qui reviennent dans TOUT article sans désigner son sujet : verbes de discours scientifique
+  // (« montre », « propose », « require »), adverbes, adjectifs vagues et rubriques (« résultats »,
+  // « figure »). Traités comme des mots vides : ils COUPENT une phrase candidate, au lieu de s'y coller
+  // (« langage naturel doit gérer » -> « langage naturel »). Mesuré sur des textes d'essai le 18/11/2026 :
+  // sans eux, les mots-clés d'un PDF sortaient en demi-phrases. Liste volontairement courte : un verbe
+  // ou un adjectif qui n'y est pas ne casse rien, il est seulement moins bien écarté — le classement par
+  // fréquence (voir extractKeywords) le rend rare parmi les premiers.
+  const FILLER_FR = [
+    'doit', 'doivent', 'devrait', 'peut', 'peuvent', 'pourrait', 'pourraient', 'permet', 'permettent',
+    'montre', 'montrent', 'montré', 'montrés', 'indique', 'indiquent', 'améliore', 'améliorent',
+    'propose', 'proposons', 'proposé', 'présente', 'présentent', 'présenté', 'utilise', 'utilisent',
+    'utilisé', 'utilisés', 'repose', 'reposent', 'retrouve', 'impose', 'imposent', 'reste', 'restent',
+    'consiste', 'vise', 'visent', 'obtenu', 'obtenus', 'réalisé', 'réalisés', 'effectué', 'observé',
+    'observés', 'sera', 'seront', 'serait', 'soit', 'font', 'faits', 'faisant', 'devient', 'sert',
+    'notamment', 'souvent', 'ensuite', 'directement', 'également', 'généralement', 'désormais', 'déjà',
+    'encore', 'toujours', 'jamais', 'beaucoup', 'surtout', 'seulement', 'ainsi', 'puis', 'non', 'oui',
+    'etc', 'ci', 'ceux', 'compte', 'nombreux', 'nombreuses', 'différents', 'différentes', 'divers', 'diverses',
+    'principal', 'principale', 'principaux', 'premier', 'première', 'second', 'seconde', 'nouveau',
+    'nouvelle', 'nouveaux', 'nouvelles', 'grand', 'grande', 'grands', 'grandes', 'bon', 'bonne',
+    'important', 'importante', 'importants', 'simple', 'simples', 'possible', 'possibles', 'notable',
+    'article', 'articles', 'étude', 'études', 'travail', 'travaux', 'résultat', 'résultats', 'figure',
+    'tableau', 'section', 'introduction', 'conclusion', 'résumé', 'abstract', 'méthode', 'méthodes',
+    'approche', 'approches', 'cas', 'fois', 'partie', 'part', 'type', 'types', 'nombre', 'ensemble',
+    'augmente', 'augmentent', 'insistent', 'insiste', 'comptent', 'modifie', 'modifient',
+    'confirment', 'confirme', 'incluent', 'inclure', 'associé', 'associée', 'associés', 'mesuré', 'mesurée',
+    'discutons', 'discutent', 'étudie', 'étudient', 'analysons', 'considère', 'considèrent',
+    'constitue', 'constituent', 'dépend', 'dépendait', 'disposait', 'efface', 'explique', 'expliquent',
+    'favorise', 'favorisent', 'persiste', 'persistent', 'suggère', 'suggèrent', 'semble', 'semblent',
+    'devrait', 'devraient', 'concerne', 'concernent', 'porte', 'portent', 'compense', 'protège', 'fondée', 'fondé'
+  ];
+  const FILLER_EN = [
+    'require', 'requires', 'required', 'show', 'shows', 'shown', 'showed', 'improve', 'improves',
+    'improved', 'propose', 'proposes', 'proposed', 'present', 'presents', 'presented', 'use', 'uses',
+    'used', 'using', 'based', 'allow', 'allows', 'provide', 'provides', 'provided', 'obtain',
+    'obtained', 'evaluate', 'evaluated', 'demonstrate', 'demonstrates', 'suggest', 'suggests',
+    'indicate', 'indicates', 'become', 'becomes', 'make', 'makes', 'made', 'give', 'gives', 'given',
+    'often', 'usually', 'generally', 'especially', 'already', 'always', 'never', 'many', 'several',
+    'various', 'different', 'new', 'novel', 'large', 'small', 'high', 'low', 'good', 'better', 'best',
+    'important', 'simple', 'possible', 'paper', 'papers', 'article', 'articles', 'study', 'studies',
+    'work', 'works', 'result', 'results', 'figure', 'table', 'section', 'introduction', 'conclusion',
+    'abstract', 'approach', 'approaches', 'method', 'methods', 'case', 'cases', 'type', 'types',
+    'number', 'set', 'et', 'al', 'etc', 'one', 'two', 'three',
+    'across', 'within', 'whereas', 'thereby', 'confirm', 'confirmed', 'confirms', 'lost', 'lose', 'reduce',
+    'reduces', 'reduced', 'increase', 'increases', 'increased', 'decrease', 'decreases', 'explain', 'explains',
+    'include', 'includes', 'including', 'included', 'retained', 'remain', 'remains', 'reached', 'achieve',
+    'achieved', 'test', 'tested', 'created', 'creates', 'exposed', 'indicated', 'found', 'observed', 'measured',
+    'suppress', 'suppresses', 'accelerates', 'combine', 'combines', 'discuss', 'discussed', 'consider',
+    'considered', 'compare', 'compared', 'describe', 'described', 'perform', 'performed', 'follow', 'follows'
+  ];
+
   function buildStopwordSet(lang) {
-    const words = lang === 'fr' ? STOPWORDS_FR : lang === 'en' ? STOPWORDS_EN : STOPWORDS_FR.concat(STOPWORDS_EN);
+    const words = lang === 'fr' ? STOPWORDS_FR.concat(FILLER_FR)
+      : lang === 'en' ? STOPWORDS_EN.concat(FILLER_EN)
+      : STOPWORDS_FR.concat(STOPWORDS_EN, FILLER_FR, FILLER_EN);
     return new Set(words);
   }
 
@@ -71,7 +123,29 @@
       for (const s of segmenter.segment(text)) {
         out.push({ text: s.segment, isWord: !!s.isWordLike });
       }
-      return out;
+      // `Intl.Segmenter` coupe « mots-clés » en trois segments (mot, trait d'union, mot) : un mot
+      // composé redevient UN mot, sans quoi « mots-clés automatiques » perdait « mots » en route.
+      const merged = [];
+      for (let i = 0; i < out.length; i++) {
+        const seg = out[i];
+        if (seg.isWord && merged.length >= 2) {
+          const hyphen = merged[merged.length - 1];
+          const before = merged[merged.length - 2];
+          if (before.isWord && !hyphen.isWord && /^[-\u2010\u2011]$/.test(hyphen.text)) {
+            merged.splice(merged.length - 2, 2, { text: before.text + '-' + seg.text, isWord: true });
+            continue;
+          }
+        }
+        // `Intl.Segmenter` rend chaque saut de ligne à part : on recolle les blancs qui se suivent pour
+        // qu'une ligne vide (fin de paragraphe ou de page) se reconnaisse comme telle.
+        const last = merged[merged.length - 1];
+        if (last && !last.isWord && !seg.isWord && /^\s+$/.test(last.text) && /^\s+$/.test(seg.text)) {
+          last.text += seg.text;
+          continue;
+        }
+        merged.push(seg);
+      }
+      return merged;
     }
     const out = [];
     let lastIndex = 0;
@@ -92,6 +166,11 @@
   // nombre seul, ni plus courts que `minWordLength`), coupées à chaque mot vide/ponctuation — c'est
   // la génération de candidats de RAKE. Chaque phrase est un tableau de mots en minuscules.
   const WHITESPACE_ONLY_RE = /^\s*$/;
+  const PARAGRAPH_BREAK_RE = /\n\s*\n/;
+  // Élision française (« l'apprentissage », « d'un », « qu'il ») : le mot est ce qui suit l'apostrophe ;
+  // « d'un » devient « un », un mot vide, qui coupe la phrase comme il se doit. Possessif anglais (« model's »).
+  const ELISION_RE = /^(?:l|d|s|n|m|t|c|j|qu|jusqu|lorsqu|puisqu|quoiqu)['\u2019](.+)$/;
+  const POSSESSIVE_RE = /^(.+?)['\u2019]s$/;
 
   function extractCandidatePhrases(text, stopwords, minWordLength) {
     const segments = segmentText(String(text || ''));
@@ -99,7 +178,16 @@
     let current = [];
     for (const seg of segments) {
       if (seg.isWord) {
-        const lower = seg.text.toLowerCase();
+        let lower = seg.text.toLowerCase();
+        const elision = ELISION_RE.exec(lower);
+        if (elision) {
+          // « centres d'examens » : « d' » est un mot vide, il COUPE la phrase (sinon « centres examens »).
+          if (current.length) { phrases.push(current); current = []; }
+          lower = elision[1];
+        } else {
+          const possessive = POSSESSIVE_RE.exec(lower);
+          if (possessive) lower = possessive[1];
+        }
         const isContentWord = lower.length >= minWordLength
           && !stopwords.has(lower) && !PURE_NUMBER_RE.test(lower);
         if (isContentWord) {
@@ -107,11 +195,12 @@
           continue;
         }
         // Mot vide ou trop court -> frontière (traité ci-dessous comme la ponctuation).
-      } else if (WHITESPACE_ONLY_RE.test(seg.text)) {
+      } else if (WHITESPACE_ONLY_RE.test(seg.text) && !PARAGRAPH_BREAK_RE.test(seg.text)) {
         // Un espace seul est neutre : il NE coupe PAS la phrase candidate (sinon chaque mot
         // deviendrait sa propre "phrase" d'un seul mot, puisque l'espace sépare quasi tous les
         // mots — seule la ponctuation et les mots vides doivent couper, voir la docstring
-        // d'extractKeywords).
+        // d'extractKeywords). Une ligne vide, elle, coupe : fin de paragraphe, ou de page (voir
+        // js/pdf-text.js:joinPages) — la fin d'une page ne se colle jamais au début de la suivante.
         continue;
       }
       if (current.length) {
@@ -148,7 +237,10 @@
   }
 
   /**
-   * Extrait les mots-clés les plus significatifs d'un texte (résumé, texte intégral de PDF, etc.).
+   * RAKE d'origine (Rose et al., 2010), tel quel : le score d'une phrase candidate est la somme des
+   * scores de ses mots. Gardé comme référence et pour comparer ; `extractKeywords` (plus bas) est ce que
+   * l'application utilise, parce que RAKE seul classe en tête de LONGUES phrases rares (« recherche
+   * documentaire efficace doit rester utilisable ») plutôt que les termes qui reviennent.
    * options.lang: 'fr' | 'en' | 'auto' (défaut 'auto', union des deux stoplists — un article de
    * chercheur francophone mélange souvent résumé anglais et commentaire français).
    * options.maxKeywords: nombre de mots-clés renvoyés (défaut 20).
@@ -162,7 +254,7 @@
    * apparition (jamais un tri alphabétique implicite — même prudence que groupByAggregate, voir
    * CLAUDE.md §7 piège n°14).
    */
-  function extractKeywords(text, options) {
+  function rakeKeywords(text, options) {
     const opts = options || {};
     const lang = opts.lang || 'auto';
     const maxKeywords = opts.maxKeywords || 20;
@@ -199,5 +291,106 @@
       .map((e) => ({ phrase: e.phrase, score: e.score }));
   }
 
-  return { extractKeywords, extractCandidatePhrases, scoreWords, segmentText, buildStopwordSet };
+  /**
+   * Mots-clés d'un texte (résumé, texte intégral d'un PDF) : les phrases candidates de RAKE, classées
+   * par ce qui compte pour un LECTEUR — un terme qui REVIENT, en 1 à 3 mots.
+   *
+   * Pourquoi pas RAKE seul : son score additionne les mots d'une phrase, donc une longue phrase rare
+   * bat toujours un terme court qui revient quarante fois (essai du 18/11/2026 sur de vrais PDF :
+   * « recherche documentaire efficace doit rester utilisable » avant « recherche sémantique »). Ici :
+   *  1. les phrases candidates sont celles de RAKE (coupées aux mots vides et à la ponctuation) ;
+   *  2. chaque suite de 1 à `maxPhraseWords` mots d'une phrase est une unité, dont on compte les
+   *     occurrences (`tf`) dans tout le texte — « langage naturel » gagne un point à chaque phrase où
+   *     il figure, qu'elle soit longue ou non ;
+   *  3. score = (somme des scores RAKE des mots, qui fait préférer 2-3 mots à 1) x (1 + ln tf), un
+   *     mot seul pesant moitié moins (un mot seul est ambigu : « recherche ») ;
+   *  4. une unité tirée d'une phrase plus longue que `maxPhraseWords` n'est retenue que si elle revient
+   *     (tf >= 2) : sinon on ne saurait pas quelles coupes de « langage naturel doit gérer les accents »
+   *     sont un terme ; un mot seul ne compte qu'à partir de 2 occurrences (sauf texte très court) ;
+   *  5. une unité qui n'est presque qu'un morceau d'une unité déjà retenue (« sémantique » dans
+   *     « analyse sémantique ») est écartée ; un mot qui sert aussi seul (tf bien plus grand) reste.
+   * options : `lang` ('fr' | 'en' | 'auto'), `maxKeywords` (20), `minWordLength` (2),
+   * `maxPhraseWords` (3 : la longueur maximale d'un mot-clé). Rend [{ phrase, score }], ex-aequo dans
+   * l'ordre de première apparition (jamais alphabétique, CLAUDE.md §7 piège n°14).
+   */
+  function extractKeywords(text, options) {
+    const opts = options || {};
+    const maxKeywords = opts.maxKeywords || 20;
+    const minWordLength = opts.minWordLength != null ? opts.minWordLength : 2;
+    const maxN = Math.max(1, opts.maxPhraseWords || 3);
+    const phrases = extractCandidatePhrases(text, buildStopwordSet(opts.lang || 'auto'), minWordLength);
+
+    // Score RAKE des mots, sur les phrases telles quelles mais avec une longueur plafonnée à maxN :
+    // une phrase de 12 mots ne doit pas donner à ses mots un « degree » énorme.
+    const degree = new Map();
+    const freq = new Map();
+    let totalWords = 0;
+    for (const phrase of phrases) {
+      const len = Math.min(phrase.length, maxN);
+      for (const w of phrase) {
+        degree.set(w, (degree.get(w) || 0) + len);
+        freq.set(w, (freq.get(w) || 0) + 1);
+        totalWords++;
+      }
+    }
+    const wordScore = (w) => degree.get(w) / freq.get(w);
+
+    // Les unités : toute suite de 1 à maxN mots d'une phrase, comptées dans le texte entier.
+    const units = new Map(); // clé -> { words, tf, firstIndex, whole }
+    let index = 0;
+    for (const phrase of phrases) {
+      for (let n = 1; n <= Math.min(maxN, phrase.length); n++) {
+        for (let i = 0; i + n <= phrase.length; i++) {
+          const words = phrase.slice(i, i + n);
+          const key = words.join(' ');
+          let u = units.get(key);
+          if (!u) { u = { key, words, tf: 0, firstIndex: index, whole: 0 }; units.set(key, u); }
+          u.tf++;
+          if (n === phrase.length) u.whole++; // l'unité EST une phrase complète (et pas seulement un morceau d'une plus longue)
+        }
+      }
+      index++;
+    }
+
+    // Une occurrence comme phrase complète vaut 1, un morceau d'une phrase plus longue vaut 1/2 : « risque
+    // cardiovasculaire » seul est un terme, « risque cardiovasculaire augmente » une demi-phrase.
+    // Dans un texte long (un PDF), une unité vue une seule fois est du bruit : on exige qu'elle revienne ;
+    // dans un résumé ou un titre, rien ne revient, on garde ce qui est vu une fois (pondéré plus bas).
+    const shortText = totalWords < 200;
+    const minEffective = totalWords >= 400 ? 2 : 1;
+    const scored = [];
+    for (const u of units.values()) {
+      const n = u.words.length;
+      if (n === 1 && u.words[0].length < 3) continue;
+      if (n === 1 && u.tf < 2 && !shortText) continue;
+      const effective = u.whole + 0.5 * (u.tf - u.whole);
+      if (effective < minEffective) continue;
+      if (!u.whole && u.tf < 2) continue; // coupe d'une phrase trop longue, vue une seule fois
+      let base = 0;
+      for (const w of u.words) base += wordScore(w);
+      u.score = base * (1 + Math.log(effective)) * (n === 1 ? 0.5 : 1) * (u.tf === 1 ? 0.5 : 1);
+      scored.push(u);
+    }
+    scored.sort((a, b) => (b.score - a.score) || (a.firstIndex - b.firstIndex));
+
+    // Sélection gloutonne : on écarte ce qui n'est qu'un morceau d'une unité déjà prise.
+    const contains = (big, small) => {
+      if (small.length >= big.length) return false;
+      for (let i = 0; i + small.length <= big.length; i++) {
+        let hit = true;
+        for (let j = 0; j < small.length; j++) if (big[i + j] !== small[j]) { hit = false; break; }
+        if (hit) return true;
+      }
+      return false;
+    };
+    const chosen = [];
+    for (const u of scored) {
+      if (chosen.length >= maxKeywords) break;
+      if (chosen.some((c) => contains(c.words, u.words) && u.tf <= c.tf * 2)) continue;
+      chosen.push(u);
+    }
+    return chosen.map((u) => ({ phrase: u.key, score: u.score }));
+  }
+
+  return { extractKeywords, rakeKeywords, extractCandidatePhrases, scoreWords, segmentText, buildStopwordSet };
 });

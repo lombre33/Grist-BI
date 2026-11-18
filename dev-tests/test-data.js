@@ -3023,9 +3023,12 @@ const SAMPLE_TIME_SERIES = [
   // extractKeywords : ex-aequo tranché par l'ordre de première apparition, jamais alphabétique
   // (même prudence que groupByAggregate, voir CLAUDE.md §7 piège n°14).
   {
-    const results = keywords.extractKeywords('Zèbre. Chat. Alpaga. Chat.', { maxKeywords: 10, minWordLength: 1 });
-    assert.deepStrictEqual(results.map((r) => r.phrase), ['zèbre', 'chat', 'alpaga']); // "chat" dédoublonné
-    console.log('OK keywords.extractKeywords (ex-aequo dans l\'ordre d\'apparition)');
+    const results = keywords.extractKeywords('Zèbre. Chat. Alpaga. Girafe.', { maxKeywords: 10, minWordLength: 1 });
+    assert.deepStrictEqual(results.map((r) => r.phrase), ['zèbre', 'chat', 'alpaga', 'girafe']);
+    // un terme qui REVIENT passe devant ceux qui n'apparaissent qu'une fois, et n'est listé qu'une fois
+    const repeated = keywords.extractKeywords('Zèbre. Chat. Alpaga. Chat.', { maxKeywords: 10, minWordLength: 1 });
+    assert.deepStrictEqual(repeated.map((r) => r.phrase), ['chat', 'zèbre', 'alpaga']);
+    console.log('OK keywords.extractKeywords (ex-aequo dans l\'ordre d\'apparition, un terme qui revient passe devant)');
   }
 
   // extractKeywords : un texte sans aucun mot vide sur une longue plage (ex. liste à puces mal
@@ -3035,16 +3038,64 @@ const SAMPLE_TIME_SERIES = [
     const longRun = Array.from({ length: 20 }, (_, i) => `motunique${i}`).join(' ');
     const phrases = keywords.extractCandidatePhrases(longRun, keywords.buildStopwordSet('fr'), 2);
     assert.strictEqual(phrases[0].length, 20); // pas encore découpé à ce stade (fait par extractKeywords)
-    const results = keywords.extractKeywords(longRun, { maxKeywords: 50, maxPhraseWords: 5 });
-    assert.ok(results.every((r) => r.phrase.split(' ').length <= 5));
-    console.log('OK keywords.extractKeywords (découpage défensif des phrases trop longues)');
+    const rake = keywords.rakeKeywords(longRun, { maxKeywords: 50, maxPhraseWords: 5 });
+    assert.ok(rake.length > 0 && rake.every((r) => r.phrase.split(' ').length <= 5), 'RAKE d\'origine : découpage en tronçons');
+    // extractKeywords : aucune coupe d'une suite sans mot vide n'est un terme tant qu'elle ne revient pas ; si elle revient, elle est plafonnée
+    assert.deepStrictEqual(keywords.extractKeywords(longRun, { maxKeywords: 50, maxPhraseWords: 5 }), []);
+    const twice = keywords.extractKeywords(longRun + '. ' + longRun, { maxKeywords: 50, maxPhraseWords: 5 });
+    assert.ok(twice.length > 0 && twice.every((r) => r.phrase.split(' ').length <= 5));
+    console.log('OK keywords.rakeKeywords (découpage défensif) et extractKeywords (plafond de longueur, rien sans répétition)');
+  }
+
+  // extractKeywords : la qualité sur des textes réalistes (18/11/2026). RAKE seul classait en tête de longues
+  // phrases rares et des demi-phrases (« recherche documentaire efficace doit rester utilisable ») ; on exige
+  // maintenant qu'un terme REVIENNE, en 3 mots au plus, et que les verbes courants ne s'y collent pas.
+  {
+    const FR = `Impact de la sédentarité sur le risque cardiovasculaire chez les adultes.
+
+Résumé. La sédentarité est devenue un facteur de risque majeur pour les maladies cardiovasculaires. Nous avons suivi pendant douze ans une cohorte d'adultes afin d'évaluer l'association entre le temps passé assis et la survenue d'un infarctus du myocarde. Après ajustement sur l'activité physique, l'indice de masse corporelle et le tabagisme, un temps de sédentarité supérieur à dix heures par jour est associé à une augmentation du risque cardiovasculaire.
+
+Introduction. Les maladies cardiovasculaires restent la première cause de mortalité. Si l'activité physique modérée à vigoureuse protège le cœur, la sédentarité constitue un facteur de risque indépendant. Les recommandations de santé publique insistent désormais sur la réduction du temps assis, en particulier chez les travailleurs de bureau.
+
+Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps de sédentarité. L'association persiste chez les participants qui atteignent les recommandations d'activité physique, ce qui suggère que l'activité physique ne compense pas entièrement le temps passé assis. La sédentarité prolongée fragmentée par de courtes pauses actives semble moins délétère. Les interventions de santé publique devraient cibler la réduction de la sédentarité professionnelle grâce à des pauses actives régulières.`;
+    const top = keywords.extractKeywords(FR, { maxKeywords: 8 }).map((k) => k.phrase);
+    for (const want of ['activité physique', 'risque cardiovasculaire', 'santé publique', 'pauses actives', 'temps passé assis']) assert.ok(top.includes(want), `« ${want} » parmi ${top.join(' | ')}`);
+    for (const bad of top) assert.ok(!/\b(insistent|augmente|suggère|compense|semble|devraient|doit)\b/.test(bad), `verbe collé dans « ${bad} »`);
+    assert.ok(top.every((k) => k.split(' ').length <= 3), 'trois mots au plus');
+    assert.ok(!top.some((k) => /\bd'|\bl'/.test(k)), 'jamais d\'élision collée');
+
+    const EN = `Stability of perovskite solar cells under humidity and thermal stress. Perovskite solar cells combine high efficiency with low-cost solution processing. However, the perovskite absorber degrades when exposed to moisture, oxygen, heat and light. Ion migration across the perovskite layer creates defects at the interfaces and accelerates the degradation of the device. A two-dimensional capping layer suppresses ion migration and improves the stability of the device. The capped devices showed a more stable power output than the control devices. Impedance spectroscopy indicated that the capping layer reduces ion migration, which explains the improved operational stability of perovskite solar cells.`;
+    const topEn = keywords.extractKeywords(EN, { maxKeywords: 6 }).map((k) => k.phrase);
+    for (const want of ['perovskite solar cells', 'ion migration']) assert.ok(topEn.includes(want), `« ${want} » parmi ${topEn.join(' | ')}`);
+    assert.ok(topEn.every((k) => !/\b(across|indicated|explains|showed)\b/.test(k)), 'pas de verbe collé : ' + topEn.join(' | '));
+
+    // un terme qui revient bat une longue phrase vue une fois
+    const mix = 'La recherche sémantique des publications. ' + 'Notre système de recherche documentaire efficace doit rester utilisable sans serveur. ' + 'La recherche sémantique repose sur un index. Une recherche sémantique rapide. Cette recherche sémantique est locale.';
+    const mixTop = keywords.extractKeywords(mix, { maxKeywords: 3 }).map((k) => k.phrase);
+    assert.strictEqual(mixTop[0], 'recherche sémantique');
+    assert.ok(mixTop.indexOf('recherche documentaire efficace') !== 0, 'la phrase vue une fois ne passe pas devant');
+    const mixLong = keywords.extractKeywords((mix + ' ').repeat(3).replace(/Notre système de recherche documentaire efficace doit rester utilisable sans serveur\. /g, (m, o) => (o === 0 ? m : '')), { maxKeywords: 5 }).map((k) => k.phrase);
+    assert.ok(!mixLong.includes('recherche documentaire efficace') || mixLong.indexOf('recherche documentaire efficace') > 0);
+
+    // mots composés (« mots-clés ») gardés entiers, élision (« d'indexation ») sans le « d' », paragraphes qui coupent
+    assert.deepStrictEqual(keywords.extractCandidatePhrases('Les mots-clés automatiques; la méthode d\'indexation.', keywords.buildStopwordSet('fr'), 2), [['mots-clés', 'automatiques'], ['indexation']]);
+    assert.deepStrictEqual(keywords.extractCandidatePhrases('analyse sémantique\n\nréseau neuronal', keywords.buildStopwordSet('fr'), 2), [['analyse', 'sémantique'], ['réseau', 'neuronal']], 'une ligne vide coupe (fin de page)');
+    assert.deepStrictEqual(keywords.extractCandidatePhrases('analyse sémantique\nréseau neuronal', keywords.buildStopwordSet('fr'), 2), [['analyse', 'sémantique', 'réseau', 'neuronal']], 'un simple retour à la ligne est neutre');
+    // les rubriques et verbes de discours ne sont pas des mots-clés
+    assert.ok(!keywords.extractKeywords('Résultats. Résultats. Introduction. Introduction. Conclusion. Conclusion.', { maxKeywords: 5 }).length);
+    // plafond et nombre demandé, ordre stable
+    assert.strictEqual(keywords.extractKeywords(FR, { maxKeywords: 3 }).length, 3);
+    assert.deepStrictEqual(keywords.extractKeywords(FR, { maxKeywords: 8 }), keywords.extractKeywords(FR, { maxKeywords: 8 }), 'déterministe');
+    assert.deepStrictEqual(keywords.extractKeywords('', {}), []);
+    assert.deepStrictEqual(keywords.extractKeywords(null, {}), []);
+    console.log('OK keywords.extractKeywords (textes réalistes : termes qui reviennent, pas de verbe collé, mots composés, élision, ligne vide)');
   }
 
   // pdfText : fonctions pures de jointure, testables sans PDF.js ni navigateur.
   {
     assert.strictEqual(pdfText.joinTextItems([{ str: 'Bonjour' }, { str: 'le' }, { str: 'monde' }]), 'Bonjour le monde');
     assert.strictEqual(pdfText.joinTextItems([]), '');
-    assert.strictEqual(pdfText.joinPages(['page un', 'page deux']), 'page un\npage deux');
+    assert.strictEqual(pdfText.joinPages(['page un', 'page deux']), 'page un\n\npage deux');
     console.log('OK pdfText.joinTextItems/joinPages');
   }
 
@@ -3068,7 +3119,7 @@ const SAMPLE_TIME_SERIES = [
     } } } };
     try {
       assert.strictEqual(pdfText.isAvailable(), true);
-      assert.strictEqual(await pdfText.extractTextFromPdf(new ArrayBuffer(4)), 'Analyse sémantique\ndes publications');
+      assert.strictEqual(await pdfText.extractTextFromPdf(new ArrayBuffer(4)), 'Analyse sémantique\n\ndes publications');
       assert.ok(opened.data instanceof Uint8Array && opened.data.length === 4);
       assert.strictEqual(opened.isEvalSupported, false);
       assert.strictEqual(await pdfText.loadLibrary(null), globalThis.GfsPaquets.pdfjs.modules['pdfjs-dist/build/pdf.min.mjs']);
@@ -3077,6 +3128,327 @@ const SAMPLE_TIME_SERIES = [
     }
     assert.strictEqual(pdfText.isAvailable(), false);
     console.log('OK pdfText avec GfsPaquets.pdfjs (module de GFS : pages jointes, isEvalSupported=false)');
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Mots-clés des publications (consigne GFS 019) : js/publications.js (logique pure), js/pdf-text.js (lecture page
+  // par page), js/grist-api.js (pièces jointes, colonne, écriture) et le câblage de la fenêtre.
+  // ---------------------------------------------------------------------------------------------
+  const publications = require('../js/publications.js');
+
+  // Cellules : vide, pièces jointes (['L', ...] de fetchTable, liste nue, nombre, texte JSON), mots saisis.
+  {
+    for (const v of [null, undefined, '', '   ', [], ['L']]) assert.strictEqual(publications.isEmptyCell(v), true, JSON.stringify(v));
+    for (const v of ['a', 0, ['L', 3], [1]]) assert.strictEqual(publications.isEmptyCell(v), false, JSON.stringify(v));
+    assert.deepStrictEqual(publications.attachmentIds(['L', 12, 13, 12, 'x', -1, 1.5]), [12, 13], 'doublons, non-entiers et négatifs écartés, ordre gardé');
+    assert.deepStrictEqual(publications.attachmentIds([4, 5]), [4, 5]);
+    assert.deepStrictEqual(publications.attachmentIds(7), [7]);
+    assert.deepStrictEqual(publications.attachmentIds('[8, 9]'), [8, 9]);
+    assert.deepStrictEqual(publications.attachmentIds('pas du json'), []);
+    assert.deepStrictEqual(publications.attachmentIds(null), []);
+    assert.deepStrictEqual(publications.splitWords('a, b ;c\n d,, '), ['a', 'b', 'c', 'd']);
+    assert.deepStrictEqual(publications.splitWords(['L', 'x', 'y']), ['x', 'y']);
+    assert.deepStrictEqual(publications.splitWords(null), []);
+    assert.strictEqual(publications.formatKeywords(['analyse sémantique', 'réseau']), 'analyse sémantique, réseau');
+    assert.strictEqual(publications.normalizeWord('  Réseau   NEURONAL '), 'reseau neuronal');
+    assert.deepStrictEqual(publications.dropKnown(['Réseau neuronal', 'analyse', 'ANALYSE', 'données'], ['reseau  neuronal']), ['analyse', 'données'], 'mots saisis et doublons retirés, sans tenir compte des accents ni de la casse');
+    console.log('OK publications : cellules (vide, pièces jointes, mots saisis, comparaison sans accent)');
+  }
+
+  // Colonnes et lignes à traiter : jamais une cellule déjà remplie, jamais une ligne sans texte.
+  {
+    const cols = { Titre: { type: 'Text' }, Resume: { type: 'Text' }, Fichier: { type: 'Attachments' }, Mots: { type: 'ChoiceList' }, Auto: { type: 'Text' }, N: { type: 'Numeric' }, Dates: { type: 'Date' } };
+    const c = publications.columnChoices(cols);
+    assert.deepStrictEqual(c.pdfSource, ['Fichier']);
+    assert.deepStrictEqual(c.textSource, ['Titre', 'Resume', 'Auto']);
+    assert.deepStrictEqual(c.target, ['Titre', 'Resume', 'Auto'], 'on n\'écrit que dans du texte');
+    assert.deepStrictEqual(c.manual, ['Titre', 'Resume', 'Mots', 'Auto'], 'les mots saisis se lisent aussi dans une liste de choix');
+    assert.strictEqual(publications.freshColumnName(['Titre', 'Mots_cles_auto']), 'Mots_cles_auto_2');
+    assert.strictEqual(publications.freshColumnName(['mots_cles_AUTO', 'Mots_cles_auto_2']), 'Mots_cles_auto_3', 'insensible à la casse comme Grist');
+    assert.strictEqual(publications.freshColumnName(['A']), 'Mots_cles_auto');
+
+    const table = {
+      id: [1, 2, 3, 4, 5],
+      Fichier: [['L', 10], ['L', 11, 12, 13, 14], null, ['L'], ['L', 15]],
+      Auto: ['', 'déjà là', null, null, '   '],
+      Mots: ['alpha, beta', null, null, null, ['L', 'gamma']]
+    };
+    const plan = publications.planRows(table, { kind: 'pdf', sourceColumn: 'Fichier', targetColumn: 'Auto', manualColumn: 'Mots' });
+    assert.deepStrictEqual(plan.todo.map((x) => x.id), [1, 5], 'la ligne 2 est remplie, 3 et 4 n\'ont pas de PDF');
+    assert.deepStrictEqual(plan.todo[0], { id: 1, ids: [10], known: ['alpha', 'beta'] });
+    assert.deepStrictEqual(plan.todo[1].known, ['gamma']);
+    assert.strictEqual(plan.filled, 1);
+    assert.strictEqual(plan.noSource, 2);
+    assert.strictEqual(plan.total, 5);
+    const longRow = publications.planRows({ id: [1], Fichier: [['L', 1, 2, 3, 4, 5]] }, { kind: 'pdf', sourceColumn: 'Fichier', targetColumn: null });
+    assert.deepStrictEqual(longRow.todo[0].ids, [1, 2, 3], 'au plus 3 pièces jointes par ligne');
+    // Colonne cible à créer (null) : tout est vide ; source texte : un texte trop court n'a rien à indexer.
+    const textPlan = publications.planRows({ id: [1, 2, 3], Resume: ['Un résumé assez long pour être indexé.', 'court', null] }, { kind: 'text', sourceColumn: 'Resume', targetColumn: null });
+    assert.deepStrictEqual(textPlan.todo.map((x) => x.id), [1]);
+    assert.strictEqual(textPlan.noSource, 2);
+    // Une colonne source absente ne plante pas.
+    assert.deepStrictEqual(publications.planRows({ id: [1] }, { kind: 'pdf', sourceColumn: 'Absente', targetColumn: null }).todo, []);
+    console.log('OK publications : choix des colonnes et des lignes (cellule remplie jamais touchée, 3 pièces jointes au plus)');
+  }
+
+  // Une ligne : PDF, texte, ce qui n'a rien à écrire, mots saisis exclus.
+  {
+    const pdfBytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 1, 2]).buffer;
+    const imageBytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]).buffer;
+    const calls = { fetch: [], extract: [] };
+    const deps = {
+      fetchPdf: async (id) => { calls.fetch.push(id); return id === 99 ? imageBytes : pdfBytes; },
+      isPdf: pdfText.isPdfBytes,
+      extractText: async (buffer, opts) => { calls.extract.push(opts); return 'Analyse sémantique des publications scientifiques. Analyse sémantique et mots-clés automatiques.'; },
+      extractKeywords: keywords.extractKeywords
+    };
+    const ok = await publications.keywordsForTask({ id: 1, ids: [5] }, deps, { maxKeywords: 3, maxPages: 7 });
+    assert.strictEqual(ok.status, 'ok');
+    assert.ok(ok.keywords.length >= 1 && ok.keywords.length <= 3);
+    assert.strictEqual(calls.extract[0].maxPages, 7, 'les limites de lecture sont transmises');
+    assert.deepStrictEqual(await publications.keywordsForTask({ id: 2, ids: [99] }, deps, {}), { status: 'noPdf' }, 'une image jointe n\'est pas un PDF');
+    const mixed = await publications.keywordsForTask({ id: 3, ids: [99, 5] }, deps, { maxKeywords: 2 });
+    assert.strictEqual(mixed.status, 'ok', 'une image à côté d\'un PDF est ignorée sans erreur');
+    const none = await publications.keywordsForTask({ id: 4, ids: [5] }, { ...deps, extractText: async () => '   ' }, {});
+    assert.deepStrictEqual(none, { status: 'noText' }, 'PDF scanné : pas de texte, rien à écrire');
+    const stop = await publications.keywordsForTask({ id: 5, text: 'le la les de du des et ou pour dans sur avec sans sous' }, deps, {});
+    assert.deepStrictEqual(stop, { status: 'noKeywords' }, 'que des mots vides');
+    const known = await publications.keywordsForTask({ id: 6, text: 'Analyse sémantique. Réseau neuronal profond. Analyse sémantique. Réseau neuronal profond.', known: ['Analyse sémantique'] }, deps, { maxKeywords: 5 });
+    assert.ok(known.keywords.every((k) => publications.normalizeWord(k) !== 'analyse semantique'), 'un mot saisi à la main n\'est pas répété');
+    console.log('OK publications.keywordsForTask (PDF, image ignorée, scan sans texte, mots vides, mots saisis exclus)');
+  }
+
+  // La boucle : lots d'écriture, erreur par ligne, annulation, écriture refusée.
+  {
+    const fakeDeps = (overrides) => {
+      const written = [];
+      return {
+        written,
+        deps: Object.assign({
+          fetchPdf: async () => new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d]).buffer,
+          isPdf: pdfText.isPdfBytes,
+          extractText: async () => 'Analyse sémantique des publications scientifiques et indexation automatique.',
+          extractKeywords: keywords.extractKeywords,
+          write: async (entries) => { written.push(entries.map((e) => e.id)); },
+          yieldNow: async () => {}
+        }, overrides)
+      };
+    };
+    const todo = Array.from({ length: 7 }, (_, i) => ({ id: i + 1, ids: [i + 1] }));
+
+    // lots de 3 : 3 + 3 + 1, valeur au format « a, b, c »
+    {
+      const { deps, written } = fakeDeps();
+      const progress = [];
+      const result = await publications.runJob(todo, deps, { batchSize: 3, maxKeywords: 4, onProgress: (p) => progress.push(p.index) });
+      assert.deepStrictEqual(written, [[1, 2, 3], [4, 5, 6], [7]]);
+      assert.strictEqual(result.written, 7);
+      assert.strictEqual(result.cancelled, false);
+      assert.strictEqual(progress[progress.length - 1], 7, 'la progression finit à total');
+    }
+    // la valeur écrite est un texte « mot, mot »
+    {
+      let values = null;
+      const { deps } = fakeDeps({ write: async (entries) => { values = entries; } });
+      await publications.runJob([{ id: 1, ids: [1] }], deps, { maxKeywords: 3 });
+      assert.strictEqual(typeof values[0].value, 'string');
+      assert.ok(values[0].value.includes('analyse sémantique') || values[0].value.length > 0);
+    }
+    // une ligne en erreur n'arrête pas les autres, et ne s'écrit pas
+    {
+      const { deps, written } = fakeDeps({ fetchPdf: async (id) => { if (id === 2) throw new Error('réponse 404'); return new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d]).buffer; } });
+      const rows = [];
+      const result = await publications.runJob(todo.slice(0, 4), deps, { batchSize: 10, onRow: (r) => rows.push(r.status) });
+      assert.strictEqual(result.errors, 1);
+      assert.strictEqual(result.errorSamples[0].message, 'réponse 404');
+      assert.deepStrictEqual(written, [[1, 3, 4]]);
+      assert.deepStrictEqual(rows, ['ok', 'error', 'ok', 'ok']);
+    }
+    // sans texte : compté, jamais écrit
+    {
+      const { deps, written } = fakeDeps({ extractText: async () => '' });
+      const result = await publications.runJob(todo.slice(0, 2), deps, {});
+      assert.strictEqual(result.noText, 2);
+      assert.deepStrictEqual(written, []);
+    }
+    // annulation entre deux lignes : ce qui est prêt est écrit, le reste ne l'est pas
+    {
+      const controller = new AbortController();
+      const { deps, written } = fakeDeps({ yieldNow: async () => {} });
+      const result = await publications.runJob(todo, deps, {
+        batchSize: 50, signal: controller.signal,
+        onRow: (r) => { if (r.id === 3) controller.abort(); }
+      });
+      assert.strictEqual(result.cancelled, true);
+      assert.deepStrictEqual(written, [[1, 2, 3]], 'les trois premières lignes sont enregistrées avant l\'arrêt');
+    }
+    // écriture refusée : on s'arrête (elle échouerait pour chaque ligne), l'erreur est rendue
+    {
+      let attempts = 0;
+      const { deps } = fakeDeps({ write: async () => { attempts++; throw new Error('droits insuffisants'); } });
+      const result = await publications.runJob(todo, deps, { batchSize: 2 });
+      assert.strictEqual(result.writeFailed, 'droits insuffisants');
+      assert.strictEqual(attempts, 1, 'pas un essai par ligne');
+      assert.strictEqual(result.written, 0);
+    }
+    // source texte : aucune pièce jointe n'est demandée
+    {
+      let fetched = 0;
+      const { deps, written } = fakeDeps({ fetchPdf: async () => { fetched++; return new ArrayBuffer(0); } });
+      await publications.runJob([{ id: 9, text: 'Un résumé de publication sur la recherche sémantique et l\'indexation automatique.' }], deps, {});
+      assert.strictEqual(fetched, 0);
+      assert.deepStrictEqual(written, [[9]]);
+    }
+    console.log('OK publications.runJob (lots, erreur par ligne, scan, annulation, écriture refusée, source texte)');
+  }
+
+  // pdfText.readPdf : page par page, plafonds, libération du document.
+  {
+    assert.strictEqual(pdfText.isPdfBytes(new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31]).buffer), true);
+    const lead = new Uint8Array(200); lead.set([0x25, 0x50, 0x44, 0x46, 0x2d], 100);
+    assert.strictEqual(pdfText.isPdfBytes(lead.buffer), true, '%PDF- dans les 1024 premiers octets');
+    assert.strictEqual(pdfText.isPdfBytes(new Uint8Array([0x89, 0x50, 0x4e, 0x47]).buffer), false);
+    assert.strictEqual(pdfText.isPdfBytes(new ArrayBuffer(0)), false);
+    assert.strictEqual(pdfText.isPdfBytes(null), false);
+
+    let destroyed = 0; let cleaned = 0; let requested = [];
+    const makeDoc = (pages) => ({
+      numPages: pages,
+      getPage: async (n) => { requested.push(n); return { cleanup: () => { cleaned++; }, getTextContent: async () => ({ items: [{ str: 'page' }, { str: String(n) }] }) }; },
+      destroy: async () => { destroyed++; }
+    });
+    globalThis.GfsPaquets = { pdfjs: { modules: { 'pdfjs-dist/build/pdf.min.mjs': { getDocument: () => ({ promise: Promise.resolve(makeDoc(10)) }) } } } };
+    try {
+      let yields = 0;
+      const all = await pdfText.readPdf(new ArrayBuffer(4), { maxPages: 100, yieldNow: async () => { yields++; } });
+      assert.strictEqual(all.readPages, 10);
+      assert.strictEqual(all.truncated, false);
+      assert.strictEqual(all.text.split('\n\n').length, 10);
+      assert.strictEqual(yields, 10, 'la main est rendue au navigateur après chaque page');
+      assert.strictEqual(destroyed, 1, 'le document est libéré');
+      assert.strictEqual(cleaned, 10);
+
+      requested = [];
+      const capped = await pdfText.readPdf(new ArrayBuffer(4), { maxPages: 3, yieldNow: async () => {} });
+      assert.deepStrictEqual(requested, [1, 2, 3], 'jamais plus de pages que le plafond');
+      assert.strictEqual(capped.truncated, true);
+      assert.strictEqual(capped.pages, 10);
+
+      const small = await pdfText.readPdf(new ArrayBuffer(4), { maxChars: 12, yieldNow: async () => {} });
+      assert.ok(small.text.length <= 12 && small.truncated, 'plafond de caractères');
+
+      const controller = new AbortController();
+      requested = [];
+      const aborted = await pdfText.readPdf(new ArrayBuffer(4), { signal: controller.signal, yieldNow: async () => { controller.abort(); } });
+      assert.deepStrictEqual(requested, [1], 'l\'annulation arrête la lecture entre deux pages');
+      assert.strictEqual(aborted.truncated, true);
+      assert.ok(destroyed >= 4);
+      assert.strictEqual(await pdfText.extractTextFromPdf(new ArrayBuffer(4), { maxPages: 1, yieldNow: async () => {} }), 'page 1');
+    } finally {
+      delete globalThis.GfsPaquets;
+    }
+    console.log('OK pdfText.readPdf (page par page, plafonds, annulation, document libéré) et isPdfBytes');
+  }
+
+  // grist-api.js : pièces jointes (jeton en lecture seule), colonne ajoutée, écriture — contre un faux `grist` et un faux `fetch`.
+  {
+    const vm = require('vm');
+    const source = require('fs').readFileSync(require('path').join(__dirname, '..', 'js', 'grist-api.js'), 'utf8');
+    assert.ok(!/\[\s*'(RemoveTable|RemoveColumn|BulkRemoveRecord|ApplyUndoActions)'/.test(source), 'aucune action destructrice de table ou de colonne dans le pont Grist');
+    const calls = { actions: [], tokens: [], urls: [] };
+    let tokenCount = 0;
+    const sandbox = { console: { error() {}, log() {}, warn() {} }, setTimeout: (fn) => { fn(); return 0; }, encodeURIComponent };
+    sandbox.window = sandbox;
+    sandbox.GristBI = { data };
+    sandbox.fetch = async (url) => {
+      calls.urls.push(url);
+      if (/attachments\/401\//.test(url)) return { ok: false, status: 404, headers: { get: () => null } };
+      if (/attachments\/402\//.test(url)) return { ok: true, status: 200, headers: { get: () => String(500 * 1024 * 1024) }, arrayBuffer: async () => new ArrayBuffer(0) };
+      if (/attachments\/403\//.test(url) && !calls.retried) { calls.retried = true; return { ok: false, status: 401, headers: { get: () => null } }; }
+      return { ok: true, status: 200, headers: { get: () => '4' }, arrayBuffer: async () => new Uint8Array([1, 2, 3, 4]).buffer };
+    };
+    sandbox.grist = { docApi: {
+      getAccessToken: async (opts) => { calls.tokens.push(opts); return { token: 'jeton' + (++tokenCount), baseUrl: 'https://grist.example/api/docs/abc/', ttlMsecs: 600000 }; },
+      applyUserActions: async (actions) => { actions.forEach((a) => calls.actions.push(a)); return { retValues: actions.map((a) => (a[0] === 'AddColumn' ? { colRef: 9, colId: a[2] + '_2' } : null)) }; },
+      fetchTable: async () => ({ id: [1], A: ['x'] })
+    } };
+    vm.runInNewContext(source, sandbox);
+    const api = sandbox.GristBI.api;
+
+    const same = (x, y, msg) => assert.strictEqual(JSON.stringify(x), JSON.stringify(y), msg); // objets nés dans le contexte `vm` : on compare le JSON
+    same(await api.checkAttachmentAccess(), { ok: true });
+    same(calls.tokens[0], { readOnly: true }, 'jeton en LECTURE SEULE');
+    const bytes = await api.getAttachmentBytes(400);
+    assert.strictEqual(bytes.byteLength, 4);
+    assert.strictEqual(calls.urls[0], 'https://grist.example/api/docs/abc/attachments/400/download?auth=jeton1', 'adresse de téléchargement, sans double barre, jeton réutilisé');
+    await assert.rejects(api.getAttachmentBytes(401), (e) => e.code === 'ATTACHMENT_HTTP' && /404/.test(e.message));
+    await assert.rejects(api.getAttachmentBytes(402), (e) => e.code === 'ATTACHMENT_TOO_LARGE');
+    const retried = await api.getAttachmentBytes(403);
+    assert.strictEqual(retried.byteLength, 4, 'un 401 est retenté une fois avec un jeton neuf');
+    assert.ok(calls.urls.filter((u) => /attachments\/403\//.test(u)).length === 2);
+    assert.strictEqual(tokenCount, 2, 'un seul jeton demandé pour toute la série, renouvelé une fois après le 401');
+
+    // colonne : l'identifiant rendu par Grist gagne sur celui demandé
+    assert.strictEqual(await api.addTextColumn('Pubs', 'Mots_cles_auto'), 'Mots_cles_auto_2');
+    same(calls.actions[0], ['AddColumn', 'Pubs', 'Mots_cles_auto', { type: 'Text', isFormula: false }], 'une colonne de données, jamais une formule');
+    // écriture : un UpdateRecord par ligne, en un seul appel
+    calls.actions.length = 0;
+    await api.writeColumnValues('Pubs', 'Mots_cles_auto_2', [{ id: 4, value: 'a, b' }, { id: 7, value: 'c' }]);
+    same(calls.actions, [['UpdateRecord', 'Pubs', 4, { Mots_cles_auto_2: 'a, b' }], ['UpdateRecord', 'Pubs', 7, { Mots_cles_auto_2: 'c' }]]);
+    await api.writeColumnValues('Pubs', 'X', []);
+    assert.strictEqual(calls.actions.length, 2, 'rien à écrire = aucun appel');
+
+    // sans jeton (GFS sans la capacité `jeton`) : un refus clair avant tout travail
+    const refused = { console: { error() {}, log() {}, warn() {} }, setTimeout: (fn) => { fn(); return 0; } };
+    refused.window = refused; refused.GristBI = { data };
+    refused.grist = { docApi: { getAccessToken: async () => { throw new Error('GFS_REFUSE : getAccessToken demande la capacité jeton'); } } };
+    vm.runInNewContext(source, refused);
+    const check = await refused.GristBI.api.checkAttachmentAccess();
+    assert.strictEqual(check.ok, false);
+    assert.ok(/jeton/.test(check.message));
+    console.log('OK grist-api : jeton en lecture seule, téléchargement d\'une pièce jointe (404, trop lourde, jeton expiré), colonne ajoutée, écriture par UpdateRecord, refus clair sans jeton');
+  }
+
+  // Câblage : la fenêtre, ses scripts et ses textes.
+  {
+    const fsK = require('fs');
+    const pathK = require('path');
+    const index = fsK.readFileSync(pathK.join(__dirname, '..', 'index.html'), 'utf8');
+    const panel = fsK.readFileSync(pathK.join(__dirname, '..', 'js', 'keywords-panel.js'), 'utf8');
+    const main = fsK.readFileSync(pathK.join(__dirname, '..', 'js', 'main.js'), 'utf8');
+    // chaque élément que le panneau cherche par id existe dans la page
+    const wanted = Array.from(panel.matchAll(/\$\('([a-z-]+)'\)/g)).map((m) => m[1]);
+    assert.ok(wanted.length >= 20);
+    for (const id of wanted) assert.ok(index.includes(`id="${id}"`), `#${id} manque dans index.html`);
+    // les scripts, dans l'ordre : les pièces pures avant le pont Grist, le panneau avant main.js
+    const pos = (name) => index.indexOf(`<script src="js/${name}"`);
+    assert.ok(pos('keywords.js') > 0 && pos('keywords.js') < pos('pdf-text.js') && pos('pdf-text.js') < pos('publications.js') && pos('publications.js') < pos('keywords-panel.js') && pos('keywords-panel.js') < pos('main.js'));
+    // pas de <form> (submit ne part jamais dans le cadre isolé de GFS) ni de boîtes natives
+    const modal = index.slice(index.indexOf('id="keywords-modal"'), index.indexOf('id="comments-modal"'));
+    assert.ok(modal.length > 500 && !/<form/.test(modal), 'aucun <form> dans la fenêtre (piège n°20)');
+    assert.ok(!/\b(alert|confirm|prompt)\(/.test(panel.replace(/GristBI\.dialogs\.(alert|confirm|prompt)\(/g, '')), 'jamais de boîte native');
+    // tous les data-i18n de la fenêtre existent en fr ET en en
+    const keysUsed = new Set(Array.from(modal.matchAll(/data-i18n(?:-[a-z]+)?="([^"]+)"/g)).map((m) => m[1]));
+    for (const k of Array.from(panel.matchAll(/\bt\('([a-zA-Z.]+)'/g)).map((m) => m[1])) if (!k.endsWith('.')) keysUsed.add(k);
+    keysUsed.add('keywords.open');
+    keysUsed.add('ext.name.mots-cles-pdf'); // posée par `t('ext.name.' + EXTENSION_ID)`
+    keysUsed.add('ext.standalone.title');
+    keysUsed.add('ext.standalone.body');
+    for (const k of keysUsed) {
+      i18n.setLang('fr'); assert.notStrictEqual(i18n.t(k), k, `fr manquant : ${k}`);
+      i18n.setLang('en'); assert.notStrictEqual(i18n.t(k), k, `en manquant : ${k}`);
+    }
+    i18n.setLang('fr');
+    assert.ok(index.includes('id="open-keywords"') && /id="open-keywords"[^>]*edit-only/.test(index), 'le bouton du menu Données est réservé à l\'Édition');
+    assert.ok(/GristBI\.keywordsPanel\.init\(\{[^}]*getTableId[^}]*reloadTable/s.test(main) && !/getGfsLink|gfsLinkReady/.test(main.slice(main.indexOf('GristBI.keywordsPanel.init'), main.indexOf('GristBI.keywordsPanel.init') + 200)), 'main.js branche la fenêtre');
+    // grisé, jamais masqué : l'option PDF reste dans la page sans extension, l'extension se nomme comme dans le manifeste de GFS ;
+    // l'état, le chargement et l'ajout passent par js/extensions.js (jamais un lien avec GFS ni une bibliothèque ici)
+    assert.ok(/EXTENSION_ID = 'mots-cles-pdf'/.test(panel) && /disabled = !available/.test(panel));
+    assert.ok(/GristBI\.extensions\.stateOf\(EXTENSION_ID\)/.test(panel) && /GristBI\.extensions\.load\(EXTENSION_ID\)/.test(panel) && /GristBI\.extensions\.requestInstall\(EXTENSION_ID\)/.test(panel) && /GristBI\.extensions\.onChange\(/.test(panel));
+    assert.ok(!/GfsLink|\.library\(|\.install\(|loadLibrary/.test(panel), 'le panneau ne parle pas directement à GFS');
+    assert.ok(pos('extensions.js') > 0 && pos('extensions.js') < pos('keywords-panel.js'), 'js/extensions.js est chargé avant le panneau');
+    assert.ok(!/import\(['"]pdfjs|pdfjs-dist\//.test(index), 'aucune bibliothèque PDF dans la page : elle vient de GFS');
+    console.log('OK mots-clés des publications : fenêtre câblée (ids, scripts dans l\'ordre, aucun <form>, textes fr/en, grisé sans l\'extension)');
   }
 
   // extractVisuals + suggestTiles : waterfallChart — même forme que "bar" (1 dimension + 1 mesure,

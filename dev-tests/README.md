@@ -52,6 +52,17 @@ table de données (retrait de `BI_StressTest`, 2026-10-21, voir CLAUDE.md §1/§
 dashboard non vide ; pour un volume réaliste (~47 000 lignes), préremplir soi-même via
 `js/demo-data.js` dans un script Playwright ad hoc (voir plus bas).
 
+Deux ajouts du faux Grist pour « Mots-clés des publications » (18/11/2026) : `getAccessToken(options)` rend
+`{token, baseUrl: <origine de la page>/_stub/api/docs/stub, ttlMsecs, readOnly}` (ou lève une erreur si
+`window.__gristStubNoToken` est posé, pour jouer « GFS sans la capacité `jeton` »), et `AddColumn` rend `{colRef, colId}`.
+Rien de cela ne prouve la forme réelle de la réponse de Grist (HYPOTHESES.md). L'essai navigateur de cette fenêtre
+(scripts Playwright non committés, comme les autres) sert le dépôt par un petit serveur HTTP qui répond aussi aux
+téléchargements `/_stub/api/docs/stub/attachments/<id>/download` avec de vrais PDF (reportlab) et au fichier
+`prototype/vendor/pdfjs/1.0.0/pdfjs.js` de GFS (son `integrity` sert à `attach` d'un faux lien :
+`GristBI.extensions.attach(Promise.resolve({ hosted: true, ready, library, onExtensions, install }))`) ; pour que le cadre
+`sandbox="allow-scripts"` (origine `null`) joigne `127.0.0.1`, lancer Chromium avec
+`--disable-features=PrivateNetworkAccessForNavigations,PrivateNetworkAccessForWorkers,PrivateNetworkAccessSendPreflights,PrivateNetworkAccessRespectPreflightResults,BlockInsecurePrivateNetworkRequests,LocalNetworkAccessChecks`.
+
 Ouvrir `dev-tests/harness.html` directement dans un navigateur (double-clic) : pas de build, pas de
 serveur requis pour l'essentiel des tests. **Exception : `js/duckdb-engine.js`** (moteur SQL
 DuckDB-WASM, voir ROADMAP.md Tier 2) utilise `import()` dynamique de module ES, bloqué par CORS sur
