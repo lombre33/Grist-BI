@@ -2271,6 +2271,30 @@ const SAMPLE_TIME_SERIES = [
   console.log('OK js/charts.js — lot 4 : finalizeOption (thème, infobulle repliée, axes, libellés tronqués, entonnoir, radar), nuage de mots, rendu repris au changement de thème');
 }
 
+// Carte KPI sans objectif : la piste d'objectif cachée (`hidden`) ne doit laisser aucune trace (piège n°10, 18/11/2026)
+{
+  const fs = require('fs');
+  const path = require('path');
+  const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+  const css = read('css/style.css');
+  const charts = read('js/charts.js');
+  const main = read('js/main.js');
+  // la règle d'auteur `display: flex` bat [hidden] : sans règle explicite, une piste grise vide reste visible sous la carte
+  assert.ok(/\.tile-kpi-goal \{[^}]*display: flex/.test(css), 'précondition : .tile-kpi-goal est bien en display: flex');
+  assert.ok(/\.tile-kpi-goal\[hidden\] \{\s*display: none;?\s*\}/.test(css), '.tile-kpi-goal[hidden] { display: none } (piège n°10)');
+  // le HTML de la carte le crée caché, et renderKpi le cache sans objectif / le montre avec
+  assert.ok(/<div class="tile-kpi-goal" hidden>/.test(main), 'la piste d\'objectif naît cachée');
+  assert.ok(/if \(!prog\) \{\s*goalEl\.hidden = true;/.test(charts) && /goalEl\.hidden = false;/.test(charts), 'renderKpi cache la piste sans objectif et la montre avec');
+  // même règle pour tout autre élément que ce fichier cache avec `hidden` alors que sa feuille lui pose un display : chaque sélecteur
+  // `.x { ...display: flex|grid... }` dont le JS bascule `.hidden` doit avoir son `.x[hidden]` (ou un `!important` comme .edit-only)
+  for (const sel of ['tile-kpi-spark']) {
+    const rule = css.match(new RegExp('\\.' + sel + ' \\{([^}]*)\\}'));
+    assert.ok(rule, `règle .${sel} trouvée`);
+    assert.ok(!/display:\s*(flex|grid|block|inline)/.test(rule[1]) || new RegExp('\\.' + sel + '\\[hidden\\]').test(css), `.${sel} : [hidden] respecté`);
+  }
+  console.log('OK carte KPI — piste d\'objectif : [hidden] respecté (piège n°10), cachée sans objectif, visible avec');
+}
+
 // measureExportSheet / buildWorkbookSheetsAsync : export Excel RÉEL (plus un simple message) pour
 // une tuile Barres en mode de calcul temporel (Cumul/YTD/N-1) — voir js/export.js. `computeMeasureSeries`
 // est ici FACTICE (une Promise résolue avec un timeSeries écrit à la main), jamais le vrai
