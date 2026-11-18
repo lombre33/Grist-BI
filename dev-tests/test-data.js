@@ -2289,6 +2289,38 @@ const SAMPLE_TIME_SERIES = [
       }
     }
   }
+  // une échelle d'ENTIERS de moins de 5 chiffres (années, colonne entière) n'est jamais compactée ; au-delà, le compact reste
+  {
+    const fr = format.forTile({}, 'x', 'fr');
+    const en = format.forTile({}, 'x', 'en');
+    const n = (x) => x.replace(/[\u202f\u00a0]/g, ' ');
+    assert.ok(format.plainScale(1990, 2030) && format.plainScale(0, 3000) && format.plainScale(-2000, 2000) && format.plainScale(0, 9999), 'entiers < 10 000 : échelle en toutes lettres');
+    assert.ok(!format.plainScale(0, 10000) && !format.plainScale(0, 3266234) && !format.plainScale(-20000, 5), 'dès 5 chiffres : compact');
+    assert.ok(!format.plainScale(0, 0.0007) && !format.plainScale(0, 2500.5) && !format.plainScale(null, 5) && !format.plainScale(5, undefined) && !format.plainScale('a', 5), 'bouts non entiers ou absents : compact');
+    const years = fr.forScale(1990, 2030);
+    assert.deepStrictEqual([1990, 2000, 2010, 2020, 2030].map(years.axis), ['1990', '2000', '2010', '2020', '2030'], 'années : « 2010 », jamais « 2,01 k » ni « 2 010 »');
+    assert.strictEqual(years.format(2010), '2010');
+    assert.strictEqual(years.format(2010.4), '2010', 'valeur non entière >= 1000 : sans séparateur de milliers non plus');
+    assert.strictEqual(years.format(12.345), n(fr.format(12.345)), 'sous 1000 : le format habituel');
+    assert.deepStrictEqual([0, 1000, 2500, 3000].map(fr.forScale(0, 3000).axis), ['0', '1000', '2500', '3000'], 'colonne entière : pas de « 1 k »');
+    assert.deepStrictEqual([-2000, 0, 1000].map(en.forScale(-2000, 2000).axis), ['-2000', '0', '1000']);
+    assert.strictEqual(Object.is(fr.forScale(0, 100).axis(-0), true), false);
+    assert.strictEqual(fr.forScale(0, 100).axis(-0), '0', 'jamais « -0 »');
+    assert.deepStrictEqual([0, 1e6, 2e6].map(fr.forScale(0, 3266234).axis).map(n), ['0', '1 M', '2 M'], 'grande échelle : compact inchangé');
+    assert.strictEqual(n(fr.forScale(0, 3266234).format(3266234)), '3 266 234', 'grande échelle : format inchangé');
+    // un non-entier sur une échelle entière garde le compact exact (jamais arrondi à l'entier)
+    assert.strictEqual(fr.forScale(0, 100).axis(7.5), fr.axis(7.5));
+    assert.strictEqual(fr.forScale(0, 100).axis(null), '');
+    // les formats choisis restent les leurs : devise, pourcentage, décimales fixes, parenthèses
+    const cur = format.makeFormatter({ locale: 'fr-FR', kind: 'currency', currency: 'EUR', minFD: null, maxFD: null, notation: 'standard', useAuto: false, parens: false });
+    assert.strictEqual(n(cur.forScale(0, 5000).format(2500)), n(cur.format(2500)), 'devise : format de la colonne conservé');
+    const pct = format.makeFormatter({ locale: 'fr-FR', kind: 'percent', useAuto: true, minFD: 0, maxFD: 0, notation: 'standard', parens: false });
+    assert.strictEqual(pct.forScale(0, 1).axis(0.5), pct.axis(0.5), 'pourcentage : inchangé');
+    const fixed = format.forTile({ numberFormat: { mode: 'custom', decimals: 2, notation: 'standard' } }, 'x', 'fr');
+    assert.strictEqual(n(fixed.forScale(0, 5000).format(2500)), n(fixed.format(2500)), 'décimales choisies : respectées');
+    // BigInt de DuckDB
+    assert.strictEqual(years.axis(2010n), '2010');
+  }
   // sans graduation, la géométrie est exactement celle d'avant (aucune place réservée pour rien)
   for (const [w, h] of [[240, 150], [316, 162], [600, 400]]) {
     const a = format.gaugeLayout(w, h);
@@ -2303,12 +2335,15 @@ const SAMPLE_TIME_SERIES = [
   // câblage : la jauge n'a plus de graduations intermédiaires ni d'aiguille sur des libellés ; elle suit le redimensionnement
   const charts = require('fs').readFileSync(require('path').join(__dirname, '..', 'js', 'charts.js'), 'utf8');
   assert.ok(/F\.gaugeTicks\(g\.min, g\.max, n\)/.test(charts) && /F\.gaugeTickBudget\(base\.r\)/.test(charts) && /F\.gaugeTickPlacement\(L, it\.frac\)/.test(charts), 'graduations calculées, plafonnées par la place, placées à l\'extérieur de l\'arc');
+  assert.ok(/g\.fmt\.forScale\(g\.min, g\.max\)/.test(charts) && /scale\.format\(g\.value\)/.test(charts), 'jauge : bornes, graduations et valeur lues sur l\'échelle entière (années jamais compactées)');
+  assert.ok(/f\.forScale\(hist\.bins\[0\]\.lo, hist\.bins\[hist\.bins\.length - 1\]\.hi\)/.test(charts), 'histogramme : les bornes de classes forment une échelle');
+  assert.ok(/axisLabel: \{ interval: 'auto', width: 84, overflow: 'truncate'/.test(charts), 'histogramme : libellé de classe de largeur fixée (finalizeOption ne le tronque pas à la largeur d\'une barre : « 199… »)');
   assert.ok(/lay\.overflow/.test(charts) && /0\.72 \* base\.r/.test(charts), 'elles disparaissent plutôt que de faire trop rétrécir l\'arc ou de sortir de la tuile');
   assert.ok(/startAngle: 180,\s*endAngle: 0/.test(charts), 'jauge en demi-cercle');
   assert.ok(/axisLabel: \{ show: false \}/.test(charts) && /splitLine: \{ show: false \}/.test(charts), 'plus de graduations dans l\'arc');
   assert.ok(/inst\.__refit/.test(charts) && /instance\.__refit = draw/.test(charts), 'la jauge se redessine à chaque redimensionnement (resizeAll)');
   assert.ok(/container-type: inline-size/.test(require('fs').readFileSync(require('path').join(__dirname, '..', 'css', 'style.css'), 'utf8')), 'carte KPI : conteneur de requête (valeur ajustée à la largeur)');
-  console.log('OK js/format.js — jauge : niceCeil, gaugeLayout (7 tailles de tuile), graduations extérieures (gaugeTicks, placement, 4 plages), fitFont, câblage');
+  console.log('OK js/format.js — jauge : niceCeil, gaugeLayout (7 tailles de tuile), graduations extérieures (gaugeTicks, placement, 4 plages), échelles entières jamais compactées (plainScale, forScale), fitFont, câblage');
 }
 
 // js/format.js + panneau : réglage « Format des nombres » par tuile (audit de lisibilité, lot 3, 18/11/2026)
