@@ -1,6 +1,6 @@
 # GFS-ETAT : Grist-BI
 
-Mis à jour le 2026-11-18 (demande `pdfjs` refaite : GFS porte déjà cette bibliothèque en module, `js/pdf-text.js` adapté ; ECharts 6.1.0 noté dans « Changements qui touchent GFS » ; consigne 016 faite ; consigne 017 lue, PAS faite (SheetJS : la dernière version est inatteignable d'ici, voir « Questions pour GFS »), `consignes/bi/INDEX.md` à `24d9993` ou plus récent). La
+Mis à jour le 2026-11-18 (demande `pdfjs` refaite : GFS porte déjà cette bibliothèque en module, `js/pdf-text.js` adapté ; ECharts 6.1.0 noté dans « Changements qui touchent GFS » ; consignes 016 et 017 faites (SheetJS remplacé par ExcelJS 4.4.0, choix du porteur), `consignes/bi/INDEX.md` à `24d9993` ou plus récent). La
 011 n'a pas été lue (remplacée par la 012 avant lecture, consigne explicite d'Antoine).
 
 ## Consignes
@@ -52,12 +52,11 @@ Mis à jour le 2026-11-18 (demande `pdfjs` refaite : GFS porte déjà cette bibl
     Les seules chaînes qui entrent dans le texte SQL sont des noms de COLONNE, jamais une valeur de
     cellule, validés par `assertSafeIdentifier` (`js/duckdb-engine.js:56-61`) avant toute
     concaténation (ex. lignes 68-72, 138-139).
-  - export Excel (`js/export.js:34`, `XLSX.utils.aoa_to_sheet`) : vérifié empiriquement avec le
-    SheetJS vendorisé (`js/vendor/xlsx/xlsx.full.min.js`) — toute valeur venant de `tileExportSheet`/
-    `rowsForTile` est typée `t:"s"` (texte) par `aoa_to_sheet`, jamais `t:"f"` (formule) ; une valeur
-    commençant par `=`, `+`, `-` ou `@` est donc écrite comme du texte littéral dans le fichier .xlsx,
-    jamais réinterprétée comme une formule à la réouverture — contrairement à un export CSV (sans
-    information de type, où Excel devine le type à l'import), ce que ce dépôt ne produit pas.
+  - export Excel (`js/export.js`, `cellValue`/`buildWorkbook`) : **refait le 18/11/2026 avec ExcelJS 4.4.0** (avant : SheetJS `aoa_to_sheet`, mêmes conclusions) —
+    toute valeur venant de `tileExportSheet`/`rowsForTile` est écrite comme chaîne partagée (`t="s"`), jamais comme formule : ExcelJS ne pose une
+    formule (`<f>`) que pour un OBJET `{ formula }`, et `cellValue` ne laisse passer aucun objet (tableaux et objets deviennent du texte). Un texte
+    commençant par `=`, `+`, `-` ou `@` est donc du texte littéral dans le fichier .xlsx ; le test Node lit le XML du classeur et vérifie 0 balise `<f>` —
+    contrairement à un export CSV (sans information de type), ce que ce dépôt ne produit pas.
   - export PPTX en tableau natif (`js/pptx-export.js:60-67`, `slide.addTable`) : chaque cellule est un
     objet `{text: String(...)}` de PptxGenJS ; une diapositive n'a pas de moteur de formule, aucun
     risque équivalent.
@@ -176,7 +175,7 @@ Mis à jour le 2026-11-18 (demande `pdfjs` refaite : GFS porte déjà cette bibl
   `dev-tests/harness.html` (bandeau cause masqué par défaut, texte résolu dans les deux langues, pas
   d'erreur JS) et contre `index.html` lui-même (même bandeau présent une seule fois, aucune erreur de
   page). GFS pourra rejouer avec la vraie app dès qu'il le souhaite.
-- 013 · faite · `adc5c3d` · `index.html` et `dev-tests/harness.html`
+- 013 · faite · `adc5c3d` · (depuis la 017, la bibliothèque chargée au premier export est ExcelJS 4.4.0, `js/vendor/exceljs/exceljs.min.js` ; le mécanisme ci-dessous est inchangé, seul le nom du fichier et le global `ExcelJS` à la place de `XLSX` ont bougé) `index.html` et `dev-tests/harness.html`
   ne portent plus la balise statique de SheetJS ; `js/export.js` la charge désormais lui-même via
   une balise `<script>` ajoutée dynamiquement à `exportDashboardToExcel` (une seule fois, mémoïsée,
   résolue au `load`), vers une URL absolue calculée à partir de `document.currentScript.src` — même
@@ -250,28 +249,29 @@ Mis à jour le 2026-11-18 (demande `pdfjs` refaite : GFS porte déjà cette bibl
   un modèle », « Créer », copie du catalogue). **Trouvé en route** : une aire empilée par catégorie restait à plat
   au-delà de 5 000 lignes (DuckDB rend un entier en BigInt, le JS pur un nombre) — corrigé à part, PR #65. Voir la
   ligne « modeles » dans « Demandes à GFS ».
-- 017 · lue · **pas faite** (18/11/2026, rien n'est changé dans `js/vendor/xlsx/`) · SheetJS reste en **0.18.5**.
-  **Ce qui bloque** : les versions corrigées ne sont qu'à `cdn.sheetjs.com`, et la politique réseau de
-  l'environnement où cette app est développée REFUSE cet hôte (réponse 403 à la connexion ; `git.sheetjs.com` ne répond
-  pas et `github.com/SheetJS` est refusé aussi). Le registre npm est joignable mais n'a que la 0.18.5
-  (`dist-tags.latest`, relevé le 18/11). Je n'ai pas pris de copie « miroir » d'un tiers sur npm : sans pouvoir la
-  comparer à l'archive officielle, ce serait changer de provenance pour un correctif de sécurité, sans que le porteur ait
-  tranché. **Exposition relevée dans mon code** (la consigne demande de la confirmer) : `js/export.js` n'appelle que
-  `XLSX.utils.book_new`, `aoa_to_sheet`, `book_append_sheet` et `XLSX.writeFile` ; aucun `XLSX.read`/`readFile` nulle part
-  dans `js/` (hors `js/vendor/`), aucun format de cellule posé, aucune valeur de format venue d'un fichier. Les deux avis
-  visent surtout la LECTURE d'un classeur (pollution de prototype, expression régulière sur les formats) : le chemin
-  d'écriture de cette app, dont les données viennent de la table de la personne, ne les touche pas à ma lecture du code
-  (à confirmer en lisant les avis, pas un audit). **Quatre issues, au choix du porteur** : (1) le porteur dépose
-  l'archive de `cdn.sheetjs.com` (`dist/xlsx.full.min.js` + sa licence), je la vendorise au même nom et au même
-  endroit, je rejoue l'export, et la 017 passe à « faite » ; (2) le porteur autorise `cdn.sheetjs.com` dans le réseau de
-  l'environnement et une prochaine session le fait ; (3) passer à ExcelJS 4.4.0 (celle que GFS sert déjà à
-  Publipostage+, sans avis publié, joignable sur npm) : réécriture de `js/export.js` (écriture asynchrone, tout le
-  classeur reconstruit) — un chantier plus lourd que remplacer le fichier, donc proposé, pas choisi ; (4) attendre en
-  0.18.5. **ECharts** (demandé par la 017) : **6.1.0 est fait**, commit `f6ca386` (fusionné dans `main` par la PR #60,
-  `5d0da98`), `js/vendor/echarts/echarts.min.js` annonce `version:"6.1.0"` ; la 5.6.0 et son avis de niveau moyen
-  (GHSA-fgmj-fm8m-jvvx) ne sont plus dans le dépôt. **pdfmake** : pas étudiée, laissée en 0.2.7.
+- 017 · faite · `8584515` (18/11/2026) · **SheetJS 0.18.5 remplacé par ExcelJS 4.4.0**, choix du porteur. Les versions corrigées de SheetJS ne sont
+  qu'à `cdn.sheetjs.com`, que la politique réseau de l'environnement de cette app REFUSE (403 ; `git.sheetjs.com` ne répond pas, `github.com/SheetJS`
+  est refusé, npm n'a que la 0.18.5) : je l'ai dit ici plus tôt le même jour (PR #75), et le porteur a tranché pour ExcelJS (« harmoniser les dépendances » : c'est celui de
+  Publipostage+). Aucun miroir tiers de SheetJS n'a été pris. **Ce qui est fait** : `js/vendor/exceljs/exceljs.min.js` (`dist/exceljs.min.js` du paquet npm
+  `exceljs@4.4.0`, 947 702 octets, + `LICENSE` MIT), **octet pour octet la copie de GFS** (`prototype/vendor/exceljs/4.4.0/`) et même empreinte
+  `sha384-Pqp51FUN2/qzfxZxBCtF0stpc9ONI6MYZpVqmo8m20SoaQCzf+arZvACkLkirlPz` que ton catalogue (l'archive npm a aussi l'intégrité du registre ; un test Node refait
+  le calcul) ; `js/vendor/xlsx/` supprimé ; `js/export.js` réécrit (feuilles et valeurs inchangées, seule la bibliothèque change) ; toujours chargé AU PREMIER
+  EXPORT seulement, même origine (013 conservée : aucune requête avant le clic, une seule après, mesuré), donc aucune adresse nouvelle ni changement de
+  politique de sécurité. Poids : 881 727 -> 947 702 octets (+ 65 975). **Exposition de l'ancienne version** (la consigne demandait de la confirmer) : `js/export.js`
+  n'écrivait que des classeurs (`book_new`, `aoa_to_sheet`, `book_append_sheet`, `writeFile`), jamais de lecture. **ECharts : 6.1.0 est fait**, commit `f6ca386`
+  (PR #60, `5d0da98`) ; la 5.6.0 et son avis de niveau moyen ne sont plus dans le dépôt. **pdfmake** : pas étudiée, laissée en 0.2.7 (aucun avis publié). Essais :
+  Node avec le vrai paquet (cellules, relecture du classeur, XML sans aucune formule, noms de feuille) ; navigateur contre le vrai `index.html` et le faux
+  Grist (téléchargement `dashboard-bi.xlsx`, une feuille par tuile, tuile en mode mesure YTD avec ses vraies valeurs). **Un constat pour GFS** : dans un
+  `<iframe sandbox="allow-scripts">` SEUL, aucun téléchargement ne part (Chromium), avant (SheetJS) comme après ; avec `allow-downloads`, il part. Ton cadre déclare
+  `allow-downloads` (`prototype/js/broker/frames.js:8`, lu) : l'export devrait donc télécharger dans GFS, **non rejoué dans le vrai GFS**. **Un bug latent trouvé
+  et corrigé en route** : deux tuiles dont les titres ne diffèrent que par la casse donnaient deux noms de feuille « identiques » pour Excel (erreur à l'export).
+  Voir « Changements qui touchent GFS » et la ligne `exceljs` de « Demandes à GFS ».
 
 ## Changements qui touchent GFS
+- 2026-11-18 · `8584515` · **Bibliothèque retirée : SheetJS 0.18.5 (`js/vendor/xlsx/`) ; bibliothèque ajoutée : ExcelJS 4.4.0 (`js/vendor/exceljs/`)**, pour l'export Excel (consigne 017). Copie
+  dans le dépôt de l'app, même fichier que celui de GFS (`sha384-Pqp51FUN2/…`), chargée à la demande depuis la même origine : aucune adresse nouvelle, aucune
+  politique de sécurité changée, aucune extension. Le global est `ExcelJS` (forme `script`, comme chez Publipostage+) ; le poids passe de 881 727 à 947 702 octets.
+  Ce n'est pas une demande à GFS (une bibliothèque dont l'app ne peut pas se passer pour exporter reste dans l'app) : voir pourtant la ligne `exceljs` de « Demandes à GFS ».
 - 2026-11-18 · `js/pdf-text.js` adapté à la forme que GFS fournit pour `pdfjs` (module dans `GfsPaquets`, plus de global `window.pdfjsLib`) ; toujours rien de branché dans `index.html`. Voir la demande `pdfjs` plus bas.
 - 2026-11-18 · ECharts monté de la 5.6.0 à la **6.1.0** (dernière stable du registre npm, 19/05/2026, même version que
   celle que GFS donne à l'extension « Graphique » de Publipostage+). **Ce n'est pas une demande à GFS** : ECharts est la
@@ -311,12 +311,15 @@ Mis à jour le 2026-11-18 (demande `pdfjs` refaite : GFS porte déjà cette bibl
   ni `gfs.json`, ni stockage par le courtier.
 
 ## Questions pour GFS
-- **017 · SheetJS** : comment obtenir la dernière version ? `cdn.sheetjs.com` est refusé par la politique réseau
-  de l'environnement de cette app (voir l'entrée 017 plus haut). Si GFS peut déposer l'archive (avec son empreinte
-  SHA-256 relevée chez lui) ou si le porteur la fournit, je la vendorise tout de suite ; sinon le porteur choisit
-  entre autoriser l'hôte, ExcelJS 4.4.0 ou attendre.
+- aucune
 
 ## Demandes à GFS
+- **`exceljs`** · version exacte **`4.4.0`** · `js/export.js` (`exportDashboardToExcel`, `buildWorkbook`) · l'export Excel du tableau de bord (un classeur `.xlsx`, une feuille par
+  tuile). **Forme fournie : `script`** (`dist/exceljs.min.js`, pose le global `ExcelJS`), la même que celle de Publipostage+ chez toi ; l'app la charge par une balise
+  `<script>` ajoutée au premier export, depuis sa propre copie (`js/vendor/exceljs/exceljs.min.js`, mêmes octets, même `sha384-Pqp51FUN2/qzfxZxBCtF0stpc9ONI6MYZpVqmo8m20SoaQCzf+arZvACkLkirlPz`).
+  **Ce n'est PAS une demande de la porter à ma place** : l'export est une fonction dont l'app ne peut pas se passer pour tourner seule (`consignes/LISEZ-MOI.md`, « Demander à GFS », point 1),
+  la copie reste donc dans l'app et l'app tourne déjà sans rien de ta part. La ligne déclare la dépendance pour ta fenêtre « Dépendances » (la 017 la demande) : dis-moi seulement si tu préfères
+  la servir toi-même, je n'attends rien d'autre. Remplace SheetJS 0.18.5 (voir la 017).
 - **`modeles`** · `cf889aa` · `modeles/modeles.json` · mes modèles de départ pour « Depuis un modèle » :
   trois rapports (`vue-d-ensemble`, `evolution`, `repartition`), chacun avec sa vignette WebP à côté
   (`modeles/<id>.webp`). **`ouverture.modele`** : oui, cette app sait ouvrir un modèle (kit 0.24.0, `7aa030c`) ; un
