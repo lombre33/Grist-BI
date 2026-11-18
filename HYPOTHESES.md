@@ -2459,16 +2459,17 @@ dans une seule instance de widget, avec ses propres tuiles internes.
       (`hosted`, `library`, `onExtensions`, `install`) qui ajoute puis retire l'extension pendant que la fenêtre est
       ouverte (l'option PDF se dégrise, puis se regrise, sans rouvrir) ; l'app seule (grisée, « Comment l'avoir »,
       colonne de texte qui marche) ; GFS sans `jeton` (refus clair AVANT toute écriture, aucune colonne créée) ; anglais.
-    - **Non vérifié, à relever dans un vrai Grist** (le faux `window.grist` de `dev-tests/` ne le prouve pas) :
-      (1) la forme exacte de la réponse de `getAccessToken({ readOnly: true })` (`baseUrl`, `token`, `ttlMsecs`) ;
-      (2) l'adresse de téléchargement `${baseUrl}/attachments/<id>/download?auth=<jeton>` et son comportement CORS depuis
-      le cadre du widget ; (3) la valeur que `AddColumn` rend (`retValues[0].colId`) — le code retombe sur le nom demandé
-      si elle manque, mais Grist peut avoir renommé la colonne ; (4) le comportement sur de VRAIS PDF de chercheurs
+    - **Mesuré par GFS dans un vrai Grist 1.7.19 avec cette app** (consigne GFS 022, 18/11/2026, `labo/run-bi-jeton.mjs`, 14 vérifications sur 14) :
+      (1) la réponse de `getAccessToken({ readOnly: true })` est `{ token, baseUrl, ttlMsecs }` ; (2) `GET <baseUrl>/attachments/<id>/download?auth=<jeton>`
+      rend les octets du PDF joint octet pour octet depuis le cadre isolé (origine « null »), sans autre réglage ; un numéro absent lève `ATTACHMENT_HTTP` 404 ;
+      (3) `AddColumn` rend le vrai identifiant (`MotsCles2` quand `MotsCles` est pris), `writeColumnValues` n'écrit que dans cette colonne ; (6) **dans GFS**,
+      `jeton` est déclarée en lecture seule et `ecrit: ["*"]` couvrait déjà la table que la personne choisit (`ModifyColumn` reste refusé : sans effet ici) — les deux demandes
+      de GFS-ETAT.md sont sorties.
+    - **Non vérifié** (le faux `window.grist` de `dev-tests/` ne le prouve pas, et GFS n'a pas joué mon écran) : la fenêtre « Mots-clés des publications » elle-même dans le vrai GFS
+      (clics, confirmation, bilan) et l'extension `mots-cles-pdf` grisée puis dégrisée à l'écran ; (4) le comportement sur de VRAIS PDF de chercheurs
       (colonnes multiples, en-têtes et pieds de page répétés qui peuvent gonfler un mot récurrent, formules, PDF
       protégés) ; (5) le temps pour 100 000 lignes (lecture séquentielle, un PDF après l'autre : à mesurer, la fenêtre
-      permet d'arrêter et de reprendre, les lignes faites ne sont pas refaites) ; (6) **dans GFS** : le courtier refuse
-      `getAccessToken` sans la capacité `jeton` et l'écriture dans la table de la personne sans un motif `ecrit` —
-      deux demandes dans GFS-ETAT.md, la lecture d'un PDF ne marchera dans GFS qu'après leur déclaration.
+      permet d'arrêter et de reprendre, les lignes faites ne sont pas refaites).
     - **Limites connues** : une ligne dont le PDF est un scan (ou ne se lit pas) est réessayée à chaque lancement (pas de
       mémoire « déjà essayé » : ajouterait une colonne ou un état à tenir, à décider avec Antoine si les scans
       sont nombreux) ; le français et l'anglais seulement (la langue se devine, ou se choisit) ; aucune recherche n'est

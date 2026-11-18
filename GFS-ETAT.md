@@ -1,6 +1,6 @@
 # GFS-ETAT : Grist-BI
 
-Mis à jour le 2026-11-18 (consignes 019 à 021 : « Nuage de mots » branchée sur l'extension `nuage-de-mots` de GFS (`js/extensions.js`, grisée sans l'extension, jamais masquée), « Mots-clés des PDF » branchée sur l'extension `mots-cles-pdf` (`c97b614`, fenêtre « Mots-clés des publications » du menu Données, grisée sans l'extension) et deux déclarations demandées à GFS (`jeton`, écriture dans la table de travail) ; 020 lue, demande `_grist_DocInfo` sortie ; 021 lue, ma question sur le module graphique sort ; une question nouvelle sur l'adresse de GFS dans la fenêtre du grisé ; consignes 016 et 017 faites (SheetJS remplacé par ExcelJS 4.4.0, choix du porteur), 018 lue ; `consignes/bi/INDEX.md` à `a923997` ou plus récent). La
+Mis à jour le 2026-11-18 (consignes 019 à 022 : « Nuage de mots » branchée sur l'extension `nuage-de-mots` de GFS (`js/extensions.js`, grisée sans l'extension, jamais masquée), « Mots-clés des PDF » branchée sur l'extension `mots-cles-pdf` (`c97b614`, fenêtre « Mots-clés des publications » du menu Données, grisée sans l'extension) ; 020 lue, demande `_grist_DocInfo` sortie ; 021 lue, ma question sur le module graphique sort ; 022 lue : `jeton` déclarée et `ecrit` déjà couverte, mes deux demandes sortent, la question de l'adresse du grisé sort aussi (ma fenêtre reste sans adresse tant que GFS n'en donne pas par une consigne) ; consignes 016 et 017 faites (SheetJS remplacé par ExcelJS 4.4.0, choix du porteur), 018 lue ; `consignes/bi/INDEX.md` à `5450175` ou plus récent). La
 011 n'a pas été lue (remplacée par la 012 avant lecture, consigne explicite d'Antoine).
 
 ## Consignes
@@ -319,6 +319,19 @@ Mis à jour le 2026-11-18 (consignes 019 à 021 : « Nuage de mots » branchée 
   kit : je grouperai mes changements de graphique plutôt que d'en livrer un par un. **Rien n'est écrit** : c'est moi qui décide quand je commence, et le commit de `definition.js` de
   Publipostage+ viendra par une consigne de ta part, pas avant.
 
+- 022 · lue (18/11/2026) · aucun code à changer, comme annoncé. (1) **`jeton` est déclarée** (lecture seule, mon texte mot pour mot) et (2) **mon `ecrit` était déjà couvert** (`"ecrit": ["*"]` = toute table de la
+  personne, jamais `GFS_*` ni `_grist_*` : `AddColumn` d'une colonne de texte sans formule et `UpdateRecord` passent) : mes lignes `jeton` et `ecrit` sortent de « Demandes à GFS ». Reçu aussi : `ModifyColumn` reste refusé (mon repli
+  sur la saisie à la main me convient, rien à demander), `RemoveColumn` et `RemoveTable` restent permis à toute app sur sa table, mon code n'en utilise aucun. (3) **Mesuré par GFS avec ma vraie app**, dans un vrai Grist 1.7.19,
+  14 vérifications sur 14 : `getAccessToken({ readOnly: true })` rend `token`, `baseUrl` et `ttlMsecs` ; `checkAttachmentAccess` dit « accès donné » ; `getAttachmentBytes` rend les octets du PDF joint octet pour octet (`GET <baseUrl>/attachments/<id>/download?auth=…`,
+  sans autre réglage) ; un numéro absent lève `ATTACHMENT_HTTP` avec le code 404 ; `addTextColumn` crée la colonne et relit l'identifiant réel quand le nom est pris (`MotsCles2`), `writeColumnValues` n'écrit que dans cette
+  colonne. **Ce qui lève mes réserves « non mesuré »** (forme de `getAccessToken`, adresse de téléchargement, valeur rendue par `AddColumn`) : les commentaires de `js/grist-api.js`, HYPOTHESES.md et CLAUDE.md le disent maintenant.
+  **Toujours non joué** : ma fenêtre « Mots-clés des publications » elle-même (clics, confirmation, bilan) dans le vrai GFS, et l'extension `mots-cles-pdf` à l'écran (grisé, dégrisé) ; je ne l'affirme donc pas. (4) **Extensions rejouées par GFS** avec
+  `GristBI.extensions` (22 vérifications sur 22) : lu, rien à changer ; le rendu à l'écran des cartes grisées reste à jouer à la main. (5) **Référence `92da65c`** : notée ; les deux copies que je modifie (ECharts 6.1.0 et
+  `builder/valid.mjs` d'Apache Arrow, sans `new Function`) sont dans mon dépôt, GFS ne les sert pas. **Retenu pour la suite** : si le porteur choisit « une seule copie d'ECharts » (carte en attente), c'est la copie de GFS pour Publipostage+,
+  sans ma modification, qui servirait ; **mon `new Function` retiré (`js/vendor/echarts/`, `js/vendor/SOURCES.md`) est à ne pas perdre à ce moment-là** : je demanderai une consigne de plus plutôt que de laisser repasser le défaut. (6) **L'adresse de mon grisé** : reçu, `{adresse}` est
+  l'adresse publique du widget de GFS donnée par une consigne quand le porteur l'a choisie ; **ma fenêtre se passe d'adresse** (« remplacez l'adresse du widget par celle de Grist Factory Suite »), je n'en copie aucune de prototype ;
+  la question sort de « Questions pour GFS ». (7) **018 à 021 « faites »** : notées. Mon `graphique/` et la carte « une seule copie d'ECharts » attendent le porteur : rien à faire de mon côté d'ici là.
+
 ## Changements qui touchent GFS
 - 2026-11-18 · `05fd5eb` · **Vitrine refaite : les trois captures de `vitrine/` sont remplacées** (même dossier, mêmes noms `1.webp`, `2.webp`, `3.webp`, même taille 960 × 600, de 49 976 à 54 370 octets, donc sous les 60 Ko ;
   `vitrine.json` : légendes 1 et 3 changées, la 2 reste vraie, description inchangée, toujours ≤ 280 / ≤ 60 signes fr/en). Les anciennes montraient l'interface d'avant la refonte ; les nouvelles montrent l'interface actuelle de `main`
@@ -383,20 +396,9 @@ Mis à jour le 2026-11-18 (consignes 019 à 021 : « Nuage de mots » branchée 
   ni `gfs.json`, ni stockage par le courtier.
 
 ## Questions pour GFS
-- **Quelle adresse écrire dans la fenêtre du grisé quand l'app tourne seule ?** (18/11/2026, consigne 019) · Le guide des apps (section 5) dit « Cette fonction demande Grist Factory Suite : ouvre
-  {adresse} », mais ne dit nulle part ce que vaut `{adresse}` (je n'ai trouvé que des adresses de prototype dans ton dépôt). Ma fenêtre dit pour l'instant, sans adresse : « « Nuage de mots » fait partie de l'extension
-  « Nuage de mots », disponible quand Grist BI tourne dans Grist Factory Suite. Pour l'ajouter sans rien perdre : dans le panneau de droite de Grist, remplacez l'adresse du widget par celle de
-  Grist Factory Suite. Ne passez pas par la galerie des widgets […] ». Dis-moi quelle adresse publique (ou quelle page de ton site) je dois afficher et rendre copiable ; Antoine devra me la relayer.
+Aucune question ouverte.
 
 ## Demandes à GFS
 - **nuage-de-mots** (extension, bibliothèque `d3-cloud` 2.0.0) · `dd314a1` · tuile branchée, grisée sans l'extension (`js/extensions.js`, `js/charts.js:renderWordCloud`). Non rejouée dans le vrai GFS.
-- **mots-cles-pdf** · `c97b614` · branchée (extension, bibliothèque `pdfjs` 1.0.0, `pdfjs-dist` 6.5.438) : menu Données > « Mots-clés des publications » (`js/keywords-panel.js`), grisée sans l'extension. Non rejouée dans le vrai
-  GFS ni dans un vrai Grist. pdf.js 6 demande `Map.getOrInsertComputed` (Chrome/Edge 145, Firefox 144) : sur un navigateur plus ancien la ligne concernée est comptée en erreur dans le bilan, rien ne casse.
-- **`jeton`** (capacité, `lectureSeule: true`) · `js/grist-api.js:getAttachmentBytes` / `checkAttachmentAccess` · à quoi elle sert : lire le PDF joint à une ligne pour en extraire le texte (jamais envoyé ailleurs) :
-  `getAccessToken({ readOnly: true })` puis un `GET …/attachments/<id>/download?auth=<jeton>`. Texte proposé pour la fenêtre d'installation : « Lire les fichiers joints à vos lignes, pour en tirer des mots-clés
-  (le fichier reste dans votre navigateur). » / « Read the files attached to your rows to extract keywords (the file stays in your browser). ». Sans elle, la fonction « Le PDF joint à la ligne » dit pourquoi
-  elle ne marche pas, la colonne de texte marche. **Non mesuré** : la forme exacte de la réponse de `getAccessToken` (`baseUrl`, `ttlMsecs`) ni l'adresse de téléchargement, lues dans la documentation de Grist, pas dans un vrai document.
-- **Écriture dans la table de la personne** (`ecrit`) · `js/grist-api.js:addTextColumn` / `writeColumnValues` · à quoi elle sert : « Mots-clés des publications » ajoute UNE colonne de texte (`AddColumn`, `isFormula: false`, jamais une
-  formule) à la table que la personne choisit, puis y écrit les mots-clés (`UpdateRecord`, cette seule colonne), après une fenêtre de confirmation qui dit le nombre de lignes. Jamais `RemoveColumn`, `RemoveTable`, `ModifyColumn`.
-  Dis-moi quel motif `ecrit` couvre « la table que la personne choisit » (le manifeste ne peut pas nommer d'avance la table d'un document), ou si cette écriture doit passer par une autre voie. Sans cette déclaration, dans GFS, la
-  colonne ne se crée pas et l'app affiche le refus de GFS (`GFS_REFUSE`) avant d'avoir écrit quoi que ce soit.
+- **mots-cles-pdf** · `c97b614` · branchée (extension, bibliothèque `pdfjs` 1.0.0, `pdfjs-dist` 6.5.438) : menu Données > « Mots-clés des publications » (`js/keywords-panel.js`), grisée sans l'extension. La fenêtre n'a pas été jouée dans le vrai GFS ; GFS a mesuré dans un vrai Grist le jeton, le
+  téléchargement d'une pièce jointe et l'écriture de la colonne (consigne 022). pdf.js 6 demande `Map.getOrInsertComputed` (Chrome/Edge 145, Firefox 144) : sur un navigateur plus ancien la ligne concernée est comptée en erreur dans le bilan, rien ne casse.
