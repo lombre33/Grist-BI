@@ -76,8 +76,8 @@ console.log('OK SECURITY.md');
     const cells = line.split('|').map((c) => c.trim().replace(/`/g, ''));
     const dir = cells[1];
     const file = cells[5];
-    const sha = cells[6];
-    assert.ok(/^[0-9a-f]{64}$/.test(sha), 'empreinte entière pour ' + dir + file);
+    const sha = (cells[6].match(/^[0-9a-f]{64}/) || [])[0];   // « (modifié) » peut suivre l'empreinte
+    assert.ok(sha, 'empreinte entière pour ' + dir + file);
     // `dist/echarts.min.js` du paquet npm est rangé à plat : on cherche le nom du fichier sous le dossier de la bibliothèque.
     const base = path.posix.basename(file);
     const candidates = [path.join(root, 'js/vendor', dir, file), path.join(root, 'js/vendor', dir, base)];
@@ -90,4 +90,33 @@ console.log('OK SECURITY.md');
   console.log('OK js/vendor/SOURCES.md — ' + checked + ' empreintes');
 }
 
-console.log('\nTous les garde-fous de l\'audit gwaudit sont passés.');
+// --- Code tiers sans compilation de code à la volée (C-XSS-03, bloquant pour l'outil) ---
+{
+  const arrowValid = read('js/vendor/apache-arrow/builder/valid.mjs');
+  const echarts = require('./patch-echarts.js');
+  assert.ok(!/new Function\(|[^.\w]Function\(/.test(arrowValid.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '')), 'apache-arrow/builder/valid.mjs : aucun constructeur Function dans le code');
+  assert.deepStrictEqual(echarts.remaining(fs.readFileSync(echarts.FILE, 'utf8')), [], 'echarts.min.js : modifications en place (node dev-tests/patch-echarts.js)');
+  // Le correctif d'ECharts est idempotent et ne touche pas un fichier déjà modifié.
+  const once = fs.readFileSync(echarts.FILE, 'utf8');
+  assert.strictEqual(echarts.patch(once), once);
+  // Et il fait ce qu'il dit sur le motif d'origine.
+  const sample = 'x._geoJSON=j(i=e)?"undefined"!=typeof JSON&&JSON.parse?JSON.parse(i):new Function("return ("+i+");")():i;t.version="9.9.9"';
+  assert.ok(/JSON\.parse\(i\):i;t\.version/.test(echarts.patch(sample)) && !/new Function/.test(echarts.patch(sample)));
+  assert.ok(echarts.patch(sample).startsWith('/*! Apache ECharts 9.9.9 '));
+  console.log('OK code tiers — ni new Function dans valid.mjs ni dans echarts.min.js, correctif d\'ECharts idempotent');
+}
+
+// --- Apache Arrow : isValid() garde le contrat de l'original (module ES : import dynamique) ---
+(async () => {
+  const { pathToFileURL } = require('url');
+  const { createIsValidFunction } = await import(pathToFileURL(path.join(root, 'js/vendor/apache-arrow/builder/valid.mjs')).href);
+  const all = createIsValidFunction([null, 'N/A', NaN, 0, 10n, undefined]);
+  assert.deepStrictEqual([null, 'N/A', NaN, 0, -0, 10n, undefined].map((x) => all(x)), [false, false, false, false, false, false, false]);
+  assert.deepStrictEqual([1, 'n/a', '', 11n, false, {}, 'null'].map((x) => all(x)), [true, true, true, true, true, true, true]);
+  assert.strictEqual(createIsValidFunction([])('x'), true);
+  assert.strictEqual(createIsValidFunction(undefined)(null), true);
+  assert.strictEqual(createIsValidFunction([NaN])(NaN), false);
+  assert.strictEqual(createIsValidFunction([NaN])(0), true);
+  console.log('OK apache-arrow createIsValidFunction — valeurs nulles, NaN, 0/-0, bigint, listes vides');
+  console.log('\nTous les garde-fous de l\'audit gwaudit sont passés.');
+})().catch((e) => { console.error(e); process.exitCode = 1; });

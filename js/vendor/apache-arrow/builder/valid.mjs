@@ -14,23 +14,11 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-import { valueToString } from '../util/pretty.mjs';
 /**
- * Dynamically compile the null values into an `isValid()` function whose
- * implementation is a switch statement. Microbenchmarks in v8 indicate
- * this approach is 25% faster than using an ES6 Map.
- *
- * @example
- * console.log(createIsValidFunction([null, 'N/A', NaN]));
- * `function (x) {
- *     if (x !== x) return false;
- *     switch (x) {
- *         case null:
- *         case "N/A":
- *             return false;
- *     }
- *     return true;
- * }`
+ * Grist-BI : version modifiée de ce fichier (voir js/vendor/SOURCES.md, « Modifications »).
+ * L'original compile les valeurs nulles en une fonction `switch` par le constructeur `Function`, ce qu'une politique de sécurité
+ * de contenu sans `unsafe-eval` refuse et qu'aucun audit de widget n'accepte. Même contrat, sans compilation de code :
+ * `isValid(x)` rend `false` pour une valeur nulle (comparaison stricte `===`, NaN compris), `true` sinon.
  *
  * @ignore
  * @param nullValues
@@ -40,28 +28,15 @@ export function createIsValidFunction(nullValues) {
         // @ts-ignore
         return function isValid(value) { return true; };
     }
-    let fnBody = '';
-    const noNaNs = nullValues.filter((x) => x === x);
-    if (noNaNs.length > 0) {
-        fnBody = `
-    switch (x) {${noNaNs.map((x) => `
-        case ${valueToCase(x)}:`).join('')}
+    // NaN ne vaut jamais NaN : il se teste à part, comme dans l'original. Un `Set` compare comme `===` pour tout le reste
+    // (null, undefined, nombres, bigints, chaînes) et traite 0 et -0 pareil, comme un `switch`.
+    const hasNaN = nullValues.some((x) => x !== x);
+    const nulls = new Set(nullValues.filter((x) => x === x));
+    return function isValid(x) {
+        if (hasNaN && x !== x) {
             return false;
-    }`;
-    }
-    // NaN doesn't equal anything including itself, so it doesn't work as a
-    // switch case. Instead we must explicitly check for NaN before the switch.
-    if (nullValues.length !== noNaNs.length) {
-        fnBody = `if (x !== x) return false;\n${fnBody}`;
-    }
-    return new Function(`x`, `${fnBody}\nreturn true;`);
+        }
+        return !nulls.has(x);
+    };
 }
-/** @ignore */
-function valueToCase(x) {
-    if (typeof x !== 'bigint') {
-        return valueToString(x);
-    }
-    return `${valueToString(x)}n`;
-}
-
 //# sourceMappingURL=valid.mjs.map
