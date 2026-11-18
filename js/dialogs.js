@@ -18,8 +18,8 @@
  * n'arrête pas le script comme la boîte du navigateur. Les libellés des boutons viennent de ce
  * widget (`GristBI.i18n`), jamais du kit — celui-ci n'a pas son propre dictionnaire ici.
  *
- * Chargé paresseusement par `import()` dynamique (même mécanisme que `Ambiance.start()` dans
- * js/main.js et que js/duckdb-engine.js : ce widget reste fait de scripts classiques). Si le kit est
+ * Chargé paresseusement par `GristBI.loader.module('kit-dialogs')` (js/loader.js : le même chargeur pour
+ * `Ambiance.start()` dans js/main-core.js et pour js/duckdb-engine.js ; ce widget reste fait de scripts classiques). Si le kit est
  * absent (clone sans `git submodule update --init`) ou ne se charge pas, repli sur les fonctions du
  * navigateur — jamais une saisie perdue ni une exception : hors d'un cadre isolé elles marchent.
  */
@@ -28,22 +28,19 @@
 
   const GristBI = global.GristBI || (global.GristBI = {});
 
-  // `document.currentScript` n'est fiable qu'à l'exécution synchrone initiale de CE script : capturé
-  // tout de suite, pour que l'adresse reste juste que ce soit index.html (à la racine) ou
-  // dev-tests/harness.html (un sous-dossier) qui charge ce fichier.
-  const KIT_DIALOGS_URL = (typeof document !== 'undefined' && document.currentScript && document.currentScript.src)
-    ? new URL('../kit/js/dialogs.js', document.currentScript.src).href
-    : null;
+  // Le module du kit se demande par son NOM au chargeur unique (js/loader.js, table littérale dans js/modules.js) : aucune
+  // adresse n'est construite ici (audit `gwaudit` C-EXFIL-06). Hors d'un navigateur (essais Node) ou sans chargeur : repli.
   let kitPromise = null;
 
   function loadKit() {
     if (!kitPromise) {
-      kitPromise = KIT_DIALOGS_URL
-        ? import(KIT_DIALOGS_URL).then((m) => m.Dialogs).catch((e) => {
-          console.warn('[GristBI] fenêtres du kit indisponibles (kit/ absent ou erreur de chargement) — repli sur les boîtes du navigateur', e);
-          return null;
-        })
-        : Promise.resolve(null);
+      kitPromise = (GristBI.loader
+        ? GristBI.loader.module('kit-dialogs').then((m) => m.Dialogs)
+        : Promise.resolve(null)
+      ).catch((e) => {
+        console.warn('[GristBI] fenêtres du kit indisponibles (kit/ absent ou erreur de chargement) — repli sur les boîtes du navigateur', e);
+        return null;
+      });
     }
     return kitPromise;
   }

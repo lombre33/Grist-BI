@@ -40,19 +40,15 @@
       err.code = 'PDFJS_NOT_AVAILABLE';
       return Promise.reject(err);
     }
-    return new Promise((resolve, reject) => {
-      const script = document.createElement('script');
-      script.type = 'module';
-      script.src = source.src;
-      script.integrity = source.integrite;
-      script.crossOrigin = 'anonymous';
-      script.onload = () => {
-        const lib = libraryFrom(globalThis);
-        if (lib) resolve(lib);
-        else reject(new Error('Le fichier est chargé mais ne pose pas GfsPaquets.pdfjs.'));
-      };
-      script.onerror = () => reject(new Error('Le navigateur a refusé le script pdf.js (politique de sécurité, réseau ou empreinte).'));
-      document.head.append(script);
+    // Chargeur unique (js/loader.js) : module ES, empreinte posée sur l'élément, https seulement hors du site de la page.
+    return GristBI.loader.script({ src: source.src, integrity: source.integrite, module: true }).then(() => {
+      const lib = libraryFrom(globalThis);
+      if (!lib) throw new Error('Le fichier est chargé mais ne pose pas GfsPaquets.pdfjs.');
+      return lib;
+    }, (cause) => {
+      const err = new Error('Le navigateur a refusé le script pdf.js (politique de sécurité, réseau ou empreinte).');
+      err.cause = cause;
+      throw err;
     });
   }
 

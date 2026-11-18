@@ -34,6 +34,7 @@ Le Chromium lancé sans bac à sable exécute le widget audité : à ne faire qu
 | Avant le lot 4 (`b8b7d4d`, après les types de tuile ajoutés depuis) | 53 | CONFORME SOUS RÉSERVE (aucun bloquant) | 6 | 85 | 1 | 100 | 93 | 85 |
 | Lot 4 (qualité du code : marqueurs, doublons, noms, `data.js` coupé, `6e59a0f`) | 54 | CONFORME SOUS RÉSERVE (aucun bloquant) | 11 | 88 | 1 | 100 | 93 | 85 |
 | Lot 4 bis (`data.js`, `charts.js` et `main.js` coupés en fichiers de moins de 600 lignes de code, `58db90c` + découpage de `main.js`) | 56 | CONFORME SOUS RÉSERVE (aucun bloquant) | 19 | 88 | 1 | 100 | 93 | 85 |
+| Lot 5 (sécurité : assainisseur de balisage, chargeur unique de code, ECharts nettoyé, adresse des pièces jointes ; `527b00d` + ce lot) | 57 | CONFORME SOUS RÉSERVE (aucun bloquant) | 22 | 85 | 6 | 100 | 93 | 85 |
 
 Les lignes ne se comparent pas toutes entre elles : entre le lot 3 et le lot 4, des dizaines de fonctions et trois fichiers de plus de
 600 lignes sont arrivés avec les nouveaux types de tuile et l'export Excel refait, ce qui a ramené A de 18 à 6 et B de 94 à 85 *avant*
@@ -42,6 +43,13 @@ tout travail du lot 4. Comparer le lot 4 à la ligne qui le précède (`b8b7d4d`
 La note d'un axe se joue sur ses règles *entières* : une règle ne coûte jamais plus que sa sévérité × 2,5, quel que soit le
 nombre d'occurrences. Corriger 20 occurrences sur 24 ne rapporte donc rien ; supprimer la règle rapporte tout. D'où les scores qui
 bougent peu tant que des occurrences durables (le code tiers, la taille des fichiers) restent.
+
+**Lire le lot 5 avec ce qu'il a changé dans la VUE de l'outil** : tant que les `import()` du kit et de DuckDB-WASM étaient calculés, l'outil ne suivait pas ces fichiers ; avec des chemins littéraux
+(`js/modules.js`) il les lit, donc leurs constats qui existaient déjà comptent maintenant (la surface exécutée passe de 183 à 200 fichiers). Mesure statique de l'axe C, même dépôt : avant le lot 5 la
+pénalité était de 131,6 (note 3), après elle est de 106,6 (note 6). Le lot ôte C-EXFIL-06 (4 `import()` calculés) et C-XSS-02 (`document.write` d'ECharts), ramène C-EXFIL-05 de 4 `<script>` calculés à 1 (le chargeur lui-même) ;
+mais **40,6 points de la pénalité restante sont des constats anciens que l'outil ne voyait pas** : C-PM-01 × 2 et C-PM-02 (le kit de GFS, un `Worker` de DuckDB) et un C-EXFIL-02 de DuckDB (voir « Voulu »). Sans eux la pénalité serait
+de 66 (note 34) : cinq constats majeurs de structure (C-GRIST-03, C-GRIST-04, C-EXFIL-04, C-EXFIL-05 sur le chargeur, C-EXFIL-02 sur la pièce jointe) et deux mineurs (C-CSP-01, C-STOCK-01). B perd 3 points
+(B-NOM-01 : trois noms très courts dans `kit/js/dom.js`, que l'outil lit maintenant) ; A passe de 19 à 22 sans que ce lot vise cet axe.
 
 Le lot 3 ne change aucune note : il corrige un vrai défaut que l'outil ne sait pas distinguer d'un `innerHTML` sûr (C-XSS-01 compte 31 occurrences avant comme après, dont 7 dans
 `js/vendor/`). Une revue humaine n'est pas un score ; elle est consignée ci-dessous.
@@ -101,6 +109,26 @@ Le lot 3 ne change aucune note : il corrige un vrai défaut que l'outil ne sait 
   Comparé à `main` : 0 pixel de différence sur les 22 types de tuile (page directe et cadre isolé), mêmes résultats aux clics réels (filtre croisé, histogramme,
   agrandissement, suppression) et au parcours d'interface complet (ajout/modification de tuile, filtres, vues, Réglages, langue, changement de table), aucune erreur de console.
 
+### Lot 5 : sécurité applicative (18/11/2026, soir ; demande d'Antoine : « la sécurité d'abord »)
+
+- **C-XSS-01** (`innerHTML`, PR #130) : voir « Revue de C-XSS-01 » ; tout balisage passe par `js/safe-html.js` (liste blanche), jamais par `innerHTML`.
+- **C-EXFIL-05 / C-EXFIL-06** (code chargé à l'exécution) : UN chargeur, `js/loader.js` (un seul `createElement('script')` du dépôt : https hors du site de la page, empreinte `integrity`
+  obligatoire pour un autre site, liste d'hôtes, aucun identifiant dans l'adresse, empreinte mal formée refusée parce qu'un navigateur l'ignorerait en silence) et `js/modules.js` (les quatre modules ES,
+  en chemins LITTÉRAUX, demandés par nom). ExcelJS (même site), PptxGenJS (`cdn.jsdelivr.net`, empreinte, sans référent), pdf.js et les extensions de GFS (empreinte de GFS) passent par lui.
+  **Pourquoi un fichier de modules et pas un `import()` littéral dans chaque fichier** : dans le cadre isolé de GFS un `import()` écrit dans un script classique n'a pas d'adresse de base
+  (mesuré cassé le 18/11/2026 par un premier essai, repris) ; écrit dans un module il se résout. Garde : `node dev-tests/test-loader.js`. Mesuré dans Chromium, page directe et
+  `<iframe sandbox="allow-scripts allow-downloads">` servi en CORS : 22 types de tuile, DuckDB au-delà de 5 000 lignes, fenêtre du kit, ambiance et lien GFS, exports Excel / PPTX (vraie bibliothèque) / PDF
+  téléchargés, extension à bonne empreinte chargée et à empreinte fausse refusée par le navigateur, `http:` / `javascript:` / `data:` / sans empreinte / adresse en guise de nom de module refusés,
+  0 script étranger dans la page ; 0 pixel de différence dans le cadre isolé avec la version d'avant (140 pixels en page directe : le bruit d'animation connu).
+- **C-XSS-02** (`document.write` dans ECharts) : la barre d'outils `saveAsImage` (que ce widget n'emploie pas) perd ses deux branches pour Internet Explorer et l'ancien Edge, qui écrivaient une page par
+  `document.write` ; `windowOpen` n'ouvre plus qu'une adresse `http(s)://` et coupe `opener` (un lien `javascript:`/`data:` d'une option ne s'exécute plus). `node dev-tests/patch-echarts.js` rejoue les cinq
+  modifications ; `test-loader.js` évalue `windowOpen` dans un `vm` ; `js/vendor/SOURCES.md` à jour. `duckdb-browser.mjs` reçoit une ligne d'en-tête (nom, version, licence, origine), sans quoi l'outil ne
+  reconnaît plus la bibliothèque et plafonne la note globale (B-MIN-01) maintenant qu'il la lit.
+- **C-EXFIL-02** (`fetch` d'une pièce jointe, `js/grist-api.js`) : l'adresse que Grist donne avec le jeton (`getAccessToken`) n'est suivie que si elle est en https (ou en http sur la machine locale / pour une page
+  elle-même en http), sans identifiant, requête ni fragment (`safeAttachmentBase`, testée), et la requête part sans cookies ni référent (`credentials: 'omit'`, `referrerPolicy: 'no-referrer'`). Le jeton ne part
+  jamais vers une adresse que Grist n'a pas donnée en bonne forme. L'outil continue de compter le `fetch` (adresse calculée par nature).
+- **Documentation** : le README liste ce que le widget charge, d'où et quand (« Sécurité et permissions ») ; `GFS-ETAT.md` dit ce qui change pour GFS (modules en CORS, empreinte exigée d'une extension).
+
 ## Voulu, ou hors de portée de ce dépôt
 
 - **C-EXFIL-04** : le script d'API de Grist vient de `docs.getgrist.com` (`index.html`). C'est le chargement normal d'un widget
@@ -108,12 +136,13 @@ Le lot 3 ne change aucune note : il corrige un vrai défaut que l'outil ne sait 
 - **C-GRIST-03 / C-GRIST-04** : accès `full` et modification de la structure du document. Voir `CLAUDE.md` §3 : l'API des widgets
   n'a pas de palier entre « une table » et « tout » ; les seules tables créées sont `BI_Dashboard_Config`, `BI_Dashboard_Comments`,
   `BI_Dashboard_UserProbe` (et la table d'un import CSV, après confirmation de la personne).
-- **C-EXFIL-05 / C-EXFIL-06** : `<script>` et `import()` dont l'adresse est calculée. Les trois scripts (`js/export.js`,
-  `js/pdf-export.js`, `js/pptx-export.js`) viennent d'un dossier local ou d'une adresse figée à version et empreinte SRI (PptxGenJS, jsDelivr) ; les
-  quatre `import()` (kit, dialogues, DuckDB) sont résolus sur `document.currentScript.src`. **Ce n'est pas une facilité :** dans GFS le widget
-  tourne dans un `<iframe sandbox="allow-scripts">` (origine opaque) ; un `import('../kit/js/…')` littéral y échoue (« base URL is about:blank
-  because import() is called from a CORS-cross-origin script »). Essayé le 18/11/2026 en littéral, mesuré cassé dans un cadre isolé, remis
-  tel quel. Seule une adresse absolue calculée sur `document.currentScript.src` fonctionne dans les deux contextes.
+- **C-EXFIL-05** (1 constat, `js/loader.js` : `el.src = plan.url`) : c'est le chargeur lui-même ; l'adresse a déjà passé `planScript` (voir « Lot 5 ») mais l'outil ne sait pas lire cette validation.
+  Un script ne se charge nulle part ailleurs dans le dépôt. **C-EXFIL-06** n'a plus de constat : les `import()` sont des chemins littéraux dans `js/modules.js`.
+- **C-EXFIL-02** (2 constats) : le `fetch` d'une pièce jointe dans `js/grist-api.js` (voir « Lot 5 », l'adresse est contrôlée) et un `fetch` dans `js/vendor/duckdb/duckdb-browser.mjs` (le chargement du `.wasm` et du
+  worker, adresse calculée par la bibliothèque sur celle de ses propres fichiers, que ce widget donne en dur dans `js/duckdb-engine.js` : `VENDOR_BASE_URL`). Ce second constat n'existait pas pour l'outil avant le lot 5 : il ne voyait pas le fichier.
+- **C-PM-01 × 2 / C-PM-02** (`kit/js/gfs-link.js`, `js/vendor/duckdb/duckdb-browser.mjs`) : arrivés avec la visibilité du lot 5, aucun n'est dans du code de ce dépôt. Le kit vérifie `event.source` et le jeton de contrat avant de
+  lire un message (l'outil cherche `event.origin`, qu'un cadre isolé ne peut guère écrire en dur) et poste à `host.parent` avec `'*'` ; DuckDB écoute les messages de ses propres `Worker`. Question posée à GFS dans `GFS-ETAT.md`
+  (« Questions pour GFS ») pour l'adresse de destination ; `kit/` n'est pas modifié ici (sous-module de GFS).
 - **A-PERF-01** (information, 0 point) : deux boucles de `js/grist-api.js` attendent Grist une fois par tour, et les deux doivent rester en série.
   `applyActionsInChunks` (ligne 443) envoie une liste d'actions par lots de 2 000, dans l'ordre : l'ordre des `AddRecord` est l'ordre des lignes de la table, et un échec en
   cours de route laisse un préfixe connu plutôt qu'un trou ; en parallèle, les lignes arriveraient dans le désordre et la progression affichée n'aurait plus de sens.
@@ -139,8 +168,7 @@ liste du combobox).
   Garde : `dev-tests/test-data.js` (blocs « ids de tuile relus » et « défense en profondeur »).
 - **Non modifié, par choix** : les ids de pages et de vues (déjà échappés partout où ils sont écrits, jamais utilisés comme sélecteur) ; les gabarits de sélecteurs de `js/charts.js`
   (aucun code de ce widget n'y met un id qui ne vienne pas de `setPages` ou de son propre générateur) ; le code d'ECharts.
-- **Dans ECharts** (non modifié sur ce point) : C-XSS-02 (`document.write`, l'ouverture de l'image par la barre d'outils `saveAsImage`), C-EXFIL-02 (une requête dont l'adresse est calculée) et
-  C-XSS-04 (minuteries). Ce widget n'active ni barre d'outils, ni carte, ni `geo` (aucun `toolbox`, `registerMap` ni `geo` dans `js/charts.js`), et l'axe D, qui capture le trafic réellement émis,
+- **Dans ECharts** : C-XSS-02 (`document.write` de la barre d'outils `saveAsImage`) est retiré au lot 5 ; restent C-XSS-04 (minuteries, information, sans pénalité) et, côté DuckDB, C-EXFIL-02 (une requête dont l'adresse est calculée). Ce widget n'active ni barre d'outils, ni carte, ni `geo` (aucun `toolbox`, `registerMap` ni `geo` dans `js/charts.js`), et l'axe D, qui capture le trafic réellement émis,
   n'observe aucune requête vers un domaine tiers (D-RESEAU-00).
 
 ## Reste à faire
@@ -152,9 +180,12 @@ liste du combobox).
   déjà au plafond de leur pénalité (30 points chacune) : il faut les faire disparaître *toutes* pour gagner, pas en réduire le nombre. Une table de correspondance par type
   remplace les cascades de `if` ; à faire quand plus aucun fil n'ajoute de type de tuile. Les « fonctions anonymes de 900 lignes » sont l'enveloppe
   `(function (root, factory) { … })` de chaque module : c'est l'architecture « scripts classiques, sans build ».
-- **Axe C (sécurité applicative, 1/100)** : 32 `innerHTML` (relus : voir plus haut), les `import()`/`<script>` calculés, l'accès `full`, `localStorage` et le script d'API de Grist
-  sont des constats **de structure** : ils se justifient (voir « Voulu ») mais l'outil ne peut pas le savoir. L'axe est rendu par un plancher doux (8·exp(−(pénalité − 92)/40)) : tant qu'une
-  seule de ces règles reste, il ne remonte pas. Ce n'est pas un défaut de ce dépôt qu'on corrige en réécrivant du code ;
+- **Axe C (sécurité applicative, 6/100 après le lot 5, 1/100 avant)** : ce qui reste est de structure ou n'est pas du code de ce dépôt, et l'outil ne peut pas le savoir : C-GRIST-03 et C-GRIST-04
+  (accès `full` et écriture dans la structure du document : l'API des widgets n'a pas de palier intermédiaire ; le README dit maintenant précisément ce que le widget lit et écrit), C-EXFIL-04 (l'API de widget vient de
+  `docs.getgrist.com` : la remplacer par une adresse relative demande que Grist l'héberge sous l'instance du document, ou une copie vendorisée qui dériverait du protocole), C-STOCK-01 (deux préférences en `localStorage`), un
+  seul `<script>` dynamique (le chargeur), le `fetch` d'une pièce jointe (contrôlé) et trois constats qui viennent du kit et de DuckDB (voir « Voulu »). L'axe est rendu par un plancher doux (8·exp(−(pénalité − 92)/40)) :
+  tant que la pénalité reste au-dessus de 92, la note reste sous 8, quelle que soit la sécurité réelle. **Un chiffre honnête** : tant que le kit et DuckDB sont lus par l'outil, l'axe reste autour de 6 (pénalité 106,6) ; hors leurs trois constats il serait de 34 (pénalité 66), et il ne remonterait plus que si Grist offrait un
+  palier d'accès intermédiaire ou hébergeait son API de widget sous l'instance, ou si GFS corrigeait ses constats. La valeur du lot est dans ce que les contrôles empêchent (XSS par la configuration, script non prévu, jeton envoyé ailleurs), pas dans la note.
 - **C-CSP-01** : aucune politique de sécurité de contenu. DuckDB-WASM (`wasm-unsafe-eval`, worker `blob:`), l'`importmap` en ligne,
   les attributs `style` et les scripts de `cdnjs` demandent une politique à mesurer dans un vrai Grist et dans GFS avant d'en poser
   une : une balise `<meta>` trop stricte casserait le widget sans message. Non posée ici. Et même sans `unsafe-eval`, deux copies de code qui

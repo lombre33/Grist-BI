@@ -901,13 +901,29 @@
   const ATTACHMENT_MAX_BYTES = 80 * 1024 * 1024; // une publication plus lourde est laissée de côté, avec son erreur
   let _attachmentAuth = null; // { token, baseUrl, expiresAt }
 
+  // L'adresse de l'API du document, telle que Grist la donne avec le jeton, est la SEULE destination du
+  // téléchargement : le jeton part dans son adresse (`?auth=`). Elle n'est connue qu'à l'exécution, donc ne
+  // s'écrit pas en constante (audit `gwaudit` C-EXFIL-02) ; on la REFUSE plutôt que de l'utiliser telle quelle quand
+  // elle n'a pas la forme d'une adresse d'API : pas `https:` (ni `http:` pour la machine locale, ni pour un widget
+  // lui-même servi en `http:`), un identifiant ou un mot de passe, une requête ou un fragment. Pure, testée sous Node.
+  function safeAttachmentBase(baseUrl, pageProtocol) {
+    let u;
+    try { u = new URL(String(baseUrl)); } catch (e) { throw new Error('Grist a donné une adresse d\'API invalide : le jeton n\'est pas utilisé.'); }
+    const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(u.hostname);
+    const httpOk = u.protocol === 'http:' && (loopback || pageProtocol === 'http:');
+    if (u.protocol !== 'https:' && !httpOk) throw new Error('Grist a donné une adresse d\'API qui n\'est pas en https : le jeton n\'est pas utilisé.');
+    if (u.username || u.password || u.search || u.hash) throw new Error('Grist a donné une adresse d\'API inattendue (identifiant, requête ou fragment) : le jeton n\'est pas utilisé.');
+    return (u.origin + u.pathname).replace(/\/+$/, '');
+  }
+
   async function attachmentAuth(force) {
     const now = Date.now();
     if (!force && _attachmentAuth && _attachmentAuth.expiresAt - 30000 > now) return _attachmentAuth;
     const access = await grist.docApi.getAccessToken({ readOnly: true });
     if (!access || !access.token || !access.baseUrl) throw new Error('Grist n\'a pas donné de jeton de lecture.');
     const ttl = Number(access.ttlMsecs) > 0 ? Number(access.ttlMsecs) : 60000;
-    _attachmentAuth = { token: access.token, baseUrl: String(access.baseUrl).replace(/\/+$/, ''), expiresAt: now + ttl };
+    const pageProtocol = (typeof location !== 'undefined' && location.protocol) || '';
+    _attachmentAuth = { token: access.token, baseUrl: safeAttachmentBase(access.baseUrl, pageProtocol), expiresAt: now + ttl };
     return _attachmentAuth;
   }
 
@@ -928,7 +944,8 @@
     for (let attempt = 0; attempt < 2; attempt++) {
       const auth = await attachmentAuth(attempt > 0);
       const url = `${auth.baseUrl}/attachments/${encodeURIComponent(attachmentId)}/download?auth=${encodeURIComponent(auth.token)}`;
-      const res = await fetch(url);
+      // Sans cookie (le jeton suffit) et sans `Referer` : l'adresse de la page n'a pas à suivre la requête.
+      const res = await fetch(url, { credentials: 'omit', referrerPolicy: 'no-referrer' });
       if (res.status === 401 || res.status === 403) {
         if (attempt === 0) continue;
       }
@@ -974,6 +991,6 @@
     init, loadConfig, saveConfig, loadConfigById, blankConfig,
     listAvailableTables, loadTable, loadOrCreateComments, addComment, refColumnsForTable,
     getCurrentUserEmail, createTableFromRows, readColumnFormats,
-    checkAttachmentAccess, getAttachmentBytes, fetchRawTable, addTextColumn, writeColumnValues
+    checkAttachmentAccess, getAttachmentBytes, fetchRawTable, addTextColumn, writeColumnValues, safeAttachmentBase
   };
 })(window);

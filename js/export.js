@@ -80,13 +80,12 @@
   const CAPTURE_BATCH = 10;             // tuiles dessinées à la fois : borne la mémoire des canevas
   const ANIMATION_WAIT_MS = 3000;       // l'animation d'entrée d'ECharts dure ~1 s ; on n'attend jamais plus
 
+  // Le chargement passe par le chargeur unique (js/loader.js) : ExcelJS est un fichier du MÊME site que la page.
   function loadScriptOnce(src) {
-    return new Promise((resolve, reject) => {
-      const s = document.createElement('script');
-      s.src = src;
-      s.onload = () => resolve();
-      s.onerror = () => reject(new Error('Échec de chargement du script : ' + src));
-      document.head.appendChild(s);
+    return GristBI.loader.script({ src }).catch((cause) => {
+      const e = new Error('Échec de chargement du script : ' + src);
+      e.cause = cause;
+      throw e;
     });
   }
 
