@@ -2311,6 +2311,45 @@ const SAMPLE_TIME_SERIES = [
   console.log('OK js/format.js — jauge : niceCeil, gaugeLayout (7 tailles de tuile), graduations extérieures (gaugeTicks, placement, 4 plages), fitFont, câblage');
 }
 
+// js/format.js : radar avec légende (bug réel n°49, 18/11/2026) — la légende « Élève / Moyenne du groupe » recouvrait le nom de l'axe du haut
+{
+  const fs = require('fs');
+  const path = require('path');
+  const format = require('../js/format.js');
+  // Toutes les tailles de zone réalistes : tuile normale (283 x 162), étroite, large, agrandie, très haute.
+  const sizes = [[283, 162], [298, 162], [240, 150], [330, 190], [316, 224], [600, 400], [938, 422], [500, 800], [200, 160]];
+  for (const [w, h] of sizes) {
+    const L = format.radarLayout(w, h, true);
+    const top = L.cy - L.r - L.gap - L.nameH; // haut du nom de l'axe du haut
+    const bottom = L.cy + L.r + L.gap + L.nameH; // bas du nom de l'axe du bas
+    assert.ok(top >= L.legendH - 0.001, `${w}x${h} : le nom de l'axe du haut commence sous la légende (${top} >= ${L.legendH})`);
+    assert.ok(bottom <= h + 0.001, `${w}x${h} : le nom de l'axe du bas reste dans la zone (${bottom} <= ${h})`);
+    assert.strictEqual(L.cx, w / 2, `${w}x${h} : centré horizontalement`);
+    assert.ok(L.r <= 0.62 * Math.min(w, h) / 2 + 1e-9, `${w}x${h} : jamais plus grand que le réglage historique (62 %)`);
+    assert.ok(L.r >= 20, `${w}x${h} : un polygone reste lisible`);
+  }
+  // L'ancienne géométrie (centre à 50 %, rayon 62 %, nom d'axe à 15 px) recouvrait bel et bien la légende dans une tuile de 162 px :
+  // c'est ce que ce test aurait vu, et ce qu'il garantit de ne plus revoir.
+  const oldTop = 162 / 2 - 0.62 * 162 / 2 - 15 - 16;
+  assert.ok(oldTop < format.radarLayout(283, 162, true).legendH, 'avant : le nom de l\'axe du haut (' + oldTop.toFixed(1) + ' px) commençait DANS la bande de la légende');
+  // Sans légende : centre à mi-hauteur, rien de réservé ; une tuile plus grande donne un polygone plus grand.
+  for (const [w, h] of sizes) {
+    const L = format.radarLayout(w, h, false);
+    assert.strictEqual(L.legendH, 0);
+    assert.strictEqual(L.cy, h / 2, 'sans légende : centré à mi-hauteur');
+  }
+  assert.ok(format.radarLayout(938, 422, true).r > format.radarLayout(283, 162, true).r, 'la tuile agrandie a un plus grand polygone');
+  // Une zone minuscule ne donne jamais un rayon nul ni négatif (le texte déborde alors, mais le polygone existe).
+  assert.strictEqual(format.radarLayout(100, 60, true).r, 20);
+  // câblage : légende défilante, place réservée par finalizeOption, recalcul au redimensionnement, couleur de légende conservée
+  const charts = fs.readFileSync(path.join(__dirname, '..', 'js', 'charts.js'), 'utf8');
+  assert.ok(/legend: series\.length > 1\s*\? \{ top: 2, type: 'scroll'/.test(charts), 'la légende du radar est compacte et défilante (deux noms longs ne passent pas à la ligne)');
+  assert.ok(/GristBI\.format\.radarLayout\(w, h, true\)/.test(charts) && /axisNameGap: L\.gap/.test(charts), 'finalizeOption place le polygone dans la place laissée par la légende');
+  assert.ok(/instance\.__refit = placed \?/.test(charts), 'centre et rayon en pixels : recalculés par resizeAll (tuile agrandie)');
+  assert.ok(/option\.legend = Object\.assign\(\{\}, option\.legend, \{ textStyle: Object\.assign\(\{ color: th\.secondary \}, option\.legend\.textStyle\) \}\)/.test(charts), 'une légende qui règle sa police garde la couleur du thème');
+  console.log('OK js/format.js — radar avec légende : radarLayout (9 tailles de zone, ancienne géométrie qui se chevauchait), câblage');
+}
+
 // js/format.js + panneau : réglage « Format des nombres » par tuile (audit de lisibilité, lot 3, 18/11/2026)
 {
   const fs = require('fs');
