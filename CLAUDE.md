@@ -511,6 +511,14 @@ Cette liste condense les bugs réels les plus instructifs (détail complet dans 
     de la première. La forme de `widgetOptions`/`documentSettings` vient de la documentation du moteur, pas d'un document ouvert : le mock (`dev-tests/grist-stub.js`,
     `registerMetaColumn(..., widgetOptions)`) la reproduit à l'identique, donc ne la prouve pas.
 
+27. **ECharts dessine tout le reste en thème CLAIR, quoi que fasse la page** (audit de lisibilité, lot 4, 18/11/2026) : quadrillage, traits d'axe, fond et texte
+    de l'infobulle, contour blanc du texte des étiquettes de camembert/entonnoir, bandes du radar. Sur fond sombre : lignes blanches éclatantes et étiquettes
+    contournées illisibles. Toute option ECharts passe par `finalizeOption(option, instance)` (`js/charts.js`) juste avant `setOption` — jetons CSS lus à chaque
+    rendu, infobulle repliée, libellés de catégorie tronqués à la largeur d'une catégorie, graduations bornées ; un nouveau type de graphique doit s'y conformer
+    (les réglages qu'il pose lui-même gagnent). `js/main.js:watchChartTheme` refait un rendu quand les jetons changent (signature comparée : `--chrome-h` est
+    réécrit en continu sur `<html>`, un rendu à chaque mutation bouclerait). Une jauge, un tableau croisé et une table n'ont pas d'option ECharts à finaliser.
+    Radar « colonnes » : échelle partagée voulue, avertissement `advice.radar.mixedScales` pour des colonnes d'ordres de grandeur très différents.
+
 ## 8. Règles du projet (vérifiées dans le code et la documentation)
 
 - **Zéro dépendance de build, JS vanilla.** Toute bibliothèque tierce est vendorisée localement

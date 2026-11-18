@@ -3320,6 +3320,36 @@
     refreshTilePanelTexts();
     render(store.getState());
   });
+  // Thème des graphiques (audit de lisibilité, lot 4) : `js/charts.js` lit les jetons de couleur de la page à CHAQUE
+  // rendu (infobulle, quadrillage, texte), mais rien ne relançait un rendu quand ils changent — passage clair/sombre du
+  // système, ambiance de GFS posée sur <html> par le CSSOM. On compare une signature des jetons lus (jamais un rendu à
+  // chaque mutation de <html> : `--chrome-h` y est réécrit à chaque redimensionnement de la barre).
+  (function watchChartTheme() {
+    const TOKENS = ['--text', '--text-secondary', '--text-muted', '--surface', '--border', '--border-strong'];
+    const signature = () => {
+      const cs = getComputedStyle(document.documentElement);
+      return TOKENS.map((n) => cs.getPropertyValue(n).trim()).join('|');
+    };
+    let last = signature();
+    let timer = null;
+    const check = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const now = signature();
+        if (now === last) return;
+        last = now;
+        render(store.getState());
+      }, 120);
+    };
+    try {
+      const mq = window.matchMedia('(prefers-color-scheme: dark)');
+      if (mq.addEventListener) mq.addEventListener('change', check); else if (mq.addListener) mq.addListener(check);
+    } catch (e) { /* pas de matchMedia (hors navigateur) : seul l'observateur ci-dessous reste */ }
+    try {
+      new MutationObserver(check).observe(document.documentElement, { attributes: true, attributeFilter: ['style', 'class', 'data-theme'] });
+    } catch (e) { /* idem */ }
+  })();
+
   // Consigne GFS 007, point 3 : dans GFS, `gristbi_lang` passe par `GfsLink.storageSet` plutôt que
   // `localStorage`, peu fiable dans le sous-cadre isolé de GFS — `GristBI.i18n.setLang` essaie
   // quand même `localStorage` de son côté (voir js/i18n.js), sans effet dans ce cas, harmless. La

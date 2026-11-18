@@ -2243,6 +2243,34 @@ const SAMPLE_TIME_SERIES = [
   console.log(`OK js/format.js — réglage « Format des nombres » : types concernés, verdict « Comme dans la colonne », rendu des trois modes, câblage du panneau, ${keys.length} clés i18n fr/en`);
 }
 
+// js/charts.js + js/main.js : thème des graphiques, infobulles, libellés (audit de lisibilité, lot 4, 18/11/2026)
+{
+  const fs = require('fs');
+  const path = require('path');
+  const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+  const charts = read('js/charts.js');
+  const main = read('js/main.js');
+  const css = read('css/style.css');
+  // une seule dernière étape avant setOption, pour les deux chemins ECharts (graphiques et mesures temporelles)
+  assert.strictEqual((charts.match(/finalizeOption\(option, instance\);\s*\n\s*instance\.setOption\(option, true\);/g) || []).length, 2, 'finalizeOption avant chaque setOption d\'option');
+  assert.strictEqual((charts.match(/^\s*confineTooltip\(option\);/gm) || []).length, 1, 'confineTooltip n\'est plus appelée qu\'à l\'intérieur de finalizeOption');
+  // les jetons du thème viennent de la page, pas de couleurs en dur
+  for (const token of ["'--surface'", "'--border-strong'", "'--border'", "'--text-secondary'"]) assert.ok(charts.includes(token), `chartTheme lit ${token}`);
+  // infobulle : jetons, 12 px, retour à la ligne ; axes : quadrillage aux jetons ; camembert/entonnoir : pas de contour de texte
+  assert.ok(/backgroundColor: th\.surface/.test(charts) && /fontSize: 12/.test(charts) && /white-space: normal/.test(charts), 'infobulle aux jetons, repliée');
+  assert.ok(/splitLine: Object\.assign\(\{ lineStyle: \{ color: th\.grid \} \}/.test(charts), 'quadrillage aux jetons');
+  assert.ok(/textBorderWidth: 0/.test(charts), 'étiquettes sans contour blanc');
+  assert.ok(/label\.overflow = 'truncate'/.test(charts) && /label\.interval = 0/.test(charts), 'libellés de catégorie tronqués à la largeur d\'une catégorie');
+  assert.ok(/splitNumber = Math\.max\(2, Math\.min\(6/.test(charts), 'graduations de l\'axe horizontal en nombre raisonnable');
+  assert.ok(/overflow: 'truncate',\s*\n\s*fontSize: 11/.test(charts), 'étiquettes d\'entonnoir tronquées, sur deux lignes');
+  assert.ok(/canvas\.style\.display = 'none'/.test(charts) && /canvas\.style\.display = ''/.test(charts), 'nuage de mots : le canvas ne cache plus le message « indisponible »');
+  // le thème est repris quand il change (système clair/sombre, ambiance de GFS), sans rendre à chaque mutation de <html>
+  assert.ok(/watchChartTheme/.test(main) && /prefers-color-scheme: dark/.test(main) && /MutationObserver/.test(main), 'rendu repris au changement de thème');
+  assert.ok(/now === last\) return/.test(main), 'comparaison de signature : un --chrome-h réécrit ne relance rien');
+  assert.ok(/\.tile-wordcloud-message \{[^}]*padding: 24px 12px/.test(css), 'message du nuage de mots lisible');
+  console.log('OK js/charts.js — lot 4 : finalizeOption (thème, infobulle repliée, axes, libellés tronqués, entonnoir, radar), nuage de mots, rendu repris au changement de thème');
+}
+
 // measureExportSheet / buildWorkbookSheetsAsync : export Excel RÉEL (plus un simple message) pour
 // une tuile Barres en mode de calcul temporel (Cumul/YTD/N-1) — voir js/export.js. `computeMeasureSeries`
 // est ici FACTICE (une Promise résolue avec un timeSeries écrit à la main), jamais le vrai
@@ -3170,6 +3198,15 @@ const SAMPLE_TIME_SERIES = [
       axes.forEach((a) => { prow[a] = 5; });
       chk({ type: 'radar', radarAxisMode: 'columns', radarAxes: axes }, [prow], 'advice.radar.tooManyAxes', 'warn');
       chk({ type: 'radar', radarAxisMode: 'dimension', dimension: 'Cat', measure: 'V', aggFn: 'avg' }, many, 'advice.radar.tooManyAxes');
+      // Radar « colonnes » : une échelle PARTAGÉE (voulu), donc des colonnes d'ordres de grandeur très différents sont signalées.
+      const mixed = [{ id: 1, Qte: 18, Marge: 0.2, Montant: 65000 }, { id: 2, Qte: 20, Marge: 0.22, Montant: 66000 }];
+      chk({ type: 'radar', radarAxisMode: 'columns', radarAxes: ['Qte', 'Marge', 'Montant'] }, mixed, 'advice.radar.mixedScales', 'warn');
+      const mixedAdvice = advice.adviceForTile({ type: 'radar', radarAxisMode: 'columns', radarAxes: ['Qte', 'Marge', 'Montant'] }, mixed);
+      assert.deepStrictEqual(mixedAdvice.vars, { small: 'Marge', big: 'Montant' }, 'cite la plus petite et la plus grande colonne');
+      const sameScale = [{ id: 1, Maths: 12, Francais: 15, Anglais: 18 }, { id: 2, Maths: 10, Francais: 14, Anglais: 19 }];
+      chk({ type: 'radar', radarAxisMode: 'columns', radarAxes: ['Maths', 'Francais', 'Anglais'] }, sameScale, null); // compétences sur 20 : rien à dire
+      chk({ type: 'radar', radarAxisMode: 'columns', radarAxes: ['Qte'] }, mixed, null);
+      chk({ type: 'radar', radarAxisMode: 'columns', radarAxes: ['Qte', 'Vide'] }, mixed, null); // une colonne sans valeur ne compte pas
       chk({ type: 'gauge', measure: 'V', aggFn: 'sum', gaugeMin: 0, gaugeMax: 50 }, many, 'advice.gauge.outOfRange', 'warn');
       chk({ type: 'gauge', measure: 'V', aggFn: 'sum', gaugeMin: 0, gaugeMax: 500 }, many, null);
       const sparse = Array.from({ length: 10 }, (_, i) => ({ id: i + 1, C: 'a' + (i % 3), V: i < 3 ? i : null }));
