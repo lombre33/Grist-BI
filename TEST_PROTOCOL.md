@@ -919,6 +919,22 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 - [x] 6 000 lignes dans un cadre isolé : somme des classes = lignes non vides, aucune erreur 🌐
 - [ ] Rendu dans un vrai Grist / un vrai GFS ⬜ **[NON TESTABLE ICI]**
 
+### `js/data.js` + `js/charts.js` + panneau — carte de chaleur et tableau croisé coloré (18/11/2026 ; Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`)
+
+- [x] Rampes : 4 arrêts hex, luminance strictement décroissante, arrêts 2-4 = crans de `PALETTES` ; `standard`/`okabe`/inconnue/`constructor`/`__proto__` -> bleu ✅
+- [x] `heatColor` : bornes exactes, interpolation, hors bornes et NaN ramenés dans [0 ; 1], luminance monotone sur 41 points de chaque rampe ✅
+- [x] **Contraste du texte** : sur 101 couleurs de chacune des 4 rampes, noir ou blanc, jamais sous 4,5:1, toujours le meilleur des deux ✅ (le pire cas a fait passer `#1a1a1a` à `#000000`)
+- [x] Grille : bornes (null, vide, booléen, texte ignorés), cellule sans valeur -> `null`, valeurs toutes égales -> milieu, négatifs, `BigInt` sans erreur ✅
+- [x] `cellFilterToggles` : rien posé, case déjà sélectionnée, autre case de la même ligne, autre ligne, filtre de plage ; rejoué contre le vrai store (3 clics) ✅
+- [x] Export Excel = la grille du tableau croisé (cases vides vides, Total) ; `tileExportKind` carte = `image`, tableau croisé coloré = `table` ✅
+- [x] Formulaire : libellé « Dimension (lignes) », 2 dimensions + mesure + agrégat + palette + format visibles, tri/séries/classes masqués, dégradé de 4 pastilles + indice sous la palette, défauts remplis (deux catégories différentes) 🌐
+- [x] Rendu : série `heatmap`, 46 cases pour 48 intersections (2 sans donnée absentes), légende aux bornes, **pixel de chaque case lu dans le graphique = couleur calculée (écart 0)** 🌐
+- [x] Clic : filtre ligne + colonne, une seule case en couleur pleine (les autres à 0,3), autre case de la même ligne = la ligne reste, même case = les deux filtres retirés 🌐
+- [x] Tableau croisé coloré : case à cocher visible, palette cachée tant qu'elle est décochée, une cellule colorée par case de données, 0 sur les cases vides et les totaux, texte noir/blanc, contour de la cellule active, décocher -> plus aucun `style` 🌐
+- [x] Édition d'une carte : formulaire relu (type, dimensions, palette) ; thème sombre : légende, axes et cases lisibles 🌐
+- [x] 6 000 lignes (DuckDB) dans un cadre isolé : mêmes cases, aucune erreur 🌐
+- [ ] Rendu dans un vrai Grist / un vrai GFS ⬜ **[NON TESTABLE ICI]**
+
 ### CSS — classe de bug à systématiquement re-vérifier
 
 - [x] `.field[hidden]` masque réellement l'élément (pas seulement `display:flex` de `.field` qui gagne à spécificité égale) [BUG RÉEL, trouvé 2 fois sur des champs différents] ✅ (règle en place)

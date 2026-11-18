@@ -8,7 +8,7 @@
   const GristBI = global.GristBI || (global.GristBI = {});
   const {
     groupByAggregate, sameValue, aggregateSingle, pivotTable, trendFromGroups, targetProgress, progressRows, sparklineValues, sparklineGeometry, measureSeriesForTile,
-    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, comboSeries, comboModeOf, histogramBins, histogramFilter, histogramBinIsActive, filterSelects, isStackedTile, splitBySeries, assembleSeries, paletteColors, PALETTES, escapeHtml,
+    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, comboSeries, comboModeOf, histogramBins, histogramFilter, histogramBinIsActive, filterSelects, cellFilterToggles, heatStops, heatRange, heatCellColors, heatTextColor, isStackedTile, splitBySeries, assembleSeries, paletteColors, PALETTES, escapeHtml,
     tileDrillLevels, currentDimension, rowsForTile, wordFrequency
   } = GristBI.data;
   const { t } = GristBI.i18n;
@@ -534,6 +534,18 @@
       if (bin) GristBI.store.toggleRangeFilter(currentTile.measure, histogramFilter(bin), currentTile.id);
       return;
     }
+    // Carte de chaleur : une case = UNE ligne ET UNE colonne du tableau croisé, le clic pose les deux filtres (comme une cellule du
+    // tableau croisé). Les valeurs des deux axes viennent du dernier rendu (`instance.__grid`), retrouvées par rang : jamais
+    // `params.name`, qui ne donne que l'abscisse. Pas de drill-down (comme le tableau croisé).
+    if (currentTile.type === 'heatmap') {
+      const inst = chartInstances.get(tileId);
+      const grid = inst && inst.__grid;
+      const v = params && Array.isArray(params.value) ? params.value : null;
+      if (grid && v && grid.colKeys[v[0]] !== undefined && grid.rowKeys[v[1]] !== undefined) {
+        toggleCellFilters(currentTile, String(grid.rowKeys[v[1]]), String(grid.colKeys[v[0]]));
+      }
+      return;
+    }
     // Mode mesure temporelle (voir renderMeasureChart) : un point est un mois CALCULÉ (bucket
     // DuckDB), pas une vraie valeur de la dimension d'origine — rien de cohérent à filtrer/driller.
     if (currentTile.type === 'bar' && currentTile.measureMode && currentTile.measureMode !== 'brut') return;
@@ -564,6 +576,12 @@
     } else {
       GristBI.store.toggleFilter(dim, name, currentTile.id);
     }
+  }
+
+  // Clic sur une case de la carte de chaleur : filtre de la ligne ET de la colonne (js/data.js:cellFilterToggles décide lesquels).
+  function toggleCellFilters(tile, rowValue, colValue) {
+    cellFilterToggles(GristBI.store.getState().activeFilters, tile.dimension, rowValue, tile.columnDimension, colValue)
+      .forEach((c) => GristBI.store.toggleFilter(c.column, c.value, tile.id));
   }
 
   // Instance ECharts partagée par renderChart/renderMeasureChart pour une même tuile : une tuile
@@ -882,6 +900,14 @@
       return `<th class="${cls}" data-axis="col" data-value="${escapeHtml(String(ck))}">${escapeHtml(String(ck))}</th>`;
     }).join('');
 
+    // Tableau croisé coloré (`tile.pivotHeat`) : fond de chaque cellule de données d'un dégradé séquentiel (js/data.js:heatCellColors),
+    // texte blanc ou noir selon le contraste ; le nombre reste écrit, la couleur n'est jamais seule. Totaux jamais colorés
+    // (une somme de ligne écraserait l'échelle des cellules). Couleurs CALCULÉES (hex), jamais une chaîne de la configuration.
+    const heat = tile.pivotHeat ? heatCellColors(pivot.cells, heatStops(tile.palette)) : null;
+    const heatStyle = (ri, ci) => {
+      const c = heat && heat[ri] && heat[ri][ci];
+      return c ? ` style="background:${c.bg};color:${c.fg}"` : '';
+    };
     const bodyRows = pivot.rowKeys.map((rk, ri) => {
       const rowActive = rowFilter && filterSelects(rowFilter, rk);
       const rowDimmed = rowFilter && !rowActive;
@@ -893,7 +919,7 @@
         const cellActive = rowActive && colActive;
         const cellDimmed = !cellActive && (rowDimmed || colDimmed);
         const cls = `pivot-cell${cellActive ? ' pivot-active' : ''}${cellDimmed ? ' pivot-dimmed' : ''}${v == null ? ' pivot-cell-empty' : ''}`;
-        return `<td class="${cls}" data-axis="cell" data-row="${escapeHtml(String(rk))}" data-col="${escapeHtml(String(ck))}">${fmt(v)}</td>`;
+        return `<td class="${cls}" data-axis="cell" data-row="${escapeHtml(String(rk))}" data-col="${escapeHtml(String(ck))}"${heatStyle(ri, ci)}>${fmt(v)}</td>`;
       }).join('');
       return `<tr>
         <th class="${rowHeaderCls}" data-axis="row" data-value="${escapeHtml(String(rk))}">${escapeHtml(String(rk))}</th>
@@ -909,7 +935,7 @@
       <td class="pivot-cell pivot-total-cell pivot-grand-total">${fmt(pivot.grandTotal)}</td>
     </tr>`;
 
-    el.innerHTML = `<table class="pivot-table">
+    el.innerHTML = `<table class="pivot-table${heat ? ' pivot-heat' : ''}">
       <thead><tr><th class="pivot-corner"></th>${headCells}<th class="pivot-col-header pivot-total-label">${totalLabel}</th></tr></thead>
       <tbody>${bodyRows}${totalRow}</tbody>
     </table>`;
@@ -971,6 +997,9 @@
       instance.hideLoading();
       renderHistogram(tile, rows, state, instance);
       return;
+    }
+    if (tile.type === 'heatmap') {
+      return renderHeatmap(tile, rows, state, instance);
     }
     // Formateur de la mesure (axe Y, infobulles, étiquettes) ; nuage de points : l'axe X porte `measure`,
     // l'axe Y `measureY`, chacun avec le format de SA colonne.
@@ -1445,6 +1474,81 @@
     instance.setOption(option, true);
   }
 
+  // Carte de chaleur (type 'heatmap') : le MÊME calcul que le tableau croisé (`computePivot`, DuckDB au-delà du seuil), dessiné en cases
+  // colorées plutôt qu'en chiffres — pour repérer d'un coup d'œil où une mesure se concentre (jour × heure, région × produit).
+  // Une case = (ligne, colonne) ; une intersection sans donnée reste VIDE (jamais la couleur du minimum : « pas de ligne » n'est pas
+  // « la plus petite valeur »). Dégradé séquentiel d'une seule teinte (`tile.palette` : bleu/orange/vert/gris, sinon bleu), légende
+  // continue dessous. Le nombre est écrit dans la case seulement quand elle est assez grande pour qu'il se lise ; sinon il est dans
+  // l'infobulle — la couleur n'est jamais le seul porteur de la valeur. Clic = filtre sur la ligne ET la colonne (handleTileClick).
+  async function renderHeatmap(tile, rows, state, instance) {
+    const seq = bumpSeq(tile.id);
+    const usingDuckDb = rows.length >= DUCKDB_ROW_THRESHOLD;
+    if (usingDuckDb) instance.showLoading('default', { text: t('chart.computing'), color: CATEGORICAL_PALETTE[0], maskColor: 'rgba(255, 255, 255, 0.6)' });
+    const pivot = await computePivot(rows, tile.dimension, tile.columnDimension, tile.measure, tile.aggFn);
+    if (isStale(tile.id, seq) || instance.isDisposed()) return; // rendu plus récent pour cette tuile entre-temps
+    instance.hideLoading();
+    const range = heatRange(pivot.cells);
+    instance.__grid = { rowKeys: pivot.rowKeys, colKeys: pivot.colKeys };
+    if (!pivot.rowKeys.length || !pivot.colKeys.length || !range) {
+      instance.setOption({ title: { text: t('chart.heatmap.empty'), left: 'center', top: 'middle', textStyle: { fontSize: 12, fontWeight: 'normal', color: chartTheme().muted } }, series: [], xAxis: { show: false }, yAxis: { show: false }, visualMap: [], grid: {}, tooltip: { show: false } }, true);
+      return;
+    }
+    const f = fmtFor(tile, tile.measure);
+    const th = chartTheme();
+    const stops = heatStops(tile.palette);
+    const colors = heatCellColors(pivot.cells, stops);
+    const rowFilter = state.activeFilters.find((af) => af.column === tile.dimension);
+    const colFilter = state.activeFilters.find((af) => af.column === tile.columnDimension);
+    const width = instance.getWidth() || 330;
+    const height = instance.getHeight() || 190;
+    const nRows = pivot.rowKeys.length;
+    const nCols = pivot.colKeys.length;
+    // Place réelle d'une case (grille moins axes et légende) : le nombre n'est écrit que si elle le contient.
+    const labelRoom = Math.max(0, width - 96) / nCols >= 40 && Math.max(0, height - 74) / nRows >= 17;
+    const data = [];
+    pivot.cells.forEach((line, ri) => line.forEach((v, ci) => {
+      if (!colors[ri][ci]) return; // intersection sans donnée : case vide
+      const selected = (!rowFilter || filterSelects(rowFilter, pivot.rowKeys[ri])) && (!colFilter || filterSelects(colFilter, pivot.colKeys[ci]));
+      data.push({
+        value: [ci, ri, Number(v)],
+        itemStyle: selected ? undefined : { opacity: 0.3 },
+        label: labelRoom ? { show: true, color: colors[ri][ci].fg, fontSize: 10, formatter: () => f.axis(Number(v)) } : undefined
+      });
+    }));
+    // Toutes les valeurs égales : l'échelle de la légende s'ouvre autour d'elles (couleur du milieu, comme heatCellColors).
+    const lo = range.min === range.max ? range.min - 1 : range.min;
+    const hi = range.min === range.max ? range.max + 1 : range.max;
+    const option = {
+      grid: { containLabel: true, left: 8, right: 12, top: 8, bottom: 36 },
+      tooltip: {
+        trigger: 'item',
+        // Texte HTML : clés échappées (valeurs de cellules), valeur formatée par js/format.js.
+        formatter: (p) => {
+          const v = p && p.value;
+          if (!Array.isArray(v)) return '';
+          return `${escapeHtml(String(pivot.rowKeys[v[1]]))} × ${escapeHtml(String(pivot.colKeys[v[0]]))}<br/>${escapeHtml(f.format(v[2]) || '–')}`;
+        }
+      },
+      xAxis: { type: 'category', data: pivot.colKeys.map(String), splitArea: { show: false }, axisLabel: { interval: 'auto' } },
+      yAxis: { type: 'category', data: pivot.rowKeys.map(String), inverse: true, splitArea: { show: false }, axisLabel: { interval: 0, width: 72, overflow: 'truncate', ellipsis: '…' } },
+      visualMap: {
+        type: 'continuous', min: lo, max: hi, calculable: false, orient: 'horizontal', left: 'center', bottom: 2,
+        itemWidth: 8, itemHeight: Math.max(60, Math.min(170, Math.round(width * 0.5))),
+        text: [f.axis(range.max), f.axis(range.min)], textGap: 6,
+        inRange: { color: stops }, textStyle: { fontSize: 10 }
+      },
+      series: [{
+        type: 'heatmap',
+        data,
+        itemStyle: { borderColor: th.surface, borderWidth: 1 },
+        emphasis: { itemStyle: { borderColor: th.text, borderWidth: 1 } },
+        progressive: 0
+      }]
+    };
+    finalizeOption(option, instance);
+    instance.setOption(option, true);
+  }
+
   // Histogramme (type 'histogram') : une barre par classe de valeurs de `tile.measure` (js/data.js:histogramBins : grille tirée de
   // TOUTES les lignes, comptes sur celles qui restent après les autres filtres). Deux formats de nombres : les bornes ont celui de
   // la colonne, les comptes (axe Y, infobulle) celui d'un comptage — jamais la devise de la colonne sur « 12 lignes ». Le clic
@@ -1615,6 +1719,10 @@
       }, option.tooltip);
     }
     if (option.legend) option.legend = Object.assign({ textStyle: { color: th.secondary } }, option.legend);
+    // Légende de dégradé (carte de chaleur) : ses libellés aux jetons, sinon noirs sur fond sombre.
+    if (option.visualMap && !Array.isArray(option.visualMap)) {
+      option.visualMap = Object.assign({}, option.visualMap, { textStyle: Object.assign({ color: th.muted }, option.visualMap.textStyle) });
+    }
     const styleAxis = (axis, isX) => {
       if (!axis) return axis;
       const one = (a) => {
