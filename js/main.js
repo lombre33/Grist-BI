@@ -114,6 +114,7 @@
     'type-pie': '<circle cx="8" cy="8" r="5.5"/><path d="M8 8V2.5M8 8l4.7 2.9"/>',
     'type-treemap': '<rect x="2" y="2.5" width="12" height="11" rx="1"/><path d="M8.5 2.5v11M8.5 8H14"/>',
     'type-funnel': '<path d="M2 3h12l-3.5 4.5v4.5L5.5 14V7.5L2 3Z"/>',
+    'type-text': '<path d="M2.5 4h11M2.5 8h11M2.5 12h6.5"/>',
     'type-scatter': '<circle cx="4.5" cy="10.5" r="1"/><circle cx="8" cy="6" r="1"/><circle cx="11" cy="9" r="1"/><circle cx="12" cy="4.5" r="1"/><path d="M2 14h12"/>',
     'type-waterfall': '<rect x="2.5" y="3" width="3" height="5" rx=".5"/><rect x="6.5" y="6" width="3" height="4" rx=".5"/><rect x="10.5" y="8" width="3" height="5" rx=".5"/>',
     'type-radar': '<path d="M8 2l5.5 4-2 6.5h-7L2.5 6 8 2Z"/><path d="M8 5.5l2.8 2-1 3.2H6.2l-1-3.2 2.8-2Z"/>',
@@ -219,6 +220,8 @@
   const drillCrossFilterField = document.getElementById('tile-drill-crossfilter-field');
   const drillCrossFilterCheckbox = document.getElementById('tile-drill-crossfilter');
   const measureField = document.getElementById('tile-measure-field');
+  const tileTextField = document.getElementById('tile-text-field');
+  const tileTextInput = document.getElementById('tile-text');
   const measureLabel = document.getElementById('tile-measure-label');
   const measureSelect = document.getElementById('tile-measure');
   const measureYField = document.getElementById('tile-measure-y-field');
@@ -679,8 +682,9 @@
     refreshFilterValues();
   }
 
-  // KPI et jauge : une seule valeur agrégée, pas de dimension de regroupement ni de drill-down.
-  function typeHasNoDimension(type) { return type === 'kpi' || type === 'gauge'; }
+  // KPI et jauge : une seule valeur agrégée, pas de dimension de regroupement ni de drill-down. Texte : aucune
+  // donnée du tout (ni mesure, ni dimension, voir updateFormFieldsForType).
+  function typeHasNoDimension(type) { return type === 'kpi' || type === 'gauge' || type === 'text'; }
 
   // Titres de tuile auto-composés (ex. "YTD : sum(Montant)") : du CONTENU généré à partir de noms
   // de colonnes, pas de la chrome — même périmètre volontairement laissé de côté que les titres
@@ -702,7 +706,8 @@
   function autoTileTitle(p) {
     let key;
     let vars;
-    if (p.isPivot) { key = 'tileTitle.pivot'; vars = { measure: p.measure, dimension: p.dimension, columnDimension: p.columnDimension }; }
+    if (p.isText) { key = 'tileTitle.text'; vars = undefined; }
+    else if (p.isPivot) { key = 'tileTitle.pivot'; vars = { measure: p.measure, dimension: p.dimension, columnDimension: p.columnDimension }; }
     else if (p.isRadarColumns) { key = 'tileTitle.radarColumns'; vars = { axes: p.radarAxes.join(', ') }; }
     else if (p.isWordCloudSplit) { key = 'tileTitle.wordCloud'; vars = { dimension: p.dimension }; }
     else if (p.hasDimension && p.seriesColumn) { key = 'tileTitle.measureByDimensionSeries'; vars = { measure: p.measure, dimension: p.dimension, series: p.seriesColumn }; }
@@ -1319,7 +1324,10 @@
           <button class="tile-detail" type="button" data-i18n-aria="tile.detail.aria" data-i18n-title="tile.detail.title" aria-label="${escapeHtml(t('tile.detail.aria'))}" title="${escapeHtml(t('tile.detail.title'))}">${icon('search')}</button>
           <button class="tile-remove edit-only" type="button" data-i18n-aria="tile.remove.aria" data-i18n-title="tile.remove.title" aria-label="${escapeHtml(t('tile.remove.aria'))}" title="${escapeHtml(t('tile.remove.title'))}">${icon('close')}</button>
         </span>`}</div>`;
-    el.innerHTML = tile.type === 'kpi'
+    el.innerHTML = tile.type === 'text'
+      ? `${header}
+         <div class="tile-text-body"></div>`
+      : tile.type === 'kpi'
       ? `${header}
          <div class="tile-kpi">
            <span class="tile-kpi-value">-</span>
@@ -1705,6 +1713,7 @@
     const isRadarColumns = isRadarColumnsMode();
     const isWordCloud = type === 'wordcloud';
     const isWordCloudSplit = isWordCloudSplitMode();
+    const isText = type === 'text';
     // KPI/jauge/tuile "Barres" en mode de calcul temporel : pas de dimension de regroupement ni de
     // drill-down, juste un agrégat sur toute la sélection (le KPI peut en plus le comparer à une
     // période via "Tendance vs", la jauge le positionne sur un cadran Min/Max, la tuile Barres en
@@ -1721,8 +1730,9 @@
     // comme dimensionField/drillField ci-dessus plutôt que laissés visibles mais ignorés.
     radarModeField.hidden = !isRadar;
     radarAxesField.hidden = !isRadarColumns;
-    measureField.hidden = isRadarColumns || isWordCloudSplit;
-    aggField.hidden = isRadarColumns || isWordCloudSplit;
+    measureField.hidden = isRadarColumns || isWordCloudSplit || isText;
+    aggField.hidden = isRadarColumns || isWordCloudSplit || isText;
+    tileTextField.hidden = !isText;
     // Comparaison élève/moyenne du groupe filtré : valable dans les DEUX modes d'axes (dimension ET
     // columns), voir ROADMAP.md — contrairement au bloc ci-dessus, pas de dépendance à isRadarColumns.
     radarEntityColumnField.hidden = !isRadar;
@@ -1833,7 +1843,8 @@
     radarEntityValueSelect.value = tile.radarEntityValue || '';
     radarCompareAverageCheckbox.checked = !!tile.radarCompareAverage;
     updateFormFieldsForType();
-    measureSelect.value = tile.measure;
+    measureSelect.value = tile.measure || '';
+    tileTextInput.value = tile.text || '';
     aggSelect.value = tile.aggFn;
     trendDimensionSelect.value = tile.trendDimension || '';
     // Titre : un titre auto-composé (`titleKey`) n'est PAS recopié dans le champ — il resterait figé
@@ -1918,6 +1929,8 @@
     const isPivot = type === 'pivot';
     const isRadarColumns = isRadarColumnsMode();
     const isWordCloudSplit = isWordCloudSplitMode();
+    const isText = type === 'text';
+    const textValue = isText ? tileTextInput.value.slice(0, GristBI.data.TEXT_TILE_MAX) : '';
     const hasDimension = !formHasNoDimension();
     const dimension = dimensionSelect.value;
     const columnDimension = columnDimensionSelect.value;
@@ -1928,7 +1941,8 @@
     // ci-dessous) ou le simple compte d'occurrences (js/data.js:wordFrequency) en tiennent lieu. La
     // dimension, elle, reste requise dans les deux cas sauf radar "colonnes" (seul mode sans aucune
     // dimension unique, voir formHasNoDimension).
-    if (!isRadarColumns && !isWordCloudSplit && !measure) fail('tile-measure', 'tileForm.error.measureRequired');
+    if (isText && !textValue.trim()) fail('tile-text', 'tileForm.error.textRequired');
+    if (!isRadarColumns && !isWordCloudSplit && !isText && !measure) fail('tile-measure', 'tileForm.error.measureRequired');
     if (hasDimension && !dimension) fail('tile-dimension', 'tileForm.error.dimensionRequired');
     if (isScatter && !measureYSelect.value) fail('tile-measure-y', 'tileForm.error.measureYRequired'); // 2e mesure obligatoire pour un nuage de points
     if (measureMode && !dateColumn) fail('tile-date-column', 'tileForm.alert.dateColumnRequired');
@@ -1959,7 +1973,7 @@
     // voir i18n.js:tileTitle) pour que l'en-tête de tuile suive la langue de l'interface au lieu de
     // rester figé dans celle de sa création.
     const auto = autoTileTitle({
-      isPivot, isRadarColumns, isWordCloudSplit, hasDimension, measureMode,
+      isText, isPivot, isRadarColumns, isWordCloudSplit, hasDimension, measureMode,
       measure, dimension, columnDimension, aggFn, radarAxes, seriesColumn
     });
     const customTitle = tileTitleInput.value.trim();
@@ -1967,6 +1981,10 @@
     const titleKey = customTitle ? undefined : auto.titleKey;
     const titleVars = customTitle ? undefined : auto.titleVars;
     const tileData = { type, dimension, measure, aggFn, title, titleKey, titleVars };
+    // Tuile Texte : aucune donnée. Les champs de données sont effacés (`undefined`) plutôt que laissés à la
+    // valeur fantôme du formulaire, et `text` n'existe que sur ce type.
+    if (isText) { tileData.dimension = undefined; tileData.measure = undefined; tileData.aggFn = undefined; }
+    tileData.text = isText ? textValue : undefined;
     // Nuage de mots "découpage de cellule" : mesure/agrégat ignorés par le rendu (voir
     // js/charts.js), effacés ici plutôt que laissés à une valeur fantôme du formulaire — même
     // principe que les champs spécifiques à un type plus bas.
@@ -2077,7 +2095,7 @@
   // repliées, aperçu en direct, conseil en direct). Le panneau est en flux normal (voir css/style.css) :
   // il ne recouvre jamais la barre. Toute la lecture du formulaire passe par readTileForm() ci-dessus.
   // =============================================================================================
-  const TYPE_CARDS = ['bar', 'line', 'pie', 'treemap', 'funnel', 'scatter', 'waterfall', 'radar', 'wordcloud', 'kpi', 'gauge', 'pivot'];
+  const TYPE_CARDS = ['bar', 'line', 'pie', 'treemap', 'funnel', 'scatter', 'waterfall', 'radar', 'wordcloud', 'kpi', 'gauge', 'pivot', 'text'];
   const PREVIEW_TILE_ID = '__preview__';
   let panelOpener = null;
   let previewTimer = null;
@@ -2138,6 +2156,7 @@
     gaugeMinInput.value = 0;
     gaugeMaxInput.value = 100;
     tileTitleInput.value = '';
+    tileTextInput.value = '';
     advancedDetailsEl.open = false;
   }
 

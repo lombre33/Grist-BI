@@ -3122,6 +3122,28 @@ Point de départ : la capture d'une jauge illisible envoyée par Antoine (gradua
 
 **Vérifié** : voir TEST_PROTOCOL.md (tailles normale, étroite, agrandie, thème sombre). **Non vérifié** : rendu dans un vrai Grist/GFS ; lecteur d'écran sur la jauge (aucun libellé accessible n'a été ajouté).
 
+### Tuiles usuelles des outils BI — lot 1, tuile Texte (18/11/2026)
+
+Étude de départ : `etudes/tuiles-usuelles-dashboard-2026-11-18.md` (fil « Lister les tuiles usuelles de
+dashboard »), dont Antoine a demandé de coder les lots 1 puis 2 à la suite, une PR par fonctionnalité, le format
+des nombres étant laissé au fil « Rendre les valeurs lisibles sur chaque tuile » (déjà fusionné).
+
+- **Ce que c'est** : type `text`, une note SANS donnée (titre de page, mode d'emploi, source, légende), ni dimension ni
+  mesure ni agrégat ; non filtrable, non cliquable, sans « Détail ».
+- **Sécurité** : le widget tourne en accès `full`, un texte saisi ne doit JAMAIS devenir du HTML brut.
+  `GristBI.data.renderTextHtml` échappe d'abord (`escapeHtml`) puis ajoute une liste fermée de balises
+  (`h3`, `h4`, `p`, `ul`/`li`, `strong`, `br`) à partir de quatre repères : `# ` (titre), `## ` (sous-titre),
+  `- ` ou `* ` (liste), `**gras**` ; une ligne vide sépare les paragraphes. `<img onerror>` et `<script>` saisis
+  s'affichent comme du texte, vérifié dans l'aperçu et dans la tuile. Plafond de 2 000 signes (`TEXT_TILE_MAX`).
+- **Exports** : Excel sans feuille pour une note (une note n'est pas un tableau ; `tileExportSheet` rend quand même une feuille
+  d'une cellule si on l'appelle sur elle), PDF et PPTX avec le texte brut (`plainTextOf`, « - » -> « • »).
+- **Conseil/accueil** : `'text'` est volontairement HORS de `advice.TILE_TYPES` (ce sont les types qui agrègent une colonne) ;
+  la carte de type a sa ligne d'usage (`USE_KEYS.text`), `adviceForTile('text')` rend `null`, `suggestTiles` n'en propose jamais.
+- **Testé** : Node (`dev-tests/test-data.js`, bloc « tuile Texte ») ; Playwright contre le vrai `index.html` +
+  `grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">` (clics réels : Ajouter > carte Texte > saisie >
+  « Ajouter la visualisation » ; `submit` ne part jamais dans ce cadre, c'est `bindFormSubmit`). **Pas testé dans un vrai
+  Grist ni dans un vrai GFS.**
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée

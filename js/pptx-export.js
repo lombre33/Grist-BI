@@ -66,6 +66,13 @@
     slide.addTable([headerRow].concat(bodyRows), { x: 0.4, y: 1.0, w: 9.2, fontSize: 11, autoPage: false });
   }
 
+  // Tuile Texte : une diapositive avec le titre et le texte, sans repères.
+  function addTextSlide(pptx, tile) {
+    const slide = pptx.addSlide();
+    slide.addText(tile.title || '', { x: 0.4, y: 0.3, w: 9.2, h: 0.5, fontSize: 18, bold: true });
+    slide.addText(GristBI.data.plainTextOf(tile.text), { x: 0.7, y: 1.0, w: 8.6, h: 5.0, fontSize: 14, valign: 'top' });
+  }
+
   // Image du graphique déjà rendu (voir en-tête de fichier) — même contrat que
   // GristBI.exportPdf.tileToPdfBlocks : un message explicite plutôt qu'une exception si la tuile n'a
   // jamais été affichée dans cette session.
@@ -91,7 +98,9 @@
     const titleSlide = pptx.addSlide();
     titleSlide.addText(page.name, { x: 0.4, y: 2.3, w: 9.2, h: 1, fontSize: 28, bold: true, align: 'center' });
     for (const tile of page.tiles) {
-      if (GristBI.data.tileExportKind(tile) === 'table') addTableSlide(pptx, tile, state);
+      const kind = GristBI.data.tileExportKind(tile);
+      if (kind === 'table') addTableSlide(pptx, tile, state);
+      else if (kind === 'text') addTextSlide(pptx, tile);
       else addImageSlide(pptx, tile);
     }
     await pptx.writeFile({ fileName: 'dashboard-bi.pptx' });

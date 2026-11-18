@@ -133,11 +133,23 @@
       renderGauge(tile, rows, container);
     } else if (tile.type === 'pivot') {
       renderPivot(tile, rows, state, container);
+    } else if (tile.type === 'text') {
+      renderText(tile, container);
     } else if (tile.type === 'bar' && tile.measureMode && tile.measureMode !== 'brut') {
       renderMeasureChart(tile, rows, container);
     } else {
       renderChart(tile, rows, state, container, drillPath);
     }
+  }
+
+  // Tuile Texte : aucune donnée, aucune instance ECharts (donc rien à disposer ni à redimensionner). Le contenu
+  // n'est reconstruit que s'il change : la tuile est mise en cache et re-rendue à chaque render() (js/main.js).
+  // `renderTextHtml` échappe tout (js/data.js) : jamais d'HTML saisi par une personne dans le DOM.
+  function renderText(tile, container) {
+    const el = container.querySelector(`[data-tile-id="${tile.id}"] .tile-text-body`);
+    if (!el) return;
+    const html = GristBI.data.renderTextHtml(tile.text);
+    if (el.dataset.html !== html) { el.innerHTML = html; el.dataset.html = html; }
   }
 
   // ASYNCHRONE depuis que la valeur/la tendance peuvent passer par DuckDB-WASM au-delà du seuil

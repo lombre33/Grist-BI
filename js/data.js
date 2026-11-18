@@ -554,6 +554,43 @@
     return applyFilters(state.rows, filtersFromOtherTiles.concat(state.advancedFilters || []).concat(drillPath));
   }
 
+  // ---- Tuile Texte (type 'text') ----------------------------------------------------------------
+  // Texte libre d'un tableau de bord : titre de section, consigne de lecture, source, date de mise à jour.
+  // Aucune donnée, aucune mesure. SÉCURITÉ : ce widget a l'accès `full` au document, et le texte saisi par
+  // une personne est relu et affiché chez chaque lecteur du tableau de bord — jamais d'HTML brut. Tout est
+  // ÉCHAPPÉ d'abord (escapeHtml), puis seuls quatre repères simples deviennent des balises FIXES :
+  // `# titre`, `## sous-titre`, `- élément de liste`, `**gras**`. Pas de lien (à vérifier d'abord dans le cadre
+  // isolé de GFS, qui n'autorise que les scripts). Plafond de longueur : TEXT_TILE_MAX caractères.
+  const TEXT_TILE_MAX = 2000;
+  function textLines(text) {
+    return String(text == null ? '' : text).slice(0, TEXT_TILE_MAX).replace(/\r\n?/g, '\n').split('\n');
+  }
+  function renderTextHtml(text) {
+    const inline = (s) => escapeHtml(s).replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
+    const out = [];
+    let para = [];
+    let list = [];
+    const flushPara = () => { if (para.length) { out.push('<p>' + para.join('<br>') + '</p>'); para = []; } };
+    const flushList = () => { if (list.length) { out.push('<ul>' + list.map((li) => '<li>' + li + '</li>').join('') + '</ul>'); list = []; } };
+    textLines(text).forEach((raw) => {
+      const line = raw.replace(/\s+$/, '');
+      let m;
+      if (!line.trim()) { flushPara(); flushList(); }
+      else if ((m = /^(#{1,2})\s+(.*)$/.exec(line))) { flushPara(); flushList(); const h = m[1].length + 2; out.push('<h' + h + '>' + inline(m[2]) + '</h' + h + '>'); }
+      else if ((m = /^\s*[-*]\s+(.*)$/.exec(line))) { flushPara(); list.push(inline(m[1])); }
+      else { flushList(); para.push(inline(line)); }
+    });
+    flushPara();
+    flushList();
+    return out.join('');
+  }
+  // Le même texte sans repères, pour les exports (PDF, PowerPoint, Excel).
+  function plainTextOf(text) {
+    return textLines(text)
+      .map((l) => l.replace(/^\s*#{1,2}\s+/, '').replace(/^\s*[-*]\s+/, '• ').replace(/\*\*([^*]+?)\*\*/g, '$1'))
+      .join('\n').trim();
+  }
+
   // Comment une tuile doit être représentée dans un export visuel (PDF/PPT, voir js/pdf-export.js) :
   // 'image' pour toute tuile rendue par une instance ECharts déjà en cache (bar y compris en mode
   // mesure DAX, pie, treemap, scatter, gauge — voir GristBI.charts.getInstance), capturée telle
@@ -562,6 +599,7 @@
   // 'table' pour le pivot (déjà une table HTML, pas de graphique) et le KPI (texte simple, pas de
   // graphique) — ces deux réutilisent directement tileExportSheet, déjà correct pour eux.
   function tileExportKind(tile) {
+    if (tile.type === 'text') return 'text'; // ni graphique ni tableau : le texte lui-même
     return (tile.type === 'kpi' || tile.type === 'pivot') ? 'table' : 'image';
   }
 
@@ -572,6 +610,9 @@
   // après filtrage), ce que `XLSX.utils.json_to_sheet([])` ne permettrait pas (pas d'en-tête sans
   // au moins un objet pour les déduire).
   function tileExportSheet(tile, state) {
+    // Tuile Texte : aucune donnée. Les classeurs Excel l'ignorent (voir buildWorkbookSheets), mais un appel
+    // direct reste sûr plutôt que de produire « undefined(undefined) ».
+    if (tile.type === 'text') return { name: tile.title || 'Texte', header: ['Texte'], rows: [[plainTextOf(tile.text)]] };
     const rows = rowsForTile(tile, state);
     const title = tile.title || `${tile.aggFn}(${tile.measure})`;
     if (tile.type === 'kpi' || tile.type === 'gauge') {
@@ -711,6 +752,7 @@
     const multiPage = state.pages.length > 1;
     for (const page of state.pages) {
       for (const tile of page.tiles) {
+        if (tile.type === 'text') continue; // une note n'est pas une donnée : pas de feuille Excel
         const sheet = tileExportSheet(tile, state);
         const label = multiPage ? `${page.name} - ${sheet.name}` : sheet.name;
         sheets.push({ name: sanitizeSheetName(label, usedNames), header: sheet.header, rows: sheet.rows });
@@ -762,6 +804,7 @@
     const multiPage = state.pages.length > 1;
     for (const page of state.pages) {
       for (const tile of page.tiles) {
+        if (tile.type === 'text') continue; // idem buildWorkbookSheets
         const isTemporalMeasure = tile.type === 'bar' && tile.measureMode && tile.measureMode !== 'brut';
         const sheet = isTemporalMeasure
           ? await measureExportSheet(tile, state, computeMeasureSeries)
@@ -878,7 +921,7 @@
     relativeDateRange, RELATIVE_DATE_PRESETS, groupByAggregate, aggregateSingle, wordFrequency, pivotTable,
     distinctColumnValues, computeTrend, trendFromGroups, periodLabel, measureSeriesForTile,
     waterfallSeries, sortGroups, isSortableTile, isSeriesTile, isStackedTile, splitBySeries, assembleSeries, PALETTES, PALETTE_KEYS, paletteColors, supportsPalette, escapeHtml,
-    tileDrillLevels, currentDimension, rowsForTile, tileExportSheet, tileExportKind,
+    tileDrillLevels, currentDimension, rowsForTile, tileExportSheet, tileExportKind, renderTextHtml, plainTextOf, TEXT_TILE_MAX,
     sanitizeSheetName, buildWorkbookSheets, measureExportSheet, buildWorkbookSheetsAsync,
     blendRows, deriveDateHierarchyColumns, commentsForTile, isAccessRuleRefusal, AGGREGATORS
   };

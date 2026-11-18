@@ -65,6 +65,8 @@
   // déjà testée pour l'export Excel).
   function tileToPdfBlocks(tile, state) {
     const title = { text: tile.title || `${tile.aggFn}(${tile.measure})`, style: 'tileTitle' };
+    // Tuile Texte : le texte lui-même, sans repères (ni graphique à capturer, ni tableau).
+    if (GristBI.data.tileExportKind(tile) === 'text') return [title, { text: GristBI.data.plainTextOf(tile.text), margin: [0, 4, 0, 16] }];
     if (GristBI.data.tileExportKind(tile) === 'table') {
       const sheet = GristBI.data.tileExportSheet(tile, state);
       const body = [sheet.header].concat(sheet.rows.map((row) => row.map((cell) => (cell == null ? '' : String(cell)))));
