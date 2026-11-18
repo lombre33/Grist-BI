@@ -479,7 +479,11 @@
     try { font = getComputedStyle(document.body).fontFamily || font; } catch (e) { /* hors navigateur */ }
     return {
       text: cssVar('--text', '#0b0b0b'),
+      secondary: cssVar('--text-secondary', '#52514e'),
       muted: cssVar('--text-muted', '#6b6a64'),
+      surface: cssVar('--surface', '#fcfcfb'),
+      line: cssVar('--border-strong', '#e1e0d9'), // cadre de l'infobulle
+      grid: cssVar('--border', 'rgba(11, 11, 11, 0.10)'), // quadrillage, discret sur fond clair comme sombre
       track: 'rgba(128, 128, 128, 0.22)', // visible sur fond clair comme sombre
       font
     };
@@ -743,6 +747,8 @@
       getDataURL() { return canvas.toDataURL('image/png'); }, // voir js/pdf-export.js/js/pptx-export.js
       showUnavailable(message) {
         placedWords = [];
+        // Le <canvas> (300 x 150 par défaut) poussait le message sous le bas de la tuile : tuile vide, sans explication.
+        canvas.style.display = 'none';
         const old = el.querySelector('.tile-wordcloud-message');
         if (old) old.remove();
         const msg = document.createElement('p');
@@ -751,6 +757,7 @@
         el.appendChild(msg);
       },
       render(words, cssWidth, cssHeight, split) {
+        canvas.style.display = '';
         const old = el.querySelector('.tile-wordcloud-message');
         if (old) old.remove();
         placedWords = words;
@@ -1077,7 +1084,17 @@
           width: '55%',
           minSize: '8%',
           gap: 2,
-          label: { show: true, position: 'right', formatter: (p) => `${p.name} · ${f.axis(p.value)}` },
+          // Nom puis valeur sur DEUX lignes, la place à droite de l'entonnoir (45 % moins le trait) comme largeur : un
+          // nom long est tronqué par « … », la valeur (l'info utile) reste visible. Une ligne unique sortait de la tuile.
+          label: {
+            show: true,
+            position: 'right',
+            width: Math.max(48, Math.floor((instance.getWidth() - 16) * 0.45 - 22)),
+            overflow: 'truncate',
+            fontSize: 11,
+            lineHeight: 13,
+            formatter: (p) => `${p.name}\n${f.axis(p.value)}`
+          },
           labelLine: { show: true, length: 12 },
           data: groups.map((d) => ({ name: d.dimension, value: d.value, itemStyle: dim(d.dimension) }))
         }]
@@ -1312,7 +1329,7 @@
         }))
       };
     }
-    confineTooltip(option);
+    finalizeOption(option, instance);
     instance.setOption(option, true);
   }
 
@@ -1366,7 +1383,7 @@
       yAxis: { type: 'value', axisLabel: { formatter: mf.axis } },
       series: series.map((s) => ({ type: 'bar', name: s.label, data: s.data }))
     };
-    confineTooltip(option);
+    finalizeOption(option, instance);
     instance.setOption(option, true);
   }
 
@@ -1401,9 +1418,100 @@
 
   // Bulle d'info toujours DANS la zone du graphique (`confine`) : sans ça, ECharts la posait à côté du
   // point survolé, donc hors de la carte — jusqu'à sortir de l'écran à gauche pour un radar (retour
-  // d'Antoine du 18/11/2026). Appliqué à toutes les options juste avant `setOption`.
+  // d'Antoine du 18/11/2026).
   function confineTooltip(option) {
     if (option && option.tooltip) option.tooltip = Object.assign({ confine: true }, option.tooltip);
+  }
+
+  // Dernière étape de TOUT graphique ECharts, juste avant `setOption` (audit de lisibilité, lot 4, 18/11/2026) : le
+  // thème de la page (clair/sombre/ambiance, jetons CSS) et la lisibilité des libellés. Les réglages DÉJÀ posés par un
+  // type de tuile gagnent (`Object.assign(défauts, existant)`), jamais l'inverse.
+  // - infobulle : fond et texte des jetons (ECharts la dessinait blanche sur fond sombre), 12 px, retour à la ligne
+  //   (« Tablette Graphique Professionnelle 12 pouces » tenait sur toute la largeur de la tuile) ;
+  // - axes : quadrillage et traits des jetons (ECharts les dessine en #E0E6F1 / gris foncé, blancs éclatants sur fond
+  //   sombre), libellés qui se chevauchent masqués, libellés de catégorie TRONQUÉS à la largeur d'une catégorie (le 1er
+  //   de « Tablette Graphique Professionnelle 12 pouces » sortait de la tuile à gauche, les autres disparaissaient),
+  //   graduations de l'axe horizontal en nombre raisonnable (« 200 k400 k600 k » collés dans une barre horizontale) ;
+  // - camembert/entonnoir : texte aux jetons, sans le contour blanc qu'ECharts leur met (illisible sur fond sombre) ;
+  // - radar : noms d'axes, cercles et bandes des jetons (les bandes claires par défaut éclairent un fond sombre).
+  function finalizeOption(option, instance) {
+    if (!option) return option;
+    confineTooltip(option);
+    const th = chartTheme();
+    const width = (instance && typeof instance.getWidth === 'function') ? instance.getWidth() : 0;
+    if (option.tooltip) {
+      option.tooltip = Object.assign({
+        backgroundColor: th.surface,
+        borderColor: th.line,
+        textStyle: { color: th.text, fontSize: 12 },
+        extraCssText: 'max-width: 85%; white-space: normal; overflow-wrap: anywhere;'
+      }, option.tooltip);
+    }
+    if (option.legend) option.legend = Object.assign({ textStyle: { color: th.secondary } }, option.legend);
+    const styleAxis = (axis, isX) => {
+      if (!axis) return axis;
+      const one = (a) => {
+        const label = Object.assign({ color: th.muted, hideOverlap: true }, a.axisLabel);
+        const out = Object.assign({}, a, {
+          axisLine: Object.assign({ lineStyle: { color: th.muted } }, a.axisLine),
+          axisTick: Object.assign({ lineStyle: { color: th.muted } }, a.axisTick),
+          splitLine: Object.assign({ lineStyle: { color: th.grid } }, a.splitLine),
+          axisLabel: label
+        });
+        if (isX && width) {
+          const plotW = Math.max(60, width - 70);
+          if (a.type === 'category' && Array.isArray(a.data) && a.data.length && label.width == null) {
+            // Peu de catégories : chacune garde sa place (largeur d'une catégorie moins une marge, nom tronqué par « … »,
+            // aucun libellé masqué). Beaucoup de catégories : ECharts n'en montre qu'une sur k (intervalle automatique),
+            // chacune avec plus de place.
+            const band = Math.floor(plotW / a.data.length) - 6;
+            if (a.data.length <= 8 && band >= 28) {
+              label.width = Math.min(150, band);
+              if (label.interval == null) label.interval = 0;
+            } else {
+              label.width = 70;
+            }
+            label.overflow = 'truncate';
+            label.ellipsis = '…';
+          } else if (a.type === 'value' && a.splitNumber == null) {
+            out.splitNumber = Math.max(2, Math.min(6, Math.floor(plotW / 64)));
+          }
+        }
+        return out;
+      };
+      return Array.isArray(axis) ? axis.map(one) : one(axis);
+    };
+    if (option.xAxis) option.xAxis = styleAxis(option.xAxis, true);
+    if (option.yAxis) option.yAxis = styleAxis(option.yAxis, false);
+    if (Array.isArray(option.series)) {
+      option.series.forEach((sr, i) => {
+        if (sr && (sr.type === 'pie' || sr.type === 'funnel')) {
+          option.series[i] = Object.assign({}, sr, {
+            label: Object.assign({ color: th.text, textBorderWidth: 0 }, sr.label),
+            // Traits entre les étapes de l'entonnoir : le blanc par défaut d'ECharts éclaire un fond sombre.
+            ...(sr.type === 'funnel' ? { itemStyle: Object.assign({ borderColor: th.surface, borderWidth: 1 }, sr.itemStyle) } : {})
+          });
+        }
+      });
+    }
+    if (option.radar) {
+      option.radar = Object.assign({}, option.radar, {
+        // Noms d'axe tronqués à un tiers de la tuile (`overflow` n'agit pas sur les noms d'axe d'un radar : on coupe nous-mêmes) :
+        // « Station d'accueil USB-C » sortait de la carte à droite.
+        axisName: Object.assign({
+          color: th.muted,
+          formatter: (name) => {
+            const max = Math.max(8, Math.floor((width || 330) * 0.34 / 6.8));
+            const text = String(name == null ? '' : name);
+            return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+          }
+        }, option.radar.axisName),
+        axisLine: Object.assign({ lineStyle: { color: th.grid } }, option.radar.axisLine),
+        splitLine: Object.assign({ lineStyle: { color: th.grid } }, option.radar.splitLine),
+        splitArea: Object.assign({ show: false }, option.radar.splitArea)
+      });
+    }
+    return option;
   }
 
   // `__refit` : une jauge dont la géométrie est calculée en pixels se redessine à la nouvelle taille (voir renderGauge).

@@ -3207,6 +3207,18 @@ des nombres étant laissé au fil « Rendre les valeurs lisibles sur chaque tuil
   édition, Excel, anglais). **Pas testé dans un vrai Grist ni un vrai GFS ; types Grist exotiques (Attachments, Reference
   résolue, ChoiceList) vus seulement par leur forme supposée** (`cellText`).
 
+### Lisibilité des valeurs sur les tuiles — lot 4 : thème sombre, infobulles, libellés (18/11/2026)
+
+Dernier lot de l'audit : tout ce qui, hors des nombres eux-mêmes, rendait une tuile peu lisible. Constats faits sur le jeu d'audit (tuiles de ~330 px, libellés de 44 caractères, 24 catégories) en clair, en sombre et en anglais.
+
+**Cause commune** : `js/charts.js` ne donnait à ECharts que des couleurs de série ; tout le reste (quadrillage, traits d'axe, fond et texte de l'infobulle, contour des étiquettes de camembert/entonnoir, bandes du radar) venait du thème clair d'ECharts, blanc éclatant sur fond sombre, et les libellés longs n'étaient jamais bornés à la place disponible.
+
+**Fait** (`js/charts.js:finalizeOption`, appelée avant chaque `setOption`) : infobulle aux jetons CSS, 12 px, qui se replie (85 % de la tuile au plus) ; quadrillage, traits et libellés d'axe aux jetons ; libellés de catégorie tronqués à la largeur d'une catégorie (tous visibles jusqu'à 8 catégories, sinon un sur k avec plus de place) ; graduations de l'axe horizontal en nombre raisonnable (6 au plus, moins en étroit) ; camembert/entonnoir sans contour blanc, entonnoir en deux lignes (nom tronqué, valeur toujours visible) ; radar aux jetons, noms d'axe tronqués à un tiers de la tuile ; nuage de mots : le message « indisponible » n'était qu'en bas d'un `<canvas>` de 150 px, tuile vide. `js/main.js:watchChartTheme` refait un rendu quand les jetons lus changent (système clair/sombre, ambiance de GFS posée sur `<html>`), par comparaison d'une signature, jamais à chaque mutation de `<html>` (`--chrome-h` y est réécrit en continu).
+
+**Choix assumés** : (1) Radar « colonnes » : l'échelle reste PARTAGÉE par tous les axes (voulu : des compétences notées sur 20 ne se comparent qu'entre elles) ; des colonnes d'ordres de grandeur très différents (rapport de 20 ou plus entre les moyennes) reçoivent un avertissement (`advice.radar.mixedScales`) au lieu d'une normalisation par axe qui rendrait toute comparaison trompeuse. (2) Avec beaucoup de catégories, le nom d'un axe est tronqué à 70 px et ECharts n'en affiche qu'un sur k : la solution est « Barres horizontales » (déjà conseillée), pas de réduire la police. (3) Un camembert de 24 parts reste illisible par nature : le conseil existant (au-delà de 7 parts) le dit.
+
+**Vérifié** : voir TEST_PROTOCOL.md. **Non vérifié** : rendu dans un vrai Grist/GFS (ambiance réelle du kit : seul le même mécanisme, un jeton posé sur `<html>` par le CSSOM, a été reproduit) ; lecteur d'écran sur les graphiques.
+
 ### Tuiles usuelles des outils BI — lot 1, KPI enrichi et tuile Progression (18/11/2026)
 
 - **Carte KPI** (rien ne change pour une carte existante : tout est facultatif) : `tile.kpiSparkline` (case « Tracer la courbe de la tendance »,
