@@ -135,6 +135,8 @@
       renderPivot(tile, rows, state, container);
     } else if (tile.type === 'text') {
       renderText(tile, container);
+    } else if (tile.type === 'table') {
+      renderTable(tile, rows, container);
     } else if (tile.type === 'bar' && tile.measureMode && tile.measureMode !== 'brut') {
       renderMeasureChart(tile, rows, container);
     } else {
@@ -150,6 +152,73 @@
     if (!el) return;
     const html = GristBI.data.renderTextHtml(tile.text);
     if (el.dataset.html !== html) { el.innerHTML = html; el.dataset.html = html; }
+  }
+
+  // Table plate (type 'table') : une table HTML dans `.tile-chart` (comme le tableau croisé), colonnes choisies dans
+  // l'ordre voulu, lignes telles qu'elles arrivent après les filtres. Le TRI d'un clic sur l'en-tête est un état de
+  // lecture, jamais enregistré dans la configuration : une personne qui lit le tableau de bord le change sans le
+  // modifier pour les autres (comme le chemin de drill-down, qui n'est pas persisté non plus) ; il survit aux
+  // re-rendus (clé = id de tuile), tombe avec la tuile (`disposeTile`). Plafond d'affichage TABLE_TILE_MAX_ROWS
+  // lignes, avec un message : le tri s'applique à TOUTES les lignes avant la coupe. Aucune cellule n'est cliquable
+  // (pas de cross-filtre : une ligne n'est pas une catégorie) ; le bouton « Détail » montre toutes les colonnes.
+  const tableSort = new Map(); // id de tuile -> { column, dir: 'asc' | 'desc' }
+  function renderTable(tile, rows, container) {
+    const el = container.querySelector(`[data-tile-id="${tile.id}"] .tile-chart`);
+    if (!el) return;
+    const columns = GristBI.data.tableColumnsOf(tile, rows);
+    const sort = tableSort.get(tile.id);
+    const sortCol = sort && columns.includes(sort.column) ? sort : null;
+    const sorted = sortCol ? GristBI.data.sortRowsBy(rows, sortCol.column, sortCol.dir) : rows;
+    const shown = sorted.slice(0, GristBI.data.TABLE_TILE_MAX_ROWS);
+    const lang = GristBI.i18n.getLang();
+
+    let html;
+    if (!columns.length) {
+      html = `<p class="pivot-empty">${escapeHtml(t('chart.table.noColumns'))}</p>`;
+    } else {
+      const head = columns.map((c) => {
+        const dir = sortCol && sortCol.column === c ? sortCol.dir : null;
+        const arrow = dir === 'asc' ? '▲' : (dir === 'desc' ? '▼' : '');
+        const aria = dir === 'asc' ? 'ascending' : (dir === 'desc' ? 'descending' : 'none');
+        return `<th scope="col" aria-sort="${aria}"><button type="button" class="dt-sort" data-column="${escapeHtml(c)}" title="${escapeHtml(t('chart.table.sortBy', { column: c }))}">`
+          + `<span>${escapeHtml(c)}</span><span class="dt-arrow" aria-hidden="true">${arrow}</span></button></th>`;
+      }).join('');
+      const body = shown.map((r) => `<tr>${columns.map((c) => {
+        const v = r[c];
+        const isNum = (typeof v === 'number' && Number.isFinite(v)) || typeof v === 'bigint';
+        const text = isNum ? GristBI.format.cellNumber(tile, c, v, lang) : GristBI.data.cellText(v);
+        return `<td${isNum ? ' class="dt-num"' : ''}>${escapeHtml(text)}</td>`;
+      }).join('')}</tr>`).join('');
+      const empty = shown.length ? '' : `<p class="pivot-empty">${escapeHtml(t('chart.table.empty'))}</p>`;
+      const more = rows.length > shown.length
+        ? `<p class="dt-truncated">${escapeHtml(t('chart.table.truncated', { shown: shown.length, total: rows.length }))}</p>` : '';
+      html = `<table class="data-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>${empty}${more}`;
+    }
+    // Reconstruit seulement si le contenu change : la tuile est re-rendue à chaque render() (js/main.js) et un
+    // innerHTML identique ferait perdre la position de défilement et le focus d'un en-tête.
+    if (el.dataset.html !== html) {
+      const scroll = el.scrollTop;
+      el.innerHTML = html;
+      el.dataset.html = html;
+      el.scrollTop = scroll;
+    }
+    if (el.dataset.bound !== '1') {
+      el.dataset.bound = '1';
+      el.addEventListener('click', (e) => {
+        const btn = e.target.closest && e.target.closest('.dt-sort');
+        if (!btn || !el.contains(btn)) return;
+        const live = liveTile(tile.id); // la tuile VIVANTE, jamais celle du premier rendu (CLAUDE.md §7 n°18)
+        if (!live) return;
+        const column = btn.dataset.column;
+        const cur = tableSort.get(live.id);
+        const dir = GristBI.data.nextSortDir(cur && cur.column === column ? cur.dir : null);
+        if (dir) tableSort.set(live.id, { column, dir }); else tableSort.delete(live.id);
+        const state = GristBI.store.getState();
+        renderTable(live, rowsForTile(live, state), container);
+        const again = el.querySelector(`.dt-sort[data-column="${CSS.escape(column)}"]`);
+        if (again) again.focus();
+      });
+    }
   }
 
   // ASYNCHRONE depuis que la valeur/la tendance peuvent passer par DuckDB-WASM au-delà du seuil
@@ -1245,6 +1314,7 @@
   }
 
   function disposeTile(tileId) {
+    tableSort.delete(tileId);
     const inst = chartInstances.get(tileId);
     if (inst) { inst.dispose(); chartInstances.delete(tileId); }
     renderSeq.delete(tileId);

@@ -56,6 +56,7 @@
   const HIERARCHY_RE = /^(.+)\.(Annee|Trimestre|Mois)$/;
 
   // Tous les types de tuile que le formulaire sait créer (voir index.html, #tile-type).
+  const TABLE_DEFAULT_COLUMNS = 6;
   const TILE_TYPES = ['bar', 'line', 'pie', 'treemap', 'funnel', 'scatter', 'waterfall', 'radar', 'wordcloud', 'kpi', 'gauge', 'pivot'];
 
   // « Quand l'utiliser » : une ligne par type pour l'étape « Choisir ». Littéraux (pas de clé
@@ -74,7 +75,9 @@
     kpi: 'advice.use.kpi',
     gauge: 'advice.use.gauge',
     pivot: 'advice.use.pivot',
-    // Hors TILE_TYPES : aucune donnée, donc ni valeurs par défaut, ni miniature, ni avertissement.
+    // Hors TILE_TYPES : aucune agrégation (texte : aucune donnée ; table : les lignes telles quelles), donc ni
+    // miniature ni avertissement ; seule la table préremplit ses colonnes (`defaultsForType`).
+    table: 'advice.use.table',
     text: 'advice.use.text'
   };
 
@@ -632,6 +635,9 @@
   // une vraie colonne numérique, distinctes — ou un comptage de lignes s'il n'existe aucun nombre.
   function defaultsForType(type, rows, columnIds) {
     if (type === 'text') return {}; // une note n'a rien à préremplir
+    // Table plate : les premières colonnes de la table (une table de travail en compte vite des dizaines : une
+    // tuile de 224 px n'en montre que quelques-unes ; on en coche six, la personne ajoute ou retire).
+    if (type === 'table') return { columns: (columnIds || []).filter((c) => c !== 'id').slice(0, TABLE_DEFAULT_COLUMNS) };
     const ctx = analyzeColumns(rows, columnIds);
     if (!ctx.profiles.length) return null;
     const measure = ctx.measures[0];
@@ -752,7 +758,7 @@
   // filtres croisés actifs : un conseil qui apparaîtrait ou disparaîtrait à chaque clic sur une
   // autre tuile ne serait pas un conseil sur le graphique lui-même.
   function adviceForTile(tile, rows) {
-    if (!tile || !tile.type || tile.type === 'text' || !Array.isArray(rows) || !rows.length) return null;
+    if (!tile || !tile.type || tile.type === 'text' || tile.type === 'table' || !Array.isArray(rows) || !rows.length) return null;
     const type = tile.type;
     const noDimension = type === 'kpi' || type === 'gauge' || (type === 'bar' && tile.measureMode && tile.measureMode !== 'brut')
       || (type === 'radar' && tile.radarAxisMode === 'columns');
@@ -859,7 +865,7 @@
   // s'y prêtent pas, sinon la phrase générique « quand l'utiliser ». Toujours un objet, jamais null.
   function adviceForType(type, rows, columnIds) {
     const generic = { key: USE_KEYS[type] || USE_KEYS.bar, vars: {}, level: 'info' };
-    if (type === 'text') return generic;
+    if (type === 'text' || type === 'table') return generic;
     if (!USE_KEYS[type] || !Array.isArray(rows) || !rows.length) return generic;
     const ctx = analyzeColumns(rows, columnIds);
     if (!ctx.profiles.length) return generic;
