@@ -1300,7 +1300,7 @@
         const sheet = await exportSheetFor(tile, state, computeMeasureSeries);
         blocks.push({ tileId: tile.id, tile, kind: tileExportKind(tile), name: sheet.name, header: sheet.header, rows: sheet.rows, truncated: sheet.truncated || 0 });
       }
-      pages.push({ id: page.id, title: page.name, name: sanitizeSheetName(page.name, usedNames), blocks });
+      pages.push({ id: page.id, title: page.name, layout: page.layout, name: sanitizeSheetName(page.name, usedNames), blocks });
     }
     return pages;
   }
