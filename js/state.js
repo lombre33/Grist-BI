@@ -302,6 +302,22 @@
       notify();
     }
 
+    // Filtre croisé par PLAGE (clic sur une classe d'histogramme) : même place que toggleFilter dans `activeFilters` (au plus un
+    // par colonne, `sourceTileId` = la tuile qui le pose, donc elle reste affichée en entier), mais de type `range`
+    // (`{type:'range', min, max, maxExclusive?}`, voir data.js:matchesFilter). Cliquer la MÊME plage retire le filtre ; une
+    // autre plage (ou un filtre d'égalité posé sur cette colonne) la remplace.
+    function toggleRangeFilter(column, range, sourceTileId) {
+      const idx = activeFilters.findIndex((f) => f.column === column);
+      const filter = { column, type: 'range', min: range.min, max: range.max, sourceTileId };
+      if (range.maxExclusive) filter.maxExclusive = true;
+      const same = idx >= 0 && activeFilters[idx].type === 'range' && activeFilters[idx].min === filter.min
+        && activeFilters[idx].max === filter.max && !!activeFilters[idx].maxExclusive === !!filter.maxExclusive;
+      if (same) activeFilters = activeFilters.filter((_, i) => i !== idx);
+      else if (idx >= 0) activeFilters = activeFilters.map((f, i) => (i === idx ? filter : f));
+      else activeFilters = activeFilters.concat([filter]);
+      notify();
+    }
+
     // Sans argument : efface tous les filtres. Avec une colonne : efface seulement celui-là.
     function clearFilter(column) {
       activeFilters = column ? activeFilters.filter((f) => f.column !== column) : [];
@@ -430,7 +446,7 @@
       getState, subscribe, setRows,
       setPages, setCurrentPage, addPage, renamePage, removePage,
       addTile, removeTile, updateTile, moveTile,
-      toggleFilter, clearFilter, setAdvancedFilter, clearAdvancedFilter, drillInto, drillUp,
+      toggleFilter, toggleRangeFilter, clearFilter, setAdvancedFilter, clearAdvancedFilter, drillInto, drillUp,
       setBookmarks, saveBookmark, applyBookmark, updateBookmark, leaveBookmark, removeBookmark, setBlend,
       toggleZoom, clearZoom,
       setComments, addCommentLocal

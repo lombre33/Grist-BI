@@ -409,6 +409,7 @@
       <label for="tile-type" data-i18n="tileForm.type.label">Type</label>
       <select id="tile-type">
         <option value="bar" data-i18n="tileForm.type.bar">Barres</option>
+        <option value="histogram" data-i18n="tileForm.type.histogram">Histogramme</option>
         <option value="line" data-i18n="tileForm.type.line">Courbe / aire</option>
         <option value="combo" data-i18n="tileForm.type.combo">Barres + courbe</option>
         <option value="pie" data-i18n="tileForm.type.pie">Camembert</option>
@@ -499,6 +500,11 @@
           <option value="min" data-i18n="tileForm.agg.min">Min</option>
           <option value="max" data-i18n="tileForm.agg.max">Max</option>
         </select>
+      </div>
+      <div class="field" id="tile-bins-field" hidden>
+        <label for="tile-bins" data-i18n="tileForm.bins.label">Nombre de classes</label>
+        <input type="number" id="tile-bins" min="2" max="60" step="1" data-i18n-placeholder="tileForm.bins.placeholder" placeholder="Automatique" />
+        <p class="field-hint" data-i18n="tileForm.bins.hint">Vide = automatique. Indicatif : les bornes sont arrondies à des valeurs simples (2, 5, 10…).</p>
       </div>
       <div class="field" id="tile-target-field" hidden>
         <label for="tile-target" data-i18n="tileForm.target.label">Objectif (valeur)</label>

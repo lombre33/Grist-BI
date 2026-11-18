@@ -123,10 +123,14 @@
   function matchesFilter(rowValue, filter) {
     switch (filter.type) {
       case 'range': {
+        // Une cellule vide n'est pas 0 (`Number(null)` et `Number('')` valent 0) : elle ne passe jamais une plage.
+        if (rowValue == null || rowValue === '') return false;
         const num = Number(rowValue);
         if (!Number.isFinite(num)) return false;
         if (filter.min != null && num < filter.min) return false;
-        if (filter.max != null && num > filter.max) return false;
+        // `maxExclusive` : borne haute EXCLUE (classe [a ; b[ d'un histogramme, voir histogramBins) — sans quoi une valeur
+        // pile sur la borne appartiendrait aux deux classes voisines. Absent = borne incluse (filtres avancés).
+        if (filter.max != null && (filter.maxExclusive ? num >= filter.max : num > filter.max)) return false;
         return true;
       }
       case 'dateRange': {
@@ -147,6 +151,13 @@
       default: // 'eq'
         return sameValue(rowValue, filter.value);
     }
+  }
+
+  // Vrai si le filtre actif `filter` (croisé : égalité, ou plage posée par un histogramme) retient la valeur `value` d'une
+  // catégorie : sert à estomper les catégories NON retenues. Pour l'égalité, c'est `sameValue` comme avant.
+  function filterSelects(filter, value) {
+    if (!filter) return false;
+    return filter.type && filter.type !== 'eq' ? matchesFilter(value, filter) : sameValue(filter.value, value);
   }
 
   function applyFilters(rows, filters) {
@@ -471,6 +482,106 @@
     };
   }
 
+  // --- Histogramme (`type: 'histogram'`) ------------------------------------------------------------
+  // Distribution d'UNE colonne numérique en classes de même largeur : combien de lignes par tranche de valeurs. Pas de
+  // dimension ni d'agrégat (on compte des lignes). Calcul en JS pur à tout volume : une seule passe sur les lignes, bien
+  // moins coûteuse que la sérialisation vers DuckDB (voir HYPOTHESES.md).
+  //   - la GRILLE des classes vient de TOUTES les lignes (`allRows`), les comptes des lignes visibles (`rows`, après les
+  //     filtres des autres tuiles) : l'axe ne bouge pas quand on filtre ailleurs, les barres rétrécissent ;
+  //   - bornes « rondes » (1, 2 ou 5 x 10^n) : des classes 0-5, 5-10 plutôt que 0-4,76 ; un nombre de classes demandé est
+  //     donc indicatif ; une colonne d'entiers n'a jamais de classe plus étroite que 1 (classes vides en alternance sinon) ;
+  //   - classe [bas ; haut[, la dernière aussi fermée à droite (le maximum y entre) ; valeurs vides ou non numériques
+  //     ignorées (jamais comptées comme 0) ;
+  //   - un clic pose un filtre `range` (`histogramFilter`) dont la borne haute est EXCLUE, sauf pour la dernière classe.
+  const HISTOGRAM_AUTO_MIN = 5;
+  const HISTOGRAM_AUTO_MAX = 20;
+  const HISTOGRAM_MAX_BINS = 60;
+
+  // Pas « rond » le plus proche de `raw` (> 0) : 1, 2, 5 ou 10 fois une puissance de 10.
+  function niceStep(raw) {
+    if (!(raw > 0) || !Number.isFinite(raw)) return 1;
+    const exp = Math.floor(Math.log10(raw));
+    const base = Math.pow(10, exp);
+    const f = raw / base;
+    const nice = f < 1.5 ? 1 : (f < 3 ? 2 : (f < 7 ? 5 : 10));
+    return nice * base;
+  }
+
+  function roundTo(x, decimals) {
+    const m = Math.pow(10, decimals);
+    return Math.round(x * m) / m;
+  }
+
+  // Nombres exploitables d'une colonne : ni vide, ni booléen, ni texte non numérique ; `ignored` = lignes laissées de côté.
+  function numericValues(rows, column) {
+    const values = [];
+    let ignored = 0;
+    (rows || []).forEach((r) => {
+      const v = r[column];
+      if (v == null || v === '' || typeof v === 'boolean') { ignored++; return; }
+      const n = typeof v === 'bigint' ? Number(v) : Number(v);
+      if (Number.isFinite(n)) values.push(n); else ignored++;
+    });
+    return { values, ignored };
+  }
+
+  // Classes d'un histogramme : `{ bins: [{lo, hi, count, last}], step, total, ignored }`. `requested` = nombre de classes
+  // voulu (entier, 2 à HISTOGRAM_MAX_BINS), absent = automatique (Sturges : log2(n) + 1, entre 5 et 20).
+  function histogramBins(allRows, rows, column, requested) {
+    const all = numericValues(allRows, column).values;
+    if (!all.length) return { bins: [], step: 0, total: 0, ignored: numericValues(rows, column).ignored };
+    let min = Infinity;
+    let max = -Infinity;
+    let integer = true;
+    all.forEach((v) => { if (v < min) min = v; if (v > max) max = v; if (integer && !Number.isInteger(v)) integer = false; });
+    const shown = numericValues(rows, column);
+    // Une seule valeur distincte : une seule classe, fermée des deux côtés.
+    if (min === max) {
+      const count = shown.values.filter((v) => v === min).length;
+      return { bins: [{ lo: min, hi: max, count, last: true }], step: 0, total: shown.values.length, ignored: shown.ignored };
+    }
+    const wanted = Number.isFinite(Number(requested)) && Number(requested) >= 2
+      ? Math.min(HISTOGRAM_MAX_BINS, Math.round(Number(requested)))
+      : Math.max(HISTOGRAM_AUTO_MIN, Math.min(HISTOGRAM_AUTO_MAX, Math.ceil(Math.log2(all.length)) + 1));
+    let step = niceStep((max - min) / wanted);
+    if (integer && step < 1) step = 1;
+    const countFor = (st) => Math.max(1, Math.ceil((max - Math.floor(min / st) * st) / st - 1e-9));
+    let n = countFor(step);
+    while (n > HISTOGRAM_MAX_BINS) { step = niceStep(step * 1.5); n = countFor(step); }
+    const decimals = Math.max(0, -Math.floor(Math.log10(step)));
+    const start = roundTo(Math.floor(min / step) * step, decimals);
+    // Bornes ARRONDIES une fois, puis utilisées pour compter ET pour filtrer : la classe affichée contient exactement
+    // les lignes que son filtre `range` retient (jamais un écart dû au bruit de flottant, 0,1 + 0,2).
+    const edges = [];
+    for (let i = 0; i <= n; i++) edges.push(roundTo(start + i * step, decimals));
+    const counts = new Array(n).fill(0);
+    shown.values.forEach((v) => {
+      let i = Math.floor((v - start) / step);
+      if (i < 0) i = 0;
+      if (i > n - 1) i = n - 1;
+      while (i > 0 && v < edges[i]) i--;
+      while (i < n - 1 && v >= edges[i + 1]) i++;
+      counts[i]++;
+    });
+    return {
+      bins: counts.map((count, i) => ({ lo: edges[i], hi: edges[i + 1], count, last: i === n - 1 })),
+      step,
+      total: shown.values.length,
+      ignored: shown.ignored
+    };
+  }
+
+  // Filtre `range` d'une classe (voir matchesFilter) : borne haute exclue, sauf la dernière classe.
+  function histogramFilter(bin) {
+    return bin.last ? { type: 'range', min: bin.lo, max: bin.hi } : { type: 'range', min: bin.lo, max: bin.hi, maxExclusive: true };
+  }
+
+  // Vrai si `filter` (le filtre croisé posé par CET histogramme) est exactement celui de la classe `bin`.
+  function histogramBinIsActive(filter, bin) {
+    return !!filter && filter.type === 'range' && Number(filter.min) === bin.lo && Number(filter.max) === bin.hi
+      && !!filter.maxExclusive === !bin.last;
+  }
+
   // --- Palettes de couleurs (`tile.palette`) -----------------------------------------------------
   // Six palettes au choix par tuile ; `standard` est la palette historique du tableau de bord (elle ne
   // change JAMAIS : une tuile sans `palette` doit rester identique). Toutes ont été passées au
@@ -499,7 +610,7 @@
   }
   // Types dont les couleurs viennent de la palette. Hors liste : la cascade (vert = hausse, rouge =
   // baisse : un sens, pas une identité), le KPI et le tableau croisé (aucune couleur de série).
-  const PALETTE_TILE_TYPES = ['bar', 'line', 'pie', 'funnel', 'treemap', 'scatter', 'radar', 'gauge', 'wordcloud', 'combo'];
+  const PALETTE_TILE_TYPES = ['bar', 'line', 'pie', 'funnel', 'treemap', 'scatter', 'radar', 'gauge', 'wordcloud', 'combo', 'histogram'];
   function supportsPalette(tile) {
     return !!tile && PALETTE_TILE_TYPES.indexOf(tile.type) !== -1;
   }
@@ -507,7 +618,7 @@
   // Types qui AFFICHENT une valeur numérique (donc concernés par `tile.numberFormat`, voir js/format.js) :
   // tout type de tuile nouveau qui montre un nombre s'ajoute ici, pour que le champ « Format des nombres »
   // du panneau apparaisse. Le nuage de mots n'y est que pour la valeur de son infobulle ; la table plate l'applique à chacune de ses colonnes numériques (`format.cellNumber`).
-  const NUMBER_FORMAT_TILE_TYPES = ['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo'];
+  const NUMBER_FORMAT_TILE_TYPES = ['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo', 'histogram'];
   function supportsNumberFormat(tile) {
     return !!tile && NUMBER_FORMAT_TILE_TYPES.indexOf(tile.type) !== -1;
   }
@@ -937,6 +1048,12 @@
         rows: combo.categories.map((c, i) => [c, combo.bars[i], combo.line[i] == null ? '' : combo.line[i]])
       };
     }
+    // Histogramme : une ligne par classe (mêmes classes et mêmes comptes que l'écran). En-têtes en dur, comme les autres
+    // exports (contenu généré, hors i18n) ; la borne haute est exclue sauf pour la dernière classe.
+    if (tile.type === 'histogram') {
+      const hist = histogramBins(state.rows, rows, tile.measure, tile.bins);
+      return { name: title, header: [tile.measure + ' : borne basse', 'borne haute', 'Lignes'], rows: hist.bins.map((b) => [b.lo, b.hi, b.count]) };
+    }
     // Séries multiples (barres/courbe/aire avec `seriesColumn`) : une colonne par série, dans le même
     // ordre de catégories que le rendu ; une cellule vide (pas 0) là où la série n'a aucune ligne.
     if (isSeriesTile(tile)) {
@@ -1180,7 +1297,7 @@
     importMapHas, tableToRows, epochSecondsToIsoDate, applyFilters, matchesFilter, sameValue, parseDateValue,
     relativeDateRange, RELATIVE_DATE_PRESETS, groupByAggregate, aggregateSingle, wordFrequency, pivotTable,
     distinctColumnValues, computeTrend, trendFromGroups, periodLabel, measureSeriesForTile,
-    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, comboModeOf, paretoSeries, comboSeries, isStackedTile, splitBySeries, assembleSeries, PALETTES, PALETTE_KEYS, paletteColors, supportsPalette, supportsNumberFormat, NUMBER_FORMAT_TILE_TYPES, escapeHtml,
+    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, comboModeOf, paretoSeries, comboSeries, niceStep, histogramBins, histogramFilter, histogramBinIsActive, HISTOGRAM_MAX_BINS, filterSelects, isStackedTile, splitBySeries, assembleSeries, PALETTES, PALETTE_KEYS, paletteColors, supportsPalette, supportsNumberFormat, NUMBER_FORMAT_TILE_TYPES, escapeHtml,
     tileDrillLevels, currentDimension, rowsForTile, tileExportSheet, tileExportKind, renderTextHtml, plainTextOf, TEXT_TILE_MAX,
     DEFAULT_GOOD_PCT, DEFAULT_WARN_PCT, targetProgress, progressRows, sparklineValues, sparklineGeometry,
     TABLE_TILE_MAX_ROWS, TABLE_EXPORT_MAX_ROWS, tableColumnsOf, cellText, compareCells, sortRowsBy, moveInOrder, nextSortDir, tableSheet,
