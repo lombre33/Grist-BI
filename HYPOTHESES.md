@@ -3827,6 +3827,22 @@ Constat (en testant le style global des tuiles) : sur une courbe ou des barres v
     empreinte) et le téléchargement des deux fichiers depuis le cadre isolé (GFS déclare `allow-downloads`, lu, pas rejoué). Un serveur d'essai sans en-tête CORS
     fait échouer les tuiles en mesure DAX dans un cadre isolé, à l'écran comme dans l'export : artefact d'essai.
 
+### Audit `gwaudit` — lot 5 : chargeur unique de code et politique de sécurité du contenu (18/11/2026, demande d'Antoine : « sécurité c'est primordial »)
+
+  - **Fait** : (1) tout balisage écrit dans la page passe par `js/safe-html.js` (liste blanche, PR #130) ; (2) tout code chargé à l'exécution passe par `js/loader.js` (https, empreinte `integrity` pour un autre
+    site, liste d'hôtes) ou `js/modules.js` (modules ES en chemins littéraux) ; (3) ECharts perd son `document.write` et son `window.open` non filtré, DuckDB reçoit un en-tête de provenance ; (4) l'adresse de
+    téléchargement d'une pièce jointe n'est suivie que bien formée et en https ; (5) `index.html` porte une **politique de sécurité du contenu** (`<meta http-equiv="Content-Security-Policy">`,
+    `default-src 'none'`, scripts `'self'` + `'wasm-unsafe-eval'` + empreinte de l'`importmap` + `https:`, `form-action 'none'`, `worker-src 'self' blob:`, jamais `'unsafe-inline'` ni `'unsafe-eval'`).
+  - **Choix et pièges** (CLAUDE.md §7 n°49 et n°50) : un `import()` écrit dans un script CLASSIQUE n'a pas d'adresse de base dans le cadre isolé de GFS (d'où `js/modules.js`, un module) ; un navigateur ignore une
+    empreinte `integrity` mal formée (le chargeur la refuse lui-même) ; `https:` reste dans `script-src` et `connect-src` (adresses d'extension de GFS, de pièce jointe et de PptxGenJS inconnues d'avance) ;
+    `style-src 'unsafe-inline'` (la photographie des exports, ECharts) ; `frame-ancestors` ne s'écrit pas dans un `<meta>` ; **l'empreinte de l'`importmap` doit suivre son texte** (sinon DuckDB ne se charge plus, sans
+    message) ; `page.evaluate` de Playwright contourne la politique, la sonde est un fichier servi par le site. Le choix de garder `kit/` et DuckDB visibles pour l'outil d'audit (chemins littéraux) a été confirmé par
+    Antoine le 18/11 : leurs constats préexistants comptent donc dans la note (axe C à 6/100, 63 de pénalité hors ces constats, voir `AUDIT-GW.md`).
+  - **Testé** : `node dev-tests/test-loader.js`, `node dev-tests/test-csp.js` (dont l'empreinte de l'`importmap` recalculée) ; dans Chromium, page directe ET `<iframe sandbox="allow-scripts allow-downloads">` servi en CORS :
+    22 types de tuile, DuckDB au-delà de 5 000 lignes, fenêtre du kit, parcours d'interface, trois exports (PptxGenJS réel servi à la place de jsDelivr), extension de GFS à bonne puis à fausse empreinte, refus du
+    chargeur, **0 violation de la politique** ; `eval`, `new Function`, script et gestionnaire en ligne bloqués.
+  - **Pas vérifié** : voir le point 17 ci-dessous.
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée
@@ -4141,6 +4157,13 @@ Constat (en testant le style global des tuiles) : sur une courbe ou des barres v
     `sha384-qb0Xhi7L…`) depuis la page d'un widget, avec le proxy de la personne ; (b) le déclenchement du téléchargement du `.pdf` et du `.pptx` depuis le cadre
     isolé de GFS (`allow-downloads` déclaré par GFS, lu, jamais rejoué), comme pour l'Excel (point 11) ; (c) la photographie dans Firefox et Safari (`foreignObject`,
     `CompressionStream`). Vérification : ouvrir le tableau de bord, menu Exporter > PDF puis PPTX, ouvrir les fichiers.
+
+17. **Chargeur de code et politique de sécurité du contenu (18/11/2026) jamais joués dans un vrai Grist ni dans le vrai GFS** : (a) le chargement de `js/modules.js` et du kit (modules ES, CORS) depuis GitHub Pages
+    dans le cadre du vrai GFS (`sandbox="allow-scripts allow-downloads"`, origine opaque) ; (b) la politique de `index.html` face à celle que Grist ou GFS posent peut-être sur leur iframe (elles s'additionnent, la plus
+    stricte gagne : un `worker-src` de l'hôte sans `blob:` ferait retomber DuckDB sur le calcul JS, sans message) ; (c) l'hôte réel de l'adresse de téléchargement d'une pièce jointe (`getAccessToken` -> `baseUrl`, en
+    https attendu : sinon la lecture des PDF est refusée avec un message, voir `safeAttachmentBase`) et l'adresse réelle d'une extension de GFS (https, avec son empreinte) ; (d) Firefox et Safari (la politique et `'wasm-unsafe-eval'`
+    ont été essayés dans Chromium seulement). Vérification : ouvrir le widget dans un vrai Grist puis dans GFS avec la console ouverte, chercher « Content Security Policy » ou « Refused to » ; lancer un calcul de plus de
+    5 000 lignes (DuckDB), un export Excel puis PPTX, une fenêtre de confirmation, et la fenêtre « Mots-clés des publications » si l'extension est ajoutée.
 
 ## Prochaines étapes suggérées
 
