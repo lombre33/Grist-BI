@@ -17,6 +17,11 @@ const read = (...p) => fs.readFileSync(path.join(ROOT, ...p), 'utf8');
 const CHARTS_FILES = ['charts-core.js', 'charts-cards.js', 'charts-cloud.js', 'charts-extra.js', 'charts.js'];
 const readCharts = () => CHARTS_FILES.map((f) => read('js', f)).join('\n');
 
+// Idem pour `js/main.js` : le bootstrap de l'interface est coupé par responsabilité (voir son en-tête), les neuf fichiers se lisent
+// bout à bout, dans l'ordre de chargement de `index.html`.
+const MAIN_FILES = ['main-core.js', 'main-fields.js', 'main-form.js', 'main-panel.js', 'main-filters.js', 'main-dialogs.js', 'main-render.js', 'main-session.js', 'main.js'];
+const readMain = () => MAIN_FILES.map((f) => read('js', f)).join('\n');
+
 // Les objets d'un contexte vm n'ont pas le prototype d'ici : une copie JSON les rend comparables à `deepStrictEqual`.
 const plain = (x) => JSON.parse(JSON.stringify(x));
 
@@ -86,4 +91,4 @@ function loadApiWithFakeConfigTable(data, i18n, actions) {
   return { api: sandbox.GristBI.api, cfg };
 }
 
-module.exports = { ROOT, read, readCharts, CHARTS_FILES, plain, parseCssRules, loadApiWithFakeConfigTable };
+module.exports = { ROOT, read, readCharts, CHARTS_FILES, readMain, MAIN_FILES, plain, parseCssRules, loadApiWithFakeConfigTable };

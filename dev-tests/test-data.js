@@ -17,7 +17,7 @@ const pdfText = require('../js/pdf-text.js');
 const advice = require('../js/advice.js');
 const welcome = require('../js/welcome.js');
 const models = require('../js/models.js');
-const { readCharts } = require('./lib/helpers.js');
+const { readCharts, readMain } = require('./lib/helpers.js');
 
 const rows = [
   { id: 1, Region: 'Nord', Montant: 100 },
@@ -1595,7 +1595,7 @@ const rows = [
 // l'ingestion ci-dessus ne doit pas être la seule barrière).
 {
   const nodeFs = require('fs'), nodePath = require('path');
-  const main = nodeFs.readFileSync(nodePath.join(__dirname, '..', 'js', 'main.js'), 'utf8');
+  const main = readMain();
   const charts = readCharts();
   assert.ok(!/data-tile-id="\$\{tile\.id\}"/.test(main), 'main.js : `data-tile-id` reçoit escapeHtml(tile.id), jamais tile.id nu');
   assert.ok(/data-tile-id="\$\{escapeHtml\(tile\.id\)\}"/.test(main));
@@ -2057,7 +2057,7 @@ const SAMPLE_TIME_SERIES = [
   // Câblage : l'ajustement passe APRÈS le rendu du nom de la vue (le bug : il se faisait avant, dans renderPageTabs), au changement de mode,
   // au redimensionnement et par un ResizeObserver différé ; les deux classes existent dans la feuille.
   const fs = require('fs');
-  const main = fs.readFileSync(require('path').join(__dirname, '..', 'js', 'main.js'), 'utf8');
+  const main = readMain();
   const css = fs.readFileSync(require('path').join(__dirname, '..', 'css', 'style.css'), 'utf8');
   assert.ok(/renderBookmarks\(state\);\s*renderConnectionStatus\(state\);\s*fitPageTabs\(\);/.test(main), 'render() ajuste les onglets après le nom de la vue et la pastille de table');
   assert.ok(!/function renderPageTabs[\s\S]*?updateTabsOverflow\(\);\s*for \(const removeBtn/.test(main), 'renderPageTabs ne mesure plus (avant que le bouton Vues ait changé de largeur)');
@@ -2542,7 +2542,7 @@ const SAMPLE_TIME_SERIES = [
     assert.ok(html.includes(`id="${id}"`), `index.html : #${id}`);
   }
   assert.ok(/<option value="column" data-i18n="tileForm\.numFormat\.column">/.test(html), 'option « Comme dans la colonne »');
-  const main = read('js/main.js');
+  const main = readMain();
   assert.ok(/tileData\.numberFormat = GristBI\.data\.supportsNumberFormat\(\{ type \}\) \? numberFormatFromForm\(\) : undefined/.test(main), 'readTileForm écrit numberFormat (undefined = Automatique)');
   assert.ok(/setNumberFormatForm\(tile\.numberFormat\)/.test(main), 'startEditTile relit le réglage de la tuile');
   assert.ok(/setNumberFormatForm\(null\)/.test(main), 'resetTileForm remet Automatique');
@@ -2568,7 +2568,7 @@ const SAMPLE_TIME_SERIES = [
   const path = require('path');
   const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
   const charts = readCharts();
-  const main = read('js/main.js');
+  const main = readMain();
   const css = read('css/style.css');
   // une seule dernière étape avant setOption, pour les sept chemins ECharts (graphiques, mesures temporelles, histogramme, carte de chaleur, boîte, flux, calendrier)
   assert.strictEqual((charts.match(/finalizeOption\(option, instance\);\s*\n\s*instance\.setOption\(option, true\);/g) || []).length, 8, 'finalizeOption avant chaque setOption d\'option');
@@ -2597,7 +2597,7 @@ const SAMPLE_TIME_SERIES = [
   const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
   const css = read('css/style.css');
   const charts = readCharts();
-  const main = read('js/main.js');
+  const main = readMain();
   // la règle d'auteur `display: flex` bat [hidden] : sans règle explicite, une piste grise vide reste visible sous la carte
   assert.ok(/\.tile-kpi-goal \{[^}]*display: flex/.test(css), 'précondition : .tile-kpi-goal est bien en display: flex');
   assert.ok(/\.tile-kpi-goal\[hidden\] \{\s*display: none;?\s*\}/.test(css), '.tile-kpi-goal[hidden] { display: none } (piège n°10)');
@@ -2711,7 +2711,7 @@ const SAMPLE_TIME_SERIES = [
     }
 
     // câblage : le type reste proposé (grisé), plus aucun import map ni import() pour d3-cloud
-    const main = read('js/main.js');
+    const main = readMain();
     const charts = readCharts();
     const html = read('index.html');
     const css = read('css/style.css');
@@ -2720,7 +2720,7 @@ const SAMPLE_TIME_SERIES = [
     assert.ok(/const TYPE_EXTENSION = \{ wordcloud: 'nuage-de-mots' \}/.test(main), 'le type nuage de mots dépend de l\'extension nuage-de-mots');
     assert.ok(/aria-disabled/.test(main) && /type-card-locked/.test(main) && /\.type-card-locked/.test(css), 'carte grisée : aria-disabled + classe + règle CSS');
     assert.ok(/function chooseType\(type\) \{\s*const extensionId = TYPE_EXTENSION\[type\];\s*if \(extensionId && GristBI\.extensions\.stateOf\(extensionId\) !== 'active'\) \{ requestExtension/.test(main), 'un type grisé ne se choisit pas : il appelle requestExtension');
-    assert.ok(/GristBI\.extensions\.attach\(gfsLinkReady\)/.test(main) && /GristBI\.extensions\.onChange\(/.test(main), 'main.js donne le lien à js/extensions.js et repeint à chaque changement');
+    assert.ok(/GristBI\.extensions\.attach\(S\.gfsLinkReady\)/.test(main) && /GristBI\.extensions\.onChange\(/.test(main), 'main.js donne le lien à js/extensions.js et repeint à chaque changement');
     assert.ok(/dialogs\.notice\(\{[^}]*ext\.standalone\.title/.test(main.replace(/\s+/g, ' ')), 'seule : la fenêtre du grisé');
     assert.ok(!/import\('d3-cloud'\)|importMapHas|isWordCloudAvailable/.test(charts + main), 'plus d\'import() nu ni de lecture de l\'importmap');
     assert.ok(/GristBI\.extensions\.load\('nuage-de-mots'\)/.test(charts), 'charts.js reçoit d3-cloud de js/extensions.js');
@@ -3484,7 +3484,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     const pathK = require('path');
     const index = fsK.readFileSync(pathK.join(__dirname, '..', 'index.html'), 'utf8');
     const panel = fsK.readFileSync(pathK.join(__dirname, '..', 'js', 'keywords-panel.js'), 'utf8');
-    const main = fsK.readFileSync(pathK.join(__dirname, '..', 'js', 'main.js'), 'utf8');
+    const main = readMain();
     // chaque élément que le panneau cherche par id existe dans la page
     const wanted = Array.from(panel.matchAll(/byId\('([a-z-]+)'\)/g)).map((m) => m[1]);
     assert.ok(wanted.length >= 20);
@@ -4470,7 +4470,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
 
     // Clés i18n : toute clé `models.*` citée par le code existe en fr ET en anglais, mêmes variables.
     {
-      const sources = ['js/models.js', 'js/main.js'].map((f) => fs.readFileSync(path.join(root, f), 'utf8')).join('\n');
+      const sources = fs.readFileSync(path.join(root, 'js/models.js'), 'utf8') + '\n' + readMain();
       const used = new Set((sources.match(/'models\.[A-Za-z.]+'/g) || []).map((k) => k.slice(1, -1)));
       ['data', 'time', 'category'].forEach((role) => used.add('models.need.' + role)); // composée : 'models.need.' + role
       used.delete('models.need.');
@@ -4534,7 +4534,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
 
     // Câblage de l'ouverture `modele` (js/main.js) : lu dans la source, le navigateur le rejoue (voir TEST_PROTOCOL.md).
     {
-      const main = fs.readFileSync(path.join(root, 'js', 'main.js'), 'utf8');
+      const main = readMain();
       assert.ok(/GfsLink\.onOpen\(async \(\{ fichier, type, modele \}\)/.test(main), 'onOpen lit `modele`');
       assert.ok(/if \(modele\) return openModelById\(modele\.id, type\)/.test(main), 'onOpen : un modèle ne retombe JAMAIS sur le départ vierge');
       assert.ok(/opening && opening\.modele/.test(main), 'bootstrap : l\'ouverture initiale `modele` a sa branche, avant le départ vierge');
@@ -4582,7 +4582,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
       assert.deepStrictEqual(advice.defaultsForType('text', big), {});
       assert.strictEqual(advice.adviceForTile(textTile, big), null);
       // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
-      const mainSrc = fs.readFileSync(path.join(root, 'js', 'main.js'), 'utf8');
+      const mainSrc = readMain();
       const indexSrc = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
       const chartsSrc = readCharts();
       assert.ok(/const TYPE_CARDS = \[[^\]]*'text'\]/.test(mainSrc), 'carte « Texte » dans l\'étape Choisir');
@@ -4661,7 +4661,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
           'tileTitle.table', 'advice.use.table', 'chart.table.empty', 'chart.table.noColumns', 'chart.table.sortBy', 'chart.table.truncated', 'export.table.more']
           .forEach((k) => assert.ok(i18n.STRINGS[k] && i18n.STRINGS[k].fr && i18n.STRINGS[k].en, 'traduction fr/en : ' + k));
         // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
-        const mainSrc2 = fs.readFileSync(path.join(root, 'js', 'main.js'), 'utf8');
+        const mainSrc2 = readMain();
         const chartsSrc2 = readCharts();
         const indexSrc2 = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
         assert.ok(/const TYPE_CARDS = \[[^\]]*'table'/.test(mainSrc2) && /<option value="table"/.test(indexSrc2) && /id="tile-columns"/.test(indexSrc2));
@@ -4731,7 +4731,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
           'advice.use.progress', 'chart.kpi.goalPct', 'chart.kpi.goalTarget', 'chart.progress.empty', 'chart.progress.row', 'chart.progress.legend']
           .forEach((k) => assert.ok(i18n.STRINGS[k] && i18n.STRINGS[k].fr && i18n.STRINGS[k].en, 'traduction fr/en : ' + k));
         // Câblage lu dans les sources.
-        const mainSrc3 = fs.readFileSync(path.join(root, 'js', 'main.js'), 'utf8');
+        const mainSrc3 = readMain();
         const chartsSrc3 = readCharts();
         const indexSrc3 = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
         assert.ok(/const TYPE_CARDS = \[[^\]]*'progress'/.test(mainSrc3) && /<option value="progress"/.test(indexSrc3) && /id="tile-target"/.test(indexSrc3) && /id="tile-sparkline"/.test(indexSrc3));
@@ -4805,7 +4805,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
             'advice.combo.paretoNegative', 'advice.combo.sameSeries', 'advice.combo.manyBars']
             .forEach((k) => assert.ok(i18n.STRINGS[k] && i18n.STRINGS[k].fr && i18n.STRINGS[k].en, 'traduction fr/en : ' + k));
           // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
-          const mainSrc4 = fs.readFileSync(path.join(root, 'js', 'main.js'), 'utf8');
+          const mainSrc4 = readMain();
           const chartsSrc4 = readCharts();
           const indexSrc4 = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
           assert.ok(/const TYPE_CARDS = \[[^\]]*'combo'/.test(mainSrc4) && /<option value="combo"/.test(indexSrc4) && /id="tile-combo-mode"/.test(indexSrc4) && /id="tile-agg-y"/.test(indexSrc4));
@@ -4937,7 +4937,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
           i18n.setLang('fr'); assert.strictEqual(i18n.t('chart.histogram.rows', { n: 1, count: 1 }), '1 ligne'); assert.strictEqual(i18n.t('chart.histogram.rows', { n: '12', count: 12 }), '12 lignes');
           i18n.setLang('en'); assert.strictEqual(i18n.t('chart.histogram.rows', { n: 1, count: 1 }), '1 row'); i18n.setLang('fr');
           // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
-          const mainSrc5 = fs.readFileSync(path.join(root, 'js', 'main.js'), 'utf8');
+          const mainSrc5 = readMain();
           const chartsSrc5 = readCharts();
           const indexSrc5 = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
           assert.ok(/const TYPE_CARDS = \[[^\]]*'histogram'/.test(mainSrc5) && /<option value="histogram"/.test(indexSrc5) && /id="tile-bins"/.test(indexSrc5));
@@ -5086,7 +5086,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     i18n.setLang('fr');
 
     // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
-    const mainH = fsH.readFileSync(pathH.join(rootH, 'js', 'main.js'), 'utf8');
+    const mainH = readMain();
     const chartsH = readCharts();
     const indexH = fsH.readFileSync(pathH.join(rootH, 'index.html'), 'utf8');
     assert.ok(/const TYPE_CARDS = \[[^\]]*'heatmap'/.test(mainH) && /<option value="heatmap"/.test(indexH) && /id="tile-pivot-heat"/.test(indexH) && /'type-heatmap'/.test(mainH));
@@ -5178,7 +5178,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
       assert.doesNotThrow(() => fmtR.refLabelLayout([null, undefined], NaN, measureR));
     }
     // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
-    const mainR = fsR.readFileSync(pathR.join(rootR, 'js', 'main.js'), 'utf8');
+    const mainR = readMain();
     const chartsR = readCharts();
     const indexR = fsR.readFileSync(pathR.join(rootR, 'index.html'), 'utf8');
     assert.ok(/id="tile-refline"/.test(indexR) && /id="tile-refvalue"/.test(indexR) && /<label for="tile-refvalue"/.test(indexR), 'champs étiquetés');
@@ -5248,7 +5248,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     ['tileForm.stackPercent.label', 'tileForm.lineShape.label', 'tileForm.lineShape.straight', 'tileForm.lineShape.smooth', 'tileForm.lineShape.step', 'tileForm.valueLabels.label', 'advice.stackedPercent.negative']
       .forEach((k) => assert.ok(i18n.STRINGS[k] && i18n.STRINGS[k].fr && i18n.STRINGS[k].en, 'traduction fr/en : ' + k));
     // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
-    const mainD = fsD.readFileSync(pathD.join(rootD, 'js', 'main.js'), 'utf8');
+    const mainD = readMain();
     const chartsD = readCharts();
     const indexD = fsD.readFileSync(pathD.join(rootD, 'index.html'), 'utf8');
     for (const id of ['tile-stack-percent', 'tile-line-shape', 'tile-value-labels']) assert.ok(new RegExp(`id="${id}"`).test(indexD) && new RegExp(`<label for="${id}"`).test(indexD), 'champ étiqueté : ' + id);
@@ -5375,7 +5375,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     i18n.setLang('fr'); assert.strictEqual(i18n.t('chart.box.count', { n: 1, count: 1 }), '1 valeur'); assert.strictEqual(i18n.t('chart.box.outliers', { n: 3, count: 3 }), '3 valeurs aberrantes');
     i18n.setLang('en'); assert.strictEqual(i18n.t('chart.box.outliers', { n: 1, count: 1 }), '1 outlier'); i18n.setLang('fr');
     // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
-    const mainB = fsB.readFileSync(pathB.join(rootB, 'js', 'main.js'), 'utf8');
+    const mainB = readMain();
     const chartsB = readCharts();
     const indexB = fsB.readFileSync(pathB.join(rootB, 'index.html'), 'utf8');
     assert.ok(/const TYPE_CARDS = \[[^\]]*'box'/.test(mainB) && /<option value="box"/.test(indexB) && /'type-box':/.test(mainB), 'carte, option et icône du type');
@@ -5467,7 +5467,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
       .forEach((k) => assert.ok(i18n.STRINGS[k] && i18n.STRINGS[k].fr && i18n.STRINGS[k].en, 'traduction fr/en : ' + k));
     i18n.setLang('fr'); assert.strictEqual(i18n.t('chart.sankey.capped', { shown: 60, total: 144 }), '60 flux les plus importants sur 144'); i18n.setLang('en'); assert.strictEqual(i18n.t('chart.sankey.capped', { shown: 60, total: 144 }), 'Top 60 flows of 144'); i18n.setLang('fr');
     // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
-    const mainK = fsK.readFileSync(pathK.join(rootK, 'js', 'main.js'), 'utf8');
+    const mainK = readMain();
     const chartsK = readCharts();
     const indexK = fsK.readFileSync(pathK.join(rootK, 'index.html'), 'utf8');
     assert.ok(/const TYPE_CARDS = \[[^\]]*'sankey'/.test(mainK) && /<option value="sankey"/.test(indexK) && /'type-sankey':/.test(mainK), 'carte, option et icône du type');
@@ -5544,7 +5544,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     i18n.setLang('fr'); assert.strictEqual(i18n.t('tileTitle.bubble', { measure: 'Prix', measureY: 'Marge', dimension: 'Produit', measureSize: 'CA' }), 'Prix et Marge par Produit, taille : CA');
     i18n.setLang('en'); assert.strictEqual(i18n.t('tileTitle.bubble', { measure: 'Prix', measureY: 'Marge', dimension: 'Produit', measureSize: 'CA' }), 'Prix and Marge by Produit, size: CA'); i18n.setLang('fr');
     // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
-    const mainB = fsB.readFileSync(pathB.join(rootB, 'js', 'main.js'), 'utf8');
+    const mainB = readMain();
     const chartsB = readCharts();
     const indexB = fsB.readFileSync(pathB.join(rootB, 'index.html'), 'utf8');
     assert.ok(/id="tile-measure-size"/.test(indexB) && /id="tile-agg-size"/.test(indexB) && /id="tile-series-label"/.test(indexB), 'champs de taille et libellé de la couleur');
@@ -5637,7 +5637,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     i18n.setLang('fr'); assert.strictEqual(i18n.t('tileTitle.calendar', { measure: 'Montant', dimension: 'Date' }), 'Montant par jour (Date)'); i18n.setLang('en'); assert.strictEqual(i18n.t('tileTitle.calendar', { measure: 'Montant', dimension: 'Date' }), 'Montant per day (Date)'); i18n.setLang('fr');
     assert.strictEqual(i18n.t('chart.calendar.dayNames').split(',')[0], 'D', 'le tableau commence par dimanche (convention d\'ECharts), lundi en premier par `firstDay: 1`');
     // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
-    const mainC = fsC.readFileSync(pathC.join(rootC, 'js', 'main.js'), 'utf8');
+    const mainC = readMain();
     const chartsC = readCharts();
     const indexC = fsC.readFileSync(pathC.join(rootC, 'index.html'), 'utf8');
     assert.ok(/const TYPE_CARDS = \[[^\]]*'calendar'/.test(mainC) && /<option value="calendar"/.test(indexC) && /'type-calendar':/.test(mainC), 'carte, option et icône du type');
@@ -5757,7 +5757,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     i18n.setLang('en'); assert.strictEqual(i18n.t('chart.gantt.row', { label: 'A', start: 'x', end: 'y', days: '1' }), 'A: x to y (1 day)'); assert.ok(/\(5 days\)/.test(i18n.t('chart.gantt.row', { label: 'A', start: 'x', end: 'y', days: '5' }))); assert.strictEqual(i18n.t('tileTitle.gantt', { dimension: 'Tâche' }), 'Schedule (Tâche)'); i18n.setLang('fr');
     assert.strictEqual(i18n.t('tileTitle.gantt', { dimension: 'Tâche' }), 'Planning (Tâche)');
     // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
-    const mainG = fsG.readFileSync(pathG.join(rootG, 'js', 'main.js'), 'utf8');
+    const mainG = readMain();
     const chartsG = readCharts();
     const indexG = fsG.readFileSync(pathG.join(rootG, 'index.html'), 'utf8');
     const cssG = fsG.readFileSync(pathG.join(rootG, 'css', 'style.css'), 'utf8');
@@ -5861,7 +5861,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     i18n.setLang('en'); assert.strictEqual(i18n.t('chart.smallMultiples.hidden', { shown: 12, n: 14 }), 'First 12 of 14 series'); i18n.setLang('fr');
 
     // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
-    const mainS = fsS.readFileSync(pathS.join(rootS, 'js', 'main.js'), 'utf8');
+    const mainS = readMain();
     const chartsS = readCharts();
     const indexS = fsS.readFileSync(pathS.join(rootS, 'index.html'), 'utf8');
     assert.ok(/id="tile-small-multiples"/.test(indexS) && /id="tile-small-multiples-field"/.test(indexS) && /data-i18n="tileForm\.smallMultiples\.label"/.test(indexS), 'case et champ du formulaire');
@@ -5987,7 +5987,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     assert.strictEqual(i18n.t('tileTitle.sunburst', { measure: 'Montant', levels: 'Region › Produit' }), 'Montant : Region › Produit');
     i18n.setLang('en'); assert.strictEqual(i18n.t('chart.sunburst.hidden', { n: 1 }), '1 small part not drawn'); assert.strictEqual(i18n.t('chart.sunburst.hidden', { n: 5 }), '5 small parts not drawn'); i18n.setLang('fr');
     // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
-    const mainU = fsU.readFileSync(pathU.join(rootU, 'js', 'main.js'), 'utf8');
+    const mainU = readMain();
     const chartsU = readCharts();
     const indexU = fsU.readFileSync(pathU.join(rootU, 'index.html'), 'utf8');
     assert.ok(/<option value="sunburst" data-i18n="tileForm\.type\.sunburst"/.test(indexU) && /id="tile-drill-label"/.test(indexU), 'type et libellé des anneaux dans le formulaire');
@@ -6289,7 +6289,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
       assert.strictEqual(cloneState.advancedFilters, liveState.advancedFilters);
       const chartsSrcX = readCharts();
       assert.ok(/return renderChart\(tile, rows, state, container, drillPath\);/.test(chartsSrcX), 'renderTile rend la promesse du dessin');
-      const mainSrcX = nodeFs.readFileSync(nodePath.join(repoRoot, 'js', 'main.js'), 'utf8');
+      const mainSrcX = readMain();
       const excelListener = mainSrcX.slice(mainSrcX.indexOf("exportExcelBtn.addEventListener('click'"), mainSrcX.indexOf("exportPdfBtn.addEventListener('click'"));
       assert.ok(/dataset\.busy/.test(excelListener) && /finally \{/.test(excelListener), 'pas de second export pendant le premier ; le bouton est rendu même après un échec');
       assert.ok(!/EXPORTS_AVAILABLE/.test(excelListener), 'l\'export Excel est rouvert : il ne dépend plus du drapeau des autres');
@@ -6303,7 +6303,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     const fsE = require('fs');
     const pathE = require('path');
     const indexE = fsE.readFileSync(pathE.join(__dirname, '..', 'index.html'), 'utf8');
-    const mainE = fsE.readFileSync(pathE.join(__dirname, '..', 'js', 'main.js'), 'utf8');
+    const mainE = readMain();
     for (const [id, label] of [['export-excel', 'bookmarks.exportExcel'], ['export-pdf', 'bookmarks.exportPdf'], ['export-pptx', 'bookmarks.exportPptx']]) {
       const m = indexE.match(new RegExp('<button id="' + id + '"[^>]*>'));
       assert.ok(m, id + ' : bouton présent');
@@ -6449,7 +6449,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
 
     // Erreurs : « connexion » seulement pour un échec de chargement de la bibliothèque, « échec » simple pour toute autre erreur.
     assert.strictEqual(pptxExport.LOAD_ERROR_CODE, 'PPTX_LIB_LOAD');
-    const mainX = read('js/main.js');
+    const mainX = readMain();
     assert.ok(/e\.code === GristBI\.exportPptx\.LOAD_ERROR_CODE \? 'export\.pptx\.networkError' : 'export\.pptx\.failed'/.test(mainX), 'main.js distingue l\'échec de chargement de la bibliothèque des autres échecs');
     for (const key of ['export.pptx.failed', 'export.pptx.networkError']) assert.ok(i18n.STRINGS[key] && i18n.STRINGS[key].fr && i18n.STRINGS[key].en, key + ' : fr et en');
     assert.ok(/jsdelivr/i.test(i18n.STRINGS['export.pptx.networkError'].fr) && !/cdnjs/.test(i18n.STRINGS['export.pptx.networkError'].fr + i18n.STRINGS['export.pptx.networkError'].en), 'le message nomme le bon site');
