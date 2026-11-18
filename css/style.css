@@ -962,6 +962,45 @@ td.pivot-cell:not(.pivot-cell-empty):not(.pivot-total-cell):hover { background: 
   margin-top: 12px;
 }
 
+/* Écran d'accueil (js/welcome.js) : cartes de suggestion d'un tableau de bord sans tuile. `.edit-only`
+   (index.html) les masque en lecture ; `[hidden]` explicite, voir CLAUDE.md §7 piège n°10. */
+.welcome-suggestions { margin-bottom: 14px; }
+.welcome-suggestions[hidden], .welcome-no-rows[hidden], #welcome-suggestions-body[hidden], #welcome-add-all[hidden] { display: none; }
+.welcome-title { margin: 0 0 2px; font-size: 15px; font-weight: 600; color: var(--text); }
+.welcome-sub, .welcome-no-rows { margin: 0 0 12px; font-size: 12.5px; color: var(--text-muted); line-height: 1.5; }
+.welcome-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 12px;
+}
+.welcome-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--surface);
+  border: var(--bw, 1px) solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-panel);
+  padding: 12px 14px;
+}
+.welcome-preview {
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-sunken);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+}
+.welcome-preview svg { width: 100%; height: 100%; }
+.welcome-card-title { margin: 4px 0 0; font-size: 13px; font-weight: 600; color: var(--text); }
+.welcome-card-reason { flex: 1; margin: 0; font-size: 12px; line-height: 1.45; color: var(--text-muted); }
+.welcome-card .btn-primary { align-self: flex-start; }
+.welcome-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+
 @media (prefers-color-scheme: dark) {
   :root {
     color-scheme: dark;

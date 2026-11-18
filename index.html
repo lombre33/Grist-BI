@@ -355,6 +355,20 @@
        suggestions de tuiles de js/advice.js s'y brancheront (PR 2b du fil « Assistant Data
        Visualisation » ; `#welcome-add` ouvre déjà le panneau latéral ci-dessous). -->
   <section id="welcome" class="welcome">
+  <!-- Suggestions de js/advice.js affichées par js/welcome.js : seulement en Édition, table connectée
+       et aucune tuile. -->
+  <div id="welcome-suggestions" class="welcome-suggestions edit-only" hidden>
+    <p id="welcome-no-rows" class="welcome-no-rows" role="status" hidden></p>
+    <div id="welcome-suggestions-body">
+      <h2 class="welcome-title" data-i18n="welcome.title">Pour commencer</h2>
+      <p class="welcome-sub" data-i18n="welcome.subtitle">Des visualisations adaptées à vos données : un clic suffit, vous pourrez les modifier ensuite.</p>
+      <ul id="welcome-cards" class="welcome-cards"></ul>
+    </div>
+    <div class="welcome-actions">
+      <button id="welcome-add-all" type="button" class="btn-primary" hidden></button>
+      <button id="welcome-import" type="button" class="btn-secondary" data-i18n="welcome.importPbix">Importer un fichier Power BI…</button>
+    </div>
+  </div>
   <p id="empty-state" class="empty-state">
     <span id="empty-state-hint" class="edit-only" data-i18n-html="emptyState.hint">Aucune tuile pour l'instant. Utilisez « Ajouter une visualisation » pour en créer une. Cliquer sur une barre/part filtre les
     autres tuiles (cumulable entre colonnes différentes ; recliquer retire le filtre). Une tuile
@@ -589,6 +603,7 @@
   <script src="js/pbix-layout.js"></script>
   <script src="js/csv-import.js"></script>
   <script src="js/advice.js"></script>
+  <script src="js/welcome.js"></script>
   <script src="js/combobox.js"></script>
   <script src="js/state.js"></script>
   <script src="js/charts.js"></script>

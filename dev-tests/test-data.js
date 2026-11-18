@@ -15,6 +15,7 @@ const csvImport = require('../js/csv-import.js');
 const keywords = require('../js/keywords.js');
 const pdfText = require('../js/pdf-text.js');
 const advice = require('../js/advice.js');
+const welcome = require('../js/welcome.js');
 
 const rows = [
   { id: 1, Region: 'Nord', Montant: 100 },
@@ -2342,6 +2343,47 @@ const SAMPLE_TIME_SERIES = [
         }
       });
       console.log('OK advice.suggestTiles — chaque suggestion s\'ajoute au store et s\'agrège sur les vraies données');
+    }
+    // Miniatures de l'accueil : `previewFor` (nombres normalisés) puis `previewSvg` (dessin) — sans ECharts.
+    {
+      const sugg = advice.suggestTiles(big, undefined, { limit: 8, t: tr });
+      sugg.forEach((x) => {
+        const p = advice.previewFor(x.tileData, big);
+        assert.ok(p && p.kind, `${x.type} : une miniature existe`);
+        const svg = welcome.previewSvg(p, { lang: 'fr' });
+        assert.ok(/^<svg viewBox="0 0 120 64"/.test(svg) && /<\/svg>$/.test(svg) && svg.length > 80, `${x.type} : SVG non vide`);
+        assert.ok(!/NaN|undefined|Infinity/.test(svg), `${x.type} : aucun nombre invalide dans le SVG`);
+        const numbers = JSON.stringify(p).match(/-?\d+(?:\.\d+)?/g).map(Number);
+        assert.ok(numbers.every(Number.isFinite), `${x.type} : aperçu fini`);
+      });
+      const typed = (tileData) => advice.previewFor(tileData, big);
+      const bars = typed({ type: 'bar', dimension: 'Region', measure: 'Montant', aggFn: 'sum', horizontal: true, sortMode: 'value-desc' });
+      assert.strictEqual(bars.kind, 'bars');
+      assert.ok(bars.horizontal && bars.values.length <= 6 && Math.max.apply(null, bars.values) === 1 && bars.values.every((v) => v >= 0 && v <= 1));
+      assert.deepStrictEqual(bars.values.slice().sort((a, b) => b - a), bars.values, 'tri décroissant respecté dans l\'aperçu');
+      assert.strictEqual(typed({ type: 'line', dimension: 'Date.Annee', measure: 'Montant', aggFn: 'sum', areaFill: true }).area, true);
+      assert.strictEqual(typed({ type: 'pie', dimension: 'Region', measure: 'Montant', aggFn: 'sum', donut: true }).donut, true);
+      const pie = typed({ type: 'pie', dimension: 'Produit', measure: 'Montant', aggFn: 'sum' });
+      assert.ok(Math.abs(pie.values.reduce((a, b) => a + b, 0) - 1) < 1e-9, 'parts du camembert : somme 1');
+      assert.strictEqual(typed({ type: 'pivot' }).kind, 'grid');
+      const gauge = typed({ type: 'gauge', measure: 'Montant', aggFn: 'sum', gaugeMin: 0, gaugeMax: 1 });
+      assert.strictEqual(gauge.ratio, 1, 'jauge : ratio borné à 1');
+      // Cas où l'on ne dessine rien plutôt que de dessiner faux.
+      assert.strictEqual(advice.previewFor({ type: 'bar', dimension: 'Region', measure: 'Montant', aggFn: 'sum' }, []), null);
+      assert.strictEqual(advice.previewFor(null, big), null);
+      assert.strictEqual(typed({ type: 'inconnu' }), null);
+      assert.strictEqual(typed({ type: 'gauge', measure: 'Montant', aggFn: 'sum', gaugeMin: 5, gaugeMax: 5 }), null);
+      assert.strictEqual(typed({ type: 'radar', radarAxisMode: 'columns', radarAxes: ['Montant', 'Quantite'] }), null, 'radar à 2 axes : pas de miniature');
+      assert.strictEqual(typed({ type: 'line', dimension: 'Produit', measure: 'Montant', aggFn: 'sum', sortMode: 'label' }) && typed({ type: 'line', dimension: 'Produit', measure: 'Montant', aggFn: 'sum' }).kind, 'line');
+      assert.strictEqual(typed({ type: 'bar', dimension: 'Region', measure: 'Montant', aggFn: 'sum' }) && typed({ type: 'bar', dimension: 'Region', measure: 'Nul', aggFn: 'sum' }), null, 'barres toutes nulles : pas de miniature');
+      assert.strictEqual(welcome.previewSvg(null), '');
+      assert.strictEqual(welcome.previewSvg({ kind: 'inconnu' }), '');
+      // Une valeur de KPI avec tendance : la flèche suit le signe, le nombre suit la langue.
+      const up = welcome.previewSvg({ kind: 'value', value: 3690, trendPct: 12.1 }, { lang: 'fr' });
+      const down = welcome.previewSvg({ kind: 'value', value: 3690, trendPct: -4 }, { lang: 'en' });
+      assert.ok(up.includes('▲') && up.includes('12,1') && down.includes('▼') && down.includes('3.7K') && down.includes('4 %'), `${up} / ${down}`);
+      assert.ok(!welcome.previewSvg({ kind: 'value', value: 5, trendPct: null }).includes('▲'));
+      console.log('OK advice.previewFor + welcome.previewSvg — une miniature finie par type suggéré, bornes, null, tendance fr/en');
     }
     // Courbe suggérée sur des dates dans le désordre : tri par libellé posé d'office (jamais de zigzag).
     {

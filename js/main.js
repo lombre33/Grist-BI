@@ -260,6 +260,13 @@
   const modeToggleBtn = document.getElementById('mode-toggle');
   const modeToggleLabelEl = document.getElementById('mode-toggle-label');
   const welcomeEl = document.getElementById('welcome');
+  // Cartes de suggestion de l'écran d'accueil (js/welcome.js, décisions de js/advice.js) : seulement des
+  // rappels ici, pour que ce fichier-là ne connaisse ni le store ni le formulaire. Le bouton « Créer une
+  // visualisation » de l'accueil n'est pas ici : il appartient à la refonte de l'interface (lot 2).
+  GristBI.welcome.init({
+    addTile: (tileData, index) => store.addTile(Object.assign({ id: genTileId(index) }, tileData)),
+    importPowerBi: () => document.getElementById('open-pbix-import').click()
+  });
   const emptyStateReadHintEl = document.getElementById('empty-state-readhint');
   const bookmarkSelect = document.getElementById('bookmark-select');
   const deleteBookmarkBtn = document.getElementById('delete-bookmark');
@@ -900,6 +907,7 @@
 
     emptyState.hidden = state.tiles.length > 0;
     welcomeEl.hidden = state.tiles.length > 0;
+    GristBI.welcome.update(state, Boolean(currentTableId) && dashboardReady, currentTableId);
     // Temps de rendu affiché dans le bandeau : utile pour repérer à l'œil un ralentissement sur une
     // table de travail à fort volume, sans devoir ouvrir les DevTools à chaque fois.
     const renderStart = performance.now();
