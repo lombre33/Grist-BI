@@ -1390,8 +1390,8 @@
            </div>
          </div>`
       : `${header}
-         <div class="tile-breadcrumb" data-tile-id="${tile.id}" hidden></div>
-         <div class="tile-chart" data-tile-id="${tile.id}"></div>`;
+         <div class="tile-breadcrumb" data-tile-id="${escapeHtml(tile.id)}" hidden></div>
+         <div class="tile-chart" data-tile-id="${escapeHtml(tile.id)}"></div>`;
     if (preview) return el;
     el.querySelector('.tile-remove').addEventListener('click', () => {
       if (tile.id === editingTileId) closeTilePanel(false); // formulaire en cours d'édition sur une tuile qui disparaît

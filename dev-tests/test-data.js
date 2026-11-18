@@ -1561,6 +1561,47 @@ const rows = [
   console.log('OK state.setPages (chargement config + repli currentPageId invalide + garde-fou tableau vide)');
 }
 
+// state: ids de tuile relus d'une configuration (audit gwaudit C-XSS-01, bug réel n°45). Un id est reposé
+// tel quel dans `data-tile-id="…"` et dans des sélecteurs : une ligne de BI_Dashboard_Config écrite par
+// quelqu'un d'autre pouvait y glisser `x"><img src=x onerror=…>` et exécuter du script dans le widget.
+{
+  const UNSAFE = /[^A-Za-z0-9_-]/;
+  const hostile = 'x"><img src=x onerror="window.__xss=1">';
+  const store = state.createStore();
+  store.setPages([
+    { id: 'p1', name: 'Ventes', tiles: [{ id: hostile, type: 'bar', title: 'Garde son titre' }, { id: "a'b c", type: 'kpi' }, { id: '', type: 'kpi' }, { type: 'kpi' }, { id: 42, type: 'kpi' }] },
+    { id: 'p2', name: 'Stock', tiles: [{ id: 'tile_abc', type: 'bar' }, { id: 'tile_abc', type: 'pie' }, null, 'pas-une-tuile'] }
+  ], 'p1');
+  const ids = store.getState().pages.flatMap((p) => p.tiles.map((t) => t.id));
+  assert.ok(ids.every((id) => typeof id === 'string' && id !== '' && !UNSAFE.test(id)), 'aucun id ne garde un caractère hors [A-Za-z0-9_-] : ' + JSON.stringify(ids));
+  assert.strictEqual(new Set(ids).size, ids.length, 'ids uniques dans tout le rapport, pages confondues : ' + JSON.stringify(ids));
+  assert.strictEqual(store.getState().pages[0].tiles[0].title, 'Garde son titre', 'seul l\'id change, le reste de la tuile reste intact');
+  assert.strictEqual(store.getState().pages[1].tiles.length, 2, 'une « tuile » qui n\'est pas un objet est écartée');
+  assert.strictEqual(ids[ids.length - 2], 'tile_abc');
+  assert.strictEqual(ids[ids.length - 1], 'tile_abc_2', 'un id déjà pris reçoit un suffixe');
+  // Les ids que ce widget fabrique lui-même ne changent jamais : même référence, donc aucune sauvegarde au chargement.
+  const clean = [{ id: 'page_default', name: 'P', tiles: [{ id: 'tile_lx9a_3k2z', type: 'bar' }, { id: '__preview__', type: 'bar' }, { id: 'stress_bar-region', type: 'bar' }] }];
+  assert.strictEqual(state.sanitizePages(clean), clean, 'rien à corriger : la MÊME référence revient');
+  assert.strictEqual(state.sanitizePages([{ id: 'p', name: 'P', tiles: [] }]).length, 1);
+  // Une page sans tableau de tuiles ne fait plus lever setPages.
+  store.setPages([{ id: 'p', name: 'P' }], 'p');
+  assert.deepStrictEqual(store.getState().tiles, []);
+  assert.strictEqual(state.safeTileId(undefined, new Set()), 'tile');
+  console.log('OK state.setPages — ids de tuile relus de la configuration : caractères sûrs, uniques, tuile invalide écartée, ids du widget inchangés (même référence)');
+}
+
+// Le balisage de buildTileElement et le pivot échappent aussi (défense en profondeur : le correctif de
+// l'ingestion ci-dessus ne doit pas être la seule barrière).
+{
+  const nodeFs = require('fs'), nodePath = require('path');
+  const main = nodeFs.readFileSync(nodePath.join(__dirname, '..', 'js', 'main.js'), 'utf8');
+  const charts = nodeFs.readFileSync(nodePath.join(__dirname, '..', 'js', 'charts.js'), 'utf8');
+  assert.ok(!/data-tile-id="\$\{tile\.id\}"/.test(main), 'main.js : `data-tile-id` reçoit escapeHtml(tile.id), jamais tile.id nu');
+  assert.ok(/data-tile-id="\$\{escapeHtml\(tile\.id\)\}"/.test(main));
+  assert.ok(/const fmt = \(v\) => \(v == null \? '–' : escapeHtml\(String\(pivotFmt\.format\(v\)\)\)\);/.test(charts), 'charts.js : les valeurs du pivot sont échappées');
+  console.log('OK défense en profondeur — data-tile-id échappé (main.js), valeurs du pivot échappées (charts.js)');
+}
+
 // main.js:switchTable + render() — consigne GFS 009 : CHARGER un rapport (y compris vierge,
 // "Nouveau" dans GFS) ne doit jamais, par lui-même, planifier une sauvegarde (main.js:scheduleSave) ;
 // seul un geste réel de la personne doit écrire une ligne dans BI_Dashboard_Config. render()
@@ -2269,6 +2310,30 @@ const SAMPLE_TIME_SERIES = [
   assert.ok(/now === last\) return/.test(main), 'comparaison de signature : un --chrome-h réécrit ne relance rien');
   assert.ok(/\.tile-wordcloud-message \{[^}]*padding: 24px 12px/.test(css), 'message du nuage de mots lisible');
   console.log('OK js/charts.js — lot 4 : finalizeOption (thème, infobulle repliée, axes, libellés tronqués, entonnoir, radar), nuage de mots, rendu repris au changement de thème');
+}
+
+// Carte KPI sans objectif : la piste d'objectif cachée (`hidden`) ne doit laisser aucune trace (piège n°10, 18/11/2026)
+{
+  const fs = require('fs');
+  const path = require('path');
+  const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+  const css = read('css/style.css');
+  const charts = read('js/charts.js');
+  const main = read('js/main.js');
+  // la règle d'auteur `display: flex` bat [hidden] : sans règle explicite, une piste grise vide reste visible sous la carte
+  assert.ok(/\.tile-kpi-goal \{[^}]*display: flex/.test(css), 'précondition : .tile-kpi-goal est bien en display: flex');
+  assert.ok(/\.tile-kpi-goal\[hidden\] \{\s*display: none;?\s*\}/.test(css), '.tile-kpi-goal[hidden] { display: none } (piège n°10)');
+  // le HTML de la carte le crée caché, et renderKpi le cache sans objectif / le montre avec
+  assert.ok(/<div class="tile-kpi-goal" hidden>/.test(main), 'la piste d\'objectif naît cachée');
+  assert.ok(/if \(!prog\) \{\s*goalEl\.hidden = true;/.test(charts) && /goalEl\.hidden = false;/.test(charts), 'renderKpi cache la piste sans objectif et la montre avec');
+  // même règle pour tout autre élément que ce fichier cache avec `hidden` alors que sa feuille lui pose un display : chaque sélecteur
+  // `.x { ...display: flex|grid... }` dont le JS bascule `.hidden` doit avoir son `.x[hidden]` (ou un `!important` comme .edit-only)
+  for (const sel of ['tile-kpi-spark']) {
+    const rule = css.match(new RegExp('\\.' + sel + ' \\{([^}]*)\\}'));
+    assert.ok(rule, `règle .${sel} trouvée`);
+    assert.ok(!/display:\s*(flex|grid|block|inline)/.test(rule[1]) || new RegExp('\\.' + sel + '\\[hidden\\]').test(css), `.${sel} : [hidden] respecté`);
+  }
+  console.log('OK carte KPI — piste d\'objectif : [hidden] respecté (piège n°10), cachée sans objectif, visible avec');
 }
 
 // measureExportSheet / buildWorkbookSheetsAsync : export Excel RÉEL (plus un simple message) pour

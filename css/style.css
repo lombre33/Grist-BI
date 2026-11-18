@@ -1198,6 +1198,8 @@ td.pivot-cell:not(.pivot-cell-empty):not(.pivot-total-cell):hover { background: 
 .tile-kpi-spark .spark-line { fill: none; stroke: var(--accent); stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
 .tile-kpi-spark .spark-dot { position: absolute; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; border-radius: 50%; background: var(--accent); }
 .tile-kpi-goal { width: 100%; display: flex; flex-direction: column; gap: 3px; }
+/* Piège n°10 : sans cette règle, `display: flex` ci-dessus bat l'attribut [hidden] et une piste grise vide s'affiche sous toute carte KPI sans objectif. */
+.tile-kpi-goal[hidden] { display: none; }
 .goal-bar { height: 8px; border-radius: 4px; background: var(--surface-sunken); overflow: hidden; }
 .goal-fill { display: block; height: 100%; border-radius: 4px; }
 .goal-text { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
