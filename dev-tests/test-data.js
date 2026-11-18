@@ -3061,7 +3061,7 @@ const SAMPLE_TIME_SERIES = [
     assert.strictEqual(results[0].phrase, 'mots clés automatique'); // ex-aequo avec "documents pdf
     // volumineux" (3 mots pleins chacune, score 9) : départagé par l'ordre de première apparition.
     assert.ok(results[0].score > results[results.length - 1].score);
-    assert.strictEqual(results.length, 4);
+    assert.strictEqual(results.length, 3); // 4 demandés, mais ~14 mots utiles : plafond d'un mot-clé pour cinq mots
     console.log('OK keywords.extractKeywords (phrase multi-mots mieux classée qu\'un mot isolé)');
   }
 
@@ -3069,11 +3069,34 @@ const SAMPLE_TIME_SERIES = [
   // (même prudence que groupByAggregate, voir CLAUDE.md §7 piège n°14).
   {
     const results = keywords.extractKeywords('Zèbre. Chat. Alpaga. Girafe.', { maxKeywords: 10, minWordLength: 1 });
-    assert.deepStrictEqual(results.map((r) => r.phrase), ['zèbre', 'chat', 'alpaga', 'girafe']);
+    // 4 mots utiles seulement : le plafond d'un mot-clé pour cinq mots (au moins 3) coupe « girafe »
+    assert.deepStrictEqual(results.map((r) => r.phrase), ['zèbre', 'chat', 'alpaga']);
     // un terme qui REVIENT passe devant ceux qui n'apparaissent qu'une fois, et n'est listé qu'une fois
     const repeated = keywords.extractKeywords('Zèbre. Chat. Alpaga. Chat.', { maxKeywords: 10, minWordLength: 1 });
     assert.deepStrictEqual(repeated.map((r) => r.phrase), ['chat', 'zèbre', 'alpaga']);
     console.log('OK keywords.extractKeywords (ex-aequo dans l\'ordre d\'apparition, un terme qui revient passe devant)');
+  }
+
+  // extractKeywords : un texte court n'a que quelques termes (essai du 18/11/2026 : un résumé de 40 mots rendait
+  // onze mots-clés dont « jour, hausse, personnes, atteignent »). Plafond : un mot-clé pour cinq mots utiles, au
+  // moins 3, jamais plus que `maxKeywords` ; un texte long n'est pas touché.
+  {
+    const resume = 'Suivi sur douze ans d\'une cohorte de 8 400 adultes : un temps passé assis supérieur à dix heures par jour est associé à une hausse du risque cardiovasculaire de 34 %, même chez les personnes qui atteignent les recommandations d\'activité physique.';
+    const got = keywords.extractKeywords(resume, { maxKeywords: 15 }).map((k) => k.phrase);
+    assert.deepStrictEqual(got, ['douze ans', 'dix heures', 'risque cardiovasculaire', 'activité physique']);
+    // les termes gardés sont les mêmes qu'avant le plafond, seule la queue disparaît
+    assert.deepStrictEqual(keywords.extractKeywords(resume, { maxKeywords: 2 }).map((k) => k.phrase), ['douze ans', 'dix heures']);
+    // un titre court : au moins un terme, trois au plus
+    const titre = keywords.extractKeywords('Impact de la sédentarité sur le risque cardiovasculaire chez les adultes', { maxKeywords: 15 });
+    assert.ok(titre.length >= 1 && titre.length <= 3, `titre : ${titre.length} mots-clés`);
+    // un texte long (plusieurs centaines de mots utiles) donne autant de mots-clés qu'on en demande
+    const sentences = [];
+    for (let rep = 0; rep < 2; rep++) for (let i = 0; i < 40; i++) sentences.push(`Le concept${i} et le mécanisme${i}.`);
+    const longText = sentences.join(' ');
+    assert.strictEqual(keywords.extractKeywords(longText, { maxKeywords: 15 }).length, 15);
+    // ...et la même demande sur un extrait de trois phrases est plafonnée par le texte, pas par la demande
+    assert.ok(keywords.extractKeywords(sentences.slice(0, 3).join(' '), { maxKeywords: 15 }).length <= 3);
+    console.log('OK keywords.extractKeywords (texte court : un mot-clé pour cinq mots utiles, texte long inchangé)');
   }
 
   // extractKeywords : un texte sans aucun mot vide sur une longue plage (ex. liste à puces mal

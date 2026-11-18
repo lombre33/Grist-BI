@@ -2444,6 +2444,11 @@ dans une seule instance de widget, avec ses propres tuiles internes.
       anglais réalistes (articles de santé publique, d'énergie, de linguistique) : les expressions retenues sont celles
       qu'un lecteur retiendrait ; ce n'est PAS une mesure sur un vrai corpus de chercheurs, et un texte dont les mots
       importants ne reviennent jamais donnera peu de mots-clés (voulu : mieux vaut peu que du bruit).
+      **Texte court (18/11/2026, essai sur le jeu d'essai du pas-à-pas)** : un résumé de 40 mots rendait onze mots-clés
+      dont une queue de bruit (« jour, hausse, personnes, atteignent »). Le nombre de mots-clés est donc plafonné à un
+      pour cinq mots utiles (au moins 3, jamais plus que `maxKeywords`) : un résumé en rend 3 à 4, les termes gardés
+      sont ceux de tête (rien ne change dans leur ordre), un texte de 100 mots utiles ou plus n'est pas touché. Le
+      1/5 est un réglage d'après quelques textes, pas une mesure sur un corpus.
     - **La lecture du PDF** (`js/pdf-text.js:readPdf`) : pdf.js vient de GFS (extension `mots-cles-pdf`, voir
       GFS-ETAT.md), jamais d'une balise ni d'un CDN de ce dépôt. Page par page, en rendant la main entre deux pages
       (pdf.js tourne dans la page, pas dans un vrai `Worker`, dans le cadre isolé de GFS) : au plus 88 ms de gel mesurés
