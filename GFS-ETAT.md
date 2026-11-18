@@ -241,6 +241,17 @@ Mis à jour le 2026-11-18 (consigne 015 lue, `consignes/bi/INDEX.md` à `a16fe10
   charger (`isAvailable()` renvoie `false` tant que GFS n'a pas ajouté la bibliothèque) — rien
   d'autre dans ce dépôt ne référence PDF.js. Pas encore dans `index.html`/`importmap` : branché
   seulement une fois la bibliothèque disponible.
+- 2026-11-18 · Grist-BI utilise désormais aussi `kit/js/dialogs.js` (`Dialogs.prompt/confirm/notice`)
+  et lie `kit/css/windows.css` (nouveau `js/dialogs.js`, chargé par `import()` dynamique comme
+  `Ambiance.start()`), à la place de `window.prompt/confirm/alert`, qui ne font rien dans un cadre sans
+  `allow-modals` (constaté dans un `<iframe sandbox="allow-scripts">`, pas dans le vrai GFS). Même
+  sous-module, même commit : aucune nouvelle bibliothèque, aucun changement de pointeur. Les libellés
+  des boutons sont toujours fournis par ce widget (le kit n'a pas de dictionnaire ici) ; `kit/css/tokens.css`
+  n'est pas chargé, les 5 jetons que `windows.css` lit (`--pp-scrim`, `--z-window`, `--z-dialog`,
+  `--danger-ink`, `--danger-soft`) sont définis dans `css/style.css`, clair et sombre.
+  **Pas vérifié** : le chargement de `kit/` depuis GitHub Pages dans un vrai GFS, ni les fenêtres sous une
+  ambiance choisie. Ce qui est dit dans « Rien d'autre du guide 1.2 engagé » (consigne 004) reste vrai :
+  ni `gfs.json`, ni stockage par le courtier.
 
 ## Questions pour GFS
 - aucune

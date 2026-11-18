@@ -31,20 +31,31 @@
   --border-strong: #e1e0d9;
   --text: #0b0b0b;
   --text-secondary: #52514e;
-  --text-muted: #898781;
+  /* #6b6a64 (5,3:1 sur --surface) et non #898781 (3,5:1) : texte d'aide, libellés et compteurs sont
+     lus en 12 px ou moins, sous le seuil AA de 4,5:1 (audit UI/UX du 18/11/2026). */
+  --text-muted: #6b6a64;
   --accent: #2a78d6;
   --on-accent: #ffffff;
-  --accent-solid: var(--accent);
+  /* 8 % de `--text` dans l'accent : le blanc de `--on-accent` passe de 4,4:1 à 5,0:1 sur les
+     boutons pleins (AA). Reste dérivé de `--accent` comme avant, donc une ambiance GFS qui change
+     l'accent suit sans rien redire ; en sombre `--text` est clair, le fond s'éclaircit et le texte
+     sombre de `--on-accent` y gagne aussi. */
+  --accent-solid: color-mix(in srgb, var(--accent) 92%, var(--text));
   /* Mélangé vers `--text` plutôt que vers le noir/blanc : `--text` est sombre en clair et clair en
      sombre, donc cette seule formule fonce le survol en clair et l'éclaircit en sombre — exactement
      ce que faisaient les deux valeurs #2569bf/#4a94ea codées en dur avant ce lot, sans dupliquer la
      formule dans le bloc sombre plus bas. */
   --accent-solid-hover: color-mix(in srgb, var(--accent-solid) 85%, var(--text));
-  --accent-ink: var(--accent);
+  /* Texte et icônes de la couleur d'accent (onglet actif, liens, puces) : l'accent nu fait 4,3:1
+     sur --surface et 3,9:1 sur son propre fond teinté ; 15 % de `--text` le ramène à 5,4 / 4,9. */
+  --accent-ink: color-mix(in srgb, var(--accent) 85%, var(--text));
   --accent-soft: color-mix(in srgb, var(--accent) 8%, transparent);
   --accent-soft-strong: color-mix(in srgb, var(--accent) 16%, transparent);
   --accent-soft-border: color-mix(in srgb, var(--accent) 24%, transparent);
   --good: #0ca30c;
+  /* `--good` (3,3:1) ne sert qu'aux aplats ; tout TEXTE de succès (tendance KPI en hausse) prend
+     `--good-ink`. */
+  --good-ink: #0a7a2b;
   --critical: #d03b3b;
   --warning-bg: #fdf3d8;
   --warning-text: #7a5b00;
@@ -62,6 +73,14 @@
   --font-label: var(--font-ui);
   --fill: var(--accent-solid);
   --fill-hover: var(--accent-solid-hover);
+  /* Jetons lus par les fenêtres du kit (`kit/css/windows.css`, js/dialogs.js) mais absents de ce
+     fichier : `kit/css/tokens.css`, qui les définit, n'est PAS chargé (il redéfinirait aussi les
+     couleurs de ce widget). Rouge d'avertissement : texte `--danger-ink` (5,5:1 sur blanc). */
+  --pp-scrim: rgba(11, 11, 11, 0.45);
+  --z-window: 2000;
+  --z-dialog: 2100;
+  --danger-ink: #c53030;
+  --danger-soft: #fbe9e9;
   font-family: var(--font-ui);
 }
 
@@ -316,6 +335,8 @@ body {
 .btn-secondary { background: var(--surface); border-color: var(--border-strong); color: var(--text); }
 .btn-secondary:hover { background: var(--surface-sunken); border-color: var(--text-muted); }
 .btn-tiny { padding: 4px 10px; font-size: 11px; align-self: flex-start; }
+#retry-connect { display: block; margin: 10px auto 0; }
+#retry-connect[hidden], #empty-state-hint[hidden], #empty-state-status[hidden] { display: none; }
 .btn-secondary:disabled, .btn-primary:disabled, .btn-tiny:disabled { opacity: 0.5; cursor: default; box-shadow: none; }
 .btn-secondary:disabled:hover { background: var(--surface); border-color: var(--border-strong); }
 .btn-primary:disabled:hover { background: var(--fill); }
@@ -484,6 +505,20 @@ button:focus-visible, select:focus-visible, input:focus-visible {
    sur cette règle navigateur qu'une règle auteur peut silencieusement annuler). */
 .combobox { position: relative; }
 .combobox-input.combobox-input { min-width: 160px; }
+/* Le même aspect hors d'un `.field` (sélecteur de table, jointure) : sans cette règle générique ces
+   champs gardaient la bordure et la police par défaut du navigateur, seuls ceux du formulaire
+   d'ajout (`.field input[type="text"]`, plus spécifique donc prioritaire) étant stylés. */
+.combobox-input {
+  border: var(--bw, 1px) solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 6px 9px;
+  font-size: 12.5px;
+  font-family: inherit;
+  background: var(--surface);
+  color: var(--text);
+  transition: border-color 0.12s var(--ease);
+}
+.combobox-input:hover { border-color: var(--text-muted); }
 .combobox-list {
   position: absolute;
   z-index: 20;
@@ -722,7 +757,7 @@ td.pivot-cell:not(.pivot-cell-empty):not(.pivot-total-cell):hover { background: 
 .tile-kpi-value { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; color: var(--text); }
 .tile-kpi-label { font-size: 11px; color: var(--text-muted); }
 .tile-kpi-trend { font-size: 11.5px; font-weight: 600; margin-top: 2px; }
-.tile-kpi-trend.trend-up { color: var(--good); }
+.tile-kpi-trend.trend-up { color: var(--good-ink); }
 .tile-kpi-trend.trend-down { color: var(--critical); }
 
 .empty-state {
@@ -749,7 +784,7 @@ td.pivot-cell:not(.pivot-cell-empty):not(.pivot-total-cell):hover { background: 
     --border-strong: #2c2c2a;
     --text: #ffffff;
     --text-secondary: #c3c2b7;
-    --text-muted: #898781;
+    --text-muted: #9b9992;
     --accent: #3987e5;
     --on-accent: #0b0d12;
     /* `--accent-soft` garde une intensité par mode (14 % ici, 8 % en clair) comme avant ce lot ;
@@ -760,7 +795,11 @@ td.pivot-cell:not(.pivot-cell-empty):not(.pivot-total-cell):hover { background: 
        formule a été écrite. */
     --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
     --good: #0ca30c;
+    --good-ink: #3fc16a;
     --critical: #e66767;
+    --pp-scrim: rgba(3, 6, 12, 0.62);
+    --danger-ink: #f08a8a;
+    --danger-soft: #3a2426;
     --warning-bg: #3a2e00;
     --warning-text: #f1d27a;
     --warning-border: #5c4900;

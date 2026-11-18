@@ -2630,6 +2630,45 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     indices de nom (note/taux/âge, id) ne connaissent que le français et l'anglais ; une colonne numérique
     qui est en réalité un code (code postal sans zéro initial) sera prise pour une mesure.
 
+- **Premier lancement : fenêtres du kit, état de connexion, titres traduits, contrastes** (18/11/2026,
+  lot 0 de l'audit UI/UX en vue de l'alpha — `js/dialogs.js`, `js/main.js`, `js/i18n.js`,
+  `css/style.css`) : constats de l'audit, vérifiés contre le vrai `index.html` servi en HTTP avec
+  `dev-tests/grist-stub.js`, dans une page directe ET dans un `<iframe sandbox="allow-scripts">` (le
+  cadre de GFS, sans `allow-modals`).
+  - **`prompt`/`confirm`/`alert` ne font rien dans un cadre sans `allow-modals`** : « + Page »,
+    renommer/supprimer une page, « Sauvegarder la vue actuelle » ne faisaient RIEN (le `prompt()`
+    rend `null`, rien n'est créé), et les 20 messages de validation/d'erreur étaient silencieux.
+    Remplacés par `GristBI.dialogs.prompt/confirm/notice` (`js/dialogs.js`), qui charge
+    `kit/js/dialogs.js` par `import()` dynamique (même mécanisme qu'`Ambiance.start()`) et lie
+    `kit/css/windows.css`. Les libellés des boutons sont TOUJOURS passés (dictionnaire de ce
+    widget) : le kit n'a pas de dictionnaire ici et n'en a pas besoin. `kit/css/tokens.css` n'est
+    PAS chargé (il redéfinirait les couleurs du widget) : les 5 jetons que lit `windows.css`
+    (`--pp-scrim`, `--z-window`, `--z-dialog`, `--danger-ink`, `--danger-soft`) sont définis dans
+    `css/style.css`, clair et sombre. Repli sur les boîtes du navigateur si le kit ne se charge pas
+    (clone sans `git submodule update --init`).
+  - **« Aucune table dans ce document » pendant tout le chargement** : le texte s'affichait avant que
+    la liste des tables ait été lue. Un état de connexion explicite (`connecting`/`noTables`/
+    `failed`, `main.js:connectionState`) le remplace ; l'état vide MASQUE son conseil au lieu de
+    l'écraser (l'ancien `textContent` détruisait son `<span>` pour de bon : le conseil ne revenait
+    plus après une première table). Un échec propose « Réessayer » (`connectToFirstTable`).
+  - **Titres de tuile traduits** : un titre auto-composé (« Montant par Région ») restait dans la langue
+    de sa création. Il est stocké avec `titleKey`/`titleVars` (`main.js:autoTileTitle`) et résolu à
+    l'affichage par `i18n.tileTitle` ; `tile.title` reste écrit en clair (repli, ancienne config,
+    import Power BI, `js/advice.js` qui pose la même paire de champs). **Limite** : les exports
+    (Excel, PDF, PPTX) lisent toujours `tile.title`, donc la langue de création — `js/data.js` reste
+    pur, sans dépendance à `i18n.js`.
+  - **Contrastes AA** : texte discret `#898781` (3,5:1) → `#6b6a64` clair (5,3:1) / `#9b9992` sombre ;
+    accent en texte (`--accent-ink`) et en aplat (`--accent-solid`) dérivés de `--accent` par
+    `color-mix` avec `--text` (donc toujours cohérents avec une ambiance GFS) ; texte de succès
+    `--good-ink` (la tendance KPI en hausse faisait 3,3:1). Mesures par calcul de luminance WCAG,
+    jamais à l'œil.
+  - **Champs hors `.field`** : sélecteur de table et jointure n'avaient aucune bordure (`.combobox-input`
+    n'était stylé que sous `.field`) ; règle générique ajoutée.
+  - **Non vérifié** : dans un VRAI GFS (cadre réel, vrai chargement de `kit/` depuis GitHub Pages) et un
+    vrai Grist — le cadre isolé ci-dessus est une simulation (`sandbox="allow-scripts"`), pas leur
+    hébergeur ; le rendu des fenêtres a été vu en clair et en sombre mais jamais sous une ambiance
+    GFS choisie.
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée

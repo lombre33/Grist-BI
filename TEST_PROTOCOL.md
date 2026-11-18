@@ -610,6 +610,21 @@ délibérément laissé de côté (contenu généré par `js/data.js`/`js/demo-d
 - [x] `GristBI.advice` réellement chargé par le vrai `index.html` (script tag) et suggestions cohérentes sur la table du faux Grist 🌐
 - [ ] **[NON TESTABLE ICI]** Données d'un VRAI document Grist (colonnes `Date` en secondes, `Reference`, très larges tables) ⬜ ; seuils de lisibilité jamais confrontés à de vrais utilisateurs ⬜
 
+### `js/dialogs.js` + connexion + titres traduits (18/11/2026, Node pour `tileTitle`, Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`)
+
+- [x] « + Page » ouvre une fenêtre de saisie (titre « Nouvelle page », boutons Annuler / Créer la page) et crée l'onglet ; annuler ne crée rien ✅ 🌐 (dans un cadre sans `allow-modals`)
+- [x] Renommer par double-clic ; supprimer : Annuler conserve la page, confirmer la supprime ✅ 🌐
+- [x] « Sauvegarder la vue actuelle » : saisie validée → vue ajoutée à la liste ; saisie annulée → aucune vue ✅ 🌐
+- [x] Validation refusée (jauge Min > Max) : fenêtre de message avec le texte traduit, AUCUNE tuile ajoutée, zéro boîte native ouverte ✅ 🌐
+- [x] Aucune exception ni message console pendant ces parcours ✅ 🌐
+- [x] Connexion lente (2,5 s sur `listTables`) : jamais « Aucune table » pendant l'attente, « Connexion… » seulement ✅ 🌐
+- [x] Document sans table : message visible, conseil masqué, pas de « Réessayer » ✅ 🌐
+- [x] Échec de lecture des tables : message d'échec + « Réessayer » ; après rétablissement, le bouton disparaît, la table se connecte et le conseil est de nouveau affiché ✅ 🌐
+- [x] Titre de tuile : « Montant par Region » → « Montant by Region » en anglais et retour ; infobulle (`title`) du titre ✅ 🌐
+- [x] `i18n.tileTitle` : clé connue / sans clé / clé inconnue / tuile vide / `null`, fr et en ✅ (Node)
+- [x] Fenêtre de saisie rendue en sombre et de message en clair, relues à l'écran ✅ 🌐
+- [ ] **[NON TESTABLE ICI]** Vrai GFS (chargement de `kit/` depuis GitHub Pages, fenêtres sous une ambiance choisie) ⬜ ; vrai Grist ⬜
+
 ### CSS — classe de bug à systématiquement re-vérifier
 
 - [x] `.field[hidden]` masque réellement l'élément (pas seulement `display:flex` de `.field` qui gagne à spécificité égale) [BUG RÉEL, trouvé 2 fois sur des champs différents] ✅ (règle en place)
@@ -806,6 +821,10 @@ délibérément laissé de côté (contenu généré par `js/data.js`/`js/demo-d
     dans `dev-tests/harness.html` dans le MÊME changement, et vérifiée en ouvrant RÉELLEMENT le
     harnais (pas seulement `index.html`) — un test Node (`test-data.js`) ne peut pas détecter ce
     genre de désynchronisation puisqu'il ne charge aucun DOM.
+
+28. **`prompt`/`confirm`/`alert` muets dans le cadre isolé de GFS : « + Page » et « Sauvegarder la vue » ne faisaient rien, les messages de validation/d'erreur étaient invisibles** [BUG RÉEL, trouvé lors de l'audit UI/UX du 18/11/2026 en chargeant `index.html` dans un `<iframe sandbox="allow-scripts">`] — sans `allow-modals`, `prompt()` rend `null` (le `|| ''` suivant donnait un nom vide, ignoré), `confirm()` rend `false` et `alert()` n'affiche rien, sans exception (au mieux un avertissement dans la console). Un test dans une page directe (harnais, Playwright par défaut) les voit pourtant fonctionner. Corrigé par `js/dialogs.js` (fenêtres du kit) ; test : parcours complet dans un cadre `sandbox="allow-scripts"`. Leçon : tout test d'une interaction qui passe par une API du navigateur soumise à permission doit aussi tourner dans un cadre sandboxé comme celui de l'hôte.
+29. **Une tuile modifiée gardait l'ancien titre dans son en-tête, et un 2e clic sur « Modifier » rechargeait les anciennes valeurs** [BUG RÉEL, trouvé en testant les titres traduits ; reproduit contre `main` avant correction] — `buildTileElement(tile)` capturait l'objet `tile` de sa création dans les écouteurs, et l'élément est mis en cache (voir piège n°6 de CLAUDE.md) donc jamais reconstruit : après `store.updateTile`, l'en-tête n'était jamais réécrit et `startEditTile(tile)` rechargeait la version d'origine dans le formulaire. Même famille que le bug #12 (état figé dans une closure). Corrigé : les écouteurs relisent la tuile vive (`store.getState().tiles`) et `render()` réécrit le titre à chaque passage. Test : modifier une mesure, relire l'en-tête, rouvrir « Modifier » et relire le champ.
+30. **« Aucune table dans ce document » affiché pendant tout le chargement, puis conseil de l'état vide perdu à vie** [BUG RÉEL, trouvé lors de l'audit UI/UX du 18/11/2026] — `render()` écrivait `status.noTables` dès que `currentTableId` était `null`, c'est-à-dire AVANT que `bootstrap()` ait fini de lire les tables ; et il le faisait par `emptyState.textContent = …`, qui supprimait le `<span data-i18n-html>` du conseil (même famille que le piège n°6 : reconstruire un DOM plutôt que le masquer). Corrigé par un état de connexion explicite et deux éléments distincts (conseil / statut) dont un seul est visible. Test : connexion ralentie, document sans table, échec puis « Réessayer ».
 
 ## Fragilité de test connue (PAS un bug produit — investiguée en profondeur, à ne pas re-diagnostiquer)
 

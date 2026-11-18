@@ -814,7 +814,7 @@
       // qu'avant la comparaison élève/moyenne ci-dessous) ; en mode colonnes, `tile.title` tant
       // qu'aucune comparaison n'est affichée (comportement du premier jet de ce mode, inchangé),
       // sinon un libellé explicite ("Moyenne du groupe") pour la distinguer de la série élève.
-      const groupLabel = isRadarColumns ? (hasRadarEntity ? t('chart.radar.groupAverage') : tile.title) : tile.measure;
+      const groupLabel = isRadarColumns ? (hasRadarEntity ? t('chart.radar.groupAverage') : GristBI.i18n.tileTitle(tile)) : tile.measure;
 
       // Comparaison élève/moyenne du groupe filtré (tile.radarEntityColumn/radarEntityValue/
       // radarCompareAverage, voir ROADMAP.md) : une 2e série avec les mêmes axes, calculée sur les
