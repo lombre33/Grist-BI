@@ -5,9 +5,9 @@
  * saisis à la main ET extraits automatiquement par un algorithme intégré, sans serveur.
  *
  * Ce fichier ne connaît ni le store ni les tuiles : `js/main.js` lui donne `init({ getTableId,
- * getGfsLink, gfsLinkReady, reloadTable })` — la table de travail courante, le lien avec GFS (ou `null`
- * hors GFS, et la promesse qui le rend quand le kit est chargé) et de quoi relire la table après une
- * écriture.
+ * reloadTable })` — la table de travail courante et de quoi relire la table après une écriture.
+ * L'état de l'extension PDF vient de `GristBI.extensions` (js/extensions.js), comme pour « Nuage de
+ * mots » : ni lien avec GFS, ni adresse de bibliothèque ici.
  *
  * Ce que la personne voit, dans l'ordre : la source du texte (le PDF joint, ou une colonne de texte),
  * la colonne qui reçoit les mots-clés (une existante, ou une nouvelle créée après confirmation), une
@@ -17,8 +17,8 @@
  *
  * « Grisé, jamais masqué » (consigne 019, point 4) : sans l'extension `mots-cles-pdf` de GFS, l'option
  * « le PDF joint » reste visible mais grisée avec sa raison ; dans GFS le bouton « Ajouter
- * l'extension » ouvre la fenêtre d'installation (`GfsLink.install`), hors GFS il ouvre l'explication
- * de la section 5 du guide des apps. L'option « une colonne de texte » marche partout, sans extension :
+ * l'extension » ouvre la fenêtre d'installation (`GristBI.extensions.requestInstall`), hors GFS il ouvre
+ * l'explication de la section 5 du guide des apps (la même que « Nuage de mots »). L'option « une colonne de texte » marche partout, sans extension :
  * elle n'a besoin d'aucune bibliothèque.
  *
  * Tout ce qui parle à Grist ici n'a été exercé que contre le faux `window.grist` de dev-tests/ : voir
@@ -37,7 +37,6 @@
   let el = null;
   let state = null; // { tableId, columns, choices, table }
   let job = null; // { controller } pendant un travail
-  let extensionsBound = false;
 
   const t = (key, vars) => GristBI.i18n.t(key, vars);
 
@@ -60,20 +59,15 @@
   // État de l'extension PDF
   // ---------------------------------------------------------------------------------------------
 
-  function gfsLink() { return hooks && hooks.getGfsLink ? hooks.getGfsLink() : null; }
+  // Le texte d'un PDF se lit quand GFS donne la bibliothèque : `GristBI.extensions.stateOf` dit `active`
+  // (hébergé ET extension ajoutée), `inactive` (hébergé, pas ajoutée) ou `standalone` (app seule).
+  function pdfState() { return GristBI.extensions.stateOf(EXTENSION_ID); }
+  function pdfAvailable() { return pdfState() === 'active'; }
 
-  // Le texte d'un PDF se lit si PDF.js est déjà posé par GFS, ou si GFS en donne la source (extension
-  // ajoutée) : `GfsLink.library('pdfjs')` rend `{ src, integrite, forme }` ou `null`.
-  function pdfSource() {
-    const link = gfsLink();
-    const lib = link && link.library ? link.library('pdfjs') : null;
-    return lib && lib.src ? lib : null;
-  }
-  function pdfAvailable() { return GristBI.pdfText.isAvailable() || !!pdfSource(); }
-
+  // Charge pdf.js (jamais d'exception : `null` si l'extension a été retirée ou si le fichier est refusé).
   async function ensurePdfjs() {
-    if (GristBI.pdfText.isAvailable()) return;
-    await GristBI.pdfText.loadLibrary(pdfSource());
+    const mod = await GristBI.extensions.load(EXTENSION_ID);
+    if (!mod || !GristBI.pdfText.isAvailable()) throw new Error(t('keywords.error.pdfjsMissing'));
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -135,9 +129,9 @@
     el.kindPdf.closest('.keywords-radio').classList.toggle('is-disabled', !available);
     el.pdfNeeds.hidden = available;
     if (!available && el.kindPdf.checked) el.kindText.checked = true;
-    const link = gfsLink();
-    el.pdfAdd.textContent = t('keywords.needsGfs.add');
-    el.pdfAdd.dataset.hosted = link && link.hosted ? '1' : '';
+    // Dans GFS : ajouter l'extension. Seule : « Comment l'avoir » (la fenêtre du grisé du guide, section 5).
+    el.pdfAdd.textContent = t(pdfState() === 'inactive' ? 'keywords.needsGfs.add' : 'keywords.needsGfs.how');
+    el.pdfAdd.dataset.hosted = pdfState() === 'inactive' ? '1' : '';
   }
 
   function currentSpec() {
@@ -342,17 +336,14 @@
   // ---------------------------------------------------------------------------------------------
 
   async function onAddExtension() {
-    const link = gfsLink();
-    if (link && link.hosted) {
-      try { await link.install(EXTENSION_ID); } catch (e) { /* refus ou fermeture de la fenêtre : rien à ajouter */ }
-      updateKindUi();
-      if (state) { fillColumnLists(); updatePlan(); }
-      return;
+    const result = await GristBI.extensions.requestInstall(EXTENSION_ID);
+    if (result === 'standalone') {
+      await GristBI.dialogs.notice({
+        title: t('ext.standalone.title'),
+        message: t('ext.standalone.body', { feature: t('keywords.source.pdf'), extension: t('ext.name.' + EXTENSION_ID) })
+      });
     }
-    GristBI.dialogs.notice({
-      title: t('keywords.needsGfs.title'),
-      message: t('keywords.needsGfs.body', { feature: t('keywords.source.pdf'), extension: t('keywords.needsGfs.extension') })
-    });
+    // Dans GFS, l'ajout arrive par l'événement `extensions` : `onChange` (ci-dessous) repeint la fenêtre.
   }
 
   function init(h) {
@@ -366,13 +357,9 @@
     for (const node of [el.kindPdf, el.kindText]) node.addEventListener('change', () => { if (state) { fillColumnLists(); updatePlan(); } });
     for (const node of [el.source, el.target]) node.addEventListener('change', () => { if (state) { fillColumnLists(); updatePlan(); } });
     el.manual.addEventListener('change', () => { el.manual.dataset.touched = '1'; if (state) { fillColumnLists(); updatePlan(); } });
-    // GFS prévient quand une extension est ajoutée ou retirée pendant que l'app est ouverte. Le lien du
-    // kit se charge de façon asynchrone (voir js/main.js:gfsLinkReady) : on s'abonne quand il est prêt.
-    Promise.resolve(hooks.gfsLinkReady).then((link) => {
-      if (!link || !link.onExtensions || extensionsBound) return;
-      extensionsBound = true;
-      link.onExtensions(() => { if (!el.modal.hidden) { updateKindUi(); if (state) { fillColumnLists(); updatePlan(); } } });
-    });
+    // GFS prévient quand une extension est ajoutée ou retirée pendant que l'app est ouverte (et répond après
+    // le chargement : avant, tout paraît « pas encore ») : `js/extensions.js` rappelle alors la fenêtre.
+    GristBI.extensions.onChange(() => { if (!el.modal.hidden) { updateKindUi(); if (state) { fillColumnLists(); updatePlan(); } } });
     GristBI.i18n.onChange(() => { if (!el.modal.hidden && state) { updateKindUi(); fillColumnLists(); updatePlan(); } });
   }
 

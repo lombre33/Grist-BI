@@ -388,6 +388,10 @@
       fr: 'Les pièces jointes ne sont pas lisibles ici : {message}',
       en: 'Attachments cannot be read here: {message}'
     },
+    'keywords.error.pdfjsMissing': {
+      fr: 'L’extension « Mots-clés des PDF » n’est plus ajoutée, ou son fichier a été refusé par le navigateur.',
+      en: 'The “PDF keywords” extension is no longer added, or the browser refused its file.'
+    },
     'keywords.error.pdfjs': { fr: 'PDF.js n’a pas pu être chargé : {message}', en: 'PDF.js could not be loaded: {message}' },
     'keywords.error.column': { fr: 'La colonne « {name} » n’a pas pu être créée : {message}', en: 'The “{name}” column could not be created: {message}' },
     'keywords.sample': { fr: 'Ligne {id} : {words}', en: 'Row {id}: {words}' },
@@ -396,12 +400,7 @@
       en: 'Needs the “PDF keywords” extension of Grist Factory Suite.'
     },
     'keywords.needsGfs.add': { fr: 'Ajouter l’extension', en: 'Add the extension' },
-    'keywords.needsGfs.title': { fr: 'Cette fonction demande Grist Factory Suite', en: 'This feature needs Grist Factory Suite' },
-    'keywords.needsGfs.body': {
-      fr: '« {feature} » fait partie de l’extension « {extension} », disponible quand Grist-BI tourne dans Grist Factory Suite. Pour l’ajouter sans rien perdre : dans le panneau de droite de Grist, remplacez l’adresse du widget par celle de Grist Factory Suite. Ne passez pas par la galerie des widgets : elle effacerait les réglages de cette vue. Vos réglages restent tels quels, et vous pourrez revenir à l’adresse de Grist-BI à tout moment.',
-      en: '“{feature}” is part of the “{extension}” extension, available when Grist-BI runs inside Grist Factory Suite. To add it without losing anything: in Grist’s right panel, replace the widget’s address with the Grist Factory Suite address. Do not use the widget gallery: it would erase this view’s settings. Your settings stay as they are, and you can switch back to the Grist-BI address at any time.'
-    },
-    'keywords.needsGfs.extension': { fr: 'Mots-clés des PDF', en: 'PDF keywords' },
+    'keywords.needsGfs.how': { fr: 'Comment l’avoir', en: 'How to get it' },
 
     // --- Commentaires collaboratifs (panneau ouvert depuis une tuile) ---
     'comments.modal.title': { fr: 'Commentaires', en: 'Comments' },

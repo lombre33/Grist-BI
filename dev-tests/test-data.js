@@ -3429,17 +3429,24 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     assert.ok(!/\b(alert|confirm|prompt)\(/.test(panel.replace(/GristBI\.dialogs\.(alert|confirm|prompt)\(/g, '')), 'jamais de boîte native');
     // tous les data-i18n de la fenêtre existent en fr ET en en
     const keysUsed = new Set(Array.from(modal.matchAll(/data-i18n(?:-[a-z]+)?="([^"]+)"/g)).map((m) => m[1]));
-    for (const k of Array.from(panel.matchAll(/\bt\('([a-zA-Z.]+)'/g)).map((m) => m[1])) keysUsed.add(k);
+    for (const k of Array.from(panel.matchAll(/\bt\('([a-zA-Z.]+)'/g)).map((m) => m[1])) if (!k.endsWith('.')) keysUsed.add(k);
     keysUsed.add('keywords.open');
+    keysUsed.add('ext.name.mots-cles-pdf'); // posée par `t('ext.name.' + EXTENSION_ID)`
+    keysUsed.add('ext.standalone.title');
+    keysUsed.add('ext.standalone.body');
     for (const k of keysUsed) {
       i18n.setLang('fr'); assert.notStrictEqual(i18n.t(k), k, `fr manquant : ${k}`);
       i18n.setLang('en'); assert.notStrictEqual(i18n.t(k), k, `en manquant : ${k}`);
     }
     i18n.setLang('fr');
     assert.ok(index.includes('id="open-keywords"') && /id="open-keywords"[^>]*edit-only/.test(index), 'le bouton du menu Données est réservé à l\'Édition');
-    assert.ok(/GristBI\.keywordsPanel\.init\(\{[^}]*getGfsLink[^}]*gfsLinkReady[^}]*reloadTable/s.test(main), 'main.js branche la fenêtre');
-    // grisé, jamais masqué : l'option PDF reste dans la page sans extension, l'extension se nomme comme dans le manifeste de GFS
-    assert.ok(/mots-cles-pdf/.test(panel) && /disabled = !available/.test(panel) && /GfsLink|link\.install/.test(panel));
+    assert.ok(/GristBI\.keywordsPanel\.init\(\{[^}]*getTableId[^}]*reloadTable/s.test(main) && !/getGfsLink|gfsLinkReady/.test(main.slice(main.indexOf('GristBI.keywordsPanel.init'), main.indexOf('GristBI.keywordsPanel.init') + 200)), 'main.js branche la fenêtre');
+    // grisé, jamais masqué : l'option PDF reste dans la page sans extension, l'extension se nomme comme dans le manifeste de GFS ;
+    // l'état, le chargement et l'ajout passent par js/extensions.js (jamais un lien avec GFS ni une bibliothèque ici)
+    assert.ok(/EXTENSION_ID = 'mots-cles-pdf'/.test(panel) && /disabled = !available/.test(panel));
+    assert.ok(/GristBI\.extensions\.stateOf\(EXTENSION_ID\)/.test(panel) && /GristBI\.extensions\.load\(EXTENSION_ID\)/.test(panel) && /GristBI\.extensions\.requestInstall\(EXTENSION_ID\)/.test(panel) && /GristBI\.extensions\.onChange\(/.test(panel));
+    assert.ok(!/GfsLink|\.library\(|\.install\(|loadLibrary/.test(panel), 'le panneau ne parle pas directement à GFS');
+    assert.ok(pos('extensions.js') > 0 && pos('extensions.js') < pos('keywords-panel.js'), 'js/extensions.js est chargé avant le panneau');
     assert.ok(!/import\(['"]pdfjs|pdfjs-dist\//.test(index), 'aucune bibliothèque PDF dans la page : elle vient de GFS');
     console.log('OK mots-clés des publications : fenêtre câblée (ids, scripts dans l\'ordre, aucun <form>, textes fr/en, grisé sans l\'extension)');
   }

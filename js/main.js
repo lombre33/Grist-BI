@@ -2960,12 +2960,11 @@
   // que les autres modales ci-dessus. Réinitialisé à chaque ouverture (pas de résultat d'un import
   // précédent qui traîne si l'utilisateur change de fichier ou rouvre le panneau).
   // Mots-clés des publications (menu Données, consigne GFS 019) : tout le branchement vit dans js/keywords-panel.js,
-  // qui ne reçoit d'ici que la table de travail courante, le lien avec GFS et de quoi relire la table après une écriture.
+  // qui ne reçoit d'ici que la table de travail courante et de quoi relire la table après une écriture (l'état de
+  // l'extension `mots-cles-pdf` vient de GristBI.extensions, comme pour « Nuage de mots »).
   if (GristBI.keywordsPanel) {
     GristBI.keywordsPanel.init({
       getTableId: () => currentTableId,
-      getGfsLink: () => gfsLink,
-      gfsLinkReady,
       reloadTable: reloadWorkingTable
     });
   }
