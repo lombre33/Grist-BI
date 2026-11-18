@@ -333,6 +333,16 @@ Mis à jour le 2026-11-18 (décision du porteur : une seule copie d'ECharts quan
   la question sort de « Questions pour GFS ». (7) **018 à 021 « faites »** : notées. Mon `graphique/` et la carte « une seule copie d'ECharts » attendent le porteur : rien à faire de mon côté d'ici là.
 
 ## Changements qui touchent GFS
+- 2026-11-18 · **Exports PDF et PPTX refaits ; l'adresse de PptxGenJS change (cdnjs -> jsDelivr) ; pdfmake disparaît.** Antoine a constaté que le PDF empilait les cartes au lieu de
+  garder l'aspect du tableau de bord et que le PPTX ne se chargeait pas (« PptxGenJS est chargé depuis cdnjs… vérifiez votre connexion ») : **cdnjs n'héberge pas PptxGenJS** (404 pour toute version
+  et toute casse, mesuré depuis son navigateur) ; l'adresse écrite le 29/09 n'avait jamais été vérifiée. Maintenant : (1) la page affichée est photographiée telle qu'elle est dessinée
+  (`js/snapshot.js`, aucune bibliothèque : même grille, disposition, style, thème) ; (2) le PDF est écrit par `js/pdf-writer.js`, **sans bibliothèque ni appel réseau** (plus de pdfmake ni de
+  `vfs_fonts` depuis cdnjs) ; (3) le PPTX charge `pptxgenjs@4.0.1/dist/pptxgen.bundle.js` **depuis `cdn.jsdelivr.net`** à la demande, avec la même empreinte SRI qu'avant
+  (`sha384-qb0Xhi7L…`, 460 889 octets, octet pour octet le paquet npm officiel). C'est la dérogation d'Antoine du 29/09 (une bibliothèque en CDN, pas vendorisée), pas une nouvelle bibliothèque :
+  seule l'adresse change, donc pas de demande. **À regarder côté GFS** : si la politique de contenu du cadre de l'app n'autorise que certains sites pour les scripts, `cdn.jsdelivr.net` doit y figurer
+  pour que l'export PPTX marche dans GFS ; et `allow-downloads` doit rester déclaré pour les deux fichiers (`dashboard-bi.pdf`, `dashboard-bi.pptx`). **Pas vérifié** : ni le chargement depuis jsDelivr
+  ni les téléchargements dans un vrai GFS (essayés avec la vraie bibliothèque servie à la place de l'adresse, dans une page directe et dans un `<iframe sandbox="allow-scripts allow-downloads">`).
+  L'export Excel, refait par un autre fil le même jour (`js/export.js`, ExcelJS déjà vendorisé), est lui aussi rouvert : rien de nouveau pour GFS de ce côté-là.
 - 2026-11-18 · `05fd5eb` · **Vitrine refaite : les trois captures de `vitrine/` sont remplacées** (même dossier, mêmes noms `1.webp`, `2.webp`, `3.webp`, même taille 960 × 600, de 49 976 à 54 370 octets, donc sous les 60 Ko ;
   `vitrine.json` : légendes 1 et 3 changées, la 2 reste vraie, description inchangée, toujours ≤ 280 / ≤ 60 signes fr/en). Les anciennes montraient l'interface d'avant la refonte ; les nouvelles montrent l'interface actuelle de `main`
   et varient les styles d'affichage et les dispositions de page (Antoine l'a demandé : « utiliser les styles différents ») : **1** = style « Verre dépoli » en disposition « Planche » (indicateurs avec tendance et objectif, jauge, barres, aire empilée) ;

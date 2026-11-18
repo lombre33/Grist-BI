@@ -123,7 +123,15 @@
   // temporelles) — pas seulement le cas où le bug a été trouvé la première fois.
   const numericGrid = { containLabel: true, left: 8, right: 16, top: 24, bottom: 8 };
 
+  // Rend la promesse du dessin (ou `undefined` pour une tuile synchrone) : l'écran l'ignore, les exports l'attendent (js/export.js pour l'image
+  // d'un graphique) et `whenSettled` aussi (js/snapshot.js : rien n'est photographié tant qu'un calcul DuckDB est en vol).
   function renderTile(tile, state, container) {
+    const pending = drawTile(tile, state, container);
+    trackPending(pending);
+    return pending;
+  }
+
+  function drawTile(tile, state, container) {
     // Filtrage délégué à GristBI.data.rowsForTile (source de vérité partagée avec l'export Excel,
     // voir data.js) : une tuile qui EST la source d'un filtre croisé s'affiche non filtrée SUR CE
     // FILTRE LÀ (pour rester cliquable sur tous ses segments) ; elle reçoit quand même les filtres
@@ -132,8 +140,6 @@
     const drillPath = (state.drillIns && state.drillIns[tile.id]) || [];
     const rows = rowsForTile(tile, state);
 
-    // Rend la promesse du dessin (ou `undefined` pour une tuile synchrone) : l'écran l'ignore, l'export Excel (js/export.js)
-    // l'attend pour ne photographier un graphique qu'une fois dessiné.
     if (tile.type === 'kpi') {
       return renderKpi(tile, rows, container);
     } else if (tile.type === 'gauge') {
@@ -489,6 +495,7 @@
     if (!instance || instance.isDisposed()) {
       instance = echarts.init(el);
       chartInstances.set(tile.id, instance);
+      trackLoading(instance);
     }
     const seq = bumpSeq(tile.id);
     const usingDuckDb = rows.length >= DUCKDB_ROW_THRESHOLD;
@@ -761,8 +768,41 @@
     if (instance && !instance.isDisposed()) return instance;
     instance = echarts.init(el);
     chartInstances.set(tileId, instance);
+    trackLoading(instance);
     instance.on('click', (params) => handleTileClick(tileId, params.name, params));
     return instance;
+  }
+
+  // Instances qui affichent « Calcul… » (agrégation DuckDB en cours) : l'export (js/snapshot.js, js/pdf-export.js) attend qu'il n'y en
+  // ait plus avant de photographier la page, sinon le fichier garde le masque de chargement à la place du graphique.
+  const loadingInstances = new Set();
+  function trackLoading(instance) {
+    const show = instance.showLoading.bind(instance);
+    const hide = instance.hideLoading.bind(instance);
+    instance.showLoading = (...args) => { loadingInstances.add(instance); return show(...args); };
+    instance.hideLoading = (...args) => { loadingInstances.delete(instance); return hide(...args); };
+  }
+  // Rendus asynchrones encore en vol (agrégation DuckDB d'une carte KPI, d'un tableau croisé, d'un graphique…) : un KPI ou un tableau
+  // croisé n'a pas d'instance ECharts, donc pas de « Calcul… » à suivre — mais il écrit « – » tant que sa valeur n'est pas arrivée.
+  const pendingRenders = new Set();
+  function trackPending(promise) {
+    if (!promise || typeof promise.then !== 'function') return;
+    pendingRenders.add(promise);
+    const done = () => { pendingRenders.delete(promise); };
+    promise.then(done, done);
+  }
+  // Résout `true` quand plus aucun graphique ne calcule, `false` si `timeoutMs` (15 s par défaut) est dépassé.
+  function whenSettled(timeoutMs) {
+    const limit = Date.now() + (timeoutMs || 15000);
+    return new Promise((resolve) => {
+      const check = () => {
+        for (const inst of Array.from(loadingInstances)) if (inst.isDisposed()) loadingInstances.delete(inst);
+        if (loadingInstances.size === 0 && pendingRenders.size === 0) resolve(true);
+        else if (Date.now() > limit) resolve(false);
+        else setTimeout(check, 100);
+      };
+      check();
+    });
   }
 
   // === Nuage de mots (d3-cloud) ==============================================================
@@ -2544,7 +2584,7 @@
   function disposeTile(tileId) {
     tableSort.delete(tileId);
     const inst = chartInstances.get(tileId);
-    if (inst) { inst.dispose(); chartInstances.delete(tileId); }
+    if (inst) { loadingInstances.delete(inst); inst.dispose(); chartInstances.delete(tileId); }
     renderSeq.delete(tileId);
   }
 
@@ -2552,5 +2592,5 @@
   // via convertToPixel) - ne pas s'appuyer dessus pour de la logique applicative.
   function getInstance(tileId) { return chartInstances.get(tileId) || null; }
 
-  GristBI.charts = { renderTile, resizeAll, disposeTile, getInstance };
+  GristBI.charts = { renderTile, resizeAll, disposeTile, getInstance, whenSettled };
 })(window);

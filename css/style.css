@@ -389,8 +389,6 @@ body[data-mode="edit"] .bar-btn-mode .icon-mode-done { display: inline-block; }
 }
 .menu-item:hover, .menu-item:focus-visible { background: var(--surface-sunken); }
 .menu-item:disabled, .menu-item[aria-disabled="true"] { color: var(--text-muted); cursor: not-allowed; background: none; }
-.menu-item:disabled > span:first-child { white-space: nowrap; }
-.menu-item-soon { margin-left: auto; padding-left: 14px; font-size: 11.5px; font-style: italic; white-space: nowrap; }
 
 /* Le formulaire de filtre avancé, une fois dans son panneau : champs empilés, pleine largeur. */
 .filter-form { display: flex; flex-direction: column; gap: 10px; }

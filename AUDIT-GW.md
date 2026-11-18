@@ -100,7 +100,7 @@ Le lot 3 ne change aucune note : il corrige un vrai défaut que l'outil ne sait 
   n'a pas de palier entre « une table » et « tout » ; les seules tables créées sont `BI_Dashboard_Config`, `BI_Dashboard_Comments`,
   `BI_Dashboard_UserProbe` (et la table d'un import CSV, après confirmation de la personne).
 - **C-EXFIL-05 / C-EXFIL-06** : `<script>` et `import()` dont l'adresse est calculée. Les trois scripts (`js/export.js`,
-  `js/pdf-export.js`, `js/pptx-export.js`) viennent d'un dossier local ou d'une adresse figée à version et empreinte SRI ; les
+  `js/pdf-export.js`, `js/pptx-export.js`) viennent d'un dossier local ou d'une adresse figée à version et empreinte SRI (PptxGenJS, jsDelivr) ; les
   quatre `import()` (kit, dialogues, DuckDB) sont résolus sur `document.currentScript.src`. **Ce n'est pas une facilité :** dans GFS le widget
   tourne dans un `<iframe sandbox="allow-scripts">` (origine opaque) ; un `import('../kit/js/…')` littéral y échoue (« base URL is about:blank
   because import() is called from a CORS-cross-origin script »). Essayé le 18/11/2026 en littéral, mesuré cassé dans un cadre isolé, remis
@@ -109,7 +109,7 @@ Le lot 3 ne change aucune note : il corrige un vrai défaut que l'outil ne sait 
   `applyActionsInChunks` (ligne 443) envoie une liste d'actions par lots de 2 000, dans l'ordre : l'ordre des `AddRecord` est l'ordre des lignes de la table, et un échec en
   cours de route laisse un préfixe connu plutôt qu'un trou ; en parallèle, les lignes arriveraient dans le désordre et la progression affichée n'aurait plus de sens.
   La boucle de `tableExistsConfirmed` relit `listTables()` avec des délais croissants (300 ms à 4,8 s) : c'est une *attente*, la course contre la négociation d'accès (`CLAUDE.md` §7 piège n°1).
-- **F-SOUV-01** : `cdnjs.cloudflare.com` pour pdfmake et PptxGenJS, dérogation actée par Antoine le 29/09/2026 (`CLAUDE.md` §8).
+- **F-SOUV-01** : `cdn.jsdelivr.net` pour PptxGenJS (version figée, SRI), dérogation actée par Antoine le 29/09/2026 (`CLAUDE.md` §8) ; pdfmake et cdnjs ont disparu le 18/11/2026.
 - **C-STOCK-01** : deux clés `localStorage`, déjà documentées (`gristbi_lang`, `gristbi_comment_author`) : préférences, aucun contenu
   du document.
 - **A-DUP-01** (mineure) : les blocs encore dupliqués sont dans `dev-tests/test-data.js` (des cas d'essai voisins) et dans le sous-module `kit/` (qui n'est pas ce dépôt).

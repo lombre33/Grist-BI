@@ -18,7 +18,7 @@ Le widget demande l'accès `full` à Grist (voir `CLAUDE.md` §3 pour la raison 
 table » et « tout le document ») ; il écrit dans trois tables internes (`BI_Dashboard_Config`, `BI_Dashboard_Comments`,
 `BI_Dashboard_UserProbe`) et, sur confirmation explicite de la personne, dans une table créée par l'import CSV. Aucune donnée ne
 quitte le document : le widget n'a pas de serveur, et ses seuls appels réseau sont le chargement d'`index.html`, du script d'API de
-Grist et, à la demande, de `pdfmake`/`PptxGenJS` (version figée, empreinte SRI).
+Grist et, à la demande, de `PptxGenJS` pour l'export PPTX (jsDelivr, version figée, empreinte SRI).
 
 La restriction fine des données passe par les règles d'accès natives de Grist, pas par le widget.
 
