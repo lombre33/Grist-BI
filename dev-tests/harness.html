@@ -582,6 +582,32 @@
               </select>
               <div class="palette-swatch" id="tile-palette-swatch" aria-hidden="true"></div>
             </div>
+            <div class="field" id="tile-numfmt-field" hidden>
+              <label for="tile-numfmt" data-i18n="tileForm.numFormat.label">Format des nombres</label>
+              <select id="tile-numfmt">
+                <option value="auto" data-i18n="tileForm.numFormat.auto">Automatique (lisible)</option>
+                <option value="column" data-i18n="tileForm.numFormat.column">Comme dans la colonne</option>
+                <option value="custom" data-i18n="tileForm.numFormat.custom">Personnalisé</option>
+              </select>
+              <div class="numfmt-custom" id="tile-numfmt-custom" hidden>
+                <label for="tile-numfmt-decimals" data-i18n="tileForm.numFormat.decimals">Décimales</label>
+                <select id="tile-numfmt-decimals">
+                  <option value="auto" data-i18n="tileForm.numFormat.decimalsAuto">Selon la valeur</option>
+                  <option value="0">0</option>
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                  <option value="4">4</option>
+                  <option value="5">5</option>
+                  <option value="6">6</option>
+                </select>
+                <label class="numfmt-compact" for="tile-numfmt-compact">
+                  <input type="checkbox" id="tile-numfmt-compact" />
+                  <span data-i18n="tileForm.numFormat.compact">Notation compacte (1,2 M)</span>
+                </label>
+              </div>
+              <p class="field-hint" id="tile-numfmt-hint" hidden></p>
+            </div>
             <div class="field field-checkbox" id="tile-horizontal-field" hidden>
               <label for="tile-horizontal">
                 <input type="checkbox" id="tile-horizontal" />

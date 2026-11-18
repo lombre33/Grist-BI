@@ -455,6 +455,14 @@
     return !!tile && PALETTE_TILE_TYPES.indexOf(tile.type) !== -1;
   }
 
+  // Types qui AFFICHENT une valeur numérique (donc concernés par `tile.numberFormat`, voir js/format.js) :
+  // tout type de tuile nouveau qui montre un nombre s'ajoute ici, pour que le champ « Format des nombres »
+  // du panneau apparaisse. Le nuage de mots n'y est que pour la valeur de son infobulle.
+  const NUMBER_FORMAT_TILE_TYPES = ['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud'];
+  function supportsNumberFormat(tile) {
+    return !!tile && NUMBER_FORMAT_TILE_TYPES.indexOf(tile.type) !== -1;
+  }
+
   // Empilé (`tile.stacked`) : séries superposées au lieu de côte à côte. Seulement avec une colonne
   // Séries, et pour les barres ou l'AIRE (courbe + `areaFill`) : une courbe sans remplissage empilée
   // serait une courbe cumulée — un autre graphique, que personne ne lit comme tel.
@@ -877,7 +885,7 @@
     tableToRows, epochSecondsToIsoDate, applyFilters, matchesFilter, sameValue, parseDateValue,
     relativeDateRange, RELATIVE_DATE_PRESETS, groupByAggregate, aggregateSingle, wordFrequency, pivotTable,
     distinctColumnValues, computeTrend, trendFromGroups, periodLabel, measureSeriesForTile,
-    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, isStackedTile, splitBySeries, assembleSeries, PALETTES, PALETTE_KEYS, paletteColors, supportsPalette, escapeHtml,
+    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, isStackedTile, splitBySeries, assembleSeries, PALETTES, PALETTE_KEYS, paletteColors, supportsPalette, supportsNumberFormat, NUMBER_FORMAT_TILE_TYPES, escapeHtml,
     tileDrillLevels, currentDimension, rowsForTile, tileExportSheet, tileExportKind,
     sanitizeSheetName, buildWorkbookSheets, measureExportSheet, buildWorkbookSheetsAsync,
     blendRows, deriveDateHierarchyColumns, commentsForTile, isAccessRuleRefusal, AGGREGATORS

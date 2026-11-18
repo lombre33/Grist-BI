@@ -804,7 +804,7 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 - [x] Chaque infobulle (barre, courbe, aire, camembert, anneau, treemap, entonnoir, cascade, radar, nuage de points, empilé) affiche le format de la langue, jamais « 1,542,980.8799999997 » 🌐
 - [x] KPI : variation en % aux séparateurs de la langue (« 12,8 % » / « 12.8% ») ; valeur minuscule lisible (« 0,00056 ») 🌐
 - [x] 6 000 lignes (DuckDB, `BigInt`) : KPI, infobulle de barre, libellé d'axe formatés 🌐
-- [ ] Lecture des options de colonne dans un vrai Grist ⬜ **[NON TESTABLE ICI]** (réglage de tuile et lecture de `_grist_Tables_column` : lot suivant)
+- [ ] Lecture des options de colonne dans un vrai Grist ⬜ **[NON TESTABLE ICI]** (réglage de tuile et lecture de `_grist_Tables_column` : voir le lot 3 ci-dessous, vérifié contre le mock seulement)
 
 ### `js/format.js` + `js/charts.js` + `css/style.css` — jauge et carte KPI (audit de lisibilité, lot 2, 18/11/2026 ; Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`)
 
@@ -814,6 +814,19 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 - [x] Carte KPI : valeur courte à 30 px, valeur de 20 caractères réduite à ~20 px sans sortir de la tuile, valeur agrandie jusqu'à 84 px 🌐
 - [x] `niceCeil`, `gaugeLayout` (arc, bornes et valeur dans la zone à 7 tailles), `fitFont` ✅
 - [ ] Rendu dans un vrai Grist ⬜ **[NON TESTABLE ICI]**
+
+### `js/format.js` + `js/grist-api.js` + `js/main.js` + `index.html` — réglage « Format des nombres » et « Comme dans la colonne » (audit de lisibilité, lot 3, 18/11/2026 ; Node ; Playwright contre `dev-tests/harness.html` et le vrai `index.html` + faux Grist avec `widgetOptions`)
+
+- [x] `supportsNumberFormat` (types concernés, type inconnu, `null`) ✅
+- [x] `columnModeState` : `ok` (devise, décimales), `none` (mode « decimal » sans décimales, `widgetOptions` vide), `unknown` (colonne absente ou non numérique), `count` ✅
+- [x] La même valeur dans les trois modes (Automatique entier dès 1 000, Comme dans la colonne en euros, Personnalisé 2 décimales fixes / compact 1 décimale) ✅
+- [x] `readColumnFormats` : colonnes de LA bonne table seulement, colonnes d'aide exclues, réglages du document ; table inconnue, tables système illisibles (avertissement, pas d'exception), `_grist_DocInfo` illisible, `widgetOptions` absent, `documentSettings` vide/invalide ✅ (faux `grist` dans un `vm`)
+- [x] Panneau : ajouter une carte en « Comme dans la colonne » (KPI « 2 748 150,84 € »), la rouvrir (le formulaire relit le mode), passer en Personnalisé 0 décimale compact (« 3 M »), revenir en Automatique (la clé disparaît de la configuration) 🌐
+- [x] Infobulles de barres dans les trois modes (« 581 482 » / « 581 482,16 € » / « 581 482,2 »), KPI pourcentage (« 17,15 % »), entier (« 186 »), comptage jamais formaté comme la colonne (« 12 ») 🌐
+- [x] Langue anglaise : Automatique aux séparateurs anglais (« 2,748,151 »), mode colonne aux séparateurs de la locale du document 🌐
+- [x] Le vrai `index.html` charge sans erreur (champ présent, aucune erreur de console) 🌐
+- [x] Champ « Format des nombres » dans `<iframe sandbox="allow-scripts">` (serveur avec CORS, sinon le kit est bloqué) : bloc Personnalisé affiché, ajout d'une carte, `numberFormat` écrit, KPI « 9 350,000 » 🌐 (sans préremplissage `widgetOptions` : seul le réglage Personnalisé y est rejoué)
+- [ ] Lecture de `_grist_Tables_column.widgetOptions` / `_grist_DocInfo.documentSettings` dans un vrai Grist ⬜ **[NON TESTABLE ICI]**
 
 ### CSS — classe de bug à systématiquement re-vérifier
 

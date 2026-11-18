@@ -258,6 +258,19 @@
     registryVersion += 1;
   }
   function getColumnInfo(columnId) { return columnRegistry[columnId] || null; }
+
+  // Ce que « Comme dans la colonne » donnerait pour `columnId` — sert à l'explication affichée sous le réglage :
+  // 'count' (un comptage n'est la valeur d'aucune colonne), 'unknown' (colonne absente du registre : calculée,
+  // fusionnée, lecture impossible, ou non numérique), 'none' (colonne connue mais sans décimales ni mode
+  // monétaire/pourcentage/scientifique réglés : rendu Automatique), 'ok' (au moins un réglage repris).
+  function columnModeState(tile, columnId) {
+    if (tile && tile.aggFn === 'count') return 'count';
+    const col = columnRegistry[columnId];
+    if (!col || !['Numeric', 'Int', 'Any'].includes(col.type)) return 'unknown';
+    const o = parseWidgetOptions(col.widgetOptions);
+    const hasMode = typeof o.numMode === 'string' && o.numMode !== '' && o.numMode !== 'decimal';
+    return (hasMode || isIntegerOption(o.decimals) || isIntegerOption(o.maxDecimals)) ? 'ok' : 'none';
+  }
   function getDocSettings() { return docSettingsRegistry; }
 
   const formatterCache = new Map();
@@ -326,6 +339,6 @@
   return {
     niceCeil, gaugeLayout, fitFont,
     MODES, MAX_CUSTOM_DECIMALS, localeForLang, normalizeSpec, parseWidgetOptions, parseDocSettings,
-    styleFromColumn, resolveStyle, makeFormatter, forTile, setColumnInfo, getColumnInfo, getDocSettings
+    styleFromColumn, resolveStyle, makeFormatter, forTile, setColumnInfo, getColumnInfo, getDocSettings, columnModeState
   };
 });

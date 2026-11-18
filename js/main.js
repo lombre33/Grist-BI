@@ -236,6 +236,14 @@
   const paletteField = document.getElementById('tile-palette-field');
   const paletteSelect = document.getElementById('tile-palette');
   const paletteSwatch = document.getElementById('tile-palette-swatch');
+  // Format des nombres de la tuile (`tile.numberFormat`, js/format.js) : liste Automatique / Comme dans la colonne /
+  // Personnalisé, + (décimales, notation compacte) visibles seulement en « Personnalisé » et une ligne d'explication.
+  const numFmtField = document.getElementById('tile-numfmt-field');
+  const numFmtSelect = document.getElementById('tile-numfmt');
+  const numFmtCustom = document.getElementById('tile-numfmt-custom');
+  const numFmtDecimals = document.getElementById('tile-numfmt-decimals');
+  const numFmtCompact = document.getElementById('tile-numfmt-compact');
+  const numFmtHint = document.getElementById('tile-numfmt-hint');
   const stackField = document.getElementById('tile-stack-field');
   const stackedCheckbox = document.getElementById('tile-stacked');
   const donutField = document.getElementById('tile-donut-field');
@@ -1693,6 +1701,43 @@
     });
   }
 
+  // Affiche/masque le réglage « Personnalisé » et écrit l'explication du mode choisi. Appelée par
+  // updateFormFieldsForType et à chaque activité du formulaire (changer de mesure ou d'agrégation change le
+  // verdict de « Comme dans la colonne »).
+  function updateNumberFormatUI() {
+    const mode = numFmtSelect.value;
+    numFmtCustom.hidden = mode !== 'custom';
+    let key = null;
+    let vars = {};
+    if (mode === 'auto') key = 'tileForm.numFormat.hint.auto';
+    else if (mode === 'column') {
+      const state = GristBI.format.columnModeState({ aggFn: aggSelect.value }, measureSelect.value);
+      key = `tileForm.numFormat.hint.column${state.charAt(0).toUpperCase()}${state.slice(1)}`;
+      vars = { column: measureSelect.value };
+    }
+    numFmtHint.hidden = !key;
+    numFmtHint.textContent = key ? t(key, vars) : '';
+  }
+
+  // Lecture/écriture du réglage dans le formulaire (jamais « auto » dans la configuration : une tuile sans
+  // `numberFormat` est déjà en Automatique, voir readTileForm).
+  function setNumberFormatForm(spec) {
+    const s = GristBI.format.normalizeSpec(spec);
+    numFmtSelect.value = s.mode;
+    numFmtDecimals.value = s.mode === 'custom' ? String(s.decimals) : 'auto';
+    numFmtCompact.checked = s.mode === 'custom' && s.notation === 'compact';
+    updateNumberFormatUI();
+  }
+  function numberFormatFromForm() {
+    const mode = numFmtSelect.value;
+    if (mode === 'column') return { mode: 'column' };
+    if (mode === 'custom') {
+      const d = numFmtDecimals.value;
+      return { mode: 'custom', decimals: d === 'auto' ? 'auto' : Number(d), notation: numFmtCompact.checked ? 'compact' : 'standard' };
+    }
+    return undefined;
+  }
+
   function updateFormFieldsForType() {
     const type = tileTypeSelect.value;
     const isKpi = type === 'kpi';
@@ -1751,6 +1796,8 @@
     // Palette : tous les types qui colorent leurs marques (pas la cascade, le KPI ni le tableau croisé).
     paletteField.hidden = !GristBI.data.supportsPalette({ type });
     updatePaletteSwatch();
+    numFmtField.hidden = !GristBI.data.supportsNumberFormat({ type });
+    updateNumberFormatUI();
     stackField.hidden = !(seriesSelect.value && (isBarBrut || (type === 'line' && areaCheckbox.checked)));
     donutField.hidden = type !== 'pie';
     showPctField.hidden = type !== 'pie';
@@ -1826,6 +1873,7 @@
     areaCheckbox.checked = !!tile.areaFill;
     stackedCheckbox.checked = !!tile.stacked;
     paletteSelect.value = GristBI.data.PALETTE_KEYS.includes(tile.palette) ? tile.palette : 'standard';
+    setNumberFormatForm(tile.numberFormat);
     donutCheckbox.checked = !!tile.donut;
     showPctCheckbox.checked = !!tile.showPct;
     radarEntityColumnSelect.value = tile.radarEntityColumn || '';
@@ -2005,6 +2053,8 @@
     tileData.areaFill = (type === 'line' && areaCheckbox.checked) ? true : undefined;
     // `standard` n'est jamais écrit : une tuile sans choix de palette garde exactement sa configuration d'avant.
     tileData.palette = (GristBI.data.supportsPalette({ type }) && paletteSelect.value !== 'standard' && GristBI.data.PALETTE_KEYS.includes(paletteSelect.value)) ? paletteSelect.value : undefined;
+    // Format des nombres : `undefined` = Automatique (jamais écrit), comme `palette` ci-dessus.
+    tileData.numberFormat = GristBI.data.supportsNumberFormat({ type }) ? numberFormatFromForm() : undefined;
     tileData.stacked = (seriesColumn && stackedCheckbox.checked && ((isBar && !measureMode) || (type === 'line' && areaCheckbox.checked))) ? true : undefined;
     tileData.donut = (type === 'pie' && donutCheckbox.checked) ? true : undefined;
     tileData.showPct = (type === 'pie' && showPctCheckbox.checked) ? true : undefined;
@@ -2133,6 +2183,7 @@
     areaCheckbox.checked = false;
     stackedCheckbox.checked = false;
     paletteSelect.value = 'standard';
+    setNumberFormatForm(null);
     donutCheckbox.checked = false;
     showPctCheckbox.checked = false;
     gaugeMinInput.value = 0;
@@ -2298,6 +2349,7 @@
   function onFormActivity(evt) {
     // Pendant la frappe dans un combobox, la valeur n'est pas encore choisie : on attend son `change`.
     if (evt.type === 'input' && evt.target.classList && evt.target.classList.contains('combobox-input')) return;
+    updateNumberFormatUI();
     schedulePreview();
     if (submitAttempted) showFormErrors(readTileForm().errors, false);
   }
@@ -2692,11 +2744,28 @@
   // openBlankReport plus bas. Sa seule présence force une (re)prise en compte même si `tableId` ne
   // change pas (un deuxième rapport sur la MÊME table de travail doit quand même recharger ses
   // propres pages/bookmarks/blend, jamais ceux du rapport précédent).
+  // Format des colonnes de la table de travail (type + options d'affichage Grist), pour « Comme dans la colonne »
+  // (js/format.js:setColumnInfo). Lu à CHAQUE changement/rechargement de table ; vidé avant, pour que le format d'une
+  // colonne de l'ancienne table ne s'applique jamais à une colonne de même nom d'une autre. Un échec de lecture
+  // laisse le registre vide (Automatique partout) sans jamais bloquer l'affichage.
+  async function refreshColumnFormats(tableId, clearFirst) {
+    if (clearFirst) GristBI.format.setColumnInfo({}, null);
+    if (!GristBI.api.readColumnFormats) return;
+    try {
+      const info = await GristBI.api.readColumnFormats(tableId);
+      if (tableId !== currentTableId) return; // l'utilisateur a changé de table pendant la lecture
+      GristBI.format.setColumnInfo(info.columns, info.docSettings);
+    } catch (e) {
+      console.warn('[GristBI] format des colonnes illisible, format des nombres Automatique', e);
+    }
+  }
+
   async function switchTable(tableId, rows, report) {
     await flushPendingSave();
     const isNewTable = tableId !== currentTableId || Boolean(report);
     currentTableId = tableId;
     currentPrimaryRows = rows;
+    await refreshColumnFormats(tableId, isNewTable);
     if (isNewTable) {
       dashboardReady = false;
       connectionState = 'connecting';
