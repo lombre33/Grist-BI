@@ -106,6 +106,7 @@
     'type-line': '<path d="M2 12l3.5-4 3 2.5L14 4"/><path d="M2 14h12"/>',
     'type-pie': '<circle cx="8" cy="8" r="5.5"/><path d="M8 8V2.5M8 8l4.7 2.9"/>',
     'type-treemap': '<rect x="2" y="2.5" width="12" height="11" rx="1"/><path d="M8.5 2.5v11M8.5 8H14"/>',
+    'type-funnel': '<path d="M2 3h12l-3.5 4.5v4.5L5.5 14V7.5L2 3Z"/>',
     'type-scatter': '<circle cx="4.5" cy="10.5" r="1"/><circle cx="8" cy="6" r="1"/><circle cx="11" cy="9" r="1"/><circle cx="12" cy="4.5" r="1"/><path d="M2 14h12"/>',
     'type-waterfall': '<rect x="2.5" y="3" width="3" height="5" rx=".5"/><rect x="6.5" y="6" width="3" height="4" rx=".5"/><rect x="10.5" y="8" width="3" height="5" rx=".5"/>',
     'type-radar': '<path d="M8 2l5.5 4-2 6.5h-7L2.5 6 8 2Z"/><path d="M8 5.5l2.8 2-1 3.2H6.2l-1-3.2 2.8-2Z"/>',
@@ -1843,7 +1844,7 @@
   // repliées, aperçu en direct, conseil en direct). Le panneau est en flux normal (voir css/style.css) :
   // il ne recouvre jamais la barre. Toute la lecture du formulaire passe par readTileForm() ci-dessus.
   // =============================================================================================
-  const TYPE_CARDS = ['bar', 'line', 'pie', 'treemap', 'scatter', 'waterfall', 'radar', 'wordcloud', 'kpi', 'gauge', 'pivot'];
+  const TYPE_CARDS = ['bar', 'line', 'pie', 'treemap', 'funnel', 'scatter', 'waterfall', 'radar', 'wordcloud', 'kpi', 'gauge', 'pivot'];
   const PREVIEW_TILE_ID = '__preview__';
   let panelOpener = null;
   let previewTimer = null;

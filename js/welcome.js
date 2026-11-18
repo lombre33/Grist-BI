@@ -63,6 +63,17 @@
     }).join('');
   }
 
+  // Entonnoir : une bande par étape, centrée, de largeur proportionnelle à sa valeur.
+  function funnelShapes(values) {
+    const innerW = W - 2 * PAD;
+    const innerH = H - 2 * PAD;
+    const bh = innerH / values.length;
+    return values.map((v, i) => {
+      const w = Math.max(4, v * innerW);
+      return `<rect x="${f((W - w) / 2)}" y="${f(PAD + i * bh + 1)}" width="${f(w)}" height="${f(bh - 2)}" rx="1.5" fill="${PALETTE[i % PALETTE.length]}"/>`;
+    }).join('');
+  }
+
   // Treemap en tranches : la plus grande part occupe la moitié gauche, les autres s'empilent à droite.
   function treemapShapes(values) {
     const left = values[0];
@@ -128,6 +139,9 @@
         break;
       case 'treemap':
         body = treemapShapes(p.values);
+        break;
+      case 'funnel':
+        body = funnelShapes(p.values);
         break;
       case 'value': {
         const text = new Intl.NumberFormat(lang === 'en' ? 'en-US' : 'fr-FR', { notation: 'compact', maximumFractionDigits: 1 }).format(p.value);

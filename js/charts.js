@@ -727,6 +727,38 @@
           data: agg.map((d) => ({ name: d.dimension, value: d.value, itemStyle: dim(d.dimension) }))
         }]
       };
+    } else if (tile.type === 'funnel') {
+      // Entonnoir : une série `funnel` (ECharts 6.1.0) alimentée par le MÊME agrégat « une dimension +
+      // une mesure » que le camembert. `sort: 'none'` : l'ordre des étapes est décidé en amont (`groups`,
+      // ordre des données ou tri choisi, voir isSortableTile) — l'`'descending'` par défaut d'ECharts
+      // remettrait à plat un parcours (Visite, Inscription, Achat) que la table range déjà dans l'ordre.
+      // Chaque étape porte son `name` : le gestionnaire de clic générique (drill-down/filtre croisé)
+      // marche tel quel. Cadre explicite (voir la note ECharts 6 plus haut, piège n°21) ; libellés à
+      // DROITE de l'entonnoir, en texte foncé, plutôt que « inside » (blanc sur jaune, illisible, et
+      // coupé sur les dernières étapes, étroites).
+      const firstValue = groups.length ? Number(groups[0].value) : 0;
+      option = {
+        color: CATEGORICAL_PALETTE,
+        tooltip: {
+          trigger: 'item',
+          formatter: (p) => {
+            const pct = firstValue > 0 && Number.isFinite(p.value)
+              ? `<br/>${escapeHtml(t('chart.funnel.ofFirst', { pct: formatPercent((p.value / firstValue) * 100) }))}` : '';
+            return `${escapeHtml(String(p.name))}<br/>${formatNumber(p.value)}${pct}`;
+          }
+        },
+        series: [{
+          type: 'funnel',
+          sort: 'none',
+          left: 8, right: 8, top: 8, bottom: 8,
+          width: '55%',
+          minSize: '8%',
+          gap: 2,
+          label: { show: true, position: 'right', formatter: (p) => `${p.name} · ${formatCompactNumber(p.value)}` },
+          labelLine: { show: true, length: 12 },
+          data: groups.map((d) => ({ name: d.dimension, value: d.value, itemStyle: dim(d.dimension) }))
+        }]
+      };
     } else if (tile.type === 'scatter') {
       // Version agrégée (pas ligne-à-ligne) : un point par valeur de la dimension, ses coordonnées
       // X/Y sont les agrégats de deux mesures DIFFÉRENTES sur ce même groupe. Les deux appels à

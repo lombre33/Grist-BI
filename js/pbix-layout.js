@@ -158,6 +158,9 @@
     gauge: 'gauge',
     scatterChart: 'scatter',
     waterfallChart: 'waterfall',
+    // Entonnoir (18/11/2026) : une catégorie (« Category ») + une mesure (« Y »), même forme que
+    // `pieChart`/`treemap` — correspondance directe. Pas encore essayé sur un vrai fichier .pbix.
+    funnel: 'funnel',
     matrix: 'pivot',
     pivotTable: 'pivot',
   };

@@ -72,6 +72,7 @@ const rows = [
   assert.strictEqual(data.isSortableTile({ type: 'bar', measureMode: 'ytd' }), false);
   assert.strictEqual(data.isSortableTile({ type: 'line' }), true);
   assert.strictEqual(data.isSortableTile({ type: 'pie' }), true);
+  assert.strictEqual(data.isSortableTile({ type: 'funnel' }), true); // l'entonnoir pose `sort: 'none'` : c'est ce tri-ci qui ordonne les étapes
   for (const type of ['waterfall', 'treemap', 'radar', 'wordcloud', 'kpi', 'gauge', 'scatter', 'pivot']) {
     assert.strictEqual(data.isSortableTile({ type }), false, type);
   }
@@ -87,6 +88,10 @@ const rows = [
   assert.deepStrictEqual(data.tileExportSheet(tileOf('bar', { sortMode: 'value-desc' }), sortState).rows.map((r) => r[0]), ['Sud', 'Nord', 'Est']);
   assert.deepStrictEqual(data.tileExportSheet(tileOf('line', { sortMode: 'label' }), sortState).rows.map((r) => r[0]), ['Est', 'Nord', 'Sud']);
   assert.deepStrictEqual(data.tileExportSheet(tileOf('pie', { sortMode: 'value-asc' }), sortState).rows.map((r) => r[0]), ['Est', 'Nord', 'Sud']);
+  // Entonnoir : trié comme un camembert (valeur décroissante) ou, sans tri, dans l'ordre des données (étapes déjà rangées)
+  assert.deepStrictEqual(data.tileExportSheet(tileOf('funnel', { sortMode: 'value-desc' }), sortState).rows.map((r) => r[0]), ['Sud', 'Nord', 'Est']);
+  assert.deepStrictEqual(data.tileExportSheet(tileOf('funnel'), sortState).rows.map((r) => r[0]), ['Nord', 'Sud', 'Est']);
+  assert.strictEqual(data.tileExportKind(tileOf('funnel')), 'image');
   // Cascade : sortMode (même s'il traînait sur la tuile) est ignoré
   assert.deepStrictEqual(data.tileExportSheet(tileOf('waterfall', { sortMode: 'value-desc' }), sortState).rows.map((r) => r[0]), ['Nord', 'Sud', 'Est']);
   // Courbe sans option d'aire : même export que Barres (même chemin de code, en-têtes inclus)
@@ -1879,6 +1884,18 @@ const SAMPLE_TIME_SERIES = [
   {
     assert.strictEqual(pbixLayout.VISUAL_TYPE_TO_TILE_TYPE.donutChart, 'pie');
     assert.strictEqual(pbixLayout.VISUAL_TYPE_TO_TILE_TYPE.lineChart, undefined);
+    // Entonnoir Power BI : une catégorie + une mesure, correspondance directe (comme pieChart/treemap)
+    assert.strictEqual(pbixLayout.VISUAL_TYPE_TO_TILE_TYPE.funnel, 'funnel');
+    {
+      const funnelFields = [
+        { isMeasure: false, property: 'Etape', displayName: 'Étape' },
+        { isMeasure: true, property: 'Visiteurs', displayName: 'Visiteurs' },
+      ];
+      const [fs] = pbixLayout.suggestTiles([{ visualId: 'f1', visualType: 'funnel', tileType: 'funnel', title: null, fields: funnelFields }], ['Etape', 'Visiteurs']);
+      assert.ok(fs.tileData && fs.tileData.type === 'funnel' && fs.tileData.dimension === 'Etape' && fs.tileData.measure === 'Visiteurs', JSON.stringify(fs));
+      const [missing] = pbixLayout.suggestTiles([{ visualId: 'f2', visualType: 'funnel', tileType: 'funnel', title: null, fields: funnelFields }], ['Autre']);
+      assert.strictEqual(missing.tileData, null, 'colonne absente : pas de tuile pointant dans le vide');
+    }
     const fields = [
       { isMeasure: false, property: 'Region', displayName: 'Région' },
       { isMeasure: true, property: 'SalesAmount', displayName: 'Sales Amount' },
@@ -2428,6 +2445,38 @@ const SAMPLE_TIME_SERIES = [
       assert.strictEqual(solo.dimension, 'Region');
       assert.strictEqual(solo.aggFn, 'count');
       console.log('OK advice.defaultsForType — vraies colonnes par rôle, jauge bornée, repli sans colonne numérique');
+    }
+
+    // Entonnoir : valeurs par défaut, avertissements, carte « Choisir », miniature.
+    {
+      assert.ok(advice.TILE_TYPES.includes('funnel') && advice.USE_KEYS.funnel === 'advice.use.funnel');
+      const stages = ['Visite', 'Inscription', 'Essai', 'Achat'];
+      const funnelRows = [];
+      stages.forEach((st, si) => { for (let k = 0; k < 8 - si * 2; k++) funnelRows.push({ id: funnelRows.length + 1, Etape: st, Personnes: 10 }); });
+      const d = advice.defaultsForType('funnel', funnelRows);
+      assert.strictEqual(d.dimension, 'Etape');
+      assert.strictEqual(d.sortMode, 'value-desc', 'valeur décroissante : le sens habituel d\'un entonnoir');
+      // Une dimension qui se range d'elle-même (mois) reste dans l'ordre des données : ce sont des étapes
+      const monthRows = ['Janvier', 'Février', 'Mars', 'Avril'].map((m, i) => ({ id: i + 1, Mois: m, V: 10 - i }));
+      assert.strictEqual(advice.defaultsForType('funnel', monthRows).sortMode, undefined);
+      // Avertissements : valeurs négatives, trop d'étapes ; sinon rien
+      const chkF = (rows, tile) => advice.adviceForTile(Object.assign({ type: 'funnel', measure: 'V', aggFn: 'sum' }, tile), rows);
+      const negF = chkF([{ id: 1, S: 'a', V: 5 }, { id: 2, S: 'b', V: -3 }], { dimension: 'S' });
+      assert.ok(negF && negF.key === 'advice.funnel.negative' && negF.level === 'warn');
+      const tooMany = chkF(Array.from({ length: 12 }, (_, i) => ({ id: i + 1, S: 'E' + i, V: 20 - i })), { dimension: 'S' });
+      assert.ok(tooMany && tooMany.key === 'advice.funnel.tooManyStages' && tooMany.vars.n === 12);
+      assert.strictEqual(chkF(funnelRows, { dimension: 'Etape', measure: 'Personnes', sortMode: 'value-desc' }), null);
+      // Carte « Choisir » : une ligne, jamais null
+      const card = advice.adviceForType('funnel', funnelRows);
+      assert.ok(card && card.key && card.level);
+      // Miniature : largeurs relatives à la plus large étape, dans l'ordre affiché ; un entonnoir d'une seule étape n'en a pas
+      const pv = advice.previewFor({ type: 'funnel', dimension: 'Etape', measure: 'Personnes', aggFn: 'sum', sortMode: 'value-desc' }, funnelRows);
+      assert.strictEqual(pv.kind, 'funnel');
+      assert.deepStrictEqual(pv.values, [1, 0.75, 0.5, 0.25]);
+      assert.strictEqual(advice.previewFor({ type: 'funnel', dimension: 'S', measure: 'V', aggFn: 'sum' }, [{ id: 1, S: 'a', V: 3 }]), null);
+      const svg = welcome.previewSvg(pv, { lang: 'fr' });
+      assert.ok(/^<svg viewBox="0 0 120 64"/.test(svg) && (svg.match(/<rect /g) || []).length === 4 && !/NaN|undefined|Infinity/.test(svg), svg);
+      console.log('OK advice + welcome — entonnoir (défauts, avertissements, carte, miniature)');
     }
 
     // adviceForTile : un avertissement à la fois, seulement quand il est juste.

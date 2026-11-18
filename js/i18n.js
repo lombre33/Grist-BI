@@ -149,6 +149,7 @@
     'tileForm.type.bar': { fr: 'Barres', en: 'Bars' },
     'tileForm.type.pie': { fr: 'Camembert', en: 'Pie chart' },
     'tileForm.type.treemap': { fr: 'Treemap', en: 'Treemap' },
+    'tileForm.type.funnel': { fr: 'Entonnoir', en: 'Funnel' },
     'tileForm.type.scatter': { fr: 'Nuage de points', en: 'Scatter plot' },
     'tileForm.type.kpi': { fr: 'Carte KPI', en: 'KPI card' },
     'tileForm.type.gauge': { fr: 'Jauge', en: 'Gauge' },
@@ -427,6 +428,7 @@
     'advice.use.bar': { fr: 'Comparer des catégories entre elles (idéal jusqu’à une douzaine, triées par valeur).', en: 'Compare categories with each other (best up to about a dozen, sorted by value).' },
     'advice.use.line': { fr: 'Suivre une évolution dans le temps : les points sont reliés dans l’ordre.', en: 'Follow a change over time: points are joined in order.' },
     'advice.use.pie': { fr: 'Montrer la part de chacun dans un tout, avec peu de parts (6 au plus).', en: 'Show each part’s share of a whole, with few parts (6 at most).' },
+    'advice.use.funnel': { fr: 'Suivre ce qui se perd d’une étape à l’autre d’un parcours (visiteurs, candidatures, ventes…).', en: 'Follow what is lost from one stage to the next in a process (visitors, applications, sales…).' },
     'advice.use.treemap': { fr: 'Voir les parts de nombreuses catégories sans surcharger l’écran.', en: 'See the shares of many categories without crowding the screen.' },
     'advice.use.scatter': { fr: 'Voir si deux mesures évoluent ensemble, un point par catégorie.', en: 'See whether two measures move together, one point per category.' },
     'advice.use.waterfall': { fr: 'Décomposer comment des hausses et des baisses mènent à un total.', en: 'Break down how increases and decreases add up to a total.' },
@@ -444,6 +446,8 @@
     // Avertissements de lisibilité sur une tuile.
     'advice.pie.negative': { fr: 'Un camembert ne peut pas représenter des valeurs négatives : utilisez des barres.', en: 'A pie chart can’t show negative values: use bars instead.' },
     'advice.pie.tooManySlices': { fr: '{n} parts : au-delà de 7, un camembert devient difficile à lire. Passez en barres triées ou regroupez les petites parts.', en: '{n} slices: beyond 7, a pie chart is hard to read. Switch to sorted bars or group the small slices.' },
+    'advice.funnel.negative': { fr: 'Un entonnoir ne peut pas représenter des valeurs négatives : utilisez des barres.', en: 'A funnel can’t show negative values: use bars instead.' },
+    'advice.funnel.tooManyStages': { fr: '{n} étapes : au-delà de 10, un entonnoir devient illisible. Regroupez les étapes ou passez en barres horizontales.', en: '{n} stages: beyond 10, a funnel becomes hard to read. Group the stages or switch to horizontal bars.' },
     'advice.treemap.negative': { fr: 'Un treemap ne peut pas représenter des valeurs négatives : utilisez des barres.', en: 'A treemap can’t show negative values: use bars instead.' },
     'advice.line.notTime': { fr: '{dimension} n’a pas d’ordre naturel : une courbe relierait des valeurs sans lien entre elles. Préférez des barres.', en: '{dimension} has no natural order: a line would join unrelated values. Prefer bars.' },
     'advice.line.valueSort': { fr: 'Trier une courbe par valeur casse l’ordre du temps : gardez l’ordre des données ou triez par libellé.', en: 'Sorting a line by value breaks the time order: keep the data order or sort by label.' },
@@ -476,6 +480,7 @@
     'chart.waterfall.base': { fr: 'Base (cumul)', en: 'Base (running total)' },
     'chart.waterfall.increase': { fr: 'Hausse', en: 'Increase' },
     'chart.waterfall.decrease': { fr: 'Baisse', en: 'Decrease' },
+    'chart.funnel.ofFirst': { fr: '{pct} de la 1re étape', en: '{pct} of the first stage' },
     'chart.radar.groupAverage': { fr: 'Moyenne du groupe', en: 'Group average' },
 
     // --- Options d'affichage des graphiques (courbe/aire, anneau, barres horizontales, tri) ---
