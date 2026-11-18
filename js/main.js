@@ -264,6 +264,12 @@
   const paletteSelect = document.getElementById('tile-palette');
   const paletteSwatch = document.getElementById('tile-palette-swatch');
   const paletteHint = document.getElementById('tile-palette-hint');
+  const stackPercentField = document.getElementById('tile-stack-percent-field');
+  const stackPercentCheckbox = document.getElementById('tile-stack-percent');
+  const lineShapeField = document.getElementById('tile-line-shape-field');
+  const lineShapeSelect = document.getElementById('tile-line-shape');
+  const valueLabelsField = document.getElementById('tile-value-labels-field');
+  const valueLabelsCheckbox = document.getElementById('tile-value-labels');
   const refLineField = document.getElementById('tile-refline-field');
   const refLineSelect = document.getElementById('tile-refline');
   const refValueField = document.getElementById('tile-refvalue-field');
@@ -1973,6 +1979,14 @@
     numFmtField.hidden = !GristBI.data.supportsNumberFormat({ type });
     updateNumberFormatUI();
     stackField.hidden = !(seriesSelect.value && (isBarBrut || (type === 'line' && areaCheckbox.checked)));
+    // 100 % : seulement quand la pile est cochée ; tracé de la courbe et étiquettes : courbe, et barres hors mode mesure.
+    stackPercentField.hidden = stackField.hidden || !stackedCheckbox.checked;
+    lineShapeField.hidden = type !== 'line';
+    valueLabelsField.hidden = !GristBI.data.supportsValueLabels({ type, measureMode: measureModeSelect.value });
+    // Ligne de repère : pas en 100 % (l'axe est en parts, un objectif brut n'y est pas comparable).
+    const pctOn = !stackPercentField.hidden && stackPercentCheckbox.checked;
+    refLineField.hidden = !refOk || pctOn;
+    refValueField.hidden = !(refOk && !pctOn && refLineSelect.value === 'value');
     donutField.hidden = type !== 'pie';
     showPctField.hidden = type !== 'pie';
     // Combo : mode « autre mesure » = 2e mesure + son agrégat ; Pareto = rien de plus (la courbe se déduit des barres).
@@ -2057,6 +2071,9 @@
     horizontalCheckbox.checked = !!tile.horizontal;
     areaCheckbox.checked = !!tile.areaFill;
     stackedCheckbox.checked = !!tile.stacked;
+    stackPercentCheckbox.checked = !!tile.stackPercent;
+    lineShapeSelect.value = GristBI.data.LINE_SHAPES.includes(tile.lineShape) ? tile.lineShape : '';
+    valueLabelsCheckbox.checked = !!tile.valueLabels;
     paletteSelect.value = GristBI.data.PALETTE_KEYS.includes(tile.palette) ? tile.palette : 'standard';
     pivotHeatCheckbox.checked = !!tile.pivotHeat;
     refLineSelect.value = GristBI.data.REF_LINE_KINDS.includes(tile.refLine) ? tile.refLine : '';
@@ -2099,6 +2116,8 @@
   trendDimensionSelect.addEventListener('change', updateFormFieldsForType);
   paletteSelect.addEventListener('change', updatePaletteSwatch);
   areaCheckbox.addEventListener('change', updateFormFieldsForType);
+  stackedCheckbox.addEventListener('change', updateFormFieldsForType);
+  stackPercentCheckbox.addEventListener('change', updateFormFieldsForType);
   pivotHeatCheckbox.addEventListener('change', updateFormFieldsForType);
   refLineSelect.addEventListener('change', updateFormFieldsForType);
   radarModeSelect.addEventListener('change', updateFormFieldsForType);
@@ -2206,7 +2225,8 @@
     if (isScatter && !measureYSelect.value) fail('tile-measure-y', 'tileForm.error.measureYRequired'); // 2e mesure obligatoire pour un nuage de points
     if (isHistogram && binsValue !== undefined && !(Number.isInteger(binsValue) && binsValue >= 2 && binsValue <= GristBI.data.HISTOGRAM_MAX_BINS)) fail('tile-bins', 'tileForm.error.binsRange');
     // Ligne de repère : une valeur fixe demande un nombre.
-    const refKind = GristBI.data.supportsRefLine({ type, measureMode }) ? refLineSelect.value : '';
+    const stackPctForm = !!seriesSelect.value && stackedCheckbox.checked && stackPercentCheckbox.checked && ((isBar && !measureMode) || (type === 'line' && areaCheckbox.checked));
+    const refKind = (GristBI.data.supportsRefLine({ type, measureMode }) && !stackPctForm) ? refLineSelect.value : '';
     const refRaw = refKind === 'value' ? refValueInput.value.trim() : '';
     const refValue = refRaw === '' ? undefined : Number(refRaw);
     if (refKind === 'value' && !(refValue !== undefined && Number.isFinite(refValue))) fail('tile-refvalue', 'tileForm.error.refValueRequired');
@@ -2311,6 +2331,9 @@
     // Format des nombres : `undefined` = Automatique (jamais écrit), comme `palette` ci-dessus.
     tileData.numberFormat = GristBI.data.supportsNumberFormat({ type }) ? numberFormatFromForm() : undefined;
     tileData.stacked = (seriesColumn && stackedCheckbox.checked && ((isBar && !measureMode) || (type === 'line' && areaCheckbox.checked))) ? true : undefined;
+    tileData.stackPercent = (tileData.stacked && stackPercentCheckbox.checked) ? true : undefined;
+    tileData.lineShape = (type === 'line' && GristBI.data.LINE_SHAPES.includes(lineShapeSelect.value)) ? lineShapeSelect.value : undefined;
+    tileData.valueLabels = (GristBI.data.supportsValueLabels({ type, measureMode }) && valueLabelsCheckbox.checked) ? true : undefined;
     tileData.donut = (type === 'pie' && donutCheckbox.checked) ? true : undefined;
     tileData.showPct = (type === 'pie' && showPctCheckbox.checked) ? true : undefined;
     return { tileData, errors: [], autoTitle: auto.title };
@@ -2447,6 +2470,9 @@
     horizontalCheckbox.checked = false;
     areaCheckbox.checked = false;
     stackedCheckbox.checked = false;
+    stackPercentCheckbox.checked = false;
+    lineShapeSelect.value = '';
+    valueLabelsCheckbox.checked = false;
     paletteSelect.value = 'standard';
     pivotHeatCheckbox.checked = false;
     refLineSelect.value = '';

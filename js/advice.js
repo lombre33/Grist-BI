@@ -874,6 +874,8 @@
       if (seriesCount > seriesCap) return warn('advice.series.tooMany', { n: seriesCount, max: seriesCap });
       // Une pile additionne les hauteurs : sans sens pour une moyenne, un minimum ou un maximum.
       if (data.isStackedTile(tile) && (tile.aggFn === 'avg' || tile.aggFn === 'min' || tile.aggFn === 'max')) return warn('advice.stacked.notAdditive');
+      // 100 % : une part n'a de sens que pour des valeurs positives (un total nul ou une pile qui descend sous zéro ne se lit pas en %).
+      if (data.isStackedPercentTile(tile) && tile.aggFn === 'sum' && rows.some((r) => numericValue(r[tile.measure]) !== null && numericValue(r[tile.measure]) < 0)) return warn('advice.stackedPercent.negative');
     }
     // Palette choisie plus courte que le nombre de parts/étapes : la 1re couleur revient (et un camembert
     // fait se toucher la 1re et la dernière part). Seulement quand une palette a été choisie : le

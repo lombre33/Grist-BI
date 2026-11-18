@@ -755,6 +755,26 @@
                 <span data-i18n="tileForm.stacked.label">Empiler les séries (le total de chaque catégorie)</span>
               </label>
             </div>
+            <div class="field field-checkbox" id="tile-stack-percent-field" hidden>
+              <label for="tile-stack-percent">
+                <input type="checkbox" id="tile-stack-percent" />
+                <span data-i18n="tileForm.stackPercent.label">En 100 % : la part de chaque série dans la catégorie</span>
+              </label>
+            </div>
+            <div class="field" id="tile-line-shape-field" hidden>
+              <label for="tile-line-shape" data-i18n="tileForm.lineShape.label">Tracé de la courbe</label>
+              <select id="tile-line-shape">
+                <option value="" data-i18n="tileForm.lineShape.straight">Droit (point à point)</option>
+                <option value="smooth" data-i18n="tileForm.lineShape.smooth">Lissé</option>
+                <option value="step" data-i18n="tileForm.lineShape.step">En escalier</option>
+              </select>
+            </div>
+            <div class="field field-checkbox" id="tile-value-labels-field" hidden>
+              <label for="tile-value-labels">
+                <input type="checkbox" id="tile-value-labels" />
+                <span data-i18n="tileForm.valueLabels.label">Écrire les valeurs sur le graphique</span>
+              </label>
+            </div>
             <div class="field field-checkbox" id="tile-donut-field" hidden>
               <label for="tile-donut">
                 <input type="checkbox" id="tile-donut" />
