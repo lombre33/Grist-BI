@@ -571,6 +571,18 @@
                 <option value="label" data-i18n="tileForm.sort.byLabel">Libellé (A→Z, 1→9)</option>
               </select>
             </div>
+            <div class="field" id="tile-palette-field" hidden>
+              <label for="tile-palette" data-i18n="tileForm.palette.label">Palette de couleurs</label>
+              <select id="tile-palette">
+                <option value="standard" data-i18n="tileForm.palette.standard">Standard (8 couleurs)</option>
+                <option value="okabe" data-i18n="tileForm.palette.okabe">Daltonisme : Okabe-Ito (6 couleurs)</option>
+                <option value="blue" data-i18n="tileForm.palette.blue">Dégradé bleu (catégories ordonnées)</option>
+                <option value="orange" data-i18n="tileForm.palette.orange">Dégradé orange (catégories ordonnées)</option>
+                <option value="green" data-i18n="tileForm.palette.green">Dégradé vert (catégories ordonnées)</option>
+                <option value="gray" data-i18n="tileForm.palette.gray">Dégradé gris (impression noir et blanc)</option>
+              </select>
+              <div class="palette-swatch" id="tile-palette-swatch" aria-hidden="true"></div>
+            </div>
             <div class="field field-checkbox" id="tile-horizontal-field" hidden>
               <label for="tile-horizontal">
                 <input type="checkbox" id="tile-horizontal" />

@@ -1160,3 +1160,7 @@ td.pivot-cell:not(.pivot-cell-empty):not(.pivot-total-cell):hover { background: 
 .tile-panel-step:focus { outline: none; }
 .tile-panel { scroll-margin-top: calc(var(--chrome-h, 56px) + 12px); }
 .tile { scroll-margin-top: calc(var(--chrome-h, 56px) + 12px); }
+
+/* Choix de palette (panneau « Ajouter une visualisation ») : une pastille par couleur, sous la liste. */
+.palette-swatch { display: flex; gap: 2px; margin-top: 6px; }
+.palette-swatch span { flex: 0 0 auto; width: 20px; height: 10px; border-radius: 2px; }

@@ -222,6 +222,9 @@
   const horizontalCheckbox = document.getElementById('tile-horizontal');
   const areaField = document.getElementById('tile-area-field');
   const areaCheckbox = document.getElementById('tile-area');
+  const paletteField = document.getElementById('tile-palette-field');
+  const paletteSelect = document.getElementById('tile-palette');
+  const paletteSwatch = document.getElementById('tile-palette-swatch');
   const stackField = document.getElementById('tile-stack-field');
   const stackedCheckbox = document.getElementById('tile-stacked');
   const donutField = document.getElementById('tile-donut-field');
@@ -1495,6 +1498,17 @@
     }
   }
 
+  // Pastilles de la palette choisie sous la liste (une liste native ne sait pas montrer de couleurs).
+  // CSSOM (`style.background`), jamais un attribut `style` posé en HTML : même règle que le reste du widget.
+  function updatePaletteSwatch() {
+    paletteSwatch.textContent = '';
+    GristBI.data.paletteColors(paletteSelect.value).forEach((color) => {
+      const chip = document.createElement('span');
+      chip.style.background = color;
+      paletteSwatch.appendChild(chip);
+    });
+  }
+
   function updateFormFieldsForType() {
     const type = tileTypeSelect.value;
     const isKpi = type === 'kpi';
@@ -1550,6 +1564,9 @@
     // Empilé : seulement avec une colonne Séries (sinon une seule série, rien à empiler), pour les barres
     // et l'AIRE — une courbe sans remplissage empilée serait une courbe cumulée, que personne ne lit comme
     // telle (voir GristBI.data.isStackedTile).
+    // Palette : tous les types qui colorent leurs marques (pas la cascade, le KPI ni le tableau croisé).
+    paletteField.hidden = !GristBI.data.supportsPalette({ type });
+    updatePaletteSwatch();
     stackField.hidden = !(seriesSelect.value && (isBarBrut || (type === 'line' && areaCheckbox.checked)));
     donutField.hidden = type !== 'pie';
     showPctField.hidden = type !== 'pie';
@@ -1624,6 +1641,7 @@
     horizontalCheckbox.checked = !!tile.horizontal;
     areaCheckbox.checked = !!tile.areaFill;
     stackedCheckbox.checked = !!tile.stacked;
+    paletteSelect.value = GristBI.data.PALETTE_KEYS.includes(tile.palette) ? tile.palette : 'standard';
     donutCheckbox.checked = !!tile.donut;
     showPctCheckbox.checked = !!tile.showPct;
     radarEntityColumnSelect.value = tile.radarEntityColumn || '';
@@ -1649,6 +1667,7 @@
   measureModeSelect.addEventListener('change', updateFormFieldsForType);
   // La case « Empilé » dépend de la colonne Séries et, pour une courbe, de la case Aire.
   seriesSelect.addEventListener('change', updateFormFieldsForType);
+  paletteSelect.addEventListener('change', updatePaletteSwatch);
   areaCheckbox.addEventListener('change', updateFormFieldsForType);
   radarModeSelect.addEventListener('change', updateFormFieldsForType);
   wordCloudSplitCheckbox.addEventListener('change', updateFormFieldsForType);
@@ -1800,6 +1819,8 @@
     tileData.sortMode = (GristBI.data.isSortableTile({ type, measureMode }) && sortSelect.value) ? sortSelect.value : undefined;
     tileData.horizontal = (isBar && !measureMode && horizontalCheckbox.checked) ? true : undefined;
     tileData.areaFill = (type === 'line' && areaCheckbox.checked) ? true : undefined;
+    // `standard` n'est jamais écrit : une tuile sans choix de palette garde exactement sa configuration d'avant.
+    tileData.palette = (GristBI.data.supportsPalette({ type }) && paletteSelect.value !== 'standard' && GristBI.data.PALETTE_KEYS.includes(paletteSelect.value)) ? paletteSelect.value : undefined;
     tileData.stacked = (seriesColumn && stackedCheckbox.checked && ((isBar && !measureMode) || (type === 'line' && areaCheckbox.checked))) ? true : undefined;
     tileData.donut = (type === 'pie' && donutCheckbox.checked) ? true : undefined;
     tileData.showPct = (type === 'pie' && showPctCheckbox.checked) ? true : undefined;
@@ -1927,6 +1948,7 @@
     horizontalCheckbox.checked = false;
     areaCheckbox.checked = false;
     stackedCheckbox.checked = false;
+    paletteSelect.value = 'standard';
     donutCheckbox.checked = false;
     showPctCheckbox.checked = false;
     gaugeMinInput.value = 0;

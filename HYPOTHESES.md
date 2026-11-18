@@ -2915,6 +2915,46 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     Widget C : 591 · Total : 1 548 » (441 + 516 + 591) ; clic souris réel -> filtre sur la catégorie ; Aire décochée ->
     plus de pile ; édition (case reprise) ; libellé anglais ; aucun message de console. **Non vérifié** : un vrai Grist /
     GFS ; l'aspect avec plusieurs valeurs négatives ; plus de 8 séries empilées ; thème sombre.
+- **Choix de palette** (18/11/2026, fil « Passer à ECharts 6 et ajouter 4 graphiques », 4e et dernière des 4
+  fonctionnalités ; `js/data.js`, `js/charts.js`, `js/advice.js`, `js/main.js`, `index.html`, `css/style.css`,
+  `js/i18n.js`) : liste « Palette de couleurs » (`tile.palette`, Options avancées) avec des pastilles sous la liste.
+  Aucune nouvelle bibliothèque.
+  - **Six palettes** (`data.js:PALETTES`) : `standard` (la palette HISTORIQUE, 8 teintes, **inchangée** : une tuile sans choix
+    reste identique — testé octet pour octet), `okabe` (Okabe-Ito, 6 teintes), et quatre dégradés d'UNE teinte `blue`/`orange`/
+    `green`/`gray` (7 pas, du FONCÉ au CLAIR : la 1re série, ou l'unique couleur d'une barre simple, est la plus lisible).
+    `standard` n'est jamais écrit sur la tuile (`tile.palette` absent) ; une clé inconnue (config d'une version future) retombe
+    sur `standard` (`paletteColors`, y compris `constructor`/`__proto__`).
+  - **Validation** (validateur de la skill dataviz, surfaces `#fcfcfb` ET `#ffffff`, mode clair — les graphiques restent sur
+    fond clair, une ambiance GFS ne les recolore pas) : `okabe` — les 6 teintes sont dans la bande de luminosité, CVD ΔE 9,6
+    entre voisines (cible >= 8), normal 20,0 ; le jaune `#f0e442` et le noir de la palette d'origine SORTENT de la bande
+    (jaune ~1,2:1 sur blanc) et ont été retirés, d'où 6 teintes et non 8 ; ordre choisi parmi trois ordres, seul celui-ci passe
+    le CVD >= 8 ; passe aussi `--pairs all` (nuage de points, treemap). **Réserve de contraste** (même que la Standard) :
+    `#e69f00`, `#56b4e9` (et `#cc79a7`, 2,98:1 sur `#fcfcfb`) sont sous 3:1 sur la surface — les marques doivent rester
+    doublées d'une étiquette, d'une info-bulle ou de la vue Détail, jamais lues à la seule couleur. Dégradés : vérifications « ordinales » (luminosité monotone, écart >= 0,06 entre pas voisins, pas le plus
+    clair >= 2:1) ; 8 pas ne passaient PAS l'écart (0,058), d'où 7 pas ; le vert a dû s'arrêter plus foncé (1,95:1 sinon). Le
+    validateur n'est pas dans le dépôt : `dev-tests/test-data.js` rejoue ses vérifications de rampe/bande (OKLab, WCAG) pour
+    qu'une retouche à la main ne les casse pas.
+  - **Quels types** (`supportsPalette`) : barres, courbe/aire, camembert, entonnoir, treemap, nuage de points, radar, jauge, nuage
+    de mots. **Pas** la cascade (vert = hausse, rouge = baisse : un sens, pas une identité de série), le KPI ni le tableau
+    croisé ; les indicateurs de chargement gardent aussi la couleur historique.
+  - **Dégradés = catégories ordonnées** : sur des séries SANS ordre, deux pas voisins du foncé se distinguent mal (visible sur
+    barres à plusieurs séries en dégradé bleu) — dit dans le libellé de la liste. L'écart entre pas voisins est celui de
+    la skill (0,06), pas davantage.
+  - **Conseil** : le plafond de séries (`advice.series.tooMany`, maintenant avec `{max}`) suit le nombre de couleurs de la palette
+    (8 en Standard, 6 en Okabe-Ito, 7 en dégradé) ; camembert/entonnoir/treemap avec PLUS de valeurs que la palette choisie ->
+    `advice.palette.tooFewColors` (la 1re couleur revient, et un camembert fait se toucher la 1re et la dernière part). Cet
+    avertissement n'existe QUE quand une palette a été choisie : le comportement de la palette historique ne change pas
+    (un treemap de 9 éléments en Standard repart aussi sur la 1re couleur, sans conseil — constat, pas traité ici).
+  - **Miniatures de l'accueil** (`js/welcome.js`) : gardent leur copie de la palette Standard (les suggestions n'ont pas de
+    palette choisie) ; un test Node lit le source et échoue si la copie diverge de `PALETTES.standard`.
+  - **Exports** : PDF/PPTX capturent l'image déjà rendue (donc la palette choisie) ; Excel n'a pas de couleur.
+  - **Testé** : Node — repli, types, rampes (luminosité/écart/contraste), Okabe dans la bande, copie de `welcome.js`,
+    plafonds du conseil ; Playwright (vrai `index.html` + `dev-tests/grist-stub.js`) — liste visible pour 8 types sur 10
+    (masquée pour cascade et KPI), pastilles = couleurs de la palette (8, puis 6), aperçu vivant, ajout, `tile.palette`
+    écrit, **pixels du canvas** : les 4 parts d'un anneau portent bien 4 des 6 couleurs Okabe, édition (valeur reprise), retour
+    à Standard -> propriété non écrite, 9 types avec le dégradé bleu rendus sans erreur (cascade restée vert/rouge), clé
+    inconnue -> Standard, libellés anglais. **Non vérifié** : un vrai Grist / GFS ; lecture au vidéoprojecteur ou à
+    l'impression noir et blanc du dégradé gris ; thème sombre (les graphiques n'en ont pas) ; plus de 8 séries.
 
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 

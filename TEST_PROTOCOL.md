@@ -724,6 +724,17 @@ délibérément laissé de côté (contenu généré par `js/data.js`/`js/demo-d
 - [x] Clic souris RÉEL sur une barre empilée : filtre sur la catégorie 🌐
 - [ ] **[NON TESTABLE ICI]** vrai Grist / GFS ; plusieurs valeurs négatives ; plus de 8 séries empilées ; thème sombre
 
+### `js/data.js` + `js/charts.js` + `js/advice.js` + panneau — choix de palette (18/11/2026, Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`)
+
+- [x] `PALETTES.standard` = la palette historique, octet pour octet (une tuile sans choix ne change JAMAIS) ✅
+- [x] `js/welcome.js:PALETTE` (copie pour les miniatures) = `PALETTES.standard` : le test lit le source de `welcome.js` ✅
+- [x] `paletteColors` : `undefined`/`null`/`''`/clé inconnue/`constructor`/`__proto__`/`toString`/nombre -> standard ✅ ; `supportsPalette` : 9 types oui, cascade/KPI/tableau croisé non ✅
+- [x] Palettes : hex `#rrggbb` en minuscules, aucun doublon ; dégradés : écart de luminosité OKLab >= 0,06 entre pas voisins (du foncé au clair), pas le plus clair >= 2:1 sur `#fcfcfb` ET `#ffffff` ; Okabe-Ito : 6 teintes dans la bande 0,43-0,77 ✅
+- [x] `advice` : plafond de séries = nombre de couleurs de la palette (8 / 6 Okabe / 7 dégradé), `{max}` dans le message ; camembert/entonnoir/treemap en palette trop courte -> `advice.palette.tooFewColors`, jamais sans palette choisie ✅
+- [x] Panneau : liste visible pour bar/line/pie/funnel/treemap/scatter/radar/gauge, masquée pour cascade/KPI ; pastilles = couleurs de la palette ; aperçu vivant ; édition (valeur reprise) ; retour à Standard -> `tile.palette` non écrite ; libellés anglais 🌐
+- [x] ⚠ Rendu RÉEL : lire les PIXELS du canvas (`getImageData`), pas seulement `getOption().color` — les 4 parts d'un anneau Okabe portent 4 des 6 couleurs ; 9 types avec un dégradé rendus sans erreur ; la cascade reste vert/rouge ; clé de palette inconnue -> couleurs Standard 🌐
+- [ ] **[NON TESTABLE ICI]** vrai Grist / GFS ; impression noir et blanc réelle du dégradé gris ; plus de 8 séries
+
 ### CSS — classe de bug à systématiquement re-vérifier
 
 - [x] `.field[hidden]` masque réellement l'élément (pas seulement `display:flex` de `.field` qui gagne à spécificité égale) [BUG RÉEL, trouvé 2 fois sur des champs différents] ✅ (règle en place)
