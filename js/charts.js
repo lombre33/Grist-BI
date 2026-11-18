@@ -832,7 +832,7 @@
     const rowFilter = state.activeFilters.find((f) => f.column === tile.dimension);
     const colFilter = state.activeFilters.find((f) => f.column === tile.columnDimension);
     const pivotFmt = fmtFor(tile, tile.measure);
-    const fmt = (v) => (v == null ? '–' : pivotFmt.format(v));
+    const fmt = (v) => (v == null ? '–' : escapeHtml(String(pivotFmt.format(v))));
 
     const headCells = pivot.colKeys.map((ck) => {
       const active = colFilter && sameValue(colFilter.value, ck);

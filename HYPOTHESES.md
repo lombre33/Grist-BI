@@ -3253,6 +3253,26 @@ Dernier lot de l'audit : tout ce qui, hors des nombres eux-mêmes, rendait une t
   vrai `index.html` + `grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">` (carte, formulaire prérempli, ordre des champs, clic sur une barre, passage
   en Pareto et retour, erreur sous le champ, 6 000 lignes servies avec CORS : DuckDB réel), anglais. **Pas testé dans un vrai Grist ni un vrai GFS.**
 
+### Audit `gwaudit` — lot 3 : revue des `innerHTML` et correction de l'injection par l'identifiant de tuile (18/11/2026)
+
+- **Pourquoi** : la règle C-XSS-01 de l'outil (`innerHTML` dynamique) ne dit pas si un cas est exploitable ; elle demande une revue. Les 24 endroits du code de ce dépôt qui
+  écrivent du balisage à partir d'une donnée ont été lus un à un (filtres, onglets de pages, pastilles, liste des vues, en-tête de tuile, commentaires, fenêtre de détail,
+  imports Power BI/CSV, sélecteur de colonnes, tuile Texte, table plate, pivot, fil d'Ariane, carte d'accueil, liste du combobox). Toute **valeur de cellule** et tout **nom**
+  (colonne, page, vue, titre) passe déjà par `escapeHtml`, qui échappe `& < > " '`. **Un seul cas exploitable** : l'identifiant d'une tuile.
+- **Bug réel n°45** (voir TEST_PROTOCOL.md n°45) : `data-tile-id="${tile.id}"` (`js/main.js:buildTileElement`) et ~14 sélecteurs `[data-tile-id="${tile.id}"]` (`js/charts.js`) recevaient un
+  id relu tel quel de `BI_Dashboard_Config`. Une ligne de configuration écrite par quelqu'un d'autre (un rapport partagé : consignes GFS 005 et 012) pouvait donc exécuter du
+  script dans le widget, qui a l'accès `full`. **Reproduit avant correction** avec une ligne hostile préremplie dans le faux Grist (`window.__xss = 1`, deux nœuds injectés).
+- **Correctif** : `js/state.js:sanitizePages` (appelé par `store.setPages`, le seul chemin par lequel une configuration entre dans l'état) remplace tout caractère hors
+  `[A-Za-z0-9_-]` d'un id de tuile par `_`, donne un suffixe aux doublons, écarte une « tuile » qui n'est pas un objet et tolère une page sans `tiles`. Les ids que ce widget
+  fabrique (`tile_…`, `page_default`, `__preview__`, `stress_…`) ne changent pas : la MÊME référence est rendue, donc aucune sauvegarde au chargement (garde-fou GFS 009).
+  En plus : `escapeHtml(tile.id)` dans le balisage, et `escapeHtml` sur les valeurs formatées du pivot (défense en profondeur ; un format de colonne ne produit que des chiffres).
+- **Décision à laquelle on est arrivé** : on n'assainit PAS les ids de pages ni de vues : ils étaient déjà échappés partout où ils sont écrits et ne servent jamais de sélecteur.
+  Les filtres, drill-downs et vues qui citaient l'ancien id d'une tuile renommée deviennent orphelins (ils ne ciblent plus rien) : c'est voulu, un id forgé n'est pas un id légitime.
+- **Pas fait** : les sélecteurs de `js/charts.js` restent des gabarits `[data-tile-id="${tile.id}"]` (un id ajouté par `addTile` avec un caractère hostile les ferait lever) ; aucun code
+  de ce widget n'en produit, seules les configurations relues passent par `setPages`. Les passer à `CSS.escape` serait une défense de plus.
+- **Testé** : Node (`dev-tests/test-data.js`) ; Playwright contre `dev-tests/harness.html` (ligne `BI_Dashboard_Config` hostile, avant/après) et contre `index.html` (aucune erreur au
+  chargement). **Pas testé dans un vrai Grist ni un vrai GFS.**
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée
