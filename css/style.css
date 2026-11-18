@@ -324,6 +324,82 @@ body[data-mode="edit"] .bar-btn-mode .icon-mode-done { display: inline-block; }
 .filter-form .range-inputs { width: 100%; }
 .filter-form .range-inputs input[type="number"], .filter-form .range-inputs input[type="date"] { flex: 1 1 0; width: auto; min-width: 0; }
 .filter-form .btn-secondary { align-self: flex-start; }
+.filter-form[hidden], .filter-step[hidden] { display: none; }
+
+/* Menu Filtre, étape 1 : toutes les colonnes visibles et cliquables (plus de liste déroulante). */
+.filter-step { display: flex; flex-direction: column; gap: 8px; }
+.filter-search {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: 12.5px;
+  padding: 6px 9px;
+  border: var(--bw, 1px) solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+}
+.filter-column-list, .filter-value-list { list-style: none; margin: 0; padding: 0; }
+.filter-column-list {
+  max-height: 244px;
+  overflow-y: auto;
+  border: var(--bw, 1px) solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.filter-column-list li + li { border-top: var(--bw, 1px) solid var(--border); }
+.filter-column-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.filter-column-item:hover, .filter-column-item:focus-visible { background: var(--accent-soft); outline: none; }
+.filter-column-item:focus-visible { box-shadow: inset 0 0 0 2px var(--accent); }
+.filter-column-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kind-badge {
+  flex: none;
+  min-width: 30px;
+  box-sizing: border-box;
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  font-size: 10.5px;
+  font-weight: 700;
+  text-align: center;
+  letter-spacing: 0.02em;
+}
+.filter-empty, .filter-hint { margin: 0; font-size: 11.5px; line-height: 1.35; color: var(--text-muted); }
+.filter-empty[hidden], .filter-hint[hidden], .filter-value-list[hidden] { display: none; }
+
+/* Étape 2 : en-tête (retour + colonne choisie) et valeurs cliquables du filtre texte. */
+.filter-step-head { display: flex; align-items: center; gap: 10px; }
+.filter-column-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; font-weight: 700; }
+.filter-value-list { display: flex; flex-wrap: wrap; gap: 6px; max-height: 132px; overflow-y: auto; padding: 2px; }
+.filter-value-item {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 3px 10px;
+  border: var(--bw, 1px) solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.filter-value-item:hover, .filter-value-item:focus-visible { background: var(--accent-soft); border-color: var(--accent-soft-border); color: var(--accent-ink); outline: none; }
+.filter-value-item:focus-visible { box-shadow: 0 0 0 2px var(--accent); }
 
 /* Largeurs réduites, par paliers (le panneau d'un widget Grist fait souvent 700-1000 px). Les onglets de
    page sont la navigation : ils gardent toujours au moins `min-width` ; c'est le reste qui s'allège. */
@@ -437,6 +513,10 @@ body[data-mode="edit"] .bar-btn-mode .icon-mode-done { display: inline-block; }
   resize: vertical;
 }
 .comment-form textarea { min-height: 44px; }
+.comment-field { display: flex; flex-direction: column; gap: 4px; }
+.comment-field label { font-family: var(--font-label, inherit); font-size: 11px; font-weight: 600; letter-spacing: var(--ls-label, 0.03em); text-transform: uppercase; color: var(--text-muted); }
+.comment-author-note { font-size: 11px; color: var(--text-muted); }
+.comment-author-note[hidden] { display: none; }
 /* Auteur reconnu automatiquement (js/main.js:openCommentsModal, detectedUserEmail) : même fond que
    .comment-item pour signaler visuellement un champ verrouillé, pas une simple désactivation grisée
    par défaut du navigateur qui suggérerait à tort un champ indisponible plutôt qu'une valeur fixe. */
@@ -547,6 +627,9 @@ body[data-mode="edit"] .bar-btn-mode .icon-mode-done { display: inline-block; }
 .btn-secondary { background: var(--surface); border-color: var(--border-strong); color: var(--text); }
 .btn-secondary:hover { background: var(--surface-sunken); border-color: var(--text-muted); }
 .btn-tiny { padding: 4px 10px; font-size: 11px; align-self: flex-start; }
+.btn-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 11px 3px 8px; font-size: 12px; font-weight: 600; border-radius: var(--radius-pill); }
+.btn-chip .icon { width: 11px; height: 11px; }
+.btn-chip[hidden] { display: none; }
 #retry-connect { display: block; margin: 10px auto 0; }
 #retry-connect[hidden], #empty-state-hint[hidden], #empty-state-status[hidden] { display: none; }
 .btn-secondary:disabled, .btn-primary:disabled, .btn-tiny:disabled { opacity: 0.5; cursor: default; box-shadow: none; }
@@ -848,6 +931,9 @@ body[data-mode="edit"] .tile-actions button:disabled { opacity: 0.3; }
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+/* Roue crantée dessinée sur une grille de 24 (même tracé que Publipostage+) : trait plus épais pour garder
+   ~1,3 px une fois ramenée à la taille des autres icônes. */
+.icon-settings { stroke-width: 2.1; }
 
 .tile-breadcrumb {
   font-size: 11px;

@@ -78,7 +78,7 @@
         <svg class="icon icon-pencil icon-mode-edit" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M11.5 2.5l2 2L5 13l-2.8.8L3 11l8.5-8.5Z"/></svg><svg class="icon icon-check icon-mode-done" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M3.5 8.5l3 3 6-7"/></svg><span id="mode-toggle-label" class="bar-label" data-i18n="mode.edit">Modifier</span>
       </button>
       <button id="open-settings" type="button" class="settings-btn" data-i18n-title="settings.button" data-i18n-aria="settings.button" title="Réglages" aria-label="Réglages">
-        <svg class="icon icon-settings" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><circle cx="8" cy="8" r="2.3"/><path d="M8 2v1.6M8 12.4V14M14 8h-1.6M3.6 8H2M12.24 3.76l-1.13 1.13M4.89 11.11l-1.13 1.13M12.24 12.24l-1.13-1.13M4.89 4.89L3.76 3.76"/></svg>
+        <svg class="icon icon-settings" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       </button>
       <span class="badge-alpha">Harnais local</span>
       
@@ -88,7 +88,9 @@
     <div id="chips-row" class="chips-row" hidden>
       <span id="filter-badges" class="filter-badges"></span>
       <span id="advanced-filter-badges" class="filter-badges"></span>
-      <button id="clear-filter" type="button" class="link-btn" data-i18n="topbar.clearFilters" hidden>Effacer les filtres</button>
+      <button id="clear-filter" type="button" class="btn-secondary btn-chip" hidden>
+        <svg class="icon icon-close" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M4 4l8 8M12 4l-8 8"/></svg><span data-i18n="topbar.clearFilters">Effacer les filtres</span>
+      </button>
     </div>
   </div>
 
@@ -131,15 +133,18 @@
   </div>
 
   <div id="filter-popover" class="popover popover-filter" role="dialog" data-i18n-aria="filters.popover.aria" aria-label="Filtre" hidden>
-    <p class="pop-title" data-i18n="filters.popover.title">Ajouter un filtre</p>
-    <form id="advanced-filter-form" class="filter-form">
-      <div class="field">
-        <label for="filter-column" data-i18n="filters.advanced.label">Colonne</label>
-        <div class="combobox">
-          <input type="text" id="filter-column" class="combobox-input" data-autofocus />
-          <ul class="combobox-list" hidden></ul>
-        </div>
+    <div id="filter-step-columns" class="filter-step">
+      <p class="pop-title" data-i18n="filters.popover.title">Filtrer sur quelle colonne ?</p>
+      <input type="search" id="filter-column-search" class="filter-search" autocomplete="off" spellcheck="false" data-i18n-placeholder="filters.column.search" data-i18n-aria="filters.column.search" placeholder="Rechercher une colonne…" aria-label="Rechercher une colonne…" data-autofocus />
+      <ul id="filter-column-list" class="filter-column-list"></ul>
+      <p id="filter-column-empty" class="filter-empty" data-i18n="filters.column.none" hidden>Aucune colonne ne correspond.</p>
+    </div>
+    <form id="advanced-filter-form" class="filter-form" hidden>
+      <div class="filter-step-head">
+        <button id="filter-back" type="button" class="link-btn" data-i18n="filters.back">← Colonnes</button>
+        <span id="filter-column-name" class="filter-column-name"></span>
       </div>
+      <input type="hidden" id="filter-column" />
       <div class="field" id="filter-number-field">
         <label for="filter-min" data-i18n="filters.range.label">Plage</label>
         <span class="range-inputs">
@@ -173,12 +178,16 @@
       </div>
       <div class="field" id="filter-text-field" hidden>
         <label for="filter-text" data-i18n="filters.text.label">Recherche</label>
-        <div class="combobox">
-          <input type="text" id="filter-text" class="combobox-input" data-i18n-placeholder="filters.text.placeholder" placeholder="contient…" />
-          <ul class="combobox-list" hidden></ul>
-        </div>
+        <input type="text" id="filter-text" autocomplete="off" data-i18n-placeholder="filters.text.placeholder" placeholder="contient…" />
+        <p id="filter-values-hint" class="filter-hint" data-i18n="filters.values.hint">Cliquez une valeur pour filtrer tout de suite, ou tapez un morceau de texte.</p>
+        <ul id="filter-value-list" class="filter-value-list" data-i18n-aria="filters.values.aria" aria-label="Valeurs de la colonne"></ul>
+        <p id="filter-value-more" class="filter-hint" hidden></p>
       </div>
-      <button id="apply-advanced-filter" type="submit" class="btn-secondary" data-i18n="filters.apply">+ Filtre</button>
+      <p id="filter-error" class="field-error" role="alert" hidden></p>
+      <div class="pop-actions">
+        <button id="apply-advanced-filter" type="submit" class="btn-primary" data-i18n="filters.apply">Ajouter le filtre</button>
+        <button id="filter-cancel" type="button" class="btn-secondary" data-close-popover data-i18n="dialog.cancel">Annuler</button>
+      </div>
     </form>
   </div>
 
@@ -244,8 +253,15 @@
       <ul id="comments-list" class="comments-list"></ul>
       <p id="comments-empty" class="comments-empty" data-i18n="comments.empty" hidden>Aucun commentaire pour l'instant.</p>
       <form id="comment-form" class="comment-form">
-        <input type="text" id="comment-author" data-i18n-placeholder="comments.author.placeholder" data-i18n-title="comments.author.autoTitle" placeholder="Votre nom" required />
-        <textarea id="comment-text" data-i18n-placeholder="comments.text.placeholder" placeholder="Écrire un commentaire…" rows="2" required></textarea>
+        <div class="comment-field">
+          <label for="comment-author" data-i18n="comments.author.label">Auteur</label>
+          <input type="text" id="comment-author" data-i18n-placeholder="comments.author.placeholder" data-i18n-title="comments.author.autoTitle" placeholder="Votre nom" required />
+          <span id="comment-author-note" class="comment-author-note" data-i18n="comments.author.autoNote" hidden>Reconnu depuis votre compte Grist.</span>
+        </div>
+        <div class="comment-field">
+          <label for="comment-text" data-i18n="comments.text.label">Commentaire</label>
+          <textarea id="comment-text" data-i18n-placeholder="comments.text.placeholder" placeholder="Écrire un commentaire…" rows="2" required></textarea>
+        </div>
         <button type="submit" class="btn-primary" data-i18n="comments.submit">Ajouter</button>
       </form>
     </div>

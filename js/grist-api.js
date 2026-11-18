@@ -56,8 +56,16 @@
   // CET utilisateur juste après l'AddRecord qui déclenche son calcul, puis supprime aussitôt la ligne
   // (RemoveRecord) : seul le round-trip compte, jamais une valeur relue plus tard sur cette table.
   const USER_PROBE_TABLE = 'BI_Dashboard_UserProbe';
+  // FORMULE DÉCLENCHÉE (`isFormula: false` + `formula`, « appliquer aux nouveaux enregistrements » dans
+  // l'interface de Grist), PAS une formule ordinaire : `user` n'existe que dans une formule
+  // déclenchée (et dans les règles d'accès). Avec `isFormula: true` — ce que ce widget a créé jusqu'au
+  // 18/11/2026 — la cellule vaut `NameError` dans un vrai document, et `fetchTable` la rend sous la
+  // forme `['E', 'NameError']` que le champ Auteur affichait tel quel (« E,NameError », retour
+  // d'Antoine du 18/11/2026, bug réel n°34). Voir aussi `repairUserProbeColumn` plus bas pour les
+  // documents qui ont déjà la mauvaise colonne.
+  const USER_PROBE_FORMULA = 'user.Email';
   const USER_PROBE_COLUMNS = [
-    { id: 'Email', type: 'Text', isFormula: true, formula: 'user.Email' }
+    { id: 'Email', type: 'Text', isFormula: false, formula: USER_PROBE_FORMULA }
   ];
   // Nombre d'actions envoyées par appel à applyUserActions() lors d'une génération/suppression en
   // masse : un seul appel avec des dizaines de milliers d'actions est un pari risqué (timeout,
@@ -669,17 +677,63 @@
   // porte ici sur une ligne de table éphémère que ce widget vient tout juste de créer lui-même, pas
   // sur une table ou une donnée de l'utilisateur). Repli sur `null` à la moindre étape en échec :
   // jamais de blocage de l'ajout de commentaire pour cette seule fonctionnalité annexe.
+  // Une adresse ressemble à `x@y.z`. Tout le reste — `null`, `''`, un tableau d'erreur Grist
+  // (`['E', 'NameError']`), un nombre — n'est PAS une identité : jamais proposée comme auteur.
+  function validEmailOrNull(value) {
+    if (typeof value !== 'string') return null;
+    const v = value.trim();
+    return /^[^\s@,]+@[^\s@,]+\.[^\s@,]+$/.test(v) ? v : null;
+  }
+
+  // Un tour de sonde : AddRecord (déclenche la formule POUR L'UTILISATEUR COURANT), relecture de la
+  // cellule, RemoveRecord. Renvoie la valeur BRUTE de la cellule (adresse, `null`, tableau d'erreur…) :
+  // c'est l'appelant qui juge si c'est une adresse.
+  async function probeUserCellOnce() {
+    const addResult = await grist.docApi.applyUserActions([['AddRecord', USER_PROBE_TABLE, null, {}]]);
+    const rowId = addResult.retValues[0];
+    const table = await grist.docApi.fetchTable(USER_PROBE_TABLE);
+    const idx = table.id.indexOf(rowId);
+    const raw = idx === -1 ? null : table.Email[idx];
+    await grist.docApi.applyUserActions([['RemoveRecord', USER_PROBE_TABLE, rowId]]);
+    return raw;
+  }
+
+  // Documents où `BI_Dashboard_UserProbe` a été créée AVANT le 18/11/2026 : sa colonne `Email` est une
+  // formule ordinaire (donc `NameError`). On la convertit en formule déclenchée (ModifyColumn : ni
+  // table ni donnée supprimée, la table ne porte aucune ligne durable). Une seule tentative par
+  // session ; si Grist la refuse, la détection retombe simplement sur la saisie manuelle.
+  async function repairUserProbeColumn() {
+    await grist.docApi.applyUserActions([[
+      'ModifyColumn', USER_PROBE_TABLE, 'Email', { isFormula: false, formula: USER_PROBE_FORMULA }
+    ]]);
+  }
+
+  // Table-sonde à formule déclenchée (voir USER_PROBE_COLUMNS ci-dessus) : AddRecord déclenche le
+  // calcul de `user.Email` POUR L'UTILISATEUR COURANT, on relit la valeur fraîchement calculée via
+  // fetchTable, puis on supprime la ligne (RemoveRecord — jamais utilisé ailleurs dans ce projet,
+  // contrairement à RemoveTable qui reste délibérément évité partout, voir CLAUDE.md §3/§8 : ce verbe
+  // porte ici sur une ligne de table éphémère que ce widget vient tout juste de créer lui-même, pas
+  // sur une table ou une donnée de l'utilisateur). Repli sur `null` à la moindre étape en échec — ET
+  // si la valeur lue n'est pas une adresse (formule en erreur, utilisateur anonyme sans e-mail) :
+  // jamais de blocage de l'ajout de commentaire pour cette seule fonctionnalité annexe, jamais une
+  // valeur d'erreur affichée comme nom d'auteur.
   async function getCurrentUserEmail() {
     if (_currentUserEmailPromise) return _currentUserEmailPromise;
     _currentUserEmailPromise = (async () => {
       try {
         await ensureUserProbeTableExists();
-        const addResult = await grist.docApi.applyUserActions([['AddRecord', USER_PROBE_TABLE, null, {}]]);
-        const rowId = addResult.retValues[0];
-        const table = await grist.docApi.fetchTable(USER_PROBE_TABLE);
-        const idx = table.id.indexOf(rowId);
-        const email = idx === -1 ? null : (table.Email[idx] || null);
-        await grist.docApi.applyUserActions([['RemoveRecord', USER_PROBE_TABLE, rowId]]);
+        let raw = await probeUserCellOnce();
+        let email = validEmailOrNull(raw);
+        if (!email && Array.isArray(raw)) {
+          // Cellule en ERREUR (['E', 'NameError']) : la colonne est l'ancienne formule ordinaire.
+          try {
+            await repairUserProbeColumn();
+            raw = await probeUserCellOnce();
+            email = validEmailOrNull(raw);
+          } catch (repairError) {
+            console.error('[GristBI] réparation de la colonne Email de ' + USER_PROBE_TABLE + ' impossible', repairError);
+          }
+        }
         return email;
       } catch (e) {
         console.error(

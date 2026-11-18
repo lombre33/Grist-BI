@@ -929,7 +929,16 @@
       const minVal = Math.min(0, ...allValues);
       option = {
         color: palette,
-        tooltip: { trigger: 'item' },
+        // Une ligne par axe, nombres au format français (par défaut : « 8.504166666666666 »), noms
+        // échappés (ce sont des valeurs de la table). `confine` est posé pour TOUS les types plus bas.
+        tooltip: {
+          trigger: 'item',
+          formatter: (p) => {
+            const values = Array.isArray(p.value) ? p.value : [];
+            return `<b>${escapeHtml(String(p.name == null ? '' : p.name))}</b><br/>`
+              + axisNames.map((n, i) => `${escapeHtml(String(n))} : ${formatNumber(values[i])}`).join('<br/>');
+          }
+        },
         legend: series.length > 1 ? { top: 0, data: series.map((s) => s.name) } : undefined,
         radar: {
           // ECharts 6 a réduit le rayon par défaut (75 % -> 50 %) mais affiche désormais les noms
@@ -1005,6 +1014,7 @@
         }))
       };
     }
+    confineTooltip(option);
     instance.setOption(option, true);
   }
 
@@ -1057,6 +1067,7 @@
       yAxis: { type: 'value', axisLabel: { formatter: formatCompactNumber } },
       series: series.map((s) => ({ type: 'bar', name: s.label, data: s.data }))
     };
+    confineTooltip(option);
     instance.setOption(option, true);
   }
 
@@ -1087,6 +1098,13 @@
     el.querySelectorAll('.breadcrumb-link').forEach((btn) => {
       btn.addEventListener('click', () => GristBI.store.drillUp(tile.id, Number(btn.dataset.depth)));
     });
+  }
+
+  // Bulle d'info toujours DANS la zone du graphique (`confine`) : sans ça, ECharts la posait à côté du
+  // point survolé, donc hors de la carte — jusqu'à sortir de l'écran à gauche pour un radar (retour
+  // d'Antoine du 18/11/2026). Appliqué à toutes les options juste avant `setOption`.
+  function confineTooltip(option) {
+    if (option && option.tooltip) option.tooltip = Object.assign({ confine: true }, option.tooltip);
   }
 
   function formatNumber(n) {

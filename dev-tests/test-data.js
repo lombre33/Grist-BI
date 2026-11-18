@@ -2792,6 +2792,86 @@ const SAMPLE_TIME_SERIES = [
       console.log(`OK advice — ${used.size} clés i18n, toutes définies et utilisées, fr/en à variables identiques, aucune {variable} orpheline`);
     }
   }
+
+  // grist-api.js:getCurrentUserEmail — détection de l'auteur courant par la table-sonde (bug réel n°34,
+  // 18/11/2026 : la colonne était une formule ORDINAIRE, `user` y est indéfini → `NameError`, que le champ
+  // Auteur affichait tel quel, « E,NameError »). Le module est chargé dans un contexte `vm` avec un faux
+  // `grist` : il lit `window`/`grist`/`setTimeout` comme globales, jamais `require`.
+  {
+    const vm = require('vm');
+    const fsG = require('fs');
+    const pathG = require('path');
+    const source = fsG.readFileSync(pathG.join(__dirname, '..', 'js', 'grist-api.js'), 'utf8');
+    async function runProbe({ reads, failModify, exists = true }) {
+      const calls = [];
+      const sandbox = { console: { error() {}, log() {}, warn() {} }, setTimeout: (fn) => { fn(); return 0; } };
+      sandbox.window = sandbox;
+      sandbox.GristBI = { data };
+      let probeReads = 0;
+      let modified = false;
+      let nextId = 1;
+      let tables = exists ? ['BI_Dashboard_UserProbe'] : [];
+      sandbox.grist = { docApi: {
+        listTables: async () => tables.slice(),
+        fetchTable: async () => {
+          const value = reads(modified, probeReads++);
+          return { id: [nextId - 1], Email: [value] };
+        },
+        applyUserActions: async (actions) => {
+          const result = { retValues: [] };
+          actions.forEach((a) => {
+            calls.push(a);
+            if (a[0] === 'AddTable') { tables = tables.concat([a[1]]); result.retValues.push({ id: 1, table_id: a[1], columns: [] }); }
+            else if (a[0] === 'AddRecord') result.retValues.push(nextId++);
+            else if (a[0] === 'ModifyColumn') { if (failModify) throw new Error('refusé'); modified = true; result.retValues.push(null); }
+            else result.retValues.push(null);
+          });
+          return result;
+        }
+      } };
+      vm.runInNewContext(source, sandbox);
+      const email = await sandbox.GristBI.api.getCurrentUserEmail();
+      return { email, calls };
+    }
+    const kinds = (calls) => calls.map((c) => c[0]);
+
+    // 1. Cas nominal : adresse lue du premier coup, rien n'est modifié, la ligne de sonde est supprimée.
+    let r = await runProbe({ reads: () => 'ada@exemple.org' });
+    assert.strictEqual(r.email, 'ada@exemple.org');
+    assert.strictEqual(kinds(r.calls).join(), 'AddRecord,RemoveRecord');
+
+    // 2. Table à créer : la colonne est une formule DÉCLENCHÉE (isFormula false), jamais une formule ordinaire.
+    r = await runProbe({ reads: () => 'ada@exemple.org', exists: false });
+    const addTable = r.calls.find((c) => c[0] === 'AddTable');
+    assert.ok(addTable, 'AddTable attendu');
+    const emailCol = addTable[2].find((c) => c.id === 'Email');
+    assert.strictEqual(emailCol.isFormula, false, 'formule déclenchée, pas ordinaire');
+    assert.strictEqual(emailCol.formula, 'user.Email');
+
+    // 3. Ancienne colonne (NameError) : réparée par ModifyColumn puis relue, l'adresse sort.
+    r = await runProbe({ reads: (modified) => (modified ? 'ada@exemple.org' : ['E', 'NameError']) });
+    assert.strictEqual(r.email, 'ada@exemple.org');
+    const mod = r.calls.find((c) => c[0] === 'ModifyColumn');
+    assert.ok(mod, 'ModifyColumn attendu');
+    assert.strictEqual(JSON.stringify(mod[3]), JSON.stringify({ isFormula: false, formula: 'user.Email' }));
+
+    // 4. Erreur persistante : repli sur null (saisie manuelle), JAMAIS la valeur d'erreur.
+    r = await runProbe({ reads: () => ['E', 'NameError'] });
+    assert.strictEqual(r.email, null);
+    assert.strictEqual(kinds(r.calls).filter((k) => k === 'ModifyColumn').length, 1, 'une seule réparation par session');
+
+    // 5. Réparation refusée par Grist : toujours null, sans exception.
+    r = await runProbe({ reads: () => ['E', 'NameError'], failModify: true });
+    assert.strictEqual(r.email, null);
+
+    // 6. Utilisateur anonyme (cellule vide / null / chaîne sans arobase) : null, et AUCUNE réparation.
+    for (const value of [null, '', 'anonymous', 12, 'E,NameError']) {
+      r = await runProbe({ reads: () => value });
+      assert.strictEqual(r.email, null, `valeur ${JSON.stringify(value)} refusée`);
+      assert.ok(!kinds(r.calls).includes('ModifyColumn'), 'pas de réparation hors cellule en erreur');
+    }
+    console.log('OK grist-api:getCurrentUserEmail — colonne déclenchée, ancienne colonne réparée, jamais une valeur d\'erreur comme auteur');
+  }
 })().then(() => {
   console.log('\nTous les tests data.js/state.js/demo-data.js/combobox.js/duckdb-engine.js/i18n.js sont passés.');
 }).catch((e) => {
