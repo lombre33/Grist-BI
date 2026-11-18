@@ -29,6 +29,7 @@ Le Chromium lancé sans bac à sable exécute le widget audité : à ne faire qu
 | 18/11/2026, `4a58e35`, sans `kit/` | 51 | NON CONFORME (2 bloquants) | 8 | 82 | 0 | 97 | 93 | 70 |
 | 18/11/2026, `4a58e35`, avec `kit/` (référence) | 54 | NON CONFORME (2 bloquants) | 19 | 82 | 0 | 100 | 93 | 70 |
 | Lot 1 (accessibilité, `SECURITY.md`, `SOURCES.md`) | 55 | NON CONFORME (2 bloquants) | 19 | 82 | 0 | 100 | 93 | 85 |
+| Lot 2 (`new Function` retirés du code tiers, en-tête d'ECharts) | 57 | CONFORME SOUS RÉSERVE (aucun bloquant) | 18 | 94 | 2 | 100 | 93 | 85 |
 
 La note d'un axe se joue sur ses règles *entières* : une règle ne coûte jamais plus que sa sévérité × 2,5, quel que soit le
 nombre d'occurrences. Corriger 20 occurrences sur 24 ne rapporte donc rien ; supprimer la règle rapporte tout. D'où les scores qui
@@ -53,6 +54,18 @@ bougent peu tant que des occurrences durables (le code tiers, la taille des fich
 
 `dev-tests/test-audit.js` garde ce lot : champs étiquetés, boutons nommés, un seul `<main>`, `SECURITY.md`, `SOURCES.md` exact.
 
+- **C-XSS-03** (les 2 bloquants) : `new Function()` dans `js/vendor/echarts/echarts.min.js` (repli GeoJSON quand `JSON.parse` n'existe pas)
+  et `js/vendor/apache-arrow/builder/valid.mjs` (compilation d'un `switch` de valeurs nulles). Aucun n'était atteint avec une
+  donnée de ce widget. Les deux fichiers sont modifiés a minima, à la main, **sans nouvelle bibliothèque** : `JSON.parse` à la place du
+  repli ; une fermeture sur un `Set` à la place du code compilé (comparée à l'original sur 76 057 cas, aucun écart). Dit dans
+  `js/vendor/SOURCES.md`, rejouable par `node dev-tests/patch-echarts.js`, gardé par `dev-tests/test-audit.js` (qui échoue sur les
+  fichiers d'origine). Vérifié dans Chromium : barres et secteurs ECharts rendus, DuckDB-WASM initialisé et utilisé sur 8 000 lignes
+  (au-delà du seuil de 5 000), aucune erreur de console. **Si la modification d'un fichier tiers ne vous convient pas** : revenir
+  au fichier du paquet (`git revert`) rend les 2 bloquants et le verdict NON CONFORME ; ce sont des faux risques ici, mais l'outil ne
+  le sait pas.
+- **B-MIN-01** : `echarts.min.js` porte maintenant une ligne d'en-tête (nom, version, licence, origine) : l'outil le reconnaît
+  comme une bibliothèque identifiée, la note globale n'est plus plafonnée.
+
 ## Voulu, ou hors de portée de ce dépôt
 
 - **C-EXFIL-04** : le script d'API de Grist vient de `docs.getgrist.com` (`index.html`). C'est le chargement normal d'un widget
@@ -72,17 +85,17 @@ bougent peu tant que des occurrences durables (le code tiers, la taille des fich
 
 ## Reste à faire
 
-- **C-XSS-03 (2 bloquants)** : `new Function()` dans deux bibliothèques tierces, `js/vendor/apache-arrow/builder/valid.mjs` et
-  `js/vendor/echarts/echarts.min.js`. Aucune des deux n'est appelée par ce widget avec une donnée : voir le lot suivant.
-- **B-MIN-01** : l'en-tête d'`echarts.min.js` (licence Apache, sans numéro de version) ne suffit pas à l'outil pour l'identifier.
-- **A-FONC-01 / A-FONC-02 / A-TAILLE-01** : 24 fonctions longues, 20 trop ramifiées, 3 fichiers de plus de 750 lignes
-  (`js/main.js` 2 206, `js/charts.js` 885, `js/advice.js` 769). Les plus lourdes sont `readTileForm` (92 chemins), `adviceForTile`
-  (89), `defaultsForType` (77), `renderChart` (59) : ce sont les fonctions que chaque nouveau type de tuile modifie. Les remanier
+- **A-FONC-01 / A-FONC-02 / A-TAILLE-01** : 25 fonctions longues, 22 trop ramifiées, 4 fichiers de plus de 750 lignes
+  (`js/main.js` 2 312, `js/charts.js`, `js/advice.js`, …). Les plus lourdes sont `readTileForm` (92 chemins), `adviceForTile`
+  (89), `defaultsForType` (78), `renderChart` (59) : ce sont les fonctions que chaque nouveau type de tuile modifie. Les remanier
   pendant que d'autres lots ajoutent des types de tuile ferait des conflits sans fin ; à reprendre quand ils sont fusionnés
-  (une table de correspondance par type remplace les cascades de `if`). Les « fonctions anonymes de 953 lignes » sont
+  (une table de correspondance par type remplace les cascades de `if`). Les « fonctions anonymes de 955 lignes » sont
   l'enveloppe `(function (root, factory) { … })` de chaque module : c'est l'architecture « scripts classiques, sans build ».
 - **C-XSS-01** (`innerHTML` dynamique) : voir la section suivante quand la revue sera faite.
 - **C-CSP-01** : aucune politique de sécurité de contenu. DuckDB-WASM (`wasm-unsafe-eval`, worker `blob:`), l'`importmap` en ligne,
   les attributs `style` et les scripts de `cdnjs` demandent une politique à mesurer dans un vrai Grist et dans GFS avant d'en poser
-  une : une balise `<meta>` trop stricte casserait le widget sans message. Non posée ici.
+  une : une balise `<meta>` trop stricte casserait le widget sans message. Non posée ici. Et même sans `unsafe-eval`, deux copies de code qui
+  compile une chaîne restent dans `js/vendor/` : le worker de DuckDB (`duckdb-browser-eh.worker.js`) embarque sa propre copie d'Apache
+  Arrow, avec le même `createIsValidFunction` que celui qu'on a remplacé dans `apache-arrow/` (copie non modifiée : l'outil ne la
+  voit pas, elle est chargée dans un `Worker`, et ce widget n'y déclare jamais de valeurs nulles), et ExcelJS (voir `SOURCES.md`).
 - **B-NOM-01**, **B-VERB-01**, **F-ECO-01** : voir le rapport.
