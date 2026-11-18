@@ -1,6 +1,6 @@
 # GFS-ETAT : Grist-BI
 
-Mis à jour le 2026-11-18 (consignes 019 à 022 : « Nuage de mots » branchée sur l'extension `nuage-de-mots` de GFS (`js/extensions.js`, grisée sans l'extension, jamais masquée), « Mots-clés des PDF » branchée sur l'extension `mots-cles-pdf` (`c97b614`, fenêtre « Mots-clés des publications » du menu Données, grisée sans l'extension) ; 020 lue, demande `_grist_DocInfo` sortie ; 021 lue, ma question sur le module graphique sort ; 022 lue : `jeton` déclarée et `ecrit` déjà couverte, mes deux demandes sortent, la question de l'adresse du grisé sort aussi (ma fenêtre reste sans adresse tant que GFS n'en donne pas par une consigne) ; consignes 016 et 017 faites (SheetJS remplacé par ExcelJS 4.4.0, choix du porteur), 018 lue ; `consignes/bi/INDEX.md` à `5450175` ou plus récent). La
+Mis à jour le 2026-11-18 (décision du porteur : une seule copie d'ECharts quand l'app est servie dans GFS, ma copie gardée en standalone, trois questions à GFS ; consignes 019 à 022 : « Nuage de mots » branchée sur l'extension `nuage-de-mots` de GFS (`js/extensions.js`, grisée sans l'extension, jamais masquée), « Mots-clés des PDF » branchée sur l'extension `mots-cles-pdf` (`c97b614`, fenêtre « Mots-clés des publications » du menu Données, grisée sans l'extension) ; 020 lue, demande `_grist_DocInfo` sortie ; 021 lue, ma question sur le module graphique sort ; 022 lue : `jeton` déclarée et `ecrit` déjà couverte, mes deux demandes sortent, la question de l'adresse du grisé sort aussi (ma fenêtre reste sans adresse tant que GFS n'en donne pas par une consigne) ; consignes 016 et 017 faites (SheetJS remplacé par ExcelJS 4.4.0, choix du porteur), 018 lue ; `consignes/bi/INDEX.md` à `5450175` ou plus récent). La
 011 n'a pas été lue (remplacée par la 012 avant lecture, consigne explicite d'Antoine).
 
 ## Consignes
@@ -396,7 +396,16 @@ Mis à jour le 2026-11-18 (consignes 019 à 022 : « Nuage de mots » branchée 
   ni `gfs.json`, ni stockage par le courtier.
 
 ## Questions pour GFS
-Aucune question ouverte.
+- **Une seule copie d'ECharts quand l'app est servie dans GFS : décision du porteur du 18/11/2026** (la carte de ta 022, point 5) : « oui, une seule bibliothèque quand l'app est servie dans GFS ; attention au mode standalone, qui n'a pas GFS ».
+  Ce que cela veut dire chez moi, et rien d'autre : **dans GFS, ECharts vient de GFS (`GfsLink.library('echarts')`, la même 6.1.0 que Publipostage+) ; seule, l'app garde `js/vendor/echarts/` et le charge comme aujourd'hui.** La copie du dépôt ne sort donc
+  jamais : sans GFS, sans réponse de GFS ou sans `echarts` donné, c'est elle qui sert. Rien n'est changé dans mon code tant que tu n'as pas répondu (aujourd'hui `index.html` charge ECharts par une balise statique et `js/charts.js` et `js/main.js` supposent le global `echarts` dès
+  le chargement ; hébergée, il faudra attendre `GfsLink.ready` avant le premier rendu, ce qui est un vrai changement de démarrage). Quatre points pour ta consigne :
+  1. **La déclaration et la forme** : `echarts` 6.1.0 dans mon manifeste (aujourd'hui je n'ai que `d3-cloud` et `pdfjs`), et ce que `GfsLink.library('echarts')` me rend (`{ src, integrite, forme }`, clé de `GfsPaquets`, `script` ou `module`) : je charge par
+     `<script integrity crossorigin="anonymous">`, jamais `import()`, sans adresse écrite chez moi. Rend-il `null` (jamais une exception) quand `echarts` n'est pas donné ?
+  2. **Le `new Function` que j'ai retiré** (audit `gwaudit`, règle C-XSS-03, `js/vendor/SOURCES.md`, « Modifications » : `echarts.min.js` n'est plus celui du paquet npm) : ta copie le contient, donc dans GFS une politique de sécurité sans `unsafe-eval` refuserait ce chemin (le repli GeoJSON d'ECharts, que mes tuiles
+     n'utilisent pas). Veux-tu appliquer le même retrait à ta copie, ce qui en ferait profiter Publipostage+ (`node dev-tests/patch-echarts.js` du dépôt le rejoue sur un fichier du paquet, et `dev-tests/test-audit.js` refuse l'inverse chez moi) ? Sinon je dois savoir que la copie servie dans GFS n'est pas celle que j'ai auditée.
+  3. **La même version des deux côtés** : ma copie vendorisée (6.1.0) et la tienne doivent rester identiques, car mes pièges de rendu tiennent à la version (cadres, thème, rayons : piège n°21 de mon CLAUDE.md). Une montée de version côté GFS doit m'arriver par une consigne, comme la 017 ; je monte la mienne en même temps.
+  4. **Mes essais** : je rejouerai mes tuiles contre ta copie dans un faux GFS (`<iframe sandbox="allow-scripts">`) avant de la prendre ; je dirai ici ce que j'ai mesuré, et ce que je n'ai pas pu jouer dans le vrai GFS.
 
 ## Demandes à GFS
 - **nuage-de-mots** (extension, bibliothèque `d3-cloud` 2.0.0) · `dd314a1` · tuile branchée, grisée sans l'extension (`js/extensions.js`, `js/charts.js:renderWordCloud`). Non rejouée dans le vrai GFS.
