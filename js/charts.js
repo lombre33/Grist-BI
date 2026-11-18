@@ -132,25 +132,26 @@
     const drillPath = (state.drillIns && state.drillIns[tile.id]) || [];
     const rows = rowsForTile(tile, state);
 
+    // Rend la promesse du dessin (ou `undefined` pour une tuile synchrone) : l'écran l'ignore, l'export Excel (js/export.js)
+    // l'attend pour ne photographier un graphique qu'une fois dessiné.
     if (tile.type === 'kpi') {
-      renderKpi(tile, rows, container);
+      return renderKpi(tile, rows, container);
     } else if (tile.type === 'gauge') {
-      renderGauge(tile, rows, container);
+      return renderGauge(tile, rows, container);
     } else if (tile.type === 'pivot') {
-      renderPivot(tile, rows, state, container);
+      return renderPivot(tile, rows, state, container);
     } else if (tile.type === 'text') {
-      renderText(tile, container);
+      return renderText(tile, container);
     } else if (tile.type === 'table') {
-      renderTable(tile, rows, container);
+      return renderTable(tile, rows, container);
     } else if (tile.type === 'progress') {
-      renderProgress(tile, rows, state, container);
+      return renderProgress(tile, rows, state, container);
     } else if (tile.type === 'gantt') {
-      renderGantt(tile, rows, state, container);
+      return renderGantt(tile, rows, state, container);
     } else if (tile.type === 'bar' && tile.measureMode && tile.measureMode !== 'brut') {
-      renderMeasureChart(tile, rows, container);
-    } else {
-      renderChart(tile, rows, state, container, drillPath);
+      return renderMeasureChart(tile, rows, container);
     }
+    return renderChart(tile, rows, state, container, drillPath);
   }
 
   // Tuile Texte : aucune donnée, aucune instance ECharts (donc rien à disposer ni à redimensionner). Le contenu

@@ -76,6 +76,13 @@
     'export.none': { fr: 'Aucune tuile à exporter.', en: 'No tile to export.' },
     'export.soon': { fr: 'bientôt disponible', en: 'coming soon' },
     'export.failed': { fr: "Échec de l'export Excel — voir la console (F12).", en: 'Excel export failed — see the console (F12).' },
+    // Classeur Excel (js/export.js) : une feuille par page, un bloc par tuile (graphique en image + données).
+    'export.xlsx.subtitle': { fr: 'Exporté le {date} · {rows} {rows|ligne|lignes} de données', en: 'Exported on {date} · {rows} data {rows|row|rows}' },
+    'export.xlsx.filters': { fr: '{n} {n|filtre actif appliqué|filtres actifs appliqués} aux chiffres ci-dessous', en: '{n} active {n|filter|filters} applied to the figures below' },
+    'export.xlsx.noImage': { fr: 'Graphique indisponible pour cette tuile : ses données sont ci-dessous.', en: 'Chart unavailable for this tile: its data is below.' },
+    'export.xlsx.truncated': { fr: '… {n} {n|ligne de plus n’est pas exportée|lignes de plus ne sont pas exportées}', en: '… {n} more {n|row is|rows are} not exported' },
+    'export.xlsx.cut': { fr: 'Feuille pleine : les tuiles suivantes de cette page ne sont pas exportées.', en: 'Sheet full: the following tiles of this page are not exported.' },
+    'export.xlsx.preparing': { fr: 'Préparation du classeur Excel…', en: 'Preparing the Excel workbook…' },
     'export.pdf.chartUnavailable': { fr: 'Graphique indisponible pour cette tuile — réaffichez-la avant d\'exporter.', en: 'Chart unavailable for this tile — display it again before exporting.' },
     'export.pdf.networkError': {
       fr: "Échec de l'export PDF — pdfmake est chargé depuis cdnjs.cloudflare.com (pas vendorisé dans ce dépôt, voir CLAUDE.md) : vérifiez votre connexion. Détail dans la console (F12).",
