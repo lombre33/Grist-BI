@@ -147,6 +147,7 @@
       </div>
     </div>
     <div class="pop-footer">
+      <button id="open-keywords" type="button" class="btn-secondary edit-only" data-close-popover data-i18n="keywords.open">Mots-clés des publications…</button>
       <button id="open-pbix-import" type="button" class="btn-secondary edit-only" data-close-popover data-i18n="pbixImport.button">Importer Power BI</button>
       <span id="render-time" class="render-time"></span>
     </div>
@@ -294,6 +295,78 @@
             données Grist dans des tableaux de bord multi-tuiles avec cross-filtering et drill-down,
             directement dans Grist.</dd>
         </dl>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mots-clés des publications (consigne GFS 019 ; logique pure js/publications.js, branchement js/main.js) :
+       choisit la colonne qui porte le texte (le PDF joint, ou une colonne de texte), la colonne qui reçoit les
+       mots-clés, puis lance l'extraction ligne par ligne. Même convention d'ouverture que #settings-modal
+       (hidden natif, pas de fermeture au clic sur le fond : un travail peut être en cours). Aucun <form> :
+       `submit` ne part jamais dans le cadre isolé de GFS (CLAUDE.md §7, piège n°20). -->
+  <div id="keywords-modal" class="settings-modal" hidden>
+    <div class="settings-modal-content" role="dialog" aria-modal="true" aria-labelledby="keywords-title">
+      <div class="settings-modal-header">
+        <h3 id="keywords-title" data-i18n="keywords.title">Mots-clés des publications</h3>
+        <button id="keywords-close" type="button" class="settings-close" data-i18n-title="settings.close" data-i18n-aria="settings.close" title="Fermer" aria-label="Fermer">
+          <svg class="icon icon-close" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+        </button>
+      </div>
+      <p class="keywords-intro" data-i18n="keywords.intro">Remplit une colonne de mots-clés à partir du texte de chaque publication, lu dans votre navigateur : rien n’est envoyé ailleurs. Une cellule déjà remplie n’est jamais modifiée.</p>
+      <p id="keywords-no-table" class="field-error" role="alert" data-i18n="keywords.noTable" hidden>Connectez d’abord une table de travail (menu Données).</p>
+      <div id="keywords-body" class="keywords-body">
+        <fieldset class="keywords-source" id="keywords-source-set">
+          <legend data-i18n="keywords.source.legend">D’où vient le texte ?</legend>
+          <label class="keywords-radio" for="keywords-kind-pdf">
+            <input type="radio" name="keywords-kind" id="keywords-kind-pdf" value="pdf">
+            <span data-i18n="keywords.source.pdf">Le PDF joint à la ligne</span>
+          </label>
+          <p id="keywords-pdf-needs" class="keywords-needs" hidden>
+            <span data-i18n="keywords.needsGfs.note">Demande l’extension « Mots-clés des PDF » de Grist Factory Suite.</span>
+            <button id="keywords-pdf-add" type="button" class="link-btn" data-i18n="keywords.needsGfs.add">Ajouter l’extension</button>
+          </p>
+          <label class="keywords-radio" for="keywords-kind-text">
+            <input type="radio" name="keywords-kind" id="keywords-kind-text" value="text">
+            <span data-i18n="keywords.source.text">Une colonne de texte (titre, résumé…)</span>
+          </label>
+        </fieldset>
+        <div class="comment-field">
+          <label for="keywords-source-column" id="keywords-source-label" data-i18n="keywords.source.pdfColumn">Colonne des pièces jointes</label>
+          <select id="keywords-source-column"></select>
+          <p id="keywords-source-empty" class="field-error" hidden></p>
+        </div>
+        <div class="comment-field">
+          <label for="keywords-target-column" data-i18n="keywords.target.label">Colonne des mots-clés automatiques</label>
+          <select id="keywords-target-column"></select>
+        </div>
+        <div class="comment-field">
+          <label for="keywords-manual-column" data-i18n="keywords.manual.label">Mots-clés saisis à la main (facultatif)</label>
+          <select id="keywords-manual-column"></select>
+          <p class="filter-hint" data-i18n="keywords.manual.hint">Ces mots ne sont pas répétés dans la colonne automatique.</p>
+        </div>
+        <div class="keywords-row">
+          <div class="comment-field">
+            <label for="keywords-max" data-i18n="keywords.max.label">Mots-clés par publication</label>
+            <input type="number" id="keywords-max" min="3" max="40" value="15" />
+          </div>
+          <div class="comment-field">
+            <label for="keywords-lang" data-i18n="keywords.lang.label">Langue du texte</label>
+            <select id="keywords-lang">
+              <option value="auto" data-i18n="keywords.lang.auto">Automatique</option>
+              <option value="fr" data-i18n="keywords.lang.fr">Français</option>
+              <option value="en" data-i18n="keywords.lang.en">Anglais</option>
+            </select>
+          </div>
+        </div>
+        <p id="keywords-plan" class="keywords-plan" aria-live="polite"></p>
+        <p id="keywords-error" class="field-error" role="alert" hidden></p>
+        <progress id="keywords-progress" class="keywords-progress" max="1" value="0" hidden></progress>
+        <p id="keywords-status" class="keywords-status" aria-live="polite"></p>
+        <ul id="keywords-log" class="keywords-log" aria-label="" hidden></ul>
+        <div class="pop-actions">
+          <button id="keywords-start" type="button" class="btn-primary" data-i18n="keywords.start">Extraire les mots-clés</button>
+          <button id="keywords-stop" type="button" class="btn-secondary" data-i18n="keywords.stop" hidden>Arrêter</button>
+        </div>
       </div>
     </div>
   </div>
@@ -865,6 +938,13 @@
   <script src="js/pdf-export.js"></script>
   <!-- Export PPTX (js/pptx-export.js) : même dérogation qu'au-dessus, pour PptxGenJS. -->
   <script src="js/pptx-export.js"></script>
+  <!-- Mots-clés des publications (consigne GFS 019) : extraction RAKE (pure), lecture du texte d'un PDF
+       (PDF.js que GFS donne, jamais ajouté ici) et la logique pure de la fenêtre. Aucune de ces trois
+       pièces ne charge quoi que ce soit au démarrage. -->
+  <script src="js/keywords.js"></script>
+  <script src="js/pdf-text.js"></script>
+  <script src="js/publications.js"></script>
+  <script src="js/keywords-panel.js"></script>
   <script src="js/grist-api.js"></script>
   <script src="js/duckdb-engine.js"></script>
   <script src="js/appbar.js"></script>

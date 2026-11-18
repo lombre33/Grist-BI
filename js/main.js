@@ -2925,6 +2925,17 @@
   // Panneau Import Power BI : même convention hidden natif/pas de fermeture au clic sur le fond
   // que les autres modales ci-dessus. Réinitialisé à chaque ouverture (pas de résultat d'un import
   // précédent qui traîne si l'utilisateur change de fichier ou rouvre le panneau).
+  // Mots-clés des publications (menu Données, consigne GFS 019) : tout le branchement vit dans js/keywords-panel.js,
+  // qui ne reçoit d'ici que la table de travail courante, le lien avec GFS et de quoi relire la table après une écriture.
+  if (GristBI.keywordsPanel) {
+    GristBI.keywordsPanel.init({
+      getTableId: () => currentTableId,
+      getGfsLink: () => gfsLink,
+      gfsLinkReady,
+      reloadTable: reloadWorkingTable
+    });
+  }
+
   if (openPbixImportBtn && pbixImportModal && pbixImportCloseBtn) {
     openPbixImportBtn.addEventListener('click', () => {
       pbixImportSuggestions = [];
@@ -3084,6 +3095,20 @@
       refreshColumnSelects(rows);
       store.setRows(rows);
     }
+  }
+
+  // Relit la table de travail dans Grist après une écriture faite par ce widget (mots-clés des publications) : les
+  // tuiles et les filtres voient tout de suite la colonne remplie. Même chemin que le chargement (`currentPrimaryRows`
+  // puis `applyBlend`) ; abandonné si la personne a changé de table pendant la lecture. Un échec ne casse rien :
+  // les données écrites sont dans Grist, un rechargement du widget les montrera.
+  async function reloadWorkingTable() {
+    const tableId = currentTableId;
+    if (!tableId) return;
+    const { rows } = await GristBI.api.loadTable(tableId);
+    if (tableId !== currentTableId) return;
+    currentPrimaryRows = rows;
+    await refreshColumnFormats(tableId, false);
+    await applyBlend(currentBlend);
   }
 
   // Bascule l'affichage sur `tableId`/`rows`. Met TOUJOURS à jour `currentPrimaryRows` (même hors
