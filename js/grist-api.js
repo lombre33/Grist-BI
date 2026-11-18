@@ -110,7 +110,7 @@
     return tables.some((t) => (typeof t === 'string' ? t : t.id) === tableId);
   }
 
-  // [BUG RÉEL remonté par l'utilisateur : une table se "regénérait" (barre de progression "Création…"
+  // [DÉFAUT RÉEL remonté par l'utilisateur : une table se "regénérait" (barre de progression "Création…"
   // complète) à chaque réouverture du widget, alors qu'elle existait déjà dans le document réel.]
   // `grist.ready()` ne renvoie PAS de promesse (voir la doc de l'API Grist) : la vraie négociation
   // d'accès avec l'hôte se termine de façon asynchrone, APRÈS que `ready()` a déjà rendu la main.
@@ -175,7 +175,7 @@
     return (rv && rv.table_id) || null;
   }
 
-  // [BUG RÉEL trouvé le 21/10/2026, lors de l'audit UX/UI, sur un document VRAIMENT vide (aucune
+  // [DÉFAUT RÉEL trouvé le 21/10/2026, lors de l'audit UX/UI, sur un document VRAIMENT vide (aucune
   // table utilisateur)] `loadConfig()` et `saveConfig()` appellent CHACUNE `ensureConfigTableExists()`
   // — hors, dans `main.js:switchTable`, `store.clearFilter()`/`store.clearAdvancedFilter()` (avant
   // `loadConfig`) déclenchent déjà un `render()` (store.subscribe) qui peut programmer une sauvegarde
@@ -624,7 +624,7 @@
         _rawTables = null;
         alreadyExists = true;
       } else {
-        // [BUG RÉEL trouvé le 21/10/2026, lors de l'audit UX/UI, en testant un document VRAIMENT
+        // [DÉFAUT RÉEL trouvé le 21/10/2026, lors de l'audit UX/UI, en testant un document VRAIMENT
         // vide (aucune table utilisateur) : `_rawTables` peut valoir `null` ici, pas seulement un
         // tableau à compléter. C'est le cas précis où CETTE création est le tout premier contrôle
         // d'existence de la session (`_raceGuardArmed` encore `true`, voir tableExistsConfirmed) ET

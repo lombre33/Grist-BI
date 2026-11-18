@@ -19,12 +19,8 @@
  */
 'use strict';
 const assert = require('assert');
-const fs = require('fs');
 const path = require('path');
-const vm = require('vm');
-
-const ROOT = path.join(__dirname, '..');
-const read = (...p) => fs.readFileSync(path.join(ROOT, ...p), 'utf8');
+const { read, plain, parseCssRules, loadApiWithFakeConfigTable } = require('./lib/helpers.js');
 const layouts = require('../js/layouts.js');
 const styles = require('../js/styles.js');
 const i18n = require('../js/i18n.js');
@@ -32,7 +28,6 @@ const data = require('../js/data.js');
 const { createStore } = require('../js/state.js');
 
 const NEW_LAYOUTS = ['report', 'board', 'spotlight', 'rail'];
-const plain = (x) => JSON.parse(JSON.stringify(x)); // les objets d'un contexte vm n'ont pas le prototype d'ici
 
 // Les 11 tuiles du rapport de démonstration (un chiffre avec objectif, un sans, une jauge, des graphiques, une note, une progression).
 const DEMO = [
@@ -386,33 +381,7 @@ const mk = (types) => types.map((type, i) => ({ id: `${type}${i}`, type }));
 
   // --- 7. Configuration : aller-retour par grist-api.js (vrai module, faux `grist`) --------------------------------------------
   {
-    const source = read('js', 'grist-api.js');
-    const sandbox = { console: { error() {}, log() {}, warn() {} }, setTimeout: (fn) => { fn(); return 0; } };
-    sandbox.window = sandbox;
-    sandbox.GristBI = { data, i18n, state: { DEFAULT_PAGE_ID: 'page_default' } };
-    const cfg = { id: [], TableId: [], ConfigJSON: [], Nom: [], TypeRapport: [], DateModif: [], ModifiePar: [] };
-    sandbox.grist = { docApi: {
-      listTables: async () => ['BI_Dashboard_Config'],
-      fetchTable: async () => JSON.parse(JSON.stringify(cfg)),
-      applyUserActions: async (list) => {
-        const out = { retValues: [] };
-        list.forEach((a) => {
-          if (a[0] === 'AddRecord') {
-            const id = cfg.id.length + 1;
-            cfg.id.push(id);
-            Object.keys(cfg).filter((k) => k !== 'id').forEach((k) => cfg[k].push(a[3][k] !== undefined ? a[3][k] : ''));
-            out.retValues.push(id);
-          } else if (a[0] === 'UpdateRecord') {
-            const i = cfg.id.indexOf(a[2]);
-            Object.keys(a[3]).forEach((k) => { cfg[k][i] = a[3][k]; });
-            out.retValues.push(null);
-          } else out.retValues.push(null);
-        });
-        return out;
-      }
-    } };
-    vm.runInNewContext(source, sandbox);
-    const api = sandbox.GristBI.api;
+    const { api, cfg } = loadApiWithFakeConfigTable(data, i18n);
     const stored = () => JSON.parse(cfg.ConfigJSON[cfg.ConfigJSON.length - 1]);
     const pages = [
       { id: 'page_default', name: 'Vue d\'ensemble', layout: 'report', tiles: [{ id: 't1', type: 'kpi' }] },
@@ -444,31 +413,7 @@ const mk = (types) => types.map((type, i) => ({ id: `${type}${i}`, type }));
 
   // --- 8. CSS -------------------------------------------------------------------------------------------------------------
   const css = read('css', 'layouts.css');
-  function parseCss(src) {
-    const text = src.replace(/\/\*[\s\S]*?\*\//g, '');
-    const rules = [];
-    (function walk(body, ctx) {
-      let i = 0;
-      while (i < body.length) {
-        const open = body.indexOf('{', i);
-        if (open === -1) break;
-        const head = body.slice(i, open).trim();
-        let depth = 1;
-        let j = open + 1;
-        while (j < body.length && depth > 0) { if (body[j] === '{') depth++; else if (body[j] === '}') depth--; j++; }
-        const inner = body.slice(open + 1, j - 1);
-        if (head.startsWith('@container') || head.startsWith('@media')) walk(inner, ctx.concat(head.replace(/\s+/g, ' ')));
-        else if (!head.startsWith('@')) {
-          const decls = {};
-          inner.split(';').forEach((d) => { const k = d.indexOf(':'); if (k > 0) decls[d.slice(0, k).trim()] = d.slice(k + 1).trim(); });
-          rules.push({ ctx, selector: head.replace(/\s+/g, ' '), decls });
-        }
-        i = j;
-      }
-    })(text, []);
-    return rules;
-  }
-  const rules = parseCss(css);
+  const rules = parseCssRules(css);
   assert.ok(rules.length > 40, `${rules.length} règles lues`);
   const inContainer = (px) => rules.filter((r) => r.ctx[0] === `@container ws (min-width: ${px}px)`);
   // Seuils : un bloc par valeur de `minWidthOf`, et rien en dehors des blocs sauf le conteneur et les cartes du menu.
@@ -542,7 +487,7 @@ const mk = (types) => types.map((type, i) => ({ id: `${type}${i}`, type }));
   assert.ok(rules.filter((r) => r.selector.includes('.tile-actions') && r.decls.position === 'absolute').every((r) => r.selector.startsWith('body:not([data-mode="edit"])') && r.ctx.includes('@media (hover: hover)')), 'jamais par-dessus en Édition ni sans survol');
   // Contrastes AA des textes de la Planche : titre de chiffre (muted) sur le fond teinté, dans les deux thèmes de css/style.css.
   {
-    const base = parseCss(read('css', 'style.css'));
+    const base = parseCssRules(read('css', 'style.css'));
     const light = base.find((r) => r.selector === ':root' && r.ctx.length === 0);
     const dark = base.find((r) => r.ctx.length === 1 && r.ctx[0] === '@media (prefers-color-scheme: dark)' && /^:root/.test(r.selector) && r.decls['--surface-sunken']);
     assert.ok(light && dark, 'jetons clair et sombre de css/style.css');

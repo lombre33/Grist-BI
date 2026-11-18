@@ -105,7 +105,7 @@
     // l'état le plus frais possible à l'ouverture plutôt qu'un instantané figé depuis le dernier
     // `setOptions()` explicite — sans ça, une option ajoutée depuis (une table créée dans Grist
     // entre-temps) reste invisible/inatteignable tant que ce rafraîchissement explicite n'a pas eu
-    // lieu ailleurs [BUG RÉEL trouvé en testant l'autocomplétion des valeurs de filtre : après avoir
+    // lieu ailleurs [DÉFAUT RÉEL trouvé en testant l'autocomplétion des valeurs de filtre : après avoir
     // corrigé la fuite d'évènement 'change' natif ci-dessous, taper le nom d'une table fraîchement
     // créée mais jamais encore "vue" par ce combobox ne matchait plus RIEN du tout].
     async function openPassive() {
@@ -193,7 +193,7 @@
           // focus + Entrée pressée) avec la valeur brute/invalide tapée — un évènement qui court-
           // circuite complètement `commit()`/la validation ci-dessus, et que tout code qui écoute
           // 'change' sur ce champ (ex. le sélecteur de table) reçoit comme si c'était une vraie
-          // sélection. [BUG RÉEL trouvé en testant l'autocomplétion des valeurs de filtre : taper le
+          // sélection. [DÉFAUT RÉEL trouvé en testant l'autocomplétion des valeurs de filtre : taper le
           // nom d'une table qui n'existe pas encore puis Entrée déclenchait quand même une tentative
           // de connexion à cette table inexistante.] La révision au blur (`isValid`, plus bas) reste
           // le filet de sécurité pour une saisie laissée telle quelle sans jamais presser Entrée.
