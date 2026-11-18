@@ -386,10 +386,12 @@
   const exportPdfBtn = document.getElementById('export-pdf');
   const exportPptxBtn = document.getElementById('export-pptx');
 
-  // Exports PDF/PPTX/Excel provisoirement désactivés (18/11/2026, demande d'Antoine : le PDF empile les cartes au lieu
+  // Exports PDF/PPTX provisoirement désactivés (18/11/2026, demande d'Antoine : le PDF empile les cartes au lieu
   // de garder le visuel du tableau de bord, le PPTX ne charge pas sa bibliothèque dans un vrai Grist). Les boutons du
   // menu Exporter sont grisés dans index.html (« bientôt disponible ») ; ce drapeau les garde fermés quand une table se
   // connecte (setTableDependentControlsEnabled) et coupe les écouteurs. Remettre à `true` quand les exports sont refaits.
+  // L'export EXCEL, refait le même jour (une feuille par page, graphiques en images, js/export.js), est rouvert : il ne dépend
+  // plus de ce drapeau.
   const EXPORTS_AVAILABLE = false;
   const tableSelectInput = document.getElementById('table-select');
   const blendSecondaryTableInput = document.getElementById('blend-secondary-table');
@@ -1013,7 +1015,7 @@
                        blendSecondaryTableInput, blendPrimaryColumnInput, blendSecondaryColumnInput]) {
       el.disabled = !enabled;
     }
-    if (!EXPORTS_AVAILABLE) for (const el of [exportExcelBtn, exportPdfBtn, exportPptxBtn]) el.disabled = true;
+    if (!EXPORTS_AVAILABLE) for (const el of [exportPdfBtn, exportPptxBtn]) el.disabled = true;
   }
 
   // Mode Lecture / Édition (audit UI/UX du 18/11/2026) : `body[data-mode]` masque en lecture tout ce
@@ -2984,21 +2986,28 @@
     store.saveBookmark('bm_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name);
   });
 
-  // Une feuille par tuile, toutes pages confondues (voir GristBI.data.buildWorkbookSheetsAsync) —
-  // les données déjà agrégées/filtrées EXACTEMENT comme à l'écran (rowsForTile est la même fonction
-  // que charts.js), y compris pour une tuile en mode mesure (Cumul/YTD/N-1), désormais calculée via
-  // DuckDB-WASM plutôt que remplacée par un message (voir js/export.js). Jamais vérifié en
-  // conditions réelles Grist que le téléchargement se déclenche bien depuis l'iframe du widget
-  // (voir HYPOTHESES.md) — fonctionne dans ce harness et un navigateur standard, l'iframe n'étant
-  // pas sandboxée (voir ROADMAP.md).
+  // Une feuille par PAGE, toutes les pages (voir GristBI.data.buildExportPagesAsync), et dans chaque page un bloc par tuile :
+  // son graphique en image puis ses données, déjà agrégées/filtrées EXACTEMENT comme à l'écran (rowsForTile est la même fonction
+  // que charts.js), y compris pour une tuile en mode mesure (Cumul/YTD/N-1) calculée via DuckDB-WASM (voir js/export.js).
+  // Les graphiques sont redessinés hors écran puis photographiés (quelques secondes pour un grand tableau de bord) : le bouton
+  // est fermé pendant ce temps et le bandeau le dit, sinon un second clic lancerait un second export. Jamais vérifié en
+  // conditions réelles Grist que le téléchargement se déclenche bien depuis l'iframe du widget (voir HYPOTHESES.md) —
+  // fonctionne dans ce harness et un navigateur standard, l'iframe n'étant pas sandboxée (voir ROADMAP.md).
   exportExcelBtn.addEventListener('click', async () => {
-    if (!EXPORTS_AVAILABLE) return;
+    if (exportExcelBtn.dataset.busy) return;
+    exportExcelBtn.dataset.busy = '1';
+    exportExcelBtn.disabled = true;
+    if (renderTimeEl) renderTimeEl.textContent = t('export.xlsx.preparing');
     try {
       const exported = await GristBI.exportExcel.exportDashboardToExcel(store.getState());
       if (!exported) showNotice(t('export.none'));
     } catch (e) {
       console.error('[GristBI] échec de l\'export Excel', e);
       showError(t('export.failed'));
+    } finally {
+      delete exportExcelBtn.dataset.busy;
+      exportExcelBtn.disabled = !(Boolean(currentTableId) && dashboardReady);
+      if (renderTimeEl && renderTimeEl.textContent === t('export.xlsx.preparing')) renderTimeEl.textContent = '';
     }
   });
 
