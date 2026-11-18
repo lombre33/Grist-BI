@@ -1376,7 +1376,11 @@
               + axisNames.map((n, i) => `${escapeHtml(String(n))} : ${axisFmts[i].format(values[i]) || '–'}`).join('<br/>');
           }
         },
-        legend: series.length > 1 ? { top: 0, data: series.map((s) => s.name) } : undefined,
+        // Légende compacte et défilante : deux noms longs ne passent pas sur deux lignes (elle recouvrirait le polygone), ils se
+        // parcourent par des flèches. Sa place est réservée en haut par `finalizeOption` (GristBI.format.radarLayout).
+        legend: series.length > 1
+          ? { top: 2, type: 'scroll', itemWidth: 14, itemHeight: 8, itemGap: 14, textStyle: { fontSize: 11 }, data: series.map((s) => s.name) }
+          : undefined,
         radar: {
           // ECharts 6 a réduit le rayon par défaut (75 % -> 50 %) mais affiche désormais les noms
           // d'axes en entier : 62 % garde un polygone lisible dans une tuile de 224 px sans les couper.
@@ -1811,7 +1815,7 @@
         extraCssText: 'max-width: 85%; white-space: normal; overflow-wrap: anywhere;'
       }, option.tooltip);
     }
-    if (option.legend) option.legend = Object.assign({ textStyle: { color: th.secondary } }, option.legend);
+    if (option.legend) option.legend = Object.assign({}, option.legend, { textStyle: Object.assign({ color: th.secondary }, option.legend.textStyle) });
     // Légende de dégradé (carte de chaleur) : ses libellés aux jetons, sinon noirs sur fond sombre.
     if (option.visualMap && !Array.isArray(option.visualMap)) {
       option.visualMap = Object.assign({}, option.visualMap, { textStyle: Object.assign({ color: th.muted }, option.visualMap.textStyle) });
@@ -1863,7 +1867,20 @@
       });
     }
     if (option.radar) {
-      option.radar = Object.assign({}, option.radar, {
+      // Avec une légende, le polygone se place dans la place qu'elle laisse (centre et rayon en PIXELS, comme la jauge : ils ne
+      // suivent donc pas un redimensionnement, `__refit` les recalcule — voir resizeAll). Sans légende : réglage d'origine (62 %).
+      const placeRadar = () => {
+        const h = instance.getHeight();
+        const w = instance.getWidth();
+        if (!w || !h) return null;
+        const L = GristBI.format.radarLayout(w, h, true);
+        return { center: [L.cx, L.cy], radius: L.r, axisNameGap: L.gap };
+      };
+      const placed = (instance && option.legend && typeof instance.getHeight === 'function') ? placeRadar() : null;
+      if (instance) {
+        instance.__refit = placed ? () => { const p = placeRadar(); if (p) instance.setOption({ radar: p }); } : undefined;
+      }
+      option.radar = Object.assign({}, option.radar, placed || {}, {
         // Noms d'axe tronqués à un tiers de la tuile (`overflow` n'agit pas sur les noms d'axe d'un radar : on coupe nous-mêmes) :
         // « Station d'accueil USB-C » sortait de la carte à droite.
         axisName: Object.assign({

@@ -3331,6 +3331,19 @@ Dernier lot de l'audit : tout ce qui, hors des nombres eux-mêmes, rendait une t
 - **Testé** : Node (noms reconnus/épargnés, ordre des mesures pour 4 ordres de colonnes, montant à retours/cases vides, « Prix total », prix seul moyenné, suggestions et
   préremplissage) ; Playwright contre le vrai `index.html` + `grist-stub.js` sur la démo v3 anonymisée. **Pas testé dans un vrai Grist.**
 
+### Correctifs avant l'alpha — légende du radar (18/11/2026)
+
+- **Défaut** (bug réel n°50, TEST_PROTOCOL.md) : un radar à deux séries (élève et moyenne du groupe) a une légende ; dans une tuile normale (zone de dessin 283 x 162 px) elle recouvrait
+  le nom de l'axe du haut et le polygone était minuscule. Vu en préparant les captures de l'annonce forum (qui utilisaient la tuile agrandie pour l'éviter).
+- **Décision** : même méthode que la jauge, une géométrie pure en pixels (`GristBI.format.radarLayout`) plutôt qu'un réglage en pourcentages qu'ECharts ne sait pas tenir : la légende
+  prend une bande de 24 px en haut, le polygone se centre dans le reste, son rayon laisse 8 px + 16 px pour le nom de l'axe du haut (sous la légende) et celui du bas. Le polygone d'une
+  tuile normale passe de 50 à 45 px de rayon (il ne peut pas être plus grand si le nom de l'axe du haut doit tenir sous la légende), celui d'une tuile agrandie ne change pas
+  (plafond historique de 62 %). La légende devient compacte et défilante (`type: 'scroll'`) : un nom d'élève long se parcourt par flèches au lieu de recouvrir le polygone.
+- **Ce qui ne change pas** : un radar à une seule série n'a pas de légende et garde son réglage d'origine (centre 50 %, rayon 62 %).
+- **Pas fait, à décider** : afficher le nom de l'élève tronqué par « … » plutôt que coupé net par le défilement ; une tuile de moins de 150 px de haut (non proposée par l'interface).
+- **Testé** : Node (bloc « radar avec légende ») ; Playwright contre le vrai `index.html` + `grist-stub.js` sur le radar d'orientation de démo (400 élèves) : tuile normale, agrandie, réduite
+  (le centre et le rayon suivent), tuile étroite avec un nom d'élève très long. **Pas testé dans un vrai Grist.**
+
 ### Jauge : graduations à l'extérieur de l'arc (18/11/2026)
 
 Point de départ : sur la capture « après » du lot 2 de l'audit de lisibilité, Antoine remarque que la jauge « semble perdre les graduations intermédiaires » et propose de les rajouter, « peut-être à l'extérieur ».

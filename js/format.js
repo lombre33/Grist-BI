@@ -476,6 +476,22 @@
     return r >= 130 ? 5 : r >= 90 ? 4 : r >= 60 ? 3 : r >= 46 ? 1 : 0;
   }
 
+  // Radar dans une zone de w x h pixels. Quand il y a une légende (deux séries : élève et moyenne du groupe), elle prend une bande
+  // en haut ; le polygone se centre dans la place RESTANTE, et son rayon laisse de quoi écrire le nom de l'axe du haut sous la
+  // légende et celui du bas au-dessus du bord (avant : centre à 50 % de la tuile, donc dans une tuile de 224 px la légende
+  // recouvrait le nom de l'axe du haut). Le rayon ne dépasse jamais 62 % du demi-côté (la valeur historique, voir js/charts.js).
+  // `gap` = écart entre le bout d'un axe et son nom, à poser sur `radar.axisNameGap`.
+  const RADAR_LEGEND_H = 24;
+  const RADAR_NAME_GAP = 8;
+  const RADAR_NAME_H = 16;
+  function radarLayout(w, h, hasLegend) {
+    const legendH = hasLegend ? RADAR_LEGEND_H : 0;
+    const availH = Math.max(0, h - legendH);
+    const room = availH / 2 - RADAR_NAME_GAP - RADAR_NAME_H;
+    const r = Math.max(20, Math.min(0.62 * Math.min(w, h) / 2, room));
+    return { cx: w / 2, cy: legendH + availH / 2, r, gap: RADAR_NAME_GAP, nameH: RADAR_NAME_H, legendH };
+  }
+
   // Plus grande taille de police (entre `minFont` et `maxFont`) qui tient en `maxWidth` pixels ; `measure(texte, taille)`
   // rend la largeur du texte (canvas dans le navigateur, estimation dans les tests).
   function fitFont(text, maxWidth, maxFont, minFont, measure) {
@@ -486,7 +502,7 @@
   }
 
   return {
-    niceCeil, plainScale, gaugeLayout, gaugeTicks, gaugeTickBudget, gaugeTickPlacement, fitFont, cellNumber,
+    niceCeil, plainScale, gaugeLayout, gaugeTicks, gaugeTickBudget, gaugeTickPlacement, radarLayout, fitFont, cellNumber,
     MODES, MAX_CUSTOM_DECIMALS, localeForLang, normalizeSpec, parseWidgetOptions, parseDocSettings,
     styleFromColumn, resolveStyle, makeFormatter, forTile, setColumnInfo, getColumnInfo, getDocSettings, columnModeState
   };
