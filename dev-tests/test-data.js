@@ -1379,6 +1379,75 @@ const rows = [
   console.log('OK state : suivi de la vue active (sameSnapshot, modifiée dérivée, mettre à jour, quitter, supprimer, changer de table)');
 }
 
+// state: tuiles agrandies (retours d'Antoine du 18/11/2026, point 8) — zone d'agrandissement au-dessus de la grille
+{
+  const store = state.createStore();
+  store.addTile({ id: 'a', type: 'kpi', measure: 'Montant', aggFn: 'sum' });
+  store.addTile({ id: 'b', type: 'bar', dimension: 'Region', measure: 'Montant', aggFn: 'sum' });
+  store.addTile({ id: 'c', type: 'pie', dimension: 'Produit', measure: 'Montant', aggFn: 'sum' });
+  assert.deepStrictEqual(store.getState().zoomedTileIds, [], 'aucune tuile agrandie au départ');
+
+  store.toggleZoom('c');
+  store.toggleZoom('a');
+  // exposé dans l'ordre d'AFFICHAGE des tuiles, pas dans l'ordre des clics
+  assert.deepStrictEqual(store.getState().zoomedTileIds, ['a', 'c'], 'plusieurs tuiles, ordre d\'affichage');
+  store.toggleZoom('c');
+  assert.deepStrictEqual(store.getState().zoomedTileIds, ['a'], 'toggle : réduit une tuile agrandie');
+  store.toggleZoom('inconnue');
+  assert.deepStrictEqual(store.getState().zoomedTileIds, ['a'], 'id inconnu = no-op');
+
+  // pas une donnée à sauvegarder : aucune nouvelle référence de `pages`
+  const pagesBefore = store.getState().pages;
+  store.toggleZoom('b');
+  assert.strictEqual(store.getState().pages, pagesBefore, 'agrandir ne touche pas `pages` (rien à persister)');
+
+  // les tuiles se déplacent : l'ordre d'affichage suit state.tiles
+  assert.deepStrictEqual(store.getState().zoomedTileIds, ['a', 'b']);
+  store.moveTile('b', -1);
+  assert.deepStrictEqual(store.getState().tiles.map((t) => t.id), ['b', 'a', 'c']);
+  assert.deepStrictEqual(store.getState().zoomedTileIds, ['b', 'a'], 'ordre d\'affichage après déplacement');
+
+  // tout réduire
+  store.clearZoom();
+  assert.deepStrictEqual(store.getState().zoomedTileIds, []);
+  store.clearZoom(); // déjà vide : pas de notification inutile
+  let notified = 0;
+  const unsub = store.subscribe(() => { notified++; });
+  store.clearZoom();
+  assert.strictEqual(notified, 0, 'clearZoom sans rien d\'agrandi ne notifie pas');
+  unsub();
+
+  // supprimer une tuile agrandie la retire de la liste (et une tuile recréée avec le même id ne revient pas agrandie)
+  store.toggleZoom('a');
+  store.removeTile('a');
+  assert.deepStrictEqual(store.getState().zoomedTileIds, []);
+  store.addTile({ id: 'a', type: 'kpi', measure: 'Montant', aggFn: 'sum' });
+  assert.deepStrictEqual(store.getState().zoomedTileIds, [], 'une tuile recréée n\'est pas agrandie');
+
+  // multi-pages : l'agrandissement est mémorisé par tuile ; getState n'expose que la page courante
+  store.toggleZoom('b');
+  const p2 = store.addPage('Page 2'); // navigue vers la page 2
+  store.addTile({ id: 'd', type: 'kpi', measure: 'Montant', aggFn: 'sum' });
+  assert.deepStrictEqual(store.getState().zoomedTileIds, [], 'la page 2 n\'a aucune tuile agrandie');
+  store.toggleZoom('b'); // 'b' est sur la page 1 : no-op
+  store.toggleZoom('d');
+  assert.deepStrictEqual(store.getState().zoomedTileIds, ['d']);
+  store.setCurrentPage(store.getState().pages[0].id);
+  assert.deepStrictEqual(store.getState().zoomedTileIds, ['b'], 'retour à la page 1 : son agrandissement est resté');
+  // supprimer la page 2 emporte l'agrandissement de ses tuiles
+  store.removePage(p2);
+  store.setCurrentPage(store.getState().pages[0].id);
+  assert.deepStrictEqual(store.getState().zoomedTileIds, ['b']);
+
+  // setPages (autre rapport / autre table) : seules les tuiles qui existent encore restent agrandies
+  store.setPages([{ id: 'p', name: 'P', tiles: [{ id: 'z', type: 'kpi', measure: 'M', aggFn: 'sum' }] }], 'p');
+  assert.deepStrictEqual(store.getState().zoomedTileIds, []);
+  store.toggleZoom('z');
+  store.setPages([{ id: 'p', name: 'P', tiles: [{ id: 'z', type: 'kpi', measure: 'M', aggFn: 'sum' }, { id: 'y', type: 'kpi', measure: 'M', aggFn: 'sum' }] }], 'p');
+  assert.deepStrictEqual(store.getState().zoomedTileIds, ['z'], 'une tuile toujours présente reste agrandie');
+  console.log('OK state : tuiles agrandies (plusieurs, ordre d\'affichage, toggle, tout réduire, suppression, multi-pages, setPages)');
+}
+
 // state: setBlend (data blending multi-tables) — propre à la table de travail courante, comme
 // bookmarks/pages (voir js/grist-api.js/js/main.js), pas capturé par les bookmarks eux-mêmes.
 {

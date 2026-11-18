@@ -105,6 +105,9 @@
     settings: '<circle cx="8" cy="8" r="2.3"/><path d="M8 2v1.6M8 12.4V14M14 8h-1.6M3.6 8H2M12.24 3.76l-1.13 1.13M4.89 11.11l-1.13 1.13M12.24 12.24l-1.13-1.13M4.89 4.89L3.76 3.76"/>',
     comment: '<path d="M2.5 3.5h11a1 1 0 0 1 1 1V10a1 1 0 0 1-1 1H6.5l-2.8 2.5V11H2.5a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z"/>',
     search: '<circle cx="6.8" cy="6.8" r="4.3"/><path d="M10 10l4 4"/>',
+    // Agrandir / réduire une tuile (zone d'agrandissement) : quatre coins vers l'extérieur / l'intérieur.
+    expand: '<path d="M9.5 2.5h4v4M6.5 13.5h-4v-4M13.5 2.5l-4.5 4.5M2.5 13.5L7 9"/>',
+    collapse: '<path d="M6.5 2.5v4h-4M9.5 13.5v-4h4M2.5 6.5l4-4M13.5 9.5l-4 4"/>',
     // Une icône par type de visualisation (cartes de l'étape « Choisir » du panneau latéral).
     'type-bar': '<path d="M3.5 13V8M8 13V3.5M12.5 13V6"/><path d="M2 14h12"/>',
     'type-line': '<path d="M2 12l3.5-4 3 2.5L14 4"/><path d="M2 14h12"/>',
@@ -175,6 +178,14 @@
   const MAX_RADAR_AXES = 8;
 
   const tilesContainer = document.getElementById('tiles');
+  // Zone d'agrandissement au-dessus de la grille (point 8 des retours d'Antoine, 18/11/2026) : les tuiles
+  // agrandies y sont déplacées (jamais recréées, voir render()). `workspaceMainEl` les contient toutes
+  // les deux : c'est lui que les fonctions de rendu de js/charts.js reçoivent pour retrouver une tuile.
+  const workspaceMainEl = document.getElementById('workspace-main');
+  const focusZoneEl = document.getElementById('tiles-focus');
+  const focusGridEl = document.getElementById('tiles-focus-grid');
+  const focusLabelEl = document.getElementById('tiles-focus-label');
+  const focusResetBtn = document.getElementById('tiles-focus-reset');
   const emptyState = document.getElementById('empty-state');
   const emptyStateHintEl = document.getElementById('empty-state-hint');
   const emptyStateStatusEl = document.getElementById('empty-state-status');
@@ -981,10 +992,12 @@
     // Réconciliation incrémentale plutôt que innerHTML='' + reconstruction : une instance ECharts
     // reste attachée à SON élément .tile-chart tant que la tuile existe, sinon setOption() continue
     // de s'exécuter sur un canvas détaché du DOM (rendu invisible bien qu'aucune erreur ne soit levée).
+    // Les tuiles vivent dans la grille OU dans la zone d'agrandissement : les deux sont relues.
     const existingEls = new Map(
-      Array.from(tilesContainer.children).map((el) => [el.dataset.tileId, el])
+      Array.from(tilesContainer.children).concat(Array.from(focusGridEl.children)).map((el) => [el.dataset.tileId, el])
     );
     const nextIds = new Set(state.tiles.map((t) => t.id));
+    const zoomedIds = new Set(state.zoomedTileIds);
 
     for (const [id, el] of existingEls) {
       if (!nextIds.has(id)) {
@@ -994,15 +1007,33 @@
       }
     }
 
-    let previousEl = null;
+    // Une tuile agrandie est DÉPLACÉE dans la zone d'agrandissement, jamais recréée : son élément (donc
+    // son graphique ECharts, piège n°6) reste le même, seule sa place dans le DOM change — et
+    // `resizeAll()` plus bas lui donne sa nouvelle taille. Chaque conteneur garde l'ordre d'affichage des
+    // tuiles ; on ne touche au DOM que si la place est mauvaise (avant : un déplacement à chaque rendu).
+    let previousGridEl = null;
+    let previousFocusEl = null;
     state.tiles.forEach((tile, index) => {
       let el = existingEls.get(tile.id);
       if (!el) {
         el = buildTileElement(tile);
         existingEls.set(tile.id, el);
       }
-      if (previousEl) previousEl.after(el); else tilesContainer.prepend(el);
-      previousEl = el;
+      const isZoomed = zoomedIds.has(tile.id);
+      const target = isZoomed ? focusGridEl : tilesContainer;
+      const previousEl = isZoomed ? previousFocusEl : previousGridEl;
+      if (el.parentElement !== target || el.previousElementSibling !== previousEl) {
+        if (previousEl) previousEl.after(el); else target.prepend(el);
+      }
+      if (isZoomed) previousFocusEl = el; else previousGridEl = el;
+      el.classList.toggle('tile-zoomed', isZoomed);
+      const zoomBtn = el.querySelector('.tile-zoom');
+      if (zoomBtn) {
+        const zoomKey = isZoomed ? 'tile.unzoom' : 'tile.zoom';
+        zoomBtn.setAttribute('aria-pressed', String(isZoomed));
+        zoomBtn.setAttribute('aria-label', t(zoomKey + '.aria'));
+        zoomBtn.title = t(zoomKey + '.title');
+      }
       // Recalculé à chaque rendu (pas seulement à la création) : la position d'une tuile change
       // quand une autre est ajoutée/supprimée/déplacée autour d'elle.
       // Titre rafraîchi à chaque rendu : suit un changement de langue (titre auto-composé, voir
@@ -1029,13 +1060,15 @@
       }
     });
 
+    focusZoneEl.hidden = zoomedIds.size === 0;
+    focusLabelEl.textContent = t('zoom.count', { n: zoomedIds.size });
     emptyState.hidden = state.tiles.length > 0;
     welcomeEl.hidden = state.tiles.length > 0;
     GristBI.welcome.update(state, Boolean(currentTableId) && dashboardReady, currentTableId);
     // Temps de rendu affiché dans le bandeau : utile pour repérer à l'œil un ralentissement sur une
     // table de travail à fort volume, sans devoir ouvrir les DevTools à chaque fois.
     const renderStart = performance.now();
-    for (const tile of state.tiles) GristBI.charts.renderTile(tile, state, tilesContainer);
+    for (const tile of state.tiles) GristBI.charts.renderTile(tile, state, workspaceMainEl);
     // Le nombre de tuiles change la largeur de chaque colonne de la grille CSS ; ECharts ne
     // réagit pas seul à un redimensionnement de son conteneur (pas d'observer par défaut).
     GristBI.charts.resizeAll();
@@ -1281,6 +1314,7 @@
           <button class="tile-move-left edit-only" type="button" data-i18n-aria="tile.moveLeft" data-i18n-title="tile.moveLeft" aria-label="${escapeHtml(t('tile.moveLeft'))}" title="${escapeHtml(t('tile.moveLeft'))}">${icon('chevronLeft')}</button>
           <button class="tile-move-right edit-only" type="button" data-i18n-aria="tile.moveRight" data-i18n-title="tile.moveRight" aria-label="${escapeHtml(t('tile.moveRight'))}" title="${escapeHtml(t('tile.moveRight'))}">${icon('chevronRight')}</button>
           <button class="tile-edit edit-only" type="button" data-i18n-aria="tile.edit.aria" data-i18n-title="tile.edit.title" aria-label="${escapeHtml(t('tile.edit.aria'))}" title="${escapeHtml(t('tile.edit.title'))}">${icon('edit')}</button>
+          <button class="tile-zoom" type="button" aria-pressed="false" aria-label="${escapeHtml(t('tile.zoom.aria'))}" title="${escapeHtml(t('tile.zoom.title'))}">${icon('expand')}${icon('collapse')}</button>
           <button class="tile-comments" type="button" data-i18n-aria="tile.comments.aria" data-i18n-title="tile.comments.title" aria-label="${escapeHtml(t('tile.comments.aria'))}" title="${escapeHtml(t('tile.comments.title'))}">${icon('comment')}<span class="tile-comments-count" hidden></span></button>
           <button class="tile-detail" type="button" data-i18n-aria="tile.detail.aria" data-i18n-title="tile.detail.title" aria-label="${escapeHtml(t('tile.detail.aria'))}" title="${escapeHtml(t('tile.detail.title'))}">${icon('search')}</button>
           <button class="tile-remove edit-only" type="button" data-i18n-aria="tile.remove.aria" data-i18n-title="tile.remove.title" aria-label="${escapeHtml(t('tile.remove.aria'))}" title="${escapeHtml(t('tile.remove.title'))}">${icon('close')}</button>
@@ -1305,6 +1339,9 @@
     // (le formulaire d'édition rechargerait les anciennes valeurs).
     const liveTile = () => store.getState().tiles.find((x) => x.id === tile.id) || tile;
     el.querySelector('.tile-edit').addEventListener('click', () => startEditTile(liveTile()));
+    // Agrandir/réduire : le rendu suivant déplace la tuile ; on la ramène ensuite à l'écran, la zone
+    // d'agrandissement étant au-dessus de ce que la personne regardait peut-être.
+    el.querySelector('.tile-zoom').addEventListener('click', () => { store.toggleZoom(tile.id); flashTile(tile.id); });
     el.querySelector('.tile-comments').addEventListener('click', () => openCommentsModal(liveTile()));
     el.querySelector('.tile-detail').addEventListener('click', () => openDetailModal(liveTile()));
     el.querySelector('.tile-move-left').addEventListener('click', () => store.moveTile(tile.id, -1));
@@ -2250,7 +2287,7 @@
   // Un tuile qui vient d'être ajoutée ou modifiée clignote une fois : on voit où elle est tombée.
   function flashTile(id) {
     requestAnimationFrame(() => {
-      const el = tilesContainer.querySelector(`.tile[data-tile-id="${id}"]`);
+      const el = workspaceMainEl.querySelector(`.tile[data-tile-id="${id}"]`);
       if (!el) return;
       el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       el.classList.add('tile-flash');
@@ -2461,6 +2498,8 @@
 
   // « Effacer les filtres » repart d'une page blanche : on quitte aussi la vue suivie (en premier,
   // pour qu'un rendu intermédiaire ne l'affiche pas « modifiée » une fraction de seconde).
+  focusResetBtn.addEventListener('click', () => store.clearZoom());
+
   clearFilterBtn.addEventListener('click', () => { store.leaveBookmark(); store.clearFilter(); store.clearAdvancedFilter(); });
   modeToggleBtn.addEventListener('click', () => setMode(mode === 'edit' ? 'read' : 'edit'));
 

@@ -223,6 +223,14 @@
     'tile.comments.title': { fr: 'Commentaires de la tuile', en: 'Tile comments' },
     'tile.detail.aria': { fr: 'Détail', en: 'Detail' },
     'tile.detail.title': { fr: 'Voir les lignes de données de la tuile', en: 'View the tile’s data rows' },
+    // Agrandir une tuile dans la zone au-dessus de la grille (retours d'Antoine du 18/11/2026, point 8).
+    'tile.zoom.aria': { fr: 'Agrandir la tuile', en: 'Enlarge tile' },
+    'tile.zoom.title': { fr: 'Agrandir cette tuile au-dessus des autres', en: 'Enlarge this tile above the others' },
+    'tile.unzoom.aria': { fr: 'Réduire la tuile', en: 'Shrink tile' },
+    'tile.unzoom.title': { fr: 'Remettre cette tuile dans la grille', en: 'Put this tile back in the grid' },
+    'zoom.zone.aria': { fr: 'Tuiles agrandies', en: 'Enlarged tiles' },
+    'zoom.count': { fr: '{n} {n|tuile agrandie|tuiles agrandies}', en: '{n} enlarged {n|tile|tiles}' },
+    'zoom.reset': { fr: 'Tout réduire', en: 'Shrink all' },
 
     // --- Modale de détail (substitut du drillthrough Power BI, panneau ouvert depuis une tuile) ---
     'detail.modal.title': { fr: 'Détail — {n} {n|ligne|lignes}', en: 'Detail — {n} {n|row|rows}' },
