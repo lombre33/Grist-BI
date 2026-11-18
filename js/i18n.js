@@ -121,7 +121,7 @@
       fr: 'Fond dégradé, cartes en verre dépoli translucide, barres en dégradé : façon interfaces modernes.',
       en: 'Gradient backdrop, translucent frosted-glass cards, gradient bars: like modern app interfaces.'
     },
-    'style.options.title': { fr: 'Options (tous les styles)', en: 'Options (every style)' },
+    'style.options.title': { fr: 'Options de la disposition « Grille »', en: 'Options for the “Grid” layout' },
     'style.option.hideBorders': { fr: 'Tuiles sans bordure apparente', en: 'Tiles without a visible border' },
     'style.option.hideBorders.desc': {
       fr: 'Plus de trait de contour : les tuiles se distinguent par leur fond et leur ombre.',
@@ -131,6 +131,34 @@
     'style.option.uniform.desc': {
       fr: 'Une seule surface : les tuiles prennent le fond de la page, se touchent, sans ombre ni coins arrondis.',
       en: 'One single surface: tiles take the page background and touch each other, with no shadow or rounded corners.'
+    },
+    // --- Agencement d'une page (js/layouts.js, css/layouts.css) ---
+    'layout.title': { fr: 'Disposition de la page', en: 'Page layout' },
+    'layout.hint': {
+      fr: 'Où se posent les tuiles de « {page} ». Chaque page a la sienne, enregistrée avec elle. Sur une zone étroite, la grille reprend.',
+      en: 'Where the tiles of “{page}” are placed. Each page has its own, saved with it. On a narrow area the grid takes over.'
+    },
+    'layout.grid.name': { fr: 'Grille', en: 'Grid' },
+    'layout.grid.desc': { fr: 'Des cartes de même taille côte à côte : le rendu d’origine.', en: 'Equal cards side by side: the original layout.' },
+    'layout.report.name': { fr: 'Rapport', en: 'Report' },
+    'layout.report.desc': {
+      fr: 'Sans cartes : les chiffres en tête, deux graphiques par ligne, un filet fin au-dessus de chaque bloc.',
+      en: 'No cards: figures first, two charts per row, a thin rule above each block.'
+    },
+    'layout.board.name': { fr: 'Planche', en: 'Board' },
+    'layout.board.desc': {
+      fr: 'Une seule surface arrondie, un bandeau de chiffres teinté, des filets entre les cellules.',
+      en: 'One rounded surface, a tinted band of figures, rules between the cells.'
+    },
+    'layout.spotlight.name': { fr: 'Vedette', en: 'Spotlight' },
+    'layout.spotlight.desc': {
+      fr: 'Les chiffres en tête, un grand graphique en vedette (le premier en barres ou en courbe), le reste autour.',
+      en: 'Figures first, one large lead chart (the first bar or line chart), the rest around it.'
+    },
+    'layout.rail.name': { fr: 'Rail', en: 'Rail' },
+    'layout.rail.desc': {
+      fr: 'Une colonne de chiffres et de jauges à gauche, les graphiques à droite.',
+      en: 'A column of figures and gauges on the left, the charts on the right.'
     },
     'settings.credits.title': { fr: 'Crédits', en: 'Credits' },
     'settings.credits.author': { fr: 'Auteur', en: 'Author' },
@@ -349,6 +377,77 @@
       fr: 'Affichage des {shown} premières lignes sur {total}. Exportez en Excel pour tout voir.',
       en: 'Showing the first {shown} rows out of {total}. Export to Excel to see everything.'
     },
+
+    // --- Mots-clés des publications (menu Données > « Mots-clés des publications », js/main.js,
+    // logique pure js/publications.js ; consigne GFS 019, extension « Mots-clés des PDF ») ---
+    'keywords.open': { fr: 'Mots-clés des publications…', en: 'Publication keywords…' },
+    'keywords.title': { fr: 'Mots-clés des publications', en: 'Publication keywords' },
+    'keywords.intro': {
+      fr: 'Remplit une colonne de mots-clés à partir du texte de chaque publication, lu dans votre navigateur : rien n’est envoyé ailleurs. Une cellule déjà remplie n’est jamais modifiée.',
+      en: 'Fills a keywords column from the text of each publication, read in your browser: nothing is sent elsewhere. A cell that already has a value is never changed.'
+    },
+    'keywords.source.legend': { fr: 'D’où vient le texte ?', en: 'Where does the text come from?' },
+    'keywords.source.pdf': { fr: 'Le PDF joint à la ligne', en: 'The PDF attached to the row' },
+    'keywords.source.text': { fr: 'Une colonne de texte (titre, résumé…)', en: 'A text column (title, abstract…)' },
+    'keywords.source.pdfColumn': { fr: 'Colonne des pièces jointes', en: 'Attachments column' },
+    'keywords.source.textColumn': { fr: 'Colonne de texte', en: 'Text column' },
+    'keywords.target.label': { fr: 'Colonne des mots-clés automatiques', en: 'Automatic keywords column' },
+    'keywords.target.new': { fr: 'Nouvelle colonne « {name} »', en: 'New column “{name}”' },
+    'keywords.manual.label': { fr: 'Mots-clés saisis à la main (facultatif)', en: 'Keywords typed by hand (optional)' },
+    'keywords.manual.none': { fr: 'Aucune colonne', en: 'No column' },
+    'keywords.manual.hint': { fr: 'Ces mots ne sont pas répétés dans la colonne automatique.', en: 'These words are not repeated in the automatic column.' },
+    'keywords.max.label': { fr: 'Mots-clés par publication', en: 'Keywords per publication' },
+    'keywords.lang.label': { fr: 'Langue du texte', en: 'Text language' },
+    'keywords.lang.auto': { fr: 'Automatique', en: 'Automatic' },
+    'keywords.lang.fr': { fr: 'Français', en: 'French' },
+    'keywords.lang.en': { fr: 'Anglais', en: 'English' },
+    'keywords.plan': {
+      fr: '{todo} {todo|ligne|lignes} à compléter sur {total}.',
+      en: '{todo} {todo|row|rows} to fill out of {total}.'
+    },
+    'keywords.plan.filled': { fr: '{n} déjà {n|remplie|remplies}', en: '{n} already filled' },
+    'keywords.plan.noSource': { fr: '{n} sans texte à lire', en: '{n} with no text to read' },
+    'keywords.plan.none': {
+      fr: 'Rien à compléter : chaque ligne a déjà ses mots-clés, ou n’a pas de texte à lire.',
+      en: 'Nothing to fill: every row already has its keywords, or has no text to read.'
+    },
+    'keywords.noColumns.pdf': { fr: 'Cette table n’a aucune colonne de pièces jointes.', en: 'This table has no attachments column.' },
+    'keywords.noColumns.text': { fr: 'Cette table n’a aucune colonne de texte.', en: 'This table has no text column.' },
+    'keywords.noTable': { fr: 'Connectez d’abord une table de travail (menu Données).', en: 'Connect a working table first (Data menu).' },
+    'keywords.start': { fr: 'Extraire les mots-clés', en: 'Extract keywords' },
+    'keywords.stop': { fr: 'Arrêter', en: 'Stop' },
+    'keywords.confirm.title': { fr: 'Écrire dans votre table ?', en: 'Write to your table?' },
+    'keywords.confirm.message': {
+      fr: 'Les mots-clés de {todo} {todo|ligne|lignes} vont être écrits dans la colonne « {column} » de la table « {table} ». Les cellules déjà remplies ne sont pas touchées.',
+      en: 'The keywords of {todo} {todo|row|rows} will be written to the “{column}” column of the “{table}” table. Cells that already have a value are not touched.'
+    },
+    'keywords.confirm.newColumn': { fr: ' La colonne sera créée.', en: ' The column will be created.' },
+    'keywords.confirm.ok': { fr: 'Écrire', en: 'Write' },
+    'keywords.progress': { fr: 'Ligne {n} sur {total}…', en: 'Row {n} of {total}…' },
+    'keywords.done.written': { fr: '{n} {n|ligne complétée|lignes complétées}.', en: '{n} {n|row|rows} filled.' },
+    'keywords.done.noText': { fr: '{n} sans texte lisible (un PDF scanné n’a pas de texte).', en: '{n} with no readable text (a scanned PDF has no text).' },
+    'keywords.done.noPdf': { fr: '{n} sans PDF parmi les pièces jointes.', en: '{n} with no PDF among the attachments.' },
+    'keywords.done.noKeywords': { fr: '{n} sans mot-clé trouvé.', en: '{n} with no keyword found.' },
+    'keywords.done.errors': { fr: '{n} {n|ligne en erreur|lignes en erreur} (ex. : {sample}).', en: '{n} {n|row|rows} failed (e.g. {sample}).' },
+    'keywords.done.cancelled': { fr: 'Arrêté : ce qui était déjà fait est enregistré.', en: 'Stopped: what was already done is saved.' },
+    'keywords.error.write': { fr: 'Grist a refusé l’écriture : {message}', en: 'Grist refused the write: {message}' },
+    'keywords.error.token': {
+      fr: 'Les pièces jointes ne sont pas lisibles ici : {message}',
+      en: 'Attachments cannot be read here: {message}'
+    },
+    'keywords.error.pdfjsMissing': {
+      fr: 'L’extension « Mots-clés des PDF » n’est plus ajoutée, ou son fichier a été refusé par le navigateur.',
+      en: 'The “PDF keywords” extension is no longer added, or the browser refused its file.'
+    },
+    'keywords.error.pdfjs': { fr: 'PDF.js n’a pas pu être chargé : {message}', en: 'PDF.js could not be loaded: {message}' },
+    'keywords.error.column': { fr: 'La colonne « {name} » n’a pas pu être créée : {message}', en: 'The “{name}” column could not be created: {message}' },
+    'keywords.sample': { fr: 'Ligne {id} : {words}', en: 'Row {id}: {words}' },
+    'keywords.needsGfs.note': {
+      fr: 'Demande l’extension « Mots-clés des PDF » de Grist Factory Suite.',
+      en: 'Needs the “PDF keywords” extension of Grist Factory Suite.'
+    },
+    'keywords.needsGfs.add': { fr: 'Ajouter l’extension', en: 'Add the extension' },
+    'keywords.needsGfs.how': { fr: 'Comment l’avoir', en: 'How to get it' },
 
     // --- Commentaires collaboratifs (panneau ouvert depuis une tuile) ---
     'comments.modal.title': { fr: 'Commentaires', en: 'Comments' },

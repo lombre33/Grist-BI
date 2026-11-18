@@ -36,6 +36,20 @@ translucide, règles des deux options), le réglage du store (style et options),
 `js/grist-api.js` (faux `grist`) et le câblage d'`index.html`/`harness.html`. Le rendu à l'écran (cartes, graphiques,
 menu Réglages, cadre isolé) se rejoue dans un navigateur : voir `HYPOTHESES.md`.
 
+## Dispositions de page (Node, aucune dépendance)
+
+```
+node dev-tests/test-layouts.js
+```
+
+`js/layouts.js` (registre et seuils de largeur, largeurs qui remplissent toujours la ligne, plan de chaque disposition pour 0 à 13 chiffres et
+0 à 14 graphiques, vedette, Rail avec ou sans colonne de gauche, ordre affiché, cible des flèches ◀ ▶, miniatures), le réglage PAR PAGE du store
+(`setPageLayout`, configuration hostile assainie par `setPages`), l'aller-retour de la configuration par le vrai `js/grist-api.js` (faux `grist`),
+`css/layouts.css` (trois seuils `@container` égaux à `minWidthOf`, `--lu` = 28 px, règles communes de 640 et de 900 px identiques, jamais de
+`min-height`, contrastes AA) et le câblage d'`index.html`/`harness.html`. Le rendu à l'écran (les quatre dispositions en clair et en sombre, avec
+chaque style, les seuils de largeur, la stabilité des hauteurs, le mode Édition, la tuile agrandie, le cadre isolé) se rejoue dans un navigateur :
+voir `HYPOTHESES.md`. Une feuille `harness.html` à jour demande aussi son `<link>` dans l'en-tête (`sync-harness.js` ne régénère que le corps).
+
 ## Harness visuelle (navigateur, sans document Grist)
 
 `dev-tests/harness.html` charge les mêmes fichiers `index.html`/`css`/`js` que le widget réel
@@ -51,6 +65,17 @@ table de données (retrait de `BI_StressTest`, 2026-10-21, voir CLAUDE.md §1/§
 (`window.__gristStubPreseed` en tête de `harness.html`) pour qu'un simple double-clic affiche un
 dashboard non vide ; pour un volume réaliste (~47 000 lignes), préremplir soi-même via
 `js/demo-data.js` dans un script Playwright ad hoc (voir plus bas).
+
+Deux ajouts du faux Grist pour « Mots-clés des publications » (18/11/2026) : `getAccessToken(options)` rend
+`{token, baseUrl: <origine de la page>/_stub/api/docs/stub, ttlMsecs, readOnly}` (ou lève une erreur si
+`window.__gristStubNoToken` est posé, pour jouer « GFS sans la capacité `jeton` »), et `AddColumn` rend `{colRef, colId}`.
+Rien de cela ne prouve la forme réelle de la réponse de Grist (HYPOTHESES.md). L'essai navigateur de cette fenêtre
+(scripts Playwright non committés, comme les autres) sert le dépôt par un petit serveur HTTP qui répond aussi aux
+téléchargements `/_stub/api/docs/stub/attachments/<id>/download` avec de vrais PDF (reportlab) et au fichier
+`prototype/vendor/pdfjs/1.0.0/pdfjs.js` de GFS (son `integrity` sert à `attach` d'un faux lien :
+`GristBI.extensions.attach(Promise.resolve({ hosted: true, ready, library, onExtensions, install }))`) ; pour que le cadre
+`sandbox="allow-scripts"` (origine `null`) joigne `127.0.0.1`, lancer Chromium avec
+`--disable-features=PrivateNetworkAccessForNavigations,PrivateNetworkAccessForWorkers,PrivateNetworkAccessSendPreflights,PrivateNetworkAccessRespectPreflightResults,BlockInsecurePrivateNetworkRequests,LocalNetworkAccessChecks`.
 
 Ouvrir `dev-tests/harness.html` directement dans un navigateur (double-clic) : pas de build, pas de
 serveur requis pour l'essentiel des tests. **Exception : `js/duckdb-engine.js`** (moteur SQL

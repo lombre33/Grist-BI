@@ -2421,13 +2421,59 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     traité la demande (voir GFS-ETAT.md, section "Demandes à GFS"). Fonctions pures de jointure
     (`joinTextItems`/`joinPages`) testées sous Node ; le reste (chargement réel d'un PDF) a besoin
     d'un vrai PDF.js, donc d'un navigateur — même limite que le moteur SQL de `duckdb-engine.js`.
-  - **Non fait à ce stade** : le branchement Grist lui-même (colonne mots-clés manuels + auto via
-    `ensureColumnsUpToDate`, UI de déclenchement à l'ajout d'un document, lecture de la pièce
-    jointe via `grist.docApi.getAccessToken`) et le plan de rattrapage des publications déjà
-    existantes (backlog) — question posée à Antoine, réponse pas encore reçue au moment de ce
-    commit. Voir ROADMAP.md.
-  - **Non testable depuis ce sandbox** : le round-trip réel PDF.js une fois GFS la fournie (CDN
-    réel, taille du fichier worker, timing sur un PDF de plusieurs centaines de pages).
+  - **Mise à jour du 18/11/2026 — branché (consigne GFS 019, fil « Recherche sémantique sur publications »)**.
+    Antoine a confirmé : 100 000 publications et plus, des PDF déposés dans une colonne pièce jointe de Grist, aucun
+    backlog (« Pas de publication pour le moment »), zéro back-end, mots-clés saisis à la main ET automatiques.
+    Ce qui existe : menu Données > « Mots-clés des publications » (mode Édition, `js/keywords-panel.js`).
+    - **Le choix du déclenchement** : un geste de la personne, jamais à l'ajout d'une ligne. Le widget n'a pas de
+      moyen d'écouter « un document vient d'être déposé » quand il est fermé (pas de back-end, pas de `onRecords`),
+      et il n'écrit rien dans la table de la personne sans l'avoir dit : la fenêtre choisit la source (le PDF joint, ou
+      une colonne de texte : titre, résumé), la colonne qui reçoit les mots-clés (existante, ou nouvelle
+      `Mots_cles_auto` créée APRÈS une fenêtre de confirmation qui dit le nombre de lignes et la colonne), une colonne
+      facultative de mots saisis à la main (jamais répétés dans l'automatique), le nombre de mots et la langue. Une
+      cellule déjà remplie n'est jamais touchée ; relancer le travail ne fait donc que compléter (les nouvelles lignes).
+    - **L'algorithme** (`js/keywords.js:extractKeywords`, zéro dépendance, `Intl.Segmenter`) : RAKE ne suffit pas pour
+      un texte long (il classe d'abord les phrases candidates les plus longues, « méthode proposée consiste à… » devient
+      un mot-clé). Il reste (`rakeKeywords`, utile à un titre ou un résumé court) mais l'extraction principale
+      classe des unités de 1 à 3 mots par **récurrence** : une expression qui revient (`activité physique`,
+      `perovskite solar cells`) passe devant une expression rare, un mot seul demande deux occurrences (sauf sur un
+      texte très court), les composés à trait d'union restent un seul mot (`mots-clés`), l'élision française
+      (`l'apprentissage`) et le possessif anglais (`model's`) sont retirés, une ligne vide coupe une expression, une
+      unité contenue dans une unité retenue de fréquence comparable n'est pas répétée. Les ex-aequo suivent l'ordre
+      de première apparition (jamais l'ordre alphabétique, piège n°14). Mesuré à la main sur des textes français et
+      anglais réalistes (articles de santé publique, d'énergie, de linguistique) : les expressions retenues sont celles
+      qu'un lecteur retiendrait ; ce n'est PAS une mesure sur un vrai corpus de chercheurs, et un texte dont les mots
+      importants ne reviennent jamais donnera peu de mots-clés (voulu : mieux vaut peu que du bruit).
+    - **La lecture du PDF** (`js/pdf-text.js:readPdf`) : pdf.js vient de GFS (extension `mots-cles-pdf`, voir
+      GFS-ETAT.md), jamais d'une balise ni d'un CDN de ce dépôt. Page par page, en rendant la main entre deux pages
+      (pdf.js tourne dans la page, pas dans un vrai `Worker`, dans le cadre isolé de GFS) : au plus 88 ms de gel mesurés
+      sur cinq PDF en page directe (le cadre isolé a été essayé, mais son gel n'a pas été mesuré cette fois). Plafonds : 80 pages et 400 000 signes par PDF, trois
+      pièces jointes par ligne, 80 Mo par fichier ; un fichier qui n'est pas un PDF (image) est ignoré, un PDF scanné
+      (aucun texte) est compté « sans texte lisible », jamais un mot-clé inventé.
+    - **L'écriture** : par lots de 20 lignes (un seul `applyUserActions`, une action `UpdateRecord` par ligne) ; une
+      erreur sur une ligne (PDF corrompu, pièce jointe introuvable) est comptée et listée, le travail continue ; un
+      refus d'écriture arrête tout ; « Arrêter » écrit ce qui est déjà prêt puis s'arrête.
+    - **Essais** : Node (`dev-tests/test-data.js` : plan des lignes, `keywordsForTask`, `runJob`, `readPdf`, pont Grist
+      avec un faux `fetch`, qualité de l'extraction, câblage de la fenêtre) ; navigateur avec **le vrai fichier
+      `pdfjs.js` de GFS et de vrais PDF** (page directe ET `<iframe sandbox="allow-scripts">`), un faux GFS
+      (`hosted`, `library`, `onExtensions`, `install`) qui ajoute puis retire l'extension pendant que la fenêtre est
+      ouverte (l'option PDF se dégrise, puis se regrise, sans rouvrir) ; l'app seule (grisée, « Comment l'avoir »,
+      colonne de texte qui marche) ; GFS sans `jeton` (refus clair AVANT toute écriture, aucune colonne créée) ; anglais.
+    - **Non vérifié, à relever dans un vrai Grist** (le faux `window.grist` de `dev-tests/` ne le prouve pas) :
+      (1) la forme exacte de la réponse de `getAccessToken({ readOnly: true })` (`baseUrl`, `token`, `ttlMsecs`) ;
+      (2) l'adresse de téléchargement `${baseUrl}/attachments/<id>/download?auth=<jeton>` et son comportement CORS depuis
+      le cadre du widget ; (3) la valeur que `AddColumn` rend (`retValues[0].colId`) — le code retombe sur le nom demandé
+      si elle manque, mais Grist peut avoir renommé la colonne ; (4) le comportement sur de VRAIS PDF de chercheurs
+      (colonnes multiples, en-têtes et pieds de page répétés qui peuvent gonfler un mot récurrent, formules, PDF
+      protégés) ; (5) le temps pour 100 000 lignes (lecture séquentielle, un PDF après l'autre : à mesurer, la fenêtre
+      permet d'arrêter et de reprendre, les lignes faites ne sont pas refaites) ; (6) **dans GFS** : le courtier refuse
+      `getAccessToken` sans la capacité `jeton` et l'écriture dans la table de la personne sans un motif `ecrit` —
+      deux demandes dans GFS-ETAT.md, la lecture d'un PDF ne marchera dans GFS qu'après leur déclaration.
+    - **Limites connues** : une ligne dont le PDF est un scan (ou ne se lit pas) est réessayée à chaque lancement (pas de
+      mémoire « déjà essayé » : ajouterait une colonne ou un état à tenir, à décider avec Antoine si les scans
+      sont nombreux) ; le français et l'anglais seulement (la langue se devine, ou se choisit) ; aucune recherche n'est
+      encore faite SUR ces mots-clés (la colonne est filtrable comme toute colonne ; un champ de recherche plein texte
+      sur l'index est la suite logique, avec DuckDB-WASM déjà vendorisé).
 
 - **Ambiance de GFS (04/11/2026, consigne GFS 004)** — GFS (Grist Factory Suite, l'hébergeur commun
   en préparation pour plusieurs apps Grist d'Antoine, voir `lombre33/grist-widget-GFS`) propose cinq
@@ -3512,6 +3558,54 @@ Retour d'Antoine sur la 1re livraison : « Standard, Fluide, Édito : ok. Les de
 **Vérifié** : Node (`dev-tests/test-styles.js`) — registre (5 ids, `factory`/`dense` inconnus, clés fr/en des options), attributs de `<html>` avec un faux document, normalisation des options (valeurs héritées, mal typées, clés inconnues), dégradés (couleur de la série, horizontal/vertical, plusieurs séries, jamais sur une pile ni sur une couleur illisible, éclaircissement sur carte sombre mais jamais sur carte claire), halo et aire en dégradé, CSS parsé (`console` : un bloc, `color-scheme: dark`, jetons « sombres seulement » identiques à ceux de `style.css`, texte du bouton plein sur l'accent >= 4,5:1 ; verre : `--surface` opaque, textes >= 4,5:1 sur la PIRE carte — ce test a trouvé un gris trop sombre en verre sombre, corrigé —, aucun `backdrop-filter` sur la barre ; options : le trait seulement transparent, marge négative compensée par le remplissage de la grille, aucune hauteur), store (référence neuve seulement si le contenu change), configuration par le vrai `grist-api.js` (rien d'écrit tant qu'aucune option, anciens formats et lignes hostiles lus sans option, `factory`/`dense` conservés à la sauvegarde), câblage. Navigateur (Playwright, Chromium, `index.html` + faux Grist) — Console et Verre en clair et en sombre sur 4 pages de tuiles (barres, horizontales, courbes, aire, anneaux, KPI, jauge, treemap, cascade, radar, tableau croisé, combo, histogramme), options seules et combinées sur Standard, Fluide, Éditorial, Console et Verre, tuile agrandie et panneau d'ajout en « uni », menu Réglages (clair et sombre : cartes, cases, persistance de la ligne de configuration, retour au Standard qui efface les clés), et **dans un `<iframe sandbox="allow-scripts">`** (le choix et les cases se posent et se sauvegardent). Bugs de mon propre code trouvés et corrigés au passage : toutes les pastilles du menu prenaient le décor du verre (jeton hérité de `<html>`) ; barres marine invisibles sur carte sombre.
 
 **Non vérifié** : rendu dans un vrai Grist/GFS ; interaction avec une VRAIE ambiance GFS (ses jetons en ligne gagnent sur les couleurs d'un style — pour Console et Verre, un accent ou un fond d'ambiance sur le décor propre à ces styles peut détonner) ; `backdrop-filter` dans le navigateur d'un vrai Grist (supporté par les navigateurs récents, mais pas rejoué sur un vieux) ; exports PDF/PPTX avec le vrai CDN (une carte de verre y devient un fond uni, les graphiques gardent leur dégradé).
+
+### Disposition de la page — Rapport, Planche, Vedette, Rail, au choix PAGE PAR PAGE (18/11/2026)
+
+Point de départ : Antoine, sur les deux options « sans bordure » et « tableau de bord uni » du lot précédent : « pas convaincu pour les options macro d'agencement du dashboard ; essaie de comprendre le
+problème et d'imaginer plusieurs formats de dashboard ; j'imagine une version sur un fond uni qui paraisse bien plus liée ; 3 à 4 propositions », puis « c'est un enjeu d'UI/UX, hésite pas à utiliser des
+compétences dédiées », puis « pourquoi pas tous ? en plus des styles, on laisse le choix de l'arrangement, avec 3 à 4 options, et ça reste changeable sans souci pour chaque page ? ».
+
+**Diagnostic** (ce que j'en ai compris) : une grille de cartes identiques ne relie rien — chaque carte est une boîte, toutes pèsent autant, l'œil n'a ni entrée ni parcours, et « sans bordure » ou « uni »
+ne change que le trait, pas la hiérarchie. Un tableau de bord qui paraît « lié » donne un poids différent aux chiffres (en tête, un seul chiffre phare), aligne tout sur une même grille, remplit ses lignes
+(jamais une case vide au bout) et remplace les boîtes par des filets ou une seule surface. Principes tirés de la compétence `dataviz` : un chiffre phare unique (>= 48 px, chiffres proportionnels), libellés
+de chiffre en minuscules, filets pleins d'un pixel, dernière ligne incomplète = elle se partage la largeur. Les quatre propositions ont d'abord été rendues dans le vrai widget (captures dans
+`/mnt/project-files/agencements-tuiles/`), avant d'être codées.
+
+**Fait** : un réglage PAR PAGE (Réglages > « Disposition de la page », visible en Édition seulement, indication qui nomme la page), enregistré avec la page dans `BI_Dashboard_Config` (champ `layout`, écrit
+seulement s'il diffère de `grid` : une page d'avant ce réglage reste identique octet pour octet). Cinq entrées : **Grille** (la grille de cartes d'origine, défaut, rien n'est posé), **Rapport** (sans cartes ;
+chiffres en tête, deux graphiques par ligne, filet fin au-dessus de chaque bloc), **Planche** (une seule surface arrondie, bandeau de chiffres teinté, filets seulement entre les cellules), **Vedette** (chiffres,
+un grand graphique — le premier en barres, courbe ou combo —, deux plus petits à côté, le reste par trois) et **Rail** (colonne de chiffres et de jauges à gauche, graphiques à droite, trois par ligne). Le
+module pur `js/layouts.js` calcule un PLAN (largeur sur 12 colonnes, hauteur en rangées fixes de 28 px, groupe, colonne de départ du Rail) ; `js/main.js:render()` le pose en variables CSS et réordonne le DOM
+(les chiffres d'abord : l'ordre de tabulation suit l'écran) ; `css/layouts.css` le dessine. L'ordre ENREGISTRÉ des tuiles ne change jamais ; les flèches ◀ ▶ échangent une tuile avec la plus proche du même
+groupe. Les deux options du lot précédent ne valent plus que pour la Grille (leurs cases sont sous le choix de disposition).
+
+**Choix à connaître** : (1) **Seuils de largeur** : un agencement ne s'applique qu'au-dessus de 640 px (Rapport), 900 px (Planche, Vedette) ou 1 040 px (Rail) de largeur de la ZONE de travail (conteneur CSS,
+pas la fenêtre : le panneau « Ajouter » en retire 400 px) ; en dessous, la grille d'origine reprend, plutôt que d'écraser des graphiques. Ces seuils sont MON choix, non mesuré sur un vrai Grist (largeur
+réelle d'un widget dans une page Grist à confirmer). (2) **Vedette** : la vedette est le premier graphique en barres, courbe ou combo (les types qui se lisent sur toute une largeur) ; sans un tel graphique,
+pas de vedette, trois par ligne. (3) **Rail** : la colonne de gauche prend les chiffres ET les jauges ; sans aucune de ces tuiles, elle disparaît et les graphiques partent de la colonne 1. (4) Les chiffres
+passent devant les graphiques dans les quatre dispositions, même rangés après dans la page ; seul l'ordre affiché change. (5) **Boutons des tuiles** : en lecture à la souris, ils passent par-dessus le titre au
+survol seulement ; en Édition et sur écran tactile, ils restent en flux (dans le Rail, le titre prend alors sa ligne). (6) Chaque disposition garde les couleurs, les polices et le traitement des graphiques du style
+choisi (Fluide, Éditorial, Console, Verre dépoli) mais redessine le cadre de la tuile ; les contrastes du verre n'ont pas été recalculés pour du texte posé DIRECTEMENT sur le dégradé (le test de contraste du
+style vise sa pire carte translucide, donc ce cas est couvert par construction, mais non mesuré à part). (7) Une disposition n'est PAS dans une vue sauvegardée (un bookmark ne porte que filtres, page, drill-down).
+
+**Vérifié** : Node (`dev-tests/test-layouts.js`, 9 blocs) — registre, seuils et clés fr/en ; ids inconnus ou hostiles (clés de prototype comprises) -> grille ; `spansFor` : toute ligne pleine pour 0 à 14 éléments
+et 1 à 4 par ligne ; plan de chaque disposition sur le rapport de démonstration (11 tuiles) et pour toutes les combinaisons de 0 à 13 chiffres x 0 à 14 graphiques (aucun trou, hauteurs entières et bornées,
+chaque tuile une seule fois) ; vedette seule / à deux / absente, Rail avec et sans colonne, objectif (colonne, nombre fini, texte refusé) ; entrées bizarres sans exception, 1 000 tuiles dans le temps imparti ;
+ordre affiché (copie) et cible des flèches ; miniatures (dans la boîte, sans recouvrement) ; store (par page, la grille retire le champ, refus des ids mal formés, id futur gardé, configuration hostile assainie,
+même référence quand rien ne change) ; aller-retour de la configuration par le vrai `js/grist-api.js` avec un faux `grist` ; CSS parsé (trois seuils `@container` = `minWidthOf`, `--lu` = 28 px, rangées
+fixes, jamais de `min-height`, règles communes de 640 et de 900 px identiques, tuile sans ombre ni verre, boutons par-dessus le titre au survol seulement, contrastes AA du texte atténué sur le fond teinté dans les
+deux thèmes) ; câblage d'`index.html` et du harnais. Navigateur (Playwright, Chromium, `index.html` + `dev-tests/grist-stub.js`, rapport de démonstration de 4 pages et 5 760 lignes) : les quatre dispositions x
+clair/sombre (Standard) puis Console, Éditorial, Fluide et Verre dépoli ; largeurs de fenêtre 560 / 700 / 880 / 960 / 1 100 / 1 280 px (colonnes de la grille lues : 1, 2, 3 puis 12 ; Rail à 13 colonnes dès
+1 040 px de zone), aucun défilement horizontal ; **stabilité des hauteurs** (8 échantillons sur 3 s par disposition, identiques) ; survol et mode Édition (boutons, flèches désactivées au bon endroit,
+échange dans la Vedette) ; une page par disposition (Rapport / Rail / Grille / Vedette) retrouvée en changeant de page, **aucune erreur console** ; enregistrement vérifié dans `BI_Dashboard_Config` ; tuile
+agrandie dans le Rail ; panneau « Ajouter » ouvert (zone de 832 px : la Planche retombe en grille) ; cadre `<iframe sandbox="allow-scripts">` (clic réel sur une carte de disposition : `data-layout` posé,
+enregistré). Trois défauts trouvés ainsi et corrigés : une carte de chiffres avec objectif rognée dans la colonne étroite du Rail (7 rangées -> 9), un chiffre de 56 px qui réduisait la courbe à un point dans une
+colonne de 300 px (plafond `56cqw`), et le titre du Rail rogné par sept boutons en Édition (titre sur sa ligne).
+
+**Non vérifié** : rendu dans un vrai Grist/GFS ; largeur réelle d'une zone de widget (les seuils 640/900/1 040 px sont un choix) ; interaction avec une VRAIE ambiance GFS ; comportement tactile réel (règle
+`@media (hover: none)` écrite et relue, jamais rejouée sur un écran tactile) ; `:has()` (utilisé pour réserver la place du badge de commentaires) sur un vieux navigateur : sans lui, le badge peut recouvrir la fin
+d'un long titre ; exports PDF/PPTX (ils capturent l'image du graphique déjà rendu, indépendante de la disposition). **Limite connue** : Planche et Vedette n'ont pas de variante à deux colonnes pour la zone
+intermédiaire (640-900 px) : elles retombent sur la grille ; la Vedette ne choisit pas elle-même sa vedette (le premier graphique éligible), un réglage par tuile serait un lot à part.
 
 ### Tuiles usuelles des outils BI — lot 3, flux (Sankey) (18/11/2026)
 

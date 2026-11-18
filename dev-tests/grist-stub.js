@@ -163,6 +163,14 @@
     },
     onOptions() {},
     docApi: {
+      // Jeton d'accès en lecture (js/grist-api.js:attachmentAuth). La vraie réponse est `{ token, baseUrl, ttlMsecs }`,
+      // `baseUrl` finissant par `/api/docs/<id>` : ici une adresse de la même origine, que les essais navigateur
+      // interceptent (`page.route('**/_stub/**')`) pour servir de vraies pièces jointes. `__gristStubNoToken` simule
+      // le refus de GFS quand l'app n'a pas la capacité `jeton`.
+      async getAccessToken(options) {
+        if (window.__gristStubNoToken) throw new Error('GFS_REFUSE : getAccessToken demande la capacité jeton');
+        return { token: 'stub-token', baseUrl: location.origin + '/_stub/api/docs/stub', ttlMsecs: 600000, readOnly: !!(options && options.readOnly) };
+      },
       async listTables() {
         // Le vrai grist.docApi.listTables() renvoie un tableau de chaînes (les tableId), PAS des
         // objets {id} — vérifié contre la définition TypeScript de l'API Grist réelle. Les tables
@@ -258,7 +266,9 @@
             columnTypesByTable[tableId][colId] = colOpts.type;
             const parentRowId = metaTableRowId(tableId);
             if (parentRowId != null) registerMetaColumn(parentRowId, colId, colOpts.type, colOpts.widgetOptions);
-            retValues.push(null);
+            // Le vrai moteur rend `{ colRef, colId }` (l'identifiant réel, qu'il peut changer si le nom est pris) :
+            // js/grist-api.js:addTextColumn le lit. Forme affirmée de mémoire, non revérifiée sur un vrai document.
+            retValues.push({ colRef: nextRowId++, colId });
           } else if (kind === 'RenameTable') {
             const oldTableId = action[1];
             let newTableId = action[2];
