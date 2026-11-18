@@ -320,7 +320,7 @@ Mis à jour le 2026-11-18 (consignes 019 à 021 : « Nuage de mots » branchée 
   Publipostage+ viendra par une consigne de ta part, pas avant.
 
 ## Changements qui touchent GFS
-- 2026-11-18 · **Vitrine refaite : les trois captures de `vitrine/` sont remplacées** (même dossier, mêmes noms `1.webp`, `2.webp`, `3.webp`, même taille 960 × 600, de 49 976 à 54 370 octets, donc sous les 60 Ko ;
+- 2026-11-18 · `05fd5eb` · **Vitrine refaite : les trois captures de `vitrine/` sont remplacées** (même dossier, mêmes noms `1.webp`, `2.webp`, `3.webp`, même taille 960 × 600, de 49 976 à 54 370 octets, donc sous les 60 Ko ;
   `vitrine.json` : légendes 1 et 3 changées, la 2 reste vraie, description inchangée, toujours ≤ 280 / ≤ 60 signes fr/en). Les anciennes montraient l'interface d'avant la refonte ; les nouvelles montrent l'interface actuelle de `main`
   et varient les styles d'affichage et les dispositions de page (Antoine l'a demandé : « utiliser les styles différents ») : **1** = style « Verre dépoli » en disposition « Planche » (indicateurs avec tendance et objectif, jauge, barres, aire empilée) ;
   **2** = style « Éditorial » en grille, un clic sur « Nord » puis sur 2025 (les puces de filtre, les autres barres grisées, le drill-down de l'année vers le trimestre) ; **3** = style « Console » (toujours sombre : courbes, pile, cascade, radar, tableau croisé, cumuls).
