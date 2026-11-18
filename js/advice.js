@@ -46,6 +46,7 @@
   const PIE_MAX_SLICES = 7;
   const RADAR_MAX_AXES = 8;
   const BAR_MAX_VERTICAL = 12;
+  const FUNNEL_MAX_STAGES = 10;
   const LONG_LABEL = 14;
 
   // Même liste que js/data.js (GRIST_TECHNICAL_COLUMNS) : `manualSort` n'est jamais une donnée.
@@ -53,7 +54,7 @@
   const HIERARCHY_RE = /^(.+)\.(Annee|Trimestre|Mois)$/;
 
   // Tous les types de tuile que le formulaire sait créer (voir index.html, #tile-type).
-  const TILE_TYPES = ['bar', 'line', 'pie', 'treemap', 'scatter', 'waterfall', 'radar', 'wordcloud', 'kpi', 'gauge', 'pivot'];
+  const TILE_TYPES = ['bar', 'line', 'pie', 'treemap', 'funnel', 'scatter', 'waterfall', 'radar', 'wordcloud', 'kpi', 'gauge', 'pivot'];
 
   // « Quand l'utiliser » : une ligne par type pour l'étape « Choisir ». Littéraux (pas de clé
   // construite par concaténation) pour que le test de couverture i18n les retrouve par simple
@@ -63,6 +64,7 @@
     line: 'advice.use.line',
     pie: 'advice.use.pie',
     treemap: 'advice.use.treemap',
+    funnel: 'advice.use.funnel',
     scatter: 'advice.use.scatter',
     waterfall: 'advice.use.waterfall',
     radar: 'advice.use.radar',
@@ -660,6 +662,15 @@
         out.sortMode = 'value-desc';
         break;
       }
+      case 'funnel': {
+        // Peu d'étapes (3 à 8), triées par valeur : le sens habituel d'un entonnoir. Une dimension
+        // qui se range d'elle-même (mois, périodes) garde l'ordre des données : ce sont des étapes.
+        const stages = ctx.categories.find((d) => d.kind === 'text' && d.distinct >= 3 && d.distinct <= 8 && !d.timeLike);
+        out.dimension = (stages && stages.id) || dimensionFallback;
+        const d = ctx.byId.get(out.dimension);
+        if (!(d && (d.timeLike || d.role === 'time' || d.role === 'timePart'))) out.sortMode = 'value-desc';
+        break;
+      }
       case 'treemap':
       case 'waterfall':
       case 'wordcloud':
@@ -759,6 +770,10 @@
       if (n > PIE_MAX_SLICES) return warn('advice.pie.tooManySlices', { n });
     }
     if (type === 'treemap' && agg.some((g) => g.value < 0)) return warn('advice.treemap.negative');
+    if (type === 'funnel') {
+      if (agg.some((g) => g.value < 0)) return warn('advice.funnel.negative');
+      if (n > FUNNEL_MAX_STAGES) return warn('advice.funnel.tooManyStages', { n });
+    }
     if (type === 'line' && hasDimension) {
       if (!timeLike) return warn('advice.line.notTime', { dimension: tile.dimension });
       if (tile.sortMode === 'value-desc' || tile.sortMode === 'value-asc') return warn('advice.line.valueSort');
@@ -890,6 +905,12 @@
       case 'treemap': {
         const values = topShares(grouped(), PREVIEW_MAX_BARS);
         return values ? { kind: 'treemap', values } : null;
+      }
+      case 'funnel': {
+        // Largeurs relatives à la plus large étape, dans l'ordre affiché (tri choisi ou ordre des données).
+        const values = grouped().slice(0, PREVIEW_MAX_BARS).map((g) => Math.max(0, Number(g.value) || 0));
+        const top = Math.max.apply(null, values);
+        return (values.length >= 2 && top > 0) ? { kind: 'funnel', values: values.map((v) => v / top) } : null;
       }
       case 'scatter': {
         const xs = data.groupByAggregate(rows, tileData.dimension, tileData.measure, aggFn).map((g) => Number(g.value) || 0);

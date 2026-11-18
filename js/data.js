@@ -370,7 +370,7 @@
 
   // Tri d'AFFICHAGE optionnel d'un agrégat (`tile.sortMode`, voir js/main.js:updateFormFieldsForType),
   // pour les seuls types dont l'ordre des catégories n'a pas de sens propre : Barres (hors mode
-  // mesure temporelle, dont l'axe est un mois calculé), Courbe/Aire et Camembert. Jamais pour
+  // mesure temporelle, dont l'axe est un mois calculé), Courbe/Aire, Camembert et Entonnoir. Jamais pour
   // Cascade (l'ordre EST le sens du cumul), Treemap, Radar ni Nuage de mots.
   // `groupByAggregate` garde son contrat (ordre d'apparition, piège n°14 CLAUDE.md §7) : le tri est
   // une étape SÉPARÉE appliquée après, jamais fusionnée dedans, et sans `sortMode` (ou avec une
@@ -378,7 +378,10 @@
   // Partagée par le rendu (js/charts.js) et l'export Excel (tileExportSheet) : ce qui est exporté
   // doit rester dans l'ordre affiché à l'écran.
   const SORT_MODES = ['value-desc', 'value-asc', 'label'];
-  const SORTABLE_TILE_TYPES = ['bar', 'line', 'pie'];
+  // Entonnoir : `sort: 'none'` côté ECharts (js/charts.js), c'est ce tri-ci qui décide de l'ordre des
+  // étapes — « Ordre des données » reste donc possible pour un parcours dont les étapes sont déjà
+  // rangées dans la table (Visite, Inscription, Achat).
+  const SORTABLE_TILE_TYPES = ['bar', 'line', 'pie', 'funnel'];
 
   function isSortableTile(tile) {
     if (!tile || SORTABLE_TILE_TYPES.indexOf(tile.type) === -1) return false;

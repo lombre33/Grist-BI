@@ -2824,6 +2824,35 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     d3-cloud chez GFS) ; les tuiles en mode mesure DuckDB (cumul/YTD/N-1) sous la v6 (même API `showLoading`/`bar`, mais
     pas rejouées : le harnais n'a pas de colonne date) ; le thème sombre ; un vrai Grist ou un vrai GFS.
 
+- **Entonnoir (funnel)** (18/11/2026, fil « Passer à ECharts 6 et ajouter 4 graphiques », 1re des 4 fonctionnalités ;
+  `js/charts.js`, `js/data.js`, `js/advice.js`, `js/welcome.js`, `js/pbix-layout.js`, `js/main.js`, `index.html`,
+  `js/i18n.js`) : reproche de l'étude de Publipostage+. Nouveau type `funnel`, mêmes champs que le camembert (une
+  dimension, une mesure, un agrégat, drill-down, filtre croisé au clic sur une étape). Aucune nouvelle bibliothèque.
+  - **Ordre des étapes** : la série ECharts est en `sort: 'none'` — le `'descending'` par défaut d'ECharts remettrait à
+    plat un parcours que la table range déjà dans l'ordre (Visite, Inscription, Achat). L'ordre vient donc de
+    `tile.sortMode` (l'entonnoir est « triable » comme un camembert : `SORTABLE_TILE_TYPES`), valeur décroissante
+    proposée par défaut (`advice.defaultsForType`) SAUF sur une dimension qui se range d'elle-même (mois, périodes),
+    où l'ordre des données est conservé. L'export Excel applique le même tri (`tileExportSheet`).
+  - **Rendu** : cadre explicite (`left/right/top/bottom: 8`, `width: '55%'`, `minSize: '8%'`), libellés « nom · valeur
+    compacte » à DROITE en texte foncé — « inside » donnait du blanc sur jaune, illisible, et se coupait sur les dernières
+    étapes ; info-bulle : valeur + « x % de la 1re étape » (le pourcentage est relatif à la 1re étape AFFICHÉE, donc à
+    l'ordre choisi).
+  - **Conseil** (`advice.js`) : valeurs négatives -> avertissement (un entonnoir ne les représente pas) ; plus de 10 étapes
+    -> avertissement. Pas de suggestion automatique sur l'accueil (`suggestTiles`) : un entonnoir n'a de sens que sur des
+    étapes, que le profilage des colonnes ne sait pas reconnaître. Carte « Choisir », icône, miniature d'accueil (bandes
+    centrées de largeur proportionnelle) et ligne « quand l'utiliser » ajoutées.
+  - **Import Power BI** : le visuel `funnel` (une catégorie + une mesure) est mappé sur la même forme que `pieChart`/
+    `treemap` (`VISUAL_TYPE_TO_TILE_TYPE`). **Jamais essayé sur un vrai fichier .pbix** (même réserve que les autres
+    correspondances).
+  - **Testé** : Node (`dev-tests/test-data.js`) — tri/ordre des données/export, mapping Power BI (avec et sans la colonne),
+    défauts, avertissements, carte, miniature et SVG ; Playwright (vrai `index.html` + `dev-tests/grist-stub.js`) —
+    carte « Entonnoir » dans le panneau avec sa ligne de conseil, valeurs préremplies (dimension `Etape`, mesure
+    `Personnes`, tri valeur décroissante), champ Tri visible et pas Horizontal/Anneau, aperçu vivant (canvas), ajout,
+    clic souris réel sur la 2e étape -> filtre croisé, édition (valeurs reprises), libellé anglais « Funnel », aucun
+    message de console. **Non vérifié** : un vrai Grist / GFS ; l'aspect avec des étapes très inégales (une étape 50 fois
+    plus petite que la 1re est réduite à `minSize` 8 %, donc plus large que sa valeur — choix de lisibilité) ; le thème
+    sombre.
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée

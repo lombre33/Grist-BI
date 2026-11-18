@@ -687,6 +687,18 @@ délibérément laissé de côté (contenu généré par `js/data.js`/`js/demo-d
 - [x] Radar dont un filtre vide toutes les lignes : aucune exception, instance sans série (avant : `reading 'push'`, v5 comme v6) 🌐
 - [ ] **[NON TESTÉ ICI]** tuiles en mode mesure DuckDB (cumul/YTD/N-1) sous la v6 ; thème sombre ; nuage de mots ; vrai Grist / vrai GFS
 
+### `js/charts.js` + `js/data.js` + `js/advice.js` + `js/welcome.js` + `js/pbix-layout.js` — entonnoir (18/11/2026, Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`)
+
+- [x] `isSortableTile` : l'entonnoir est triable (`sort: 'none'` côté ECharts, c'est `sortMode` qui ordonne) ; `tileExportSheet` : valeur décroissante OU ordre des données, `tileExportKind` = image ✅
+- [x] `advice.defaultsForType('funnel')` : dimension à 3-8 valeurs, tri valeur décroissante ; sur des mois, ordre des données conservé ✅
+- [x] `advice.adviceForTile` : valeurs négatives et plus de 10 étapes -> avertissement (`advice.funnel.*`), un entonnoir normal -> aucun ; `adviceForType` rend toujours une ligne ✅
+- [x] `previewFor('funnel')` : largeurs relatives à la plus large étape dans l'ordre affiché, `null` pour une seule étape ; `previewSvg` : une bande par étape, aucun `NaN` ✅
+- [x] `pbixLayout` : le visuel `funnel` devient une tuile `funnel` ; colonne absente -> `tileData: null` ✅
+- [x] Panneau : carte « Entonnoir » + ligne de conseil ; préremplissage ; champ Tri visible, Horizontal/Anneau masqués ; aperçu vivant ; ajout ; édition 🌐
+- [x] Clic souris RÉEL sur une étape (coordonnées lues dans `getItemLayout(i).points`) : filtre croisé sur la bonne étape 🌐
+- [x] Libellé anglais du type ; aucun message de console 🌐
+- [ ] **[NON TESTABLE ICI]** un vrai fichier .pbix avec un `funnel` ; vrai Grist / GFS ; thème sombre ; étapes très inégales (`minSize` 8 %)
+
 ### CSS — classe de bug à systématiquement re-vérifier
 
 - [x] `.field[hidden]` masque réellement l'élément (pas seulement `display:flex` de `.field` qui gagne à spécificité égale) [BUG RÉEL, trouvé 2 fois sur des champs différents] ✅ (règle en place)
