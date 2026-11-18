@@ -1531,7 +1531,7 @@
     // Pas en 100 % empilé : l'axe y est en parts, un objectif ou une moyenne en valeur brute n'y est pas comparable.
     if (!stackPct && option.series && option.series.length && (tile.type === 'bar' || tile.type === 'line')) {
       const ref = refLineValue(tile, groups.map((g) => g.value));
-      if (ref !== null) addRefLine(option, tile, ref, f);
+      if (ref !== null) addRefLine(option, tile, ref, f, instance);
     }
     finalizeOption(option, instance);
     instance.setOption(option, true);
@@ -1541,28 +1541,45 @@
   // un objectif à 100 k sur des barres de 20 k serait tracé hors de la zone et on ne verrait rien. `max`/`min` en fonctions : ECharts
   // garde ses graduations rondes, et les barres commencent toujours à 0. Le libellé dit CE que c'est (« Moyenne 12,4 k », « Objectif
   // 100 k ») au format de la mesure ; texte canvas, jamais interprété comme du HTML. Silencieux : ni survol ni clic.
-  function addRefLine(option, tile, ref, f) {
+  function addRefLine(option, tile, ref, f, instance) {
     const th = chartTheme();
     const horizontal = tile.type === 'bar' && !!tile.horizontal; // barres horizontales : l'axe des valeurs est X
     const kind = refLineKind(tile);
-    const text = `${t(kind === 'average' ? 'chart.refLine.average' : 'chart.refLine.value')} ${f.format(ref) || String(ref)}`;
+    const name = t(kind === 'average' ? 'chart.refLine.average' : 'chart.refLine.value');
+    const value = f.format(ref) || String(ref);
+    const label = {
+      show: true,
+      color: th.text,
+      fontSize: 11,
+      backgroundColor: th.surface,
+      padding: [1, 3],
+      borderRadius: 3
+    };
+    if (horizontal) {
+      // Barres horizontales : le trait est vertical, son libellé va en HAUT (marge du cadre) ; au bout (en bas) il recouvrait les graduations.
+      label.formatter = `${name} ${value}`;
+      label.position = 'start';
+    } else {
+      // Trait horizontal : libellé À DROITE de la zone de tracé, sur deux lignes (nom puis valeur). Posé dedans, au bout du trait, il
+      // recouvrait la fin de la courbe et la dernière barre (voir GristBI.format.refLabelLayout) ; la marge est prise sur la grille.
+      const family = th.font;
+      const lay = GristBI.format.refLabelLayout([name, value], instance && instance.getWidth ? instance.getWidth() : 270, (s, px) => measureText(s, px, 400, family));
+      label.formatter = lay.text;
+      label.position = 'end';
+      label.fontSize = lay.font;
+      label.lineHeight = lay.font + 3;
+      if (lay.width) { label.width = lay.width; label.overflow = 'truncate'; }
+      // `numericGrid` est partagée par tous les rendus : toujours une copie, jamais la modifier.
+      const grid = option.grid && !Array.isArray(option.grid) ? option.grid : {};
+      option.grid = { ...grid, right: Math.max(Number(grid.right) || 0, lay.reserve) };
+    }
     option.series[0].markLine = {
       silent: true,
       symbol: 'none',
       animation: false,
       data: [horizontal ? { xAxis: ref } : { yAxis: ref }],
       lineStyle: { color: th.text, type: 'dashed', width: 1.5 },
-      label: {
-        show: true,
-        formatter: text,
-        // Barres horizontales : le trait est vertical, son libellé va en HAUT (marge du cadre) ; au bout (en bas) il recouvrait les graduations.
-        position: horizontal ? 'start' : 'insideEndTop',
-        color: th.text,
-        fontSize: 11,
-        backgroundColor: th.surface,
-        padding: [1, 4],
-        borderRadius: 3
-      }
+      label
     };
     const axis = option[horizontal ? 'xAxis' : 'yAxis'];
     if (axis && !Array.isArray(axis)) {
@@ -1831,12 +1848,16 @@
           axisLabel: label
         });
         if (isX && width) {
-          const plotW = Math.max(60, width - 70);
+          // La marge réservée à droite (libellé d'une ligne de repère) rétrécit d'autant la zone de tracé.
+          const gridRight = option.grid && !Array.isArray(option.grid) ? Number(option.grid.right) : NaN;
+          const reserved = Number.isFinite(gridRight) ? Math.max(0, gridRight - 16) : 0;
+          const plotW = Math.max(60, width - 70 - reserved);
           if (a.type === 'category' && Array.isArray(a.data) && a.data.length && label.width == null) {
             // Peu de catégories : chacune garde sa place (largeur d'une catégorie moins une marge, nom tronqué par « … »,
             // aucun libellé masqué). Beaucoup de catégories : ECharts n'en montre qu'une sur k (intervalle automatique),
             // chacune avec plus de place.
-            const band = Math.floor(plotW / a.data.length) - 6;
+            // 6 px d'air entre deux noms ; 3 seulement quand la zone de tracé a déjà perdu sa marge de droite (libellé d'une ligne de repère).
+            const band = Math.floor(plotW / a.data.length) - (reserved > 0 ? 3 : 6);
             if (a.data.length <= 8 && band >= 28) {
               label.width = Math.min(150, band);
               if (label.interval == null) label.interval = 0;

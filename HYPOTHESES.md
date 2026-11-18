@@ -3448,6 +3448,14 @@ Point de départ : Antoine, avec la capture d'un tableau de bord fluide/moderne 
 
 **Non vérifié** : rendu dans un vrai Grist/GFS (aucun accès) ; interaction réelle avec une ambiance GFS choisie (testée seulement en posant des jetons en ligne à la main) ; exports PDF/PPTX avec le vrai CDN (cdnjs est bloqué ici) — ils capturent l'image du graphique déjà rendu, donc ils suivent le style, mais n'ont pas été rejoués ; en thème sombre ils gardent le fond clair déjà connu, comme avant ce réglage. **Limite connue** : seules les tuiles ECharts, le KPI, la progression, la table et le texte suivent le style ; le pivot HTML reprend les jetons de couleur mais pas la forme des graphiques (il n'en a pas).
 
+### Ligne de repère : libellé hors de la zone de tracé (18/11/2026)
+
+Constat (en testant le style global des tuiles) : sur une courbe ou des barres verticales, le libellé « Moyenne 653 247 » / « Objectif 900 000 » était posé DANS la zone de tracé, au bout du trait (`insideEndTop`), avec un fond opaque : il cachait la fin de la courbe (les deux derniers points d'une série qui monte) et le haut de la dernière barre ou sa valeur. Même défaut en Standard.
+
+**Fait** : le libellé va à droite de la zone de tracé, sur deux lignes (nom puis valeur), sans rien recouvrir. `GristBI.format.refLabelLayout` (pur) en donne la taille (11 px, réduite jusqu'à 9 px, puis tronquée) et la marge à réserver, plafonnée à ~22 % de la largeur de la tuile ; `addRefLine` la prend sur une COPIE de la grille et `finalizeOption` la retranche de la zone de tracé pour tailler les noms de catégorie. Barres horizontales (trait vertical, libellé en haut) : inchangé.
+
+**Contrepartie assumée** : la zone de tracé perd 45 à 60 px de large ; dans une tuile de 270 px avec 3-4 catégories, un nom long est tronqué (« Bouti… », « Ou… ») alors qu'il tenait avant. À 340 px et plus, tout tient. **Vérifié** : Node (`refLabelLayout` sur 5 largeurs x 5 libellés : marge <= 22 %, texte contenu, taille, troncature) ; rendu réel dans `index.html` + faux Grist, tuiles de 270, 300 et 350 px, clair et sombre, Standard/Fluide/Classique/Éditorial. **Non vérifié** : un vrai Grist.
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée

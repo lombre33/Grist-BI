@@ -943,6 +943,7 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 - [x] Store : champs gardés puis effacés ; export Excel identique avec ou sans repère ✅
 - [x] Formulaire : champ « Valeur de la ligne » seulement pour « Valeur fixe », erreur sous le champ sans nombre (le champ s'ouvre dans « Options avancées »), relecture à l'édition 🌐
 - [x] Rendu : objectif 9 000 dans une tuile de barres (ligne dans le cadre) ; **objectif hors plage = axe élargi** ; barres horizontales (trait vertical, libellé en haut) ; courbe ; pile ; repère négatif ; objectif invalide et camembert sans ligne ; moyenne qui change après un filtre croisé 🌐
+- [x] Libellé d'un trait horizontal hors de la zone de tracé (18/11/2026) : Node `refLabelLayout` (5 largeurs x 5 libellés : marge <= 22 % de la tuile, texte contenu, police 11 -> 9 px, troncature en dernier recours, entrées vides) ✅ ; 🌐 courbe qui monte (la fin reste visible, avant : cachée par le fond du libellé), barres verticales (valeur de la dernière barre lisible), tuiles de 270/300/350 px, clair et sombre, 4 styles ; contrepartie : noms de catégorie plus tronqués à 270 px ✅ ; ⬜ jamais dans un vrai Grist
 - [ ] Rendu dans un vrai Grist / un vrai GFS ⬜ **[NON TESTABLE ICI]**
 
 ### `js/data.js` + `js/charts.js` + panneau — étiquettes de valeur, courbe lissée, 100 % empilé (18/11/2026 ; Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`)
