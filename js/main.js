@@ -385,6 +385,12 @@
   const exportExcelBtn = document.getElementById('export-excel');
   const exportPdfBtn = document.getElementById('export-pdf');
   const exportPptxBtn = document.getElementById('export-pptx');
+
+  // Exports PDF/PPTX/Excel provisoirement désactivés (18/11/2026, demande d'Antoine : le PDF empile les cartes au lieu
+  // de garder le visuel du tableau de bord, le PPTX ne charge pas sa bibliothèque dans un vrai Grist). Les boutons du
+  // menu Exporter sont grisés dans index.html (« bientôt disponible ») ; ce drapeau les garde fermés quand une table se
+  // connecte (setTableDependentControlsEnabled) et coupe les écouteurs. Remettre à `true` quand les exports sont refaits.
+  const EXPORTS_AVAILABLE = false;
   const tableSelectInput = document.getElementById('table-select');
   const blendSecondaryTableInput = document.getElementById('blend-secondary-table');
   const blendPrimaryColumnInput = document.getElementById('blend-primary-column');
@@ -1007,6 +1013,7 @@
                        blendSecondaryTableInput, blendPrimaryColumnInput, blendSecondaryColumnInput]) {
       el.disabled = !enabled;
     }
+    if (!EXPORTS_AVAILABLE) for (const el of [exportExcelBtn, exportPdfBtn, exportPptxBtn]) el.disabled = true;
   }
 
   // Mode Lecture / Édition (audit UI/UX du 18/11/2026) : `body[data-mode]` masque en lecture tout ce
@@ -2985,6 +2992,7 @@
   // (voir HYPOTHESES.md) — fonctionne dans ce harness et un navigateur standard, l'iframe n'étant
   // pas sandboxée (voir ROADMAP.md).
   exportExcelBtn.addEventListener('click', async () => {
+    if (!EXPORTS_AVAILABLE) return;
     try {
       const exported = await GristBI.exportExcel.exportDashboardToExcel(store.getState());
       if (!exported) showNotice(t('export.none'));
@@ -2999,6 +3007,7 @@
   // chargé depuis un CDN externe (dérogation d'Antoine, voir CLAUDE.md) : un échec réseau doit être
   // clairement dit à l'utilisateur plutôt que de rester silencieux ou de casser la page.
   exportPdfBtn.addEventListener('click', async () => {
+    if (!EXPORTS_AVAILABLE) return;
     try {
       const exported = await GristBI.exportPdf.exportDashboardToPdf(store.getState());
       if (!exported) showNotice(t('export.none'));
@@ -3010,6 +3019,7 @@
 
   // Même raisonnement que l'export PDF ci-dessus, pour PptxGenJS (js/pptx-export.js).
   exportPptxBtn.addEventListener('click', async () => {
+    if (!EXPORTS_AVAILABLE) return;
     try {
       const exported = await GristBI.exportPptx.exportDashboardToPptx(store.getState());
       if (!exported) showNotice(t('export.none'));
