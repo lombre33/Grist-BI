@@ -610,6 +610,21 @@ délibérément laissé de côté (contenu généré par `js/data.js`/`js/demo-d
 - [x] `GristBI.advice` réellement chargé par le vrai `index.html` (script tag) et suggestions cohérentes sur la table du faux Grist 🌐
 - [ ] **[NON TESTABLE ICI]** Données d'un VRAI document Grist (colonnes `Date` en secondes, `Reference`, très larges tables) ⬜ ; seuils de lisibilité jamais confrontés à de vrais utilisateurs ⬜
 
+### `js/welcome.js` + `advice.previewFor` — écran d'accueil à suggestions (18/11/2026, Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`)
+
+- [x] `previewFor` : une miniature finie (aucun `NaN`/`Infinity`) pour chaque type suggéré sur le banc de 47 040 lignes ; barres horizontales normalisées (max = 1) et triées ; courbe `areaFill` → `area` ; anneau → `donut` ; parts de camembert de somme 1 ; jauge bornée à 1 ; pivot → grille ✅
+- [x] `previewFor` renvoie `null` (plutôt que de dessiner faux) : tableau vide, tuile `null`, type inconnu, jauge sans étendue, radar à 2 axes, barres toutes nulles ✅
+- [x] `previewSvg` : `null`/type inconnu → chaîne vide ; KPI : ▲ si hausse, ▼ si baisse, aucune flèche sans tendance ; nombre selon la langue (« 3,7 k » fr / « 3.7K » en) ✅
+- [x] Accueil visible en Édition sur une table connectée sans tuile ; 3 cartes avec miniature, titre et raison ; bouton « Ajouter ces 3 visualisations » 🌐
+- [x] « Ajouter » pose exactement la tuile de la carte (titre persisté résolu, id neuf) ; l'accueil disparaît ; il REVIENT après suppression de la dernière tuile 🌐
+- [x] « Ajouter ces 3 » : 3 tuiles de types distincts, ids uniques, TOUTES se rendent (canvas ou valeur de KPI) ; aucune erreur JS 🌐
+- [x] Mode Lecture : suggestions masquées, indication de lecture visible 🌐 ; textes anglais ; bascule de langue à chaud retraduit les cartes 🌐
+- [x] « Importer un fichier Power BI… » ouvre la fenêtre d'import (test sur `hidden` + `display`, pas `offsetParent` : fenêtre `position: fixed`) 🌐
+- [x] Table sans ligne : message `welcome.emptyTable`, aucune carte, pas de « Ajouter ces N », import toujours proposé, aucun bouton « Créer une visualisation » 🌐
+- [x] Éléments de carte conservés tant que la table et la langue sont inchangées (pas de profilage à chaque rendu) 🌐
+- [x] Captures regardées (fr, en, table vide, tuiles posées) 🌐
+- [ ] **[NON TESTABLE ICI]** VRAI document Grist (dates en secondes, `Reference`, grandes tables) ⬜ ; mobile ⬜ ; lecteur d'écran réel ⬜
+
 ### `js/dialogs.js` + connexion + titres traduits (18/11/2026, Node pour `tileTitle`, Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`)
 
 - [x] « + Page » ouvre une fenêtre de saisie (titre « Nouvelle page », boutons Annuler / Créer la page) et crée l'onglet ; annuler ne crée rien ✅ 🌐 (dans un cadre sans `allow-modals`)
