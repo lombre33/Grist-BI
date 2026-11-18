@@ -579,6 +579,14 @@
     return _d3CloudPromise;
   }
 
+  // La bibliothèque est-elle déclarée dans l'`importmap` d'index.html ? Réponse immédiate, sans rien charger : sert à ne pas proposer
+  // le type « Nuage de mots » dans « Ajouter une visualisation » tant que GFS n'a pas fourni d3-cloud (une tuile qui n'afficherait
+  // que « indisponible » n'a pas sa place dans une version publiée). Une tuile Nuage de mots déjà enregistrée garde son message.
+  function isWordCloudAvailable() {
+    const el = typeof document !== 'undefined' ? document.querySelector('script[type="importmap"]') : null;
+    return Boolean(el && GristBI.data.importMapHas(el.textContent, 'd3-cloud'));
+  }
+
   // Même plage que l'ancien `sizeRange: [14, 48]` d'echarts-wordcloud.
   function wordCloudSizeFor(value, minV, maxV) {
     if (maxV === minV) return 28; // toutes les valeurs égales : taille médiane plutôt qu'une
@@ -1599,5 +1607,5 @@
   // via convertToPixel) - ne pas s'appuyer dessus pour de la logique applicative.
   function getInstance(tileId) { return chartInstances.get(tileId) || null; }
 
-  GristBI.charts = { renderTile, resizeAll, disposeTile, getInstance };
+  GristBI.charts = { renderTile, resizeAll, disposeTile, getInstance, isWordCloudAvailable };
 })(window);
