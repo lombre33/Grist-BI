@@ -115,6 +115,7 @@
     'type-treemap': '<rect x="2" y="2.5" width="12" height="11" rx="1"/><path d="M8.5 2.5v11M8.5 8H14"/>',
     'type-funnel': '<path d="M2 3h12l-3.5 4.5v4.5L5.5 14V7.5L2 3Z"/>',
     'type-text': '<path d="M2.5 4h11M2.5 8h11M2.5 12h6.5"/>',
+    'type-progress': '<rect x="2" y="3" width="12" height="2.4" rx="1.2"/><rect x="2" y="6.8" width="8" height="2.4" rx="1.2"/><rect x="2" y="10.6" width="5" height="2.4" rx="1.2"/>',
     'type-table': '<rect x="2" y="2.5" width="12" height="11" rx="1"/><path d="M2 6.2h12M2 9.9h12"/>',
     'type-scatter': '<circle cx="4.5" cy="10.5" r="1"/><circle cx="8" cy="6" r="1"/><circle cx="11" cy="9" r="1"/><circle cx="12" cy="4.5" r="1"/><path d="M2 14h12"/>',
     'type-waterfall': '<rect x="2.5" y="3" width="3" height="5" rx=".5"/><rect x="6.5" y="6" width="3" height="4" rx=".5"/><rect x="10.5" y="8" width="3" height="5" rx=".5"/>',
@@ -221,6 +222,15 @@
   const drillCrossFilterField = document.getElementById('tile-drill-crossfilter-field');
   const drillCrossFilterCheckbox = document.getElementById('tile-drill-crossfilter');
   const measureField = document.getElementById('tile-measure-field');
+  const targetField = document.getElementById('tile-target-field');
+  const targetInput = document.getElementById('tile-target');
+  const targetColumnField = document.getElementById('tile-target-column-field');
+  const targetColumnSelect = document.getElementById('tile-target-column');
+  const thresholdsField = document.getElementById('tile-thresholds-field');
+  const goodPctInput = document.getElementById('tile-good-pct');
+  const warnPctInput = document.getElementById('tile-warn-pct');
+  const sparklineField = document.getElementById('tile-sparkline-field');
+  const sparklineCheckbox = document.getElementById('tile-sparkline');
   const tileColumnsField = document.getElementById('tile-columns-field');
   const tileColumnsList = document.getElementById('tile-columns');
   const tileTextField = document.getElementById('tile-text-field');
@@ -378,7 +388,7 @@
   // rester l'une des colonnes réellement chargées, comme un <select>. `.nextElementSibling` est le
   // <ul class="combobox-list"> voisin dans le même wrapper `.combobox` (voir index.html/harness.html).
   [dimensionSelect, columnDimensionSelect, seriesSelect, measureSelect, measureYSelect, trendDimensionSelect, dateColumnSelect,
-   radarEntityColumnSelect, radarEntityValueSelect].forEach((input) => {
+   radarEntityColumnSelect, radarEntityValueSelect, targetColumnSelect].forEach((input) => {
     GristBI.combobox.attach(input, input.nextElementSibling, { strict: true });
   });
 
@@ -476,6 +486,7 @@
     const numCols = numericColumns(rows);
     radarAxisSelects.forEach((select) => fillCombobox(select, numCols));
     fillCombobox(trendDimensionSelect, cols, { blankLabel: t('tileForm.none.f') });
+    fillCombobox(targetColumnSelect, numCols, { blankLabel: t('tileForm.none.f') });
     fillCombobox(radarEntityColumnSelect, cols, { blankLabel: t('tileForm.none.f') });
     updateRadarEntityValueOptions(rows);
     fillCombobox(dateColumnSelect, cols);
@@ -711,6 +722,7 @@
     let key;
     let vars;
     if (p.isText) { key = 'tileTitle.text'; vars = undefined; }
+    else if (p.isProgress) { key = 'tileTitle.progress'; vars = { measure: p.measure, dimension: p.dimension }; }
     else if (p.isTable) { key = 'tileTitle.table'; vars = { columns: p.tableColumns.slice(0, 3).join(', ') + (p.tableColumns.length > 3 ? '…' : '') }; }
     else if (p.isPivot) { key = 'tileTitle.pivot'; vars = { measure: p.measure, dimension: p.dimension, columnDimension: p.columnDimension }; }
     else if (p.isRadarColumns) { key = 'tileTitle.radarColumns'; vars = { axes: p.radarAxes.join(', ') }; }
@@ -759,7 +771,7 @@
   // générique l'ignore explicitement (voir le garde dans getOrCreateChartInstance). Masquer le
   // formulaire de configuration du drill-down pour ce type plutôt que de laisser l'utilisateur
   // configurer des niveaux qui ne se déclencheront jamais au clic.
-  function supportsDrillDown(type) { return !typeHasNoDimension(type) && type !== 'pivot' && type !== 'radar'; }
+  function supportsDrillDown(type) { return !typeHasNoDimension(type) && type !== 'pivot' && type !== 'radar' && type !== 'progress'; }
 
   // Drill-down à N niveaux : un combobox par niveau, créé dynamiquement ("+ Niveau") plutôt que des
   // champs figés dans le HTML — data.js/state.js/charts.js gèrent déjà un tableau drillDimensions
@@ -1348,6 +1360,11 @@
            <span class="tile-kpi-value">-</span>
            <span class="tile-kpi-label">${escapeHtml(tile.aggFn)}(${escapeHtml(tile.measure)})</span>
            <span class="tile-kpi-trend" hidden></span>
+           <div class="tile-kpi-spark" hidden></div>
+           <div class="tile-kpi-goal" hidden>
+             <div class="goal-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"><span class="goal-fill"></span></div>
+             <div class="goal-text"><span class="goal-pct"></span><span class="goal-target"></span></div>
+           </div>
          </div>`
       : `${header}
          <div class="tile-breadcrumb" data-tile-id="${tile.id}" hidden></div>
@@ -1787,6 +1804,7 @@
     const isWordCloudSplit = isWordCloudSplitMode();
     const isText = type === 'text';
     const isTable = type === 'table';
+    const isProgress = type === 'progress';
     // KPI/jauge/tuile "Barres" en mode de calcul temporel : pas de dimension de regroupement ni de
     // drill-down, juste un agrégat sur toute la sélection (le KPI peut en plus le comparer à une
     // période via "Tendance vs", la jauge le positionne sur un cadran Min/Max, la tuile Barres en
@@ -1807,6 +1825,12 @@
     aggField.hidden = isRadarColumns || isWordCloudSplit || isText || isTable;
     tileTextField.hidden = !isText;
     tileColumnsField.hidden = !isTable;
+    // Objectif et seuils : la carte KPI (facultatif) et la tuile Progression (obligatoire). La courbe de la carte KPI
+    // n'a de sens qu'avec une dimension de tendance (ce sont ses points).
+    targetField.hidden = !(isKpi || isProgress);
+    targetColumnField.hidden = !(isKpi || isProgress);
+    thresholdsField.hidden = !(isKpi || isProgress);
+    sparklineField.hidden = !(isKpi && trendDimensionSelect.value);
     // Comparaison élève/moyenne du groupe filtré : valable dans les DEUX modes d'axes (dimension ET
     // columns), voir ROADMAP.md — contrairement au bloc ci-dessus, pas de dépendance à isRadarColumns.
     radarEntityColumnField.hidden = !isRadar;
@@ -1922,6 +1946,12 @@
     if (tile.type === 'table') setColumnsPicker(tile.columns);
     aggSelect.value = tile.aggFn;
     trendDimensionSelect.value = tile.trendDimension || '';
+    targetInput.value = Number.isFinite(tile.target) ? tile.target : '';
+    targetColumnSelect.value = tile.targetColumn || '';
+    goodPctInput.value = Number.isFinite(tile.goodPct) ? tile.goodPct : GristBI.data.DEFAULT_GOOD_PCT;
+    warnPctInput.value = Number.isFinite(tile.warnPct) ? tile.warnPct : GristBI.data.DEFAULT_WARN_PCT;
+    sparklineCheckbox.checked = !!tile.kpiSparkline;
+    updateFormFieldsForType(); // la case « courbe » dépend de la dimension de tendance, posée juste au-dessus
     // Titre : un titre auto-composé (`titleKey`) n'est PAS recopié dans le champ — il resterait figé
     // dans la langue d'aujourd'hui ; le champ vide + son aperçu en placeholder disent « automatique ».
     tileTitleInput.value = tile.titleKey ? '' : (tile.title || '');
@@ -1937,6 +1967,7 @@
   measureModeSelect.addEventListener('change', updateFormFieldsForType);
   // La case « Empilé » dépend de la colonne Séries et, pour une courbe, de la case Aire.
   seriesSelect.addEventListener('change', updateFormFieldsForType);
+  trendDimensionSelect.addEventListener('change', updateFormFieldsForType);
   paletteSelect.addEventListener('change', updatePaletteSwatch);
   areaCheckbox.addEventListener('change', updateFormFieldsForType);
   radarModeSelect.addEventListener('change', updateFormFieldsForType);
@@ -2006,7 +2037,15 @@
     const isWordCloudSplit = isWordCloudSplitMode();
     const isText = type === 'text';
     const isTable = type === 'table';
+    const isProgress = type === 'progress';
     const tableColumns = isTable ? readColumnsPicker() : [];
+    // Objectif (carte KPI : facultatif ; Progression : obligatoire, valeur OU colonne) et seuils de couleur.
+    const usesTarget = isKpi || isProgress;
+    const targetRaw = usesTarget ? targetInput.value.trim() : '';
+    const target = targetRaw === '' ? undefined : Number(targetRaw);
+    const targetColumn = usesTarget ? targetColumnSelect.value : '';
+    const goodPct = Number(goodPctInput.value);
+    const warnPct = Number(warnPctInput.value);
     const textValue = isText ? tileTextInput.value.slice(0, GristBI.data.TEXT_TILE_MAX) : '';
     const hasDimension = !formHasNoDimension();
     const dimension = dimensionSelect.value;
@@ -2020,6 +2059,9 @@
     // dimension unique, voir formHasNoDimension).
     if (isText && !textValue.trim()) fail('tile-text', 'tileForm.error.textRequired');
     if (isTable && !tableColumns.length) fail('tile-columns', 'tileForm.error.columnsRequired');
+    if (usesTarget && target !== undefined && !(Number.isFinite(target) && target > 0)) fail('tile-target', 'tileForm.error.targetPositive');
+    else if (isProgress && target === undefined && !targetColumn) fail('tile-target', 'tileForm.error.targetRequired');
+    if (usesTarget && (target !== undefined || targetColumn) && !(Number.isFinite(goodPct) && Number.isFinite(warnPct) && warnPct >= 0 && goodPct > warnPct)) fail('tile-good-pct', 'tileForm.error.thresholds');
     if (!isRadarColumns && !isWordCloudSplit && !isText && !isTable && !measure) fail('tile-measure', 'tileForm.error.measureRequired');
     if (hasDimension && !dimension) fail('tile-dimension', 'tileForm.error.dimensionRequired');
     if (isScatter && !measureYSelect.value) fail('tile-measure-y', 'tileForm.error.measureYRequired'); // 2e mesure obligatoire pour un nuage de points
@@ -2051,7 +2093,7 @@
     // voir i18n.js:tileTitle) pour que l'en-tête de tuile suive la langue de l'interface au lieu de
     // rester figé dans celle de sa création.
     const auto = autoTileTitle({
-      isText, isTable, tableColumns, isPivot, isRadarColumns, isWordCloudSplit, hasDimension, measureMode,
+      isText, isTable, isProgress, tableColumns, isPivot, isRadarColumns, isWordCloudSplit, hasDimension, measureMode,
       measure, dimension, columnDimension, aggFn, radarAxes, seriesColumn
     });
     const customTitle = tileTitleInput.value.trim();
@@ -2077,6 +2119,15 @@
     tileData.drillDimensions = drillDimensions.length ? drillDimensions : undefined;
     tileData.drillCrossFilter = drillDimensions.length ? drillCrossFilterCheckbox.checked : undefined;
     tileData.trendDimension = (isKpi && trendDimensionSelect.value) ? trendDimensionSelect.value : undefined;
+    tileData.kpiSparkline = (isKpi && trendDimensionSelect.value && sparklineCheckbox.checked) ? true : undefined;
+    // Objectif : `undefined` hors des deux types concernés (effacer plutôt que laisser une valeur fantôme, voir plus haut).
+    // Les seuils ne sont écrits que s'ils diffèrent des valeurs par défaut (90 % / 60 %) : une tuile qui n'y a pas touché
+    // garde une configuration sans eux.
+    const hasTarget = usesTarget && (target !== undefined || Boolean(targetColumn));
+    tileData.target = usesTarget && target !== undefined ? target : undefined;
+    tileData.targetColumn = usesTarget && targetColumn ? targetColumn : undefined;
+    tileData.goodPct = hasTarget && goodPct !== GristBI.data.DEFAULT_GOOD_PCT ? goodPct : undefined;
+    tileData.warnPct = hasTarget && warnPct !== GristBI.data.DEFAULT_WARN_PCT ? warnPct : undefined;
     tileData.measureY = isScatter ? measureYSelect.value : undefined;
     tileData.gaugeMin = isGauge ? gaugeMin : undefined;
     tileData.gaugeMax = isGauge ? gaugeMax : undefined;
@@ -2174,7 +2225,7 @@
   // repliées, aperçu en direct, conseil en direct). Le panneau est en flux normal (voir css/style.css) :
   // il ne recouvre jamais la barre. Toute la lecture du formulaire passe par readTileForm() ci-dessus.
   // =============================================================================================
-  const TYPE_CARDS = ['bar', 'line', 'pie', 'treemap', 'funnel', 'scatter', 'waterfall', 'radar', 'wordcloud', 'kpi', 'gauge', 'pivot', 'table', 'text'];
+  const TYPE_CARDS = ['bar', 'line', 'pie', 'treemap', 'funnel', 'scatter', 'waterfall', 'radar', 'wordcloud', 'kpi', 'gauge', 'progress', 'pivot', 'table', 'text'];
   const PREVIEW_TILE_ID = '__preview__';
   let panelOpener = null;
   let previewTimer = null;
@@ -2219,6 +2270,11 @@
     measureModeSelect.value = 'brut';
     dateColumnSelect.value = '';
     trendDimensionSelect.value = '';
+    targetInput.value = '';
+    targetColumnSelect.value = '';
+    goodPctInput.value = GristBI.data.DEFAULT_GOOD_PCT;
+    warnPctInput.value = GristBI.data.DEFAULT_WARN_PCT;
+    sparklineCheckbox.checked = false;
     radarModeSelect.value = 'dimension';
     resetRadarAxes();
     radarEntityColumnSelect.value = '';

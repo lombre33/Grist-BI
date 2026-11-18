@@ -7,7 +7,7 @@
 (function (global) {
   const GristBI = global.GristBI || (global.GristBI = {});
   const {
-    groupByAggregate, sameValue, aggregateSingle, pivotTable, trendFromGroups, measureSeriesForTile,
+    groupByAggregate, sameValue, aggregateSingle, pivotTable, trendFromGroups, targetProgress, progressRows, sparklineValues, sparklineGeometry, measureSeriesForTile,
     waterfallSeries, sortGroups, isSortableTile, isSeriesTile, isStackedTile, splitBySeries, assembleSeries, paletteColors, PALETTES, escapeHtml,
     tileDrillLevels, currentDimension, rowsForTile, wordFrequency
   } = GristBI.data;
@@ -93,14 +93,6 @@
     return pivotTable(rows, rowDim, colDim, measureCol, aggFn);
   }
 
-  // Même logique de comparaison que GristBI.data.computeTrend (trendFromGroups, partagée), mais sur
-  // un groupByAggregate passé par computeGroupBy ci-dessus — donc lui aussi sur DuckDB au-delà du
-  // seuil, plutôt que de rester bloqué sur la version JS pour cette seule partie du rendu KPI.
-  async function computeTrendAsync(rows, trendDimension, measureCol, aggFn) {
-    if (!trendDimension) return null;
-    return trendFromGroups(await computeGroupBy(rows, trendDimension, measureCol, aggFn));
-  }
-
   // Palette catégorielle validée colorblind-safe (skill dataviz de ce projet,
   // references/palette.md — worst adjacent CVD ΔE 9.1 clair, OKLab, cible ≥8 — ordre figé, jamais
   // cyclé au hasard). Camembert : ECharts assigne une couleur par part dans cet ordre. Barres :
@@ -137,6 +129,8 @@
       renderText(tile, container);
     } else if (tile.type === 'table') {
       renderTable(tile, rows, container);
+    } else if (tile.type === 'progress') {
+      renderProgress(tile, rows, state, container);
     } else if (tile.type === 'bar' && tile.measureMode && tile.measureMode !== 'brut') {
       renderMeasureChart(tile, rows, container);
     } else {
@@ -222,18 +216,23 @@
   }
 
   // ASYNCHRONE depuis que la valeur/la tendance peuvent passer par DuckDB-WASM au-delà du seuil
-  // (voir computeAggregateSingle/computeTrendAsync) — les deux calculs sont indépendants (une
+  // (voir computeAggregateSingle/computeGroupBy) — les calculs sont indépendants (une
   // tuile KPI n'a qu'une seule mesure mais potentiellement une dimension de tendance différente),
   // lancés en parallèle plutôt qu'en séquence pour ne payer qu'une seule fois la latence du plus
   // lent des deux. Sous le seuil (l'immense majorité des dashboards), les deux résolvent sur le
   // même tick et rien ne change visuellement par rapport à l'ancien comportement synchrone.
   async function renderKpi(tile, rows, container) {
     const seq = bumpSeq(tile.id);
-    const [value, trend] = await Promise.all([
+    // Les groupes de la dimension de tendance servent deux fois : le delta (deux dernières périodes) et, si la
+    // tuile le demande, la courbe (toutes les périodes). Un seul calcul, DuckDB au-delà du seuil comme le reste.
+    const hasTarget = Boolean(tile.targetColumn) || finiteTarget(tile.target) != null;
+    const [value, groups, targetValue] = await Promise.all([
       computeAggregateSingle(rows, tile.measure, tile.aggFn),
-      computeTrendAsync(rows, tile.trendDimension, tile.measure, tile.aggFn)
+      tile.trendDimension ? computeGroupBy(rows, tile.trendDimension, tile.measure, tile.aggFn) : Promise.resolve(null),
+      tile.targetColumn ? computeAggregateSingle(rows, tile.targetColumn, tile.aggFn) : Promise.resolve(tile.target)
     ]);
     if (isStale(tile.id, seq)) return; // rendu plus récent pour cette tuile entre-temps
+    const trend = groups ? trendFromGroups(groups) : null;
 
     const valueEl = container.querySelector(`[data-tile-id="${tile.id}"] .tile-kpi-value`);
     if (!valueEl) return;
@@ -244,15 +243,118 @@
     valueEl.style.setProperty('--kpi-chars', String(Math.max(kpiText.length, 4)));
 
     const trendEl = container.querySelector(`[data-tile-id="${tile.id}"] .tile-kpi-trend`);
-    if (!trendEl) return;
-    if (!trend) {
-      trendEl.hidden = true;
-      return;
+    if (trendEl) {
+      if (!trend) {
+        trendEl.hidden = true;
+      } else {
+        const isUp = trend.deltaPct >= 0;
+        trendEl.hidden = false;
+        trendEl.className = `tile-kpi-trend ${isUp ? 'trend-up' : 'trend-down'}`;
+        trendEl.textContent = `${isUp ? '▲' : '▼'} ${kpiFmt.percent(Math.abs(trend.deltaPct))} vs ${trend.previousKey}`;
+      }
     }
-    const isUp = trend.deltaPct >= 0;
-    trendEl.hidden = false;
-    trendEl.className = `tile-kpi-trend ${isUp ? 'trend-up' : 'trend-down'}`;
-    trendEl.textContent = `${isUp ? '▲' : '▼'} ${kpiFmt.percent(Math.abs(trend.deltaPct))} vs ${trend.previousKey}`;
+
+    // Courbe de tendance (SVG maison, pas d'instance ECharts : rien à disposer ni à redimensionner).
+    const sparkEl = container.querySelector(`[data-tile-id="${tile.id}"] .tile-kpi-spark`);
+    if (sparkEl) {
+      const geo = tile.kpiSparkline && groups ? sparklineGeometry(sparklineValues(groups), 100, 30, 3) : null;
+      if (!geo) {
+        sparkEl.hidden = true;
+        sparkEl.innerHTML = '';
+      } else {
+        sparkEl.hidden = false;
+        sparkEl.innerHTML = '<svg viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true" focusable="false">'
+          + `<path class="spark-area" d="${geo.area}"/><path class="spark-line" d="${geo.line}" vector-effect="non-scaling-stroke"/></svg>`
+          + `<span class="spark-dot" style="left:${geo.last.x}%;top:${geo.last.y}%"></span>`;
+      }
+    }
+
+    // Objectif : barre de progression, « 82 % de l'objectif », l'objectif lui-même ; couleur selon les seuils de la tuile.
+    const goalEl = container.querySelector(`[data-tile-id="${tile.id}"] .tile-kpi-goal`);
+    if (goalEl) {
+      const prog = hasTarget ? targetProgress(value, targetValue, tile.goodPct, tile.warnPct) : null;
+      if (!prog) {
+        goalEl.hidden = true;
+      } else {
+        goalEl.hidden = false;
+        const pctText = kpiFmt.percent(prog.pct);
+        const bar = goalEl.querySelector('.goal-bar');
+        const fill = goalEl.querySelector('.goal-fill');
+        fill.style.width = `${Math.round(prog.fill * 1000) / 10}%`;
+        fill.className = `goal-fill goal-${prog.level}`;
+        bar.setAttribute('aria-valuenow', String(Math.round(prog.pct)));
+        bar.setAttribute('aria-label', t('chart.kpi.goalPct', { pct: pctText }));
+        goalEl.querySelector('.goal-pct').textContent = t('chart.kpi.goalPct', { pct: pctText });
+        goalEl.querySelector('.goal-target').textContent = t('chart.kpi.goalTarget', { target: kpiFmt.format(finiteTarget(targetValue)) });
+      }
+    }
+  }
+
+  function finiteTarget(v) {
+    if (v == null || v === '') return null;
+    const n = typeof v === 'bigint' ? Number(v) : Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  // Tuile « Progression » : une barre par catégorie, remplie à hauteur de son % d'objectif (objectif commun saisi, ou
+  // colonne d'objectifs agrégée PAR catégorie). Cliquable comme une barre de graphique : filtre les autres tuiles sur la
+  // catégorie (re-clic = retire), les autres lignes s'estompent. Pas de drill-down, pas de tri : l'ordre des données.
+  // HTML/CSS maison dans `.tile-chart` (comme la table plate), reconstruit seulement s'il change.
+  async function renderProgress(tile, rows, state, container) {
+    const seq = bumpSeq(tile.id);
+    const [valueGroups, targetGroups] = await Promise.all([
+      computeGroupBy(rows, tile.dimension, tile.measure, tile.aggFn),
+      tile.targetColumn ? computeGroupBy(rows, tile.dimension, tile.targetColumn, tile.aggFn) : Promise.resolve(null)
+    ]);
+    if (isStale(tile.id, seq)) return;
+    const el = container.querySelector(`[data-tile-id="${tile.id}"] .tile-chart`);
+    if (!el) return;
+    const list = progressRows(valueGroups, targetGroups, tile.target, tile.goodPct, tile.warnPct);
+    const f = fmtFor(tile, tile.measure);
+    const filter = state.activeFilters.find((af) => af.column === tile.dimension);
+    const good = finiteTarget(tile.goodPct) != null ? Number(tile.goodPct) : GristBI.data.DEFAULT_GOOD_PCT;
+    const warn = finiteTarget(tile.warnPct) != null ? Number(tile.warnPct) : GristBI.data.DEFAULT_WARN_PCT;
+    let html;
+    if (!list.length) {
+      html = `<p class="pivot-empty">${escapeHtml(t('chart.progress.empty'))}</p>`;
+    } else {
+      const rowsHtml = list.map((r) => {
+        const key = String(r.key);
+        const active = filter && sameValue(filter.value, key);
+        const dimmed = filter && !active;
+        const pctText = r.pct == null ? '–' : f.percent(r.pct);
+        const title = r.target == null ? `${key} : ${f.format(r.value) || '–'}`
+          : t('chart.progress.row', { label: key, value: f.format(r.value) || '–', target: f.format(r.target) || '–' });
+        return `<div class="prog-row${active ? ' prog-active' : ''}${dimmed ? ' prog-dimmed' : ''}" role="button" tabindex="0" data-value="${escapeHtml(key)}" title="${escapeHtml(title)}">`
+          + `<span class="prog-label">${escapeHtml(key)}</span>`
+          + `<span class="prog-track"><span class="prog-fill ${r.level ? 'goal-' + r.level : ''}" style="width:${Math.round(r.fill * 1000) / 10}%"></span></span>`
+          + `<span class="prog-pct">${escapeHtml(pctText)}</span></div>`;
+      }).join('');
+      const legend = t('chart.progress.legend', { good: String(good), warn: String(warn) });
+      html = `<div class="prog-list">${rowsHtml}</div><p class="prog-legend">${escapeHtml(legend)}</p>`;
+    }
+    if (el.dataset.html !== html) {
+      const scroll = el.scrollTop;
+      el.innerHTML = html;
+      el.dataset.html = html;
+      el.scrollTop = scroll;
+    }
+    if (el.dataset.bound !== '1') {
+      el.dataset.bound = '1';
+      const pick = (target) => {
+        const row = target.closest && target.closest('.prog-row');
+        const live = liveTile(tile.id);
+        if (!row || !live || !el.contains(row)) return;
+        GristBI.store.toggleFilter(live.dimension, row.dataset.value, live.id);
+      };
+      el.addEventListener('click', (e) => pick(e.target));
+      el.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        if (!(e.target.classList && e.target.classList.contains('prog-row'))) return;
+        e.preventDefault();
+        pick(e.target);
+      });
+    }
   }
 
   // Une jauge est sémantiquement proche d'une carte KPI (une seule valeur agrégée, pas de

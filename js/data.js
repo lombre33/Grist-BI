@@ -285,7 +285,7 @@
 
   // Cœur de computeTrend, extrait pour être réutilisable sur un résultat de groupByAggregate déjà
   // obtenu PAR N'IMPORTE QUEL MOYEN (JS pur ci-dessous, ou DuckDB-WASM côté js/charts.js pour un
-  // gros volume — voir computeGroupBy/computeTrendAsync) : ne garde que les groupes dont la clé est
+  // gros volume — voir computeGroupBy dans js/charts.js) : ne garde que les groupes dont la clé est
   // numérique (ex. Annee=2025/2026 ; une dimension texte comme "Mois" est ignorée plutôt que de
   // produire un delta absurde), et compare les deux plus grandes clés numériques trouvées. Retourne
   // null si la comparaison n'a pas de sens ici (moins de 2 groupes numériques présents - ex. déjà
@@ -591,6 +591,70 @@
       .join('\n').trim();
   }
 
+  // ---- Objectif et progression (carte KPI avec objectif, tuile « Progression ») ---------------------------------
+  // Un objectif (valeur saisie `tile.target`, ou colonne `tile.targetColumn` agrégée comme la mesure) donne un
+  // pourcentage atteint et un NIVEAU : `good` à partir de `goodPct`, `warn` à partir de `warnPct`, sinon `bad`
+  // (seuils réglables par tuile, 90 % et 60 % par défaut). Pur JS : les couleurs sont dans css/style.css.
+  const DEFAULT_GOOD_PCT = 90;
+  const DEFAULT_WARN_PCT = 60;
+  function finiteNumber(v) {
+    if (v == null || v === '') return null;
+    const n = typeof v === 'bigint' ? Number(v) : Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  // `pct` n'est pas plafonné (104 % se dit), `fill` l'est (la barre ne dépasse pas la piste). Un objectif nul,
+  // négatif ou absent n'a pas de sens (division par zéro, « % atteint » inversé) : null.
+  function targetProgress(value, target, goodPct, warnPct) {
+    const v = finiteNumber(value);
+    const g = finiteNumber(target);
+    if (v == null || g == null || g <= 0) return null;
+    const good = finiteNumber(goodPct) != null ? Number(goodPct) : DEFAULT_GOOD_PCT;
+    const warn = finiteNumber(warnPct) != null ? Number(warnPct) : DEFAULT_WARN_PCT;
+    const pct = (v * 100) / g; // v*100 d'abord : 58/100*100 vaut 57,99999999999999
+    return { pct, fill: Math.min(1, Math.max(0, pct / 100)), level: pct >= good ? 'good' : (pct >= warn ? 'warn' : 'bad') };
+  }
+  // Une ligne par catégorie : valeur, objectif (de la colonne d'objectifs agrégée par catégorie, sinon la valeur
+  // saisie, la même pour toutes), progression. `targetGroups` : mêmes catégories, agrégées sur la colonne d'objectifs.
+  function progressRows(valueGroups, targetGroups, fixedTarget, goodPct, warnPct) {
+    const byKey = new Map();
+    (targetGroups || []).forEach((g) => byKey.set(String(g.dimension), g.value));
+    return valueGroups.map((g) => {
+      const target = targetGroups ? (byKey.has(String(g.dimension)) ? byKey.get(String(g.dimension)) : null) : fixedTarget;
+      const prog = targetProgress(g.value, target, goodPct, warnPct);
+      return { key: g.dimension, value: g.value, target: finiteNumber(target), pct: prog ? prog.pct : null, fill: prog ? prog.fill : 0, level: prog ? prog.level : null };
+    });
+  }
+
+  // Courbe de tendance d'une carte KPI : valeurs des groupes de `trendDimension`, dans l'ordre croissant quand
+  // TOUTES les clés sont numériques (années), sinon dans l'ordre d'apparition des données (mois, dates).
+  function sparklineValues(groups) {
+    const list = (groups || []).filter((g) => finiteNumber(g.value) != null);
+    const numeric = list.length > 0 && list.every((g) => finiteNumber(g.dimension) != null);
+    const ordered = numeric ? list.slice().sort((a, b) => Number(a.dimension) - Number(b.dimension)) : list;
+    return ordered.map((g) => Number(g.value));
+  }
+  // Tracé SVG (viewBox 0 0 100 30) d'une série : `line`, `area` (fermée vers le bas), dernier point en % de la
+  // largeur/hauteur (`last`, pour un point HTML qui ne se déforme pas avec `preserveAspectRatio="none"`).
+  // Moins de deux valeurs : null. Série plate : trait au milieu.
+  function sparklineGeometry(values, width, height, pad) {
+    const w = width || 100;
+    const h = height || 30;
+    const p = pad == null ? 3 : pad;
+    const vs = (values || []).filter((v) => Number.isFinite(v));
+    if (vs.length < 2) return null;
+    const min = Math.min(...vs);
+    const max = Math.max(...vs);
+    const span = max - min;
+    const pts = vs.map((v, i) => [
+      (i / (vs.length - 1)) * w,
+      span === 0 ? h / 2 : h - p - ((v - min) / span) * (h - 2 * p)
+    ]);
+    const r = (n) => Math.round(n * 100) / 100;
+    const line = pts.map((pt, i) => `${i ? 'L' : 'M'}${r(pt[0])} ${r(pt[1])}`).join(' ');
+    const last = pts[pts.length - 1];
+    return { line, area: `${line} L${w} ${h} L0 ${h} Z`, last: { x: r((last[0] / w) * 100), y: r((last[1] / h) * 100) } };
+  }
+
   // ---- Table plate (type 'table') -----------------------------------------------------------------
   // Une liste de colonnes choisies (`tile.columns`, dans l'ordre voulu), une ligne par ligne de la table de
   // travail, après les filtres (mêmes lignes que le bouton « Détail », `rowsForTile`). Aucune agrégation : c'est
@@ -679,7 +743,7 @@
   // graphique) — ces deux réutilisent directement tileExportSheet, déjà correct pour eux.
   function tileExportKind(tile) {
     if (tile.type === 'text') return 'text'; // ni graphique ni tableau : le texte lui-même
-    return (tile.type === 'kpi' || tile.type === 'pivot' || tile.type === 'table') ? 'table' : 'image';
+    return (tile.type === 'kpi' || tile.type === 'pivot' || tile.type === 'table' || tile.type === 'progress') ? 'table' : 'image';
   }
 
   // Représentation tabulaire d'une tuile pour l'export Excel : mêmes agrégats que le rendu
@@ -695,8 +759,26 @@
     const rows = rowsForTile(tile, state);
     if (tile.type === 'table') return tableSheet(tile, rows, maxRows);
     const title = tile.title || `${tile.aggFn}(${tile.measure})`;
+    if (tile.type === 'progress') {
+      const valueGroups = groupByAggregate(rows, tile.dimension, tile.measure, tile.aggFn);
+      const targetGroups = tile.targetColumn ? groupByAggregate(rows, tile.dimension, tile.targetColumn, tile.aggFn) : null;
+      return {
+        name: title,
+        header: [tile.dimension, 'Valeur', 'Objectif', '% de l’objectif'],
+        rows: progressRows(valueGroups, targetGroups, tile.target, tile.goodPct, tile.warnPct)
+          .map((r) => [r.key, r.value, r.target == null ? '' : r.target, r.pct == null ? '' : Math.round(r.pct * 10) / 10])
+      };
+    }
     if (tile.type === 'kpi' || tile.type === 'gauge') {
-      return { name: title, header: ['Mesure', 'Valeur'], rows: [[`${tile.aggFn}(${tile.measure})`, aggregateSingle(rows, tile.measure, tile.aggFn)]] };
+      const value = aggregateSingle(rows, tile.measure, tile.aggFn);
+      const row = [`${tile.aggFn}(${tile.measure})`, value];
+      // Carte KPI avec objectif : l'objectif et le % atteint suivent la valeur (rien de plus sans objectif).
+      if (tile.type === 'kpi' && (tile.targetColumn || tile.target != null)) {
+        const target = tile.targetColumn ? aggregateSingle(rows, tile.targetColumn, tile.aggFn) : tile.target;
+        const prog = targetProgress(value, target, tile.goodPct, tile.warnPct);
+        return { name: title, header: ['Mesure', 'Valeur', 'Objectif', '% de l’objectif'], rows: [row.concat([finiteNumber(target) == null ? '' : finiteNumber(target), prog ? Math.round(prog.pct * 10) / 10 : ''])] };
+      }
+      return { name: title, header: ['Mesure', 'Valeur'], rows: [row] };
     }
     if (tile.type === 'pivot') {
       // Même grille que le rendu (js/charts.js:renderPivot) : une ligne "Total" et une colonne
@@ -1002,6 +1084,7 @@
     distinctColumnValues, computeTrend, trendFromGroups, periodLabel, measureSeriesForTile,
     waterfallSeries, sortGroups, isSortableTile, isSeriesTile, isStackedTile, splitBySeries, assembleSeries, PALETTES, PALETTE_KEYS, paletteColors, supportsPalette, escapeHtml,
     tileDrillLevels, currentDimension, rowsForTile, tileExportSheet, tileExportKind, renderTextHtml, plainTextOf, TEXT_TILE_MAX,
+    DEFAULT_GOOD_PCT, DEFAULT_WARN_PCT, targetProgress, progressRows, sparklineValues, sparklineGeometry,
     TABLE_TILE_MAX_ROWS, TABLE_EXPORT_MAX_ROWS, tableColumnsOf, cellText, compareCells, sortRowsBy, moveInOrder, nextSortDir, tableSheet,
     sanitizeSheetName, buildWorkbookSheets, measureExportSheet, buildWorkbookSheetsAsync,
     blendRows, deriveDateHierarchyColumns, commentsForTile, isAccessRuleRefusal, AGGREGATORS

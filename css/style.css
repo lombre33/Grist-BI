@@ -57,6 +57,8 @@
      `--good-ink`. */
   --good-ink: #0a7a2b;
   --critical: #d03b3b;
+  /* Aplat « à surveiller » (barres d'objectif entre les deux seuils) : ni texte ni fond de message, donc pas de `-ink`. */
+  --caution: #e8a200;
   --warning-bg: #fdf3d8;
   --warning-text: #7a5b00;
   --warning-border: #f1d27a;
@@ -1184,6 +1186,34 @@ td.pivot-cell:not(.pivot-cell-empty):not(.pivot-total-cell):hover { background: 
 .tile-kpi-trend { font-size: 11.5px; font-weight: 600; margin-top: 2px; }
 .tile-kpi-trend.trend-up { color: var(--good-ink); }
 .tile-kpi-trend.trend-down { color: var(--critical); }
+
+/* Objectif d'une carte KPI et tuile « Progression » : trois niveaux d'état (couleurs d'état du widget, jamais celles
+   d'une ambiance GFS), toujours doublés du pourcentage écrit à côté — la couleur n'est jamais seule à porter le sens. */
+.goal-good { background: var(--good); }
+.goal-warn { background: var(--caution); }
+.goal-bad { background: var(--critical); }
+.tile-kpi-spark { position: relative; width: 100%; height: 30px; flex: 0 1 30px; min-height: 18px; margin-top: 2px; }
+.tile-kpi-spark svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.tile-kpi-spark .spark-area { fill: var(--accent-soft); stroke: none; }
+.tile-kpi-spark .spark-line { fill: none; stroke: var(--accent); stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
+.tile-kpi-spark .spark-dot { position: absolute; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; border-radius: 50%; background: var(--accent); }
+.tile-kpi-goal { width: 100%; display: flex; flex-direction: column; gap: 3px; }
+.goal-bar { height: 8px; border-radius: 4px; background: var(--surface-sunken); overflow: hidden; }
+.goal-fill { display: block; height: 100%; border-radius: 4px; }
+.goal-text { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.tile-zoomed .tile-kpi-spark { height: 56px; flex-basis: 56px; }
+.prog-list { display: flex; flex-direction: column; gap: 7px; padding: 4px 0; }
+.prog-row { display: grid; grid-template-columns: minmax(48px, 30%) 1fr auto; align-items: center; gap: 8px; font-size: 12px; cursor: pointer; border-radius: 4px; padding: 1px 2px; transition: opacity 0.12s var(--ease); }
+.prog-row:hover { background: var(--surface-sunken); }
+.prog-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.prog-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.prog-track { height: 8px; border-radius: 4px; background: var(--surface-sunken); overflow: hidden; }
+.prog-fill { display: block; height: 100%; border-radius: 4px; }
+.prog-pct { min-width: 4.2em; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text); }
+.prog-active { background: var(--accent-soft-strong); }
+.prog-dimmed { opacity: 0.45; }
+.prog-legend { margin: 4px 0 0; font-size: 10.5px; color: var(--text-muted); }
+.tile-zoomed .prog-row { font-size: 14px; }
 
 /* Table plate (type 'table') : une table HTML dans `.tile-chart` (qui défile, voir plus haut), en-tête collé en haut,
    un bouton par en-tête pour trier. Les nombres s'alignent à droite en chiffres de largeur fixe. */

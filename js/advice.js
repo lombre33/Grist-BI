@@ -78,6 +78,7 @@
     // Hors TILE_TYPES : aucune agrégation (texte : aucune donnée ; table : les lignes telles quelles), donc ni
     // miniature ni avertissement ; seule la table préremplit ses colonnes (`defaultsForType`).
     table: 'advice.use.table',
+    progress: 'advice.use.progress',
     text: 'advice.use.text'
   };
 
@@ -685,6 +686,7 @@
       case 'treemap':
       case 'waterfall':
       case 'wordcloud':
+      case 'progress': // une barre par catégorie : la même dimension qu'un treemap (l'objectif se saisit)
         out.dimension = dimensionFallback;
         if (type === 'wordcloud') {
           const text = ctx.profiles.find((p) => p.role === 'freeText') || ctx.profiles.find((p) => p.kind === 'text' && p.role !== 'constant');
