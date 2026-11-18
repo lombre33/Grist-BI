@@ -979,6 +979,7 @@
     if (mode === 'read') closeTilePanel(false); // on ne laisse ni panneau ouvert ni édition en cours derrière un mode qui les masque
     GristBI.appbar.closePopovers();
     applyMode();
+    fitPageTabs(); // le mode Édition ajoute des boutons à la barre
   }
   function autoMode() {
     const hasTiles = store.getState().pages.some((p) => p.tiles && p.tiles.length > 0);
@@ -1146,6 +1147,7 @@
     setTableDependentControlsEnabled(Boolean(currentTableId) && dashboardReady);
     renderBookmarks(state);
     renderConnectionStatus(state);
+    fitPageTabs();
 
     // `pages`/`currentPageId`/`bookmarks` ne changent de référence/valeur que via leurs actions
     // dédiées (state.js) : un rendu déclenché par un simple rafraîchissement de données (setRows) ne
@@ -1184,7 +1186,32 @@
   function updateTabsOverflow() {
     pageTabsEl.classList.toggle('overflows', pageTabsEl.scrollWidth > pageTabsEl.clientWidth + 1);
   }
-  window.addEventListener('resize', updateTabsOverflow);
+  // Les onglets sont la navigation : le reste de la barre s'allège avant qu'un onglet ne soit rogné (bug réel n°51 : « Segments » coupé à
+  // 1100 et 1200 px dès qu'une vue était suivie ; avec 4 pages, réduit à une lettre). Deux paliers, essayés dans l'ordre à partir de la
+  // barre complète, et gardés seulement s'ils servent :
+  // 1. `bar-names-hidden` : le nom de la vue suivie écrit dans le bouton Vues (un rappel : la pastille « Vue » de la rangée des filtres et
+  //    le nom accessible du bouton le disent aussi) ;
+  // 2. `bar-labels-hidden` : les libellés des boutons (icônes seules, comme au-dessous de 900 px) — SEULEMENT si les onglets tiennent alors ;
+  //    sinon (beaucoup de pages) les boutons gardent leur texte et les onglets défilent, avec le fondu de bord (`overflows`).
+  // À rappeler après tout ce qui change la largeur de la barre : `render()` en dernier (le nom de la vue est posé APRÈS le rendu des onglets,
+  // d'où le fondu qui restait faux), le changement de mode ou de langue, la taille de la fenêtre, et un ResizeObserver en filet de sécurité.
+  const appbarEl = document.getElementById('appbar');
+  const tabsClipped = () => pageTabsEl.scrollWidth > pageTabsEl.clientWidth + 1;
+  function fitPageTabs() {
+    if (appbarEl) {
+      GristBI.appbar.fitTabsLevel(tabsClipped, (level) => {
+        appbarEl.classList.toggle('bar-names-hidden', level === 1);
+        appbarEl.classList.toggle('bar-labels-hidden', level === 2);
+      }, !viewsActiveNameEl.hidden);
+    }
+    updateTabsOverflow();
+    // L'onglet actif doit rester visible dans une liste qui défile (la largeur disponible vient peut-être de changer).
+    const activeTab = pageTabsEl.querySelector('.page-tab.active');
+    if (activeTab && typeof activeTab.scrollIntoView === 'function') activeTab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+  window.addEventListener('resize', fitPageTabs);
+  // Différé d'une image : modifier la barre dans le rappel d'un ResizeObserver qui l'observe ferait « loop completed with undelivered notifications ».
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => requestAnimationFrame(fitPageTabs)).observe(pageTabsEl);
   let restoreTabFocus = false; // le rendu qui suit une flèche doit rendre le focus à l'onglet actif
   function renderPageTabs(pages, currentPageId) {
     pageTabsEl.innerHTML = pages.map((p) => {
@@ -1222,7 +1249,6 @@
       restoreTabFocus = false;
       if (activeTab) activeTab.focus();
     }
-    updateTabsOverflow();
     for (const removeBtn of pageTabsEl.querySelectorAll('.page-tab-remove')) {
       removeBtn.addEventListener('click', async (e) => {
         e.stopPropagation();

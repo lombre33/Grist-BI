@@ -3331,6 +3331,22 @@ Dernier lot de l'audit : tout ce qui, hors des nombres eux-mêmes, rendait une t
 - **Testé** : Node (noms reconnus/épargnés, ordre des mesures pour 4 ordres de colonnes, montant à retours/cases vides, « Prix total », prix seul moyenné, suggestions et
   préremplissage) ; Playwright contre le vrai `index.html` + `grist-stub.js` sur la démo v3 anonymisée. **Pas testé dans un vrai Grist.**
 
+### Correctifs avant l'alpha — onglets de page rognés avec une vue suivie (18/11/2026)
+
+- **Défaut** (bug réel n°51, TEST_PROTOCOL.md) : quand une vue est suivie, son nom s'écrit dans le bouton Vues (186 px au lieu de 52). Les onglets de page sont le seul élément de la barre qui
+  rétrécit : « Segments » était coupé à 1100 et 1200 px (3 pages), et réduit à une lettre avec 4 pages. En plus, le fondu de bord qui dit « il y a d'autres onglets » restait faux, car
+  `renderPageTabs` le calculait AVANT que `renderBookmarks` ne pose le nom de la vue.
+- **Décision** : les onglets sont la navigation, le reste de la barre s'allège avant eux. Deux paliers, essayés dans l'ordre : (1) le nom de la vue disparaît du bouton (rien n'est perdu : la
+  pastille « Vue » de la rangée des filtres, le point « modifiée » du bouton et son nom accessible le disent aussi) ; (2) les libellés des boutons disparaissent (icônes seules, comme sous 900 px),
+  seulement si les onglets tiennent alors. Un palier qui ne suffit pas est abandonné : avec beaucoup de pages les boutons gardent leur texte et les onglets défilent, avec le fondu, maintenant juste.
+  Le choix est une fonction pure (`GristBI.appbar.fitTabsLevel`) qui part toujours de la barre complète : le résultat ne dépend que des largeurs, jamais de l'état précédent (pas de
+  clignotement entre deux paliers).
+- **Mesuré** (démo v3, vue « Focus En ligne » suivie) : onglets entiers à 1000, 1100, 1200 et 1400 px, en Lecture comme en Édition, en français comme en anglais, y compris en redimensionnant
+  la fenêtre en direct ; le nom de la vue revient à 1400 px. Cas qui reste rogné, mais signalé par le fondu : 4 pages en mode Édition à 1200 px (231 px de place pour 431).
+- **Pas fait, à décider** : un menu « … » pour les pages en trop (comme les onglets d'un navigateur) ; réduire la pastille de la table connectée (223 px à 1200 px) avant les libellés.
+- **Testé** : Node (paliers, 2 x 41 besoins de largeur, ordre dans `render()`) ; Playwright contre le vrai `index.html` + `grist-stub.js`. **Pas testé dans un vrai Grist** (la largeur réelle du
+  panneau d'un widget Grist n'est pas celle d'une fenêtre : le redimensionnement passe par l'événement `resize` de l'iframe, supposé).
+
 ### Correctifs avant l'alpha — légende du radar (18/11/2026)
 
 - **Défaut** (bug réel n°50, TEST_PROTOCOL.md) : un radar à deux séries (élève et moyenne du groupe) a une légende ; dans une tuile normale (zone de dessin 283 x 162 px) elle recouvrait
