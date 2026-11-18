@@ -121,7 +121,7 @@
       fr: 'Fond dégradé, cartes en verre dépoli translucide, barres en dégradé : façon interfaces modernes.',
       en: 'Gradient backdrop, translucent frosted-glass cards, gradient bars: like modern app interfaces.'
     },
-    'style.options.title': { fr: 'Options (tous les styles)', en: 'Options (every style)' },
+    'style.options.title': { fr: 'Options de la disposition « Grille »', en: 'Options for the “Grid” layout' },
     'style.option.hideBorders': { fr: 'Tuiles sans bordure apparente', en: 'Tiles without a visible border' },
     'style.option.hideBorders.desc': {
       fr: 'Plus de trait de contour : les tuiles se distinguent par leur fond et leur ombre.',
@@ -131,6 +131,34 @@
     'style.option.uniform.desc': {
       fr: 'Une seule surface : les tuiles prennent le fond de la page, se touchent, sans ombre ni coins arrondis.',
       en: 'One single surface: tiles take the page background and touch each other, with no shadow or rounded corners.'
+    },
+    // --- Agencement d'une page (js/layouts.js, css/layouts.css) ---
+    'layout.title': { fr: 'Disposition de la page', en: 'Page layout' },
+    'layout.hint': {
+      fr: 'Où se posent les tuiles de « {page} ». Chaque page a la sienne, enregistrée avec elle. Sur une zone étroite, la grille reprend.',
+      en: 'Where the tiles of “{page}” are placed. Each page has its own, saved with it. On a narrow area the grid takes over.'
+    },
+    'layout.grid.name': { fr: 'Grille', en: 'Grid' },
+    'layout.grid.desc': { fr: 'Des cartes de même taille côte à côte : le rendu d’origine.', en: 'Equal cards side by side: the original layout.' },
+    'layout.report.name': { fr: 'Rapport', en: 'Report' },
+    'layout.report.desc': {
+      fr: 'Sans cartes : les chiffres en tête, deux graphiques par ligne, un filet fin au-dessus de chaque bloc.',
+      en: 'No cards: figures first, two charts per row, a thin rule above each block.'
+    },
+    'layout.board.name': { fr: 'Planche', en: 'Board' },
+    'layout.board.desc': {
+      fr: 'Une seule surface arrondie, un bandeau de chiffres teinté, des filets entre les cellules.',
+      en: 'One rounded surface, a tinted band of figures, rules between the cells.'
+    },
+    'layout.spotlight.name': { fr: 'Vedette', en: 'Spotlight' },
+    'layout.spotlight.desc': {
+      fr: 'Les chiffres en tête, un grand graphique en vedette (le premier en barres ou en courbe), le reste autour.',
+      en: 'Figures first, one large lead chart (the first bar or line chart), the rest around it.'
+    },
+    'layout.rail.name': { fr: 'Rail', en: 'Rail' },
+    'layout.rail.desc': {
+      fr: 'Une colonne de chiffres et de jauges à gauche, les graphiques à droite.',
+      en: 'A column of figures and gauges on the left, the charts on the right.'
     },
     'settings.credits.title': { fr: 'Crédits', en: 'Credits' },
     'settings.credits.author': { fr: 'Auteur', en: 'Author' },

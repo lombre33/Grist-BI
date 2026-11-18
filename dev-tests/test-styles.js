@@ -844,7 +844,7 @@ const ALL = ['standard'].concat(NEW_STYLES);
     for (const file of ['index.html', path.join('dev-tests', 'harness.html')]) {
       const html = read(file);
       for (const id of ['settings-opt-hideBorders', 'settings-opt-uniform']) assert.ok(html.includes(`<input type="checkbox" id="${id}">`), `${file} : case ${id}`);
-      assert.ok(html.indexOf('settings-opt-uniform') > html.indexOf('id="settings-style-section"') && html.indexOf('settings-opt-uniform') < html.indexOf('settings.credits.title'), `${file} : les options sont dans la section Style, avant les Crédits`);
+      assert.ok(html.indexOf('settings-opt-uniform') > html.indexOf('id="settings-style-section"') && html.indexOf('settings-opt-uniform') < html.indexOf('settings.credits.title'), `${file} : les options (désormais sous le choix de disposition, dont elles ne valent que pour la grille) précèdent les Crédits`);
     }
     assert.ok(/store\.setDashStyleOptions\(Object\.assign\(\{\}, store\.getState\(\)\.dashStyleOptions, \{ \[key\]: input\.checked \}\)\)/.test(main), 'une case coche/décoche son option dans le store');
     // Les trois listes de clés (js/styles.js, js/state.js, js/grist-api.js) ne doivent jamais diverger.

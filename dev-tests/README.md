@@ -36,6 +36,20 @@ translucide, règles des deux options), le réglage du store (style et options),
 `js/grist-api.js` (faux `grist`) et le câblage d'`index.html`/`harness.html`. Le rendu à l'écran (cartes, graphiques,
 menu Réglages, cadre isolé) se rejoue dans un navigateur : voir `HYPOTHESES.md`.
 
+## Dispositions de page (Node, aucune dépendance)
+
+```
+node dev-tests/test-layouts.js
+```
+
+`js/layouts.js` (registre et seuils de largeur, largeurs qui remplissent toujours la ligne, plan de chaque disposition pour 0 à 13 chiffres et
+0 à 14 graphiques, vedette, Rail avec ou sans colonne de gauche, ordre affiché, cible des flèches ◀ ▶, miniatures), le réglage PAR PAGE du store
+(`setPageLayout`, configuration hostile assainie par `setPages`), l'aller-retour de la configuration par le vrai `js/grist-api.js` (faux `grist`),
+`css/layouts.css` (trois seuils `@container` égaux à `minWidthOf`, `--lu` = 28 px, règles communes de 640 et de 900 px identiques, jamais de
+`min-height`, contrastes AA) et le câblage d'`index.html`/`harness.html`. Le rendu à l'écran (les quatre dispositions en clair et en sombre, avec
+chaque style, les seuils de largeur, la stabilité des hauteurs, le mode Édition, la tuile agrandie, le cadre isolé) se rejoue dans un navigateur :
+voir `HYPOTHESES.md`. Une feuille `harness.html` à jour demande aussi son `<link>` dans l'en-tête (`sync-harness.js` ne régénère que le corps).
+
 ## Harness visuelle (navigateur, sans document Grist)
 
 `dev-tests/harness.html` charge les mêmes fichiers `index.html`/`css`/`js` que le widget réel

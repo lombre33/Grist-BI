@@ -40,6 +40,7 @@
 </script>
 <link rel="stylesheet" href="../css/style.css" />
 <link rel="stylesheet" href="../css/dash-styles.css" />
+<link rel="stylesheet" href="../css/layouts.css" />
 <link rel="stylesheet" href="../kit/css/windows.css" />
 </head>
 <body data-mode="read">
@@ -240,6 +241,12 @@
         <h4 id="settings-style-title" data-i18n="style.title">Style des tuiles</h4>
         <p class="settings-hint" data-i18n="style.hint">Change l'apparence de toutes les tuiles de ce tableau de bord. Enregistré avec lui.</p>
         <div id="settings-style-options" class="style-options" role="radiogroup" aria-labelledby="settings-style-title"></div>
+      </div>
+      
+      <div class="settings-section edit-only" id="settings-layout-section">
+        <h4 id="settings-layout-title" data-i18n="layout.title">Disposition de la page</h4>
+        <p class="settings-hint" id="settings-layout-hint"></p>
+        <div id="settings-layout-options" class="style-options layout-options" role="radiogroup" aria-labelledby="settings-layout-title"></div>
         
         <div class="style-extra" role="group" aria-labelledby="settings-style-extra-title">
           <p class="style-extra-title" id="settings-style-extra-title" data-i18n="style.options.title">Options (tous les styles)</p>
@@ -798,6 +805,7 @@
   <script src="../js/data.js"></script>
   <script src="../js/format.js"></script>
   <script src="../js/styles.js"></script>
+  <script src="../js/layouts.js"></script>
   <script src="../js/pbix-layout.js"></script>
   <script src="../js/csv-import.js"></script>
   <script src="../js/advice.js"></script>

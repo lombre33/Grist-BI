@@ -135,8 +135,17 @@ réellement (voir HYPOTHESES.md).
 - **Style des tuiles** (Réglages, en Édition) : un réglage du tableau de bord, enregistré avec lui, qui change d'un coup l'apparence de TOUTES les
   cartes et de leurs graphiques — Standard (le rendu d'origine, par défaut), Fluide/moderne, Éditorial, Console (toujours sombre, façon console de
   supervision) et Verre dépoli (fond dégradé, cartes translucides, barres en dégradé). Deux options valent pour TOUS les styles, Standard compris :
-  « Tuiles sans bordure apparente » et « Tableau de bord uni » (une seule surface : les tuiles prennent le fond de la page et se touchent). Clair et
-  sombre, palettes de tuile, formats de nombres et exports inchangés ; une ambiance GFS garde la main sur les couleurs de l'interface.
+  « Tuiles sans bordure apparente » et « Tableau de bord uni » (une seule surface : les tuiles prennent le fond de la page et se touchent) — elles
+  valent pour la disposition « Grille » (voir ci-dessous). Clair et sombre, palettes de tuile, formats de nombres et exports inchangés ; une
+  ambiance GFS garde la main sur les couleurs de l'interface.
+- **Disposition de la page** (Réglages, en Édition) : où se posent les tuiles, **réglée page par page** et enregistrée avec la page, en plus du style.
+  Cinq choix : **Grille** (des cartes de même taille côte à côte, le rendu d'origine, par défaut), **Rapport** (sans cartes : les chiffres en tête, deux
+  graphiques par ligne, un filet fin au-dessus de chaque bloc), **Planche** (une seule surface arrondie, bandeau de chiffres teinté, filets entre les
+  cellules), **Vedette** (les chiffres en tête, un grand graphique — le premier en barres, courbe ou combo — et deux plus petits à côté, le reste en
+  lignes de trois) et **Rail** (une colonne de chiffres et de jauges à gauche, les graphiques à droite). Les chiffres passent devant les graphiques ;
+  une dernière ligne incomplète se partage la largeur ; l'ordre enregistré des tuiles ne change pas (les flèches ◀ ▶ échangent une tuile avec la
+  suivante du même groupe). Sur une zone étroite (moins de 640, 900 ou 1 040 px de large selon la disposition, panneau « Ajouter » ouvert compris),
+  la grille d'origine reprend : jamais de graphiques écrasés.
 - **Identité Grist Factory** : logo discret dans le bandeau du haut (juste à droite de « Réglages »)
   et panneau « Crédits » (Auteur / Site / Licence / Bio) accessible depuis ce même bouton — cadrage
   repris de [Publipostage+](https://github.com/lombre33/publipostagegrist), même éditeur pour tous
@@ -164,6 +173,7 @@ l'API widget Grist ne proposant pas de niveau intermédiaire entre "une seule ta
 
 - `node dev-tests/test-data.js` — logique pure (agrégation, filtrage, store), sans navigateur.
 - `node dev-tests/test-styles.js` — style global des tuiles (registre, passe ECharts, CSS clair/sombre, configuration).
+- `node dev-tests/test-layouts.js` — dispositions de page (plan, ordre affiché, flèches, store par page, configuration, CSS et seuils de largeur).
 - `dev-tests/harness.html` — rendu visuel dans un navigateur avec un faux `window.grist` et des
   données d'exemple, sans document Grist réel. Détails dans `dev-tests/README.md`.
 

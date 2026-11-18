@@ -20,6 +20,9 @@
   const DEFAULT_DASH_STYLE = 'standard';
   const DASH_STYLE_ID = /^[a-z][a-z0-9-]{0,31}$/;
   const DASH_STYLE_OPTION_KEYS = ['hideBorders', 'uniform']; // les mêmes que js/styles.js:OPTION_KEYS (un test Node le vérifie)
+  // Agencement d'une PAGE (js/layouts.js) : même forme d'id que le style. Absent = la grille d'origine ; jamais écrit pour elle.
+  const PAGE_LAYOUT_ID = /^[a-z][a-z0-9-]{0,31}$/;
+  const DEFAULT_PAGE_LAYOUT = 'grid';
 
   // Un id de tuile est lu depuis la configuration (`BI_Dashboard_Config`, une ligne que d'autres
   // personnes du document peuvent avoir écrite : consigne GFS 005) puis reposé dans du balisage
@@ -54,6 +57,9 @@
     const out = pages.map((page) => {
       const tiles = Array.isArray(page && page.tiles) ? page.tiles : [];
       let pageChanged = !Array.isArray(page && page.tiles);
+      // `layout` vient de la configuration comme les ids de tuile : seul un id bien formé est gardé (il finit dans un attribut du DOM).
+      const badLayout = page && typeof page === 'object' && 'layout' in page && !(typeof page.layout === 'string' && PAGE_LAYOUT_ID.test(page.layout));
+      if (badLayout) pageChanged = true;
       const safeTiles = tiles.map((tile) => {
         if (!tile || typeof tile !== 'object') { pageChanged = true; return null; }
         const id = safeTileId(tile.id, used);
@@ -63,7 +69,9 @@
       }).filter(Boolean);
       if (!pageChanged && safeTiles.length === tiles.length) return page;
       changed = true;
-      return Object.assign({}, page, { tiles: safeTiles });
+      const fixed = Object.assign({}, page, { tiles: safeTiles });
+      if (badLayout) delete fixed.layout;
+      return fixed;
     });
     return changed ? out : pages;
   }
@@ -169,7 +177,7 @@
       // ou drill-downs actuels ne sont plus ceux de cette vue (voir activeBookmarkId plus haut).
       const active = activeBookmarkId && bookmarks.find((b) => b.id === activeBookmarkId);
       return {
-        rows, pages, currentPageId, tiles: currentPage().tiles, activeFilters, advancedFilters, drillIns, bookmarks, blend, dashStyle, dashStyleOptions, comments,
+        rows, pages, currentPageId, tiles: currentPage().tiles, pageLayout: currentPage().layout || DEFAULT_PAGE_LAYOUT, activeFilters, advancedFilters, drillIns, bookmarks, blend, dashStyle, dashStyleOptions, comments,
         zoomedTileIds: currentPage().tiles.map((t) => t.id).filter((id) => zoomedTileIds.includes(id)),
         activeBookmarkId: active ? active.id : null,
         activeBookmarkModified: active ? !sameSnapshot(active, { activeFilters, advancedFilters, drillIns }) : false
@@ -212,6 +220,24 @@
 
     function renamePage(pageId, name) {
       pages = pages.map((p) => (p.id === pageId ? Object.assign({}, p, { name }) : p));
+      notify();
+    }
+
+    // Agencement d'une page (js/layouts.js) : un réglage PAR PAGE, enregistré avec elle. La grille d'origine n'écrit RIEN (le champ est retiré :
+    // une page d'avant ce réglage reste identique octet pour octet) ; un id mal formé est refusé ; un id bien formé mais inconnu de ce widget
+    // (version future) est gardé tel quel. Aucune nouvelle référence si rien ne change : main.js:render() y verrait une sauvegarde à faire.
+    function setPageLayout(pageId, layoutId) {
+      const id = layoutId == null ? DEFAULT_PAGE_LAYOUT : layoutId;
+      if (typeof id !== 'string' || !PAGE_LAYOUT_ID.test(id)) return;
+      const page = pages.find((p) => p.id === pageId);
+      if (!page) return;
+      if ((page.layout || DEFAULT_PAGE_LAYOUT) === id) return;
+      pages = pages.map((p) => {
+        if (p.id !== pageId) return p;
+        const next = Object.assign({}, p);
+        if (id === DEFAULT_PAGE_LAYOUT) delete next.layout; else next.layout = id;
+        return next;
+      });
       notify();
     }
 
@@ -286,10 +312,16 @@
     // d'affichage, au sein de la page courante. No-op silencieux si déjà en bout de liste (les
     // boutons ◂/▸ sont désactivés côté UI dans ce cas, mais la fonction reste sûre si appelée
     // directement).
-    function moveTile(id, direction) {
+    // `targetId` (facultatif) : l'id de la tuile avec laquelle échanger, quand ce n'est pas la voisine directe — dans un agencement
+    // (js/layouts.js:moveTarget), une tuile ne dépasse que les tuiles de son groupe, sinon rien ne changerait à l'écran. Sans lui : la voisine.
+    function moveTile(id, direction, targetId) {
       const tiles = currentPage().tiles;
       const idx = tiles.findIndex((t) => t.id === id);
-      const target = idx + direction;
+      let target = idx + direction;
+      if (targetId != null) {
+        target = tiles.findIndex((t) => t.id === targetId);
+        if (target < 0 || (direction < 0 ? target >= idx : target <= idx)) return;
+      }
       if (idx < 0 || target < 0 || target >= tiles.length) return;
       const next = tiles.slice();
       const tmp = next[idx];
@@ -476,7 +508,7 @@
     return {
       getState, subscribe, setRows,
       setPages, setCurrentPage, addPage, renamePage, removePage,
-      addTile, removeTile, updateTile, moveTile,
+      addTile, removeTile, updateTile, moveTile, setPageLayout,
       toggleFilter, toggleRangeFilter, clearFilter, setAdvancedFilter, clearAdvancedFilter, drillInto, drillUp,
       setBookmarks, saveBookmark, applyBookmark, updateBookmark, leaveBookmark, removeBookmark, setBlend, setDashStyle, setDashStyleOptions,
       toggleZoom, clearZoom,
