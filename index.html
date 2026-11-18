@@ -10,9 +10,11 @@
      script, que le navigateur refuse d'exécuter (X-Content-Type-Options: nosniff) - la bibliothèque
      ne se charge jamais et les tuiles graphiques restent vides sans erreur explicite. -->
 <script src="js/vendor/echarts/echarts.min.js"></script>
-<!-- SheetJS (js/vendor/xlsx/, Apache-2.0) n'est PLUS chargé ici (consigne GFS 013, 10/11/2026) :
+<!-- ExcelJS 4.4.0 (js/vendor/exceljs/, MIT) n'est PAS chargé ici (consigne GFS 013, 10/11/2026) :
      il ne sert qu'à l'export Excel, chargé paresseusement par js/export.js au premier clic sur
-     "Exporter en Excel" plutôt qu'à l'ouverture du widget — même origine, aucun CDN. -->
+     "Exporter en Excel" plutôt qu'à l'ouverture du widget — même origine, aucun CDN. Il a remplacé
+     SheetJS 0.18.5 le 18/11/2026 (consigne GFS 017 : deux avis de sécurité, corrigés seulement à
+     cdn.sheetjs.com) ; c'est le même fichier que celui que GFS sert à Publipostage+. -->
 <!-- DuckDB-WASM (js/vendor/duckdb/, MIT) : moteur SQL, fondation Tier 2 (voir ROADMAP.md/
      HYPOTHESES.md) — chargé PARESSEUX uniquement (js/duckdb-engine.js), jamais au démarrage.
      duckdb-browser.mjs importe "apache-arrow" (Apache-2.0) et "flatbuffers" (Apache-2.0) via des
@@ -465,6 +467,7 @@
         <option value="wordcloud" data-i18n="tileForm.type.wordcloud">Nuage de mots</option>
         <option value="kpi" data-i18n="tileForm.type.kpi">Carte KPI</option>
         <option value="gauge" data-i18n="tileForm.type.gauge">Jauge</option>
+        <option value="progress" data-i18n="tileForm.type.progress">Progression</option>
         <option value="pivot" data-i18n="tileForm.type.pivot">Tableau croisé</option>
         <option value="table" data-i18n="tileForm.type.table">Table</option>
         <option value="text" data-i18n="tileForm.type.text">Texte</option>
@@ -526,6 +529,24 @@
           <option value="min" data-i18n="tileForm.agg.min">Min</option>
           <option value="max" data-i18n="tileForm.agg.max">Max</option>
         </select>
+      </div>
+      <div class="field" id="tile-target-field" hidden>
+        <label for="tile-target" data-i18n="tileForm.target.label">Objectif (valeur)</label>
+        <input type="number" id="tile-target" min="0" step="any" />
+      </div>
+      <div class="field" id="tile-target-column-field" hidden>
+        <label for="tile-target-column" data-i18n="tileForm.targetColumn.label">Objectif (colonne, facultatif)</label>
+        <div class="combobox">
+          <input type="text" id="tile-target-column" class="combobox-input" />
+          <ul class="combobox-list" hidden></ul>
+        </div>
+        <p class="field-hint" data-i18n="tileForm.target.hint">Une colonne d'objectifs est agrégée comme la mesure et prend le pas sur la valeur saisie.</p>
+      </div>
+      <div class="field" id="tile-thresholds-field" hidden>
+        <label for="tile-good-pct" data-i18n="tileForm.goodPct.label">Vert à partir de (% de l'objectif)</label>
+        <input type="number" id="tile-good-pct" value="90" min="0" step="any" />
+        <label for="tile-warn-pct" data-i18n="tileForm.warnPct.label">Orange à partir de (% de l'objectif)</label>
+        <input type="number" id="tile-warn-pct" value="60" min="0" step="any" />
       </div>
       <div class="field" id="tile-gauge-min-field" hidden>
         <label for="tile-gauge-min" data-i18n="tileForm.gaugeMin.label">Min</label>
@@ -592,6 +613,12 @@
                 <ul class="combobox-list" hidden></ul>
               </div>
             </div>
+            <div class="field field-checkbox" id="tile-sparkline-field" hidden>
+              <label for="tile-sparkline">
+                <input type="checkbox" id="tile-sparkline" />
+                <span data-i18n="tileForm.sparkline.label">Tracer la courbe de la tendance</span>
+              </label>
+            </div>
             <div class="field" id="tile-radar-entity-column-field" hidden>
               <label for="tile-radar-entity-column" data-i18n="tileForm.radarEntity.columnLabel">Comparer une valeur (colonne)</label>
               <div class="combobox">
@@ -639,6 +666,32 @@
                 <option value="gray" data-i18n="tileForm.palette.gray">Dégradé gris (impression noir et blanc)</option>
               </select>
               <div class="palette-swatch" id="tile-palette-swatch" aria-hidden="true"></div>
+            </div>
+            <div class="field" id="tile-numfmt-field" hidden>
+              <label for="tile-numfmt" data-i18n="tileForm.numFormat.label">Format des nombres</label>
+              <select id="tile-numfmt">
+                <option value="auto" data-i18n="tileForm.numFormat.auto">Automatique (lisible)</option>
+                <option value="column" data-i18n="tileForm.numFormat.column">Comme dans la colonne</option>
+                <option value="custom" data-i18n="tileForm.numFormat.custom">Personnalisé</option>
+              </select>
+              <div class="numfmt-custom" id="tile-numfmt-custom" hidden>
+                <label for="tile-numfmt-decimals" data-i18n="tileForm.numFormat.decimals">Décimales</label>
+                <select id="tile-numfmt-decimals">
+                  <option value="auto" data-i18n="tileForm.numFormat.decimalsAuto">Selon la valeur</option>
+                  <option value="0">0</option>
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                  <option value="4">4</option>
+                  <option value="5">5</option>
+                  <option value="6">6</option>
+                </select>
+                <label class="numfmt-compact" for="tile-numfmt-compact">
+                  <input type="checkbox" id="tile-numfmt-compact" />
+                  <span data-i18n="tileForm.numFormat.compact">Notation compacte (1,2 M)</span>
+                </label>
+              </div>
+              <p class="field-hint" id="tile-numfmt-hint" hidden></p>
             </div>
             <div class="field field-checkbox" id="tile-horizontal-field" hidden>
               <label for="tile-horizontal">

@@ -10,7 +10,7 @@ que chaque fichier listé ici correspond encore à son empreinte : changer une b
 | Dossier | Paquet npm | Version | Licence | Fichier suivi | SHA-256 |
 |---|---|---|---|---|---|
 | `echarts/` | `echarts` | 6.1.0 | Apache-2.0 | `dist/echarts.min.js` | `b66b25aeb4df84e33199dc21694014d336d222cbd9deb0e5a7c14bd6aa0d0fd0` |
-| `xlsx/` | `xlsx` (SheetJS) | 0.18.5 | Apache-2.0 | `dist/xlsx.full.min.js` | `c9506197caf809a075b6dee1da0d36fb19da7158ffe8a88e7b0c96c5d8623c99` |
+| `exceljs/` | `exceljs` | 4.4.0 | MIT | `dist/exceljs.min.js` | `7e49da68588e250dbb8bba190d2caa8ab3787cc0284bda1d8b2f805c4df742c9` |
 | `duckdb/` | `@duckdb/duckdb-wasm` | 1.32.0 | MIT | `dist/duckdb-browser.mjs` | `4f8c0bb3c23d1ec457a451cc27418597b9a40dd772cceacc436a2cb7b9a49c18` |
 | `duckdb/` | `@duckdb/duckdb-wasm` | 1.32.0 | MIT | `dist/duckdb-eh.wasm` | `4c221bfa59c11f24dbd750e70c90b9252eca6eec5633936e6a2ec766e55fd879` |
 | `duckdb/` | `@duckdb/duckdb-wasm` | 1.32.0 | MIT | `dist/duckdb-browser-eh.worker.js` | `f8ab72b6b90b3ad83077d47426d4a99d5d9a4c7e07cba1a2be37d655adc7c1ab` |

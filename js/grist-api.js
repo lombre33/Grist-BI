@@ -777,6 +777,46 @@
   }
 
   // Lit une table déjà existante (table de travail choisie via le sélecteur, voir main.js, OU la
+  // Format des nombres « comme dans la colonne » (lot 3 de l'audit de lisibilité, 18/11/2026) : lit, pour
+  // `tableId`, le TYPE et les `widgetOptions` (JSON texte : numMode, currency, decimals, maxDecimals,
+  // numSign...) de chaque colonne dans `_grist_Tables_column`, et les réglages du DOCUMENT (`locale`,
+  // `currency`) dans `documentSettings` de `_grist_DocInfo`. Même mécanisme de lecture que
+  // `realDateColumnIds` (tables système lisibles avec l'accès `full`) ; le JSON n'est PAS interprété ici
+  // (`GristBI.format.parseWidgetOptions` s'en charge, testé sous Node). Repli sur `{columns: {}, docSettings:
+  // null}` en cas d'échec : le format de chaque tuile retombe alors sur Automatique, jamais d'erreur.
+  // La forme exacte de ces deux tables n'a PAS été vérifiée sur un vrai document Grist depuis cette session.
+  async function readColumnFormats(tableId) {
+    const empty = { columns: {}, docSettings: null };
+    try {
+      const tablesMeta = await grist.docApi.fetchTable('_grist_Tables');
+      const columnsMeta = await grist.docApi.fetchTable('_grist_Tables_column');
+      const rowIdx = (tablesMeta.tableId || []).indexOf(tableId);
+      if (rowIdx < 0) return empty;
+      const parentRowId = tablesMeta.id[rowIdx];
+      const columns = {};
+      const n = (columnsMeta.id || []).length;
+      for (let i = 0; i < n; i++) {
+        if (columnsMeta.parentId[i] !== parentRowId) continue;
+        const colId = columnsMeta.colId[i];
+        if (!colId || /^gristHelper_/.test(colId)) continue;
+        columns[colId] = {
+          type: columnsMeta.type[i] || '',
+          widgetOptions: (columnsMeta.widgetOptions || [])[i] || ''
+        };
+      }
+      let docSettings = null;
+      try {
+        const info = await grist.docApi.fetchTable('_grist_DocInfo');
+        const raw = (info.documentSettings || [])[0];
+        docSettings = (GristBI.format && GristBI.format.parseDocSettings) ? GristBI.format.parseDocSettings(raw) : null;
+      } catch (e) { /* réglages du document illisibles : les options de colonne restent utilisables */ }
+      return { columns, docSettings };
+    } catch (e) {
+      console.warn(`[GristBI] lecture du format des colonnes (_grist_Tables_column) impossible pour "${tableId}" — format des nombres Automatique`, e);
+      return empty;
+    }
+  }
+
   // 1re table du document connectée automatiquement au démarrage — voir main.js:bootstrap, depuis
   // que ce widget ne crée plus lui-même aucune table de données, CLAUDE.md §1/§7) — ne crée ni ne
   // remplit jamais rien : la table doit déjà exister (elle vient de `listAvailableTables`), sinon
@@ -817,6 +857,6 @@
   GristBI.api = {
     init, loadConfig, saveConfig, loadConfigById, blankConfig,
     listAvailableTables, loadTable, loadOrCreateComments, addComment, refColumnsForTable,
-    getCurrentUserEmail, createTableFromRows
+    getCurrentUserEmail, createTableFromRows, readColumnFormats
   };
 })(window);

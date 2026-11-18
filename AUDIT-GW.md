@@ -47,7 +47,7 @@ bougent peu tant que des occurrences durables (le code tiers, la taille des fich
   ciblait la balise.
 - **F-GUIDE-02** : [`SECURITY.md`](SECURITY.md) (comment signaler une faille, sans issue publique).
 - **E-DEP-02** (traçabilité) : [`js/vendor/SOURCES.md`](js/vendor/SOURCES.md) — paquet, version et SHA-256 de chaque bibliothèque
-  embarquée, **comparés** aux paquets npm (`echarts@6.1.0`, `xlsx@0.18.5`, `@duckdb/duckdb-wasm@1.32.0`, `apache-arrow@17.0.0`,
+  embarquée, **comparés** aux paquets npm (`echarts@6.1.0`, `exceljs@4.4.0`, `@duckdb/duckdb-wasm@1.32.0`, `apache-arrow@17.0.0`,
   `tslib@2.8.1`, `flatbuffers`). `dev-tests/test-audit.js` vérifie que le tableau dit vrai. L'outil ne lit que l'en-tête de chaque
   fichier : ses 136 constats E-DEP-02 restent, sans effet sur la note (une règle mineure coûte au plus 7,5 points).
 

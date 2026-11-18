@@ -82,7 +82,7 @@ console.log('OK SECURITY.md');
     const base = path.posix.basename(file);
     const candidates = [path.join(root, 'js/vendor', dir, file), path.join(root, 'js/vendor', dir, base)];
     const found = candidates.find((c) => fs.existsSync(c));
-    if (!found) return;   // bibliothèque retirée depuis (par exemple SheetJS) : la ligne est à enlever, pas un échec ici
+    if (!found) return;   // bibliothèque retirée depuis : la ligne est à enlever, pas un échec ici
     assert.strictEqual(crypto.createHash('sha256').update(fs.readFileSync(found)).digest('hex'), sha, 'js/vendor/' + dir + ' ' + base + ' : empreinte différente de SOURCES.md');
     checked++;
   });

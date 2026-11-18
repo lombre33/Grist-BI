@@ -804,7 +804,7 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 - [x] Chaque infobulle (barre, courbe, aire, camembert, anneau, treemap, entonnoir, cascade, radar, nuage de points, empilé) affiche le format de la langue, jamais « 1,542,980.8799999997 » 🌐
 - [x] KPI : variation en % aux séparateurs de la langue (« 12,8 % » / « 12.8% ») ; valeur minuscule lisible (« 0,00056 ») 🌐
 - [x] 6 000 lignes (DuckDB, `BigInt`) : KPI, infobulle de barre, libellé d'axe formatés 🌐
-- [ ] Lecture des options de colonne dans un vrai Grist ⬜ **[NON TESTABLE ICI]** (réglage de tuile et lecture de `_grist_Tables_column` : lot suivant)
+- [ ] Lecture des options de colonne dans un vrai Grist ⬜ **[NON TESTABLE ICI]** (réglage de tuile et lecture de `_grist_Tables_column` : voir le lot 3 ci-dessous, vérifié contre le mock seulement)
 
 ### `js/format.js` + `js/charts.js` + `css/style.css` — jauge et carte KPI (audit de lisibilité, lot 2, 18/11/2026 ; Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`)
 
@@ -814,6 +814,20 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 - [x] Carte KPI : valeur courte à 30 px, valeur de 20 caractères réduite à ~20 px sans sortir de la tuile, valeur agrandie jusqu'à 84 px 🌐
 - [x] `niceCeil`, `gaugeLayout` (arc, bornes et valeur dans la zone à 7 tailles), `fitFont` ✅
 - [ ] Rendu dans un vrai Grist ⬜ **[NON TESTABLE ICI]**
+
+### `js/format.js` + `js/grist-api.js` + `js/main.js` + `index.html` — réglage « Format des nombres » et « Comme dans la colonne » (audit de lisibilité, lot 3, 18/11/2026 ; Node ; Playwright contre `dev-tests/harness.html` et le vrai `index.html` + faux Grist avec `widgetOptions`)
+
+- [x] `supportsNumberFormat` (types concernés, type inconnu, `null`) ✅
+- [x] `columnModeState` : `ok` (devise, décimales), `none` (mode « decimal » sans décimales, `widgetOptions` vide), `unknown` (colonne absente ou non numérique), `count` ✅
+- [x] La même valeur dans les trois modes (Automatique entier dès 1 000, Comme dans la colonne en euros, Personnalisé 2 décimales fixes / compact 1 décimale) ✅
+- [x] `readColumnFormats` : colonnes de LA bonne table seulement, colonnes d'aide exclues, réglages du document ; table inconnue, tables système illisibles (avertissement, pas d'exception), `_grist_DocInfo` illisible, `widgetOptions` absent, `documentSettings` vide/invalide ✅ (faux `grist` dans un `vm`)
+- [x] Panneau : ajouter une carte en « Comme dans la colonne » (KPI « 2 748 150,84 € »), la rouvrir (le formulaire relit le mode), passer en Personnalisé 0 décimale compact (« 3 M »), revenir en Automatique (la clé disparaît de la configuration) 🌐
+- [x] Infobulles de barres dans les trois modes (« 581 482 » / « 581 482,16 € » / « 581 482,2 »), KPI pourcentage (« 17,15 % »), entier (« 186 »), comptage jamais formaté comme la colonne (« 12 ») 🌐
+- [x] Langue anglaise : Automatique aux séparateurs anglais (« 2,748,151 »), mode colonne aux séparateurs de la locale du document 🌐
+- [x] Le vrai `index.html` charge sans erreur (champ présent, aucune erreur de console) 🌐
+- [x] Table plate : le champ apparaît, « Comme dans la colonne » donne « 100 000,23 € » / « 10 » / « 10,0 % » à trois colonnes de formats différents, ligne d'explication « chaque colonne numérique… » 🌐
+- [x] Champ « Format des nombres » dans `<iframe sandbox="allow-scripts">` (serveur avec CORS, sinon le kit est bloqué) : bloc Personnalisé affiché, ajout d'une carte, `numberFormat` écrit, KPI « 9 350,000 » 🌐 (sans préremplissage `widgetOptions` : seul le réglage Personnalisé y est rejoué)
+- [ ] Lecture de `_grist_Tables_column.widgetOptions` / `_grist_DocInfo.documentSettings` dans un vrai Grist ⬜ **[NON TESTABLE ICI]**
 
 ### `js/data.js` + `js/charts.js` + `js/advice.js` + panneau — tuile Texte (18/11/2026 ; Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`)
 
@@ -825,6 +839,17 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 - [x] Panneau : champs de données masqués, texte vide -> erreur sous le champ sans tuile ajoutée, HTML hostile jamais exécuté (aperçu et tuile), bouton Détail masqué, édition recharge le texte, titre anglais « Text » 🌐
 - [x] `<iframe sandbox="allow-scripts">` : parcours au clic (Ajouter > carte Texte > saisie > bouton), aucune erreur ni boîte de dialogue 🌐
 - [ ] Rendu dans un vrai Grist / un vrai GFS ⬜ **[NON TESTABLE ICI]**
+
+### `js/export.js` + `js/vendor/exceljs/` + `sanitizeSheetName` — export Excel avec ExcelJS 4.4.0 (consigne GFS 017, 18/11/2026 ; Node avec le VRAI paquet vendorisé, Playwright contre `index.html`)
+
+- [x] Empreinte SHA-384 de `js/vendor/exceljs/exceljs.min.js` = celle du catalogue de GFS (`Pqp51FUN2/…`) ; `LICENSE` à côté ; `js/vendor/xlsx/` absent ; aucun `XLSX.` dans `js/export.js` ; aucune balise `<script>` d'ExcelJS ou de SheetJS dans `index.html` ✅
+- [x] `cellValue` : nombre (0 compris), texte (vide compris), booléen, `null`/`undefined` -> vide, `NaN`/`±Infinity` -> cellule d'erreur, BigInt sûr -> nombre, BigInt > 2^53 -> texte, tableau -> texte (jamais l'objet), date invalide -> vide, texte > 32 767 -> plafonné ✅
+- [x] Classeur écrit puis relu par ExcelJS : noms de feuille, en-tête, types de cellule (`ValueType`), date, feuille vide (en-tête seul) ; **XML inspecté** (lecteur de zip par le répertoire central) : 0 `<f>`, `t="e"` pour NaN, aucun `NaN`/`Infinity` en clair, texte `=SUM(A1)` en chaîne partagée ✅
+- [x] `sanitizeSheetName` : unicité SANS tenir compte de la casse (« Ventes »/« ventes »/« VENTES » -> `Ventes`, `ventes (2)`, `VENTES (3)`), apostrophe en début/fin (y compris laissée par la coupe à 31), « History »/« history », nom vide ou d'espaces, caractères interdits ; tous acceptés par `addWorksheet` ✅ (mutation vérifiée : la comparaison sensible à la casse fait échouer le test)
+- [x] Chaîne complète sans DOM : état réel -> `buildWorkbookSheetsAsync` -> `buildWorkbook` -> `writeBuffer` -> relecture (valeurs d'une barre agrégée, d'un KPI ; tuile Texte exclue ; préfixe de page) ✅
+- [x] 🌐 Navigateur (`index.html` + faux Grist, 5 760 lignes) : aucune requête vers ExcelJS avant le clic, une après ; téléchargement `dashboard-bi.xlsx` ; relu : une feuille par tuile (aire, séries, barres par mois, KPI), tuile en mode mesure YTD avec ses 60 valeurs DuckDB, tuile Texte exclue ; aucune erreur de page ✅
+- [x] 🌐 `<iframe sandbox="allow-scripts">` : AUCUN téléchargement (comme avec SheetJS sur `origin/main`) ; `sandbox="allow-scripts allow-downloads"` : téléchargement reçu ✅ — constat, pas un défaut de l'app ; le cadre de GFS déclare `allow-downloads` (lu)
+- [ ] **[NON TESTABLE ICI]** le vrai GFS (le téléchargement dans son cadre), un vrai Grist, l'ouverture du `.xlsx` dans Excel/LibreOffice, les exports PDF/PPTX dans un cadre sans `allow-downloads`
 
 ### `js/data.js` + `js/format.js` + `js/charts.js` + panneau — table plate (18/11/2026 ; Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`)
 
@@ -838,6 +863,18 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 - [x] **[BUG RÉEL n°41]** Barres -> Table -> Barres par « Changer de type » : l'élément est recréé, la table s'affiche, le graphique revient avec un canvas non vide 🌐
 - [x] `<iframe sandbox="allow-scripts">` : parcours au clic, aucune erreur ni boîte de dialogue 🌐
 - [ ] Rendu avec de vrais types Grist (ChoiceList, Reference, Attachments) ⬜ **[NON TESTABLE ICI]**
+
+### `js/data.js` + `js/charts.js` + panneau — KPI avec objectif et courbe, tuile Progression (18/11/2026 ; Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`)
+
+- [x] Niveaux : seuil lui-même atteint, 59,9 -> rouge, dépassement (104 %) avec barre plafonnée, valeur négative -> barre vide, seuils réglables ✅
+- [x] Objectif nul / négatif / absent / valeur vide -> rien (jamais de division par zéro) ; `58/100*100` sans bruit de flottant ; `BigInt` ✅
+- [x] Lignes de Progression : objectif commun, colonne agrégée par catégorie, catégorie sans objectif sans barre ✅
+- [x] Courbe : années triées, texte dans l'ordre des données, nulls ignorés, moins de 2 points -> rien, série plate au milieu, tracé exact ✅
+- [x] Exports : Progression et KPI avec objectif en tables (Objectif, % de l'objectif), KPI sans objectif inchangée ✅
+- [x] Formulaire : champs d'objectif sur KPI et Progression seulement, case courbe visible seulement avec une dimension de tendance, objectif <= 0 refusé, objectif obligatoire pour la Progression, seuil orange >= vert refusé, seuils par défaut non écrits 🌐
+- [x] Rendu : 80 % orange / 100 % vert, texte « 80 % de l'objectif » + « objectif 11 688 », courbe à 2 tracés + point final, clic et clavier = filtre croisé, re-clic le retire, anglais 🌐
+- [x] 6 000 lignes (DuckDB, `BigInt`) dans un cadre isolé : valeur 60 000, 600 % partout, aucune erreur 🌐 (le serveur de test doit envoyer les en-têtes CORS : un module ES chargé depuis une origine `null` est refusé sans eux)
+- [ ] Rendu dans un vrai Grist / un vrai GFS ⬜ **[NON TESTABLE ICI]**
 
 ### CSS — classe de bug à systématiquement re-vérifier
 

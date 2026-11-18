@@ -63,6 +63,16 @@
   if (!tables['_grist_Tables']) tables['_grist_Tables'] = { id: [], tableId: [] };
   if (!tables['_grist_Tables_column']) tables['_grist_Tables_column'] = { id: [], parentId: [], colId: [], type: [] };
 
+  // `widgetOptions` (JSON texte, format des nombres « comme dans la colonne », js/grist-api.js:readColumnFormats)
+  // et `_grist_DocInfo.documentSettings` (locale/currency du document) : ajoutés le 18/11/2026. Un préremplissage
+  // qui fournit déjà `_grist_Tables_column` SANS `widgetOptions` est complété (une chaîne vide par colonne) pour que
+  // les tableaux restent alignés. Forme réelle de ces deux tables NON vérifiée sur un vrai document Grist.
+  (function padWidgetOptions() {
+    const m = tables['_grist_Tables_column'];
+    if (!m.widgetOptions) m.widgetOptions = m.id.map(() => '');
+  })();
+  if (!tables['_grist_DocInfo']) tables['_grist_DocInfo'] = { id: [1], documentSettings: ['{}'] };
+
   function metaTableRowId(tableId) {
     const idx = tables['_grist_Tables'].tableId.indexOf(tableId);
     return idx >= 0 ? tables['_grist_Tables'].id[idx] : null;
@@ -73,7 +83,8 @@
     tables['_grist_Tables'].tableId.push(tableId);
     return newId;
   }
-  function registerMetaColumn(parentRowId, colId, type) {
+  function registerMetaColumn(parentRowId, colId, type, widgetOptions) {
+    tables['_grist_Tables_column'].widgetOptions.push(widgetOptions || '');
     tables['_grist_Tables_column'].id.push(nextRowId++);
     tables['_grist_Tables_column'].parentId.push(parentRowId);
     tables['_grist_Tables_column'].colId.push(colId);
@@ -203,7 +214,7 @@
             t.manualSort = [];
             tables[actualTableId] = t;
             const parentRowId = registerMetaTable(actualTableId);
-            for (const col of columns) registerMetaColumn(parentRowId, col.id, col.type);
+            for (const col of columns) registerMetaColumn(parentRowId, col.id, col.type, col.widgetOptions);
             // `ManualSortPos` : type interne réel de la colonne `manualSort` côté moteur Grist —
             // affirmé de mémoire, jamais revérifié contre un vrai document dans cette session (sans
             // impact pratique ici : ni 'Date' ni 'DateTime', donc jamais retenue par
@@ -246,7 +257,7 @@
             if (!columnTypesByTable[tableId]) columnTypesByTable[tableId] = {};
             columnTypesByTable[tableId][colId] = colOpts.type;
             const parentRowId = metaTableRowId(tableId);
-            if (parentRowId != null) registerMetaColumn(parentRowId, colId, colOpts.type);
+            if (parentRowId != null) registerMetaColumn(parentRowId, colId, colOpts.type, colOpts.widgetOptions);
             retValues.push(null);
           } else if (kind === 'RenameTable') {
             const oldTableId = action[1];

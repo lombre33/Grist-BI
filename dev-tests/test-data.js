@@ -2178,6 +2178,71 @@ const SAMPLE_TIME_SERIES = [
   console.log('OK js/format.js — jauge : niceCeil, gaugeLayout (7 tailles de tuile), fitFont, câblage');
 }
 
+// js/format.js + panneau : réglage « Format des nombres » par tuile (audit de lisibilité, lot 3, 18/11/2026)
+{
+  const fs = require('fs');
+  const path = require('path');
+  const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+  const format = require('../js/format.js');
+
+  // types concernés : ceux qui affichent un nombre ; pas de réglage pour un type inconnu ni null
+  for (const type of ['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress']) {
+    assert.strictEqual(data.supportsNumberFormat({ type }), true, type);
+  }
+  assert.strictEqual(data.supportsNumberFormat({ type: 'text' }), false, 'la tuile Texte ne montre aucun nombre');
+  assert.strictEqual(data.supportsNumberFormat({ type: 'inconnu' }), false);
+  assert.strictEqual(data.supportsNumberFormat(null), false);
+  assert.deepStrictEqual(data.NUMBER_FORMAT_TILE_TYPES.filter((ty) => !['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress'].includes(ty)), []);
+
+  // verdict de « Comme dans la colonne » : sert l'explication affichée sous le réglage
+  format.setColumnInfo({
+    Montant: { type: 'Numeric', widgetOptions: JSON.stringify({ numMode: 'currency', currency: 'EUR' }) },
+    Qte: { type: 'Int', widgetOptions: '{"decimals":0}' },
+    Libre: { type: 'Numeric', widgetOptions: '' },
+    Plain: { type: 'Numeric', widgetOptions: '{"numMode":"decimal"}' },
+    Nom: { type: 'Text', widgetOptions: '' }
+  }, null);
+  assert.strictEqual(format.columnModeState({ aggFn: 'sum' }, 'Montant'), 'ok');
+  assert.strictEqual(format.columnModeState({ aggFn: 'avg' }, 'Qte'), 'ok');
+  assert.strictEqual(format.columnModeState({ aggFn: 'sum' }, 'Libre'), 'none');
+  assert.strictEqual(format.columnModeState({ aggFn: 'sum' }, 'Plain'), 'none');
+  assert.strictEqual(format.columnModeState({ aggFn: 'sum' }, 'Nom'), 'unknown', 'colonne non numérique');
+  assert.strictEqual(format.columnModeState({ aggFn: 'sum' }, 'Absente'), 'unknown', 'colonne inconnue (calculée, fusionnée)');
+  assert.strictEqual(format.columnModeState({ aggFn: 'count' }, 'Montant'), 'count', 'un comptage n\'a jamais de format de colonne');
+  // et le rendu suit : la même valeur, trois réglages
+  const tileBase = { measure: 'Montant', aggFn: 'sum' };
+  assert.strictEqual(format.forTile(tileBase, 'Montant', 'fr').format(600688.2299999992), '600\u202f688', 'Automatique : entier dès 1 000 (pas 600688.2299999992)');
+  assert.ok(/600\s688,23\s€/.test(format.forTile({ ...tileBase, numberFormat: { mode: 'column' } }, 'Montant', 'fr').format(600688.2299999992).replace(/[\u202f\u00a0]/g, ' ')), 'Comme dans la colonne : euros');
+  assert.strictEqual(format.forTile({ ...tileBase, numberFormat: { mode: 'custom', decimals: 2, notation: 'standard' } }, 'Montant', 'fr').format(600688.2299999992), '600\u202f688,23', 'Personnalisé : 2 décimales fixes');
+  assert.strictEqual(format.forTile({ ...tileBase, numberFormat: { mode: 'custom', decimals: 1, notation: 'compact' } }, 'Montant', 'fr').format(1542980.88), '1,5\u00a0M', 'Personnalisé : compact, 1 décimale');
+  format.setColumnInfo({}, null);
+
+  // câblage du panneau : champ, lecture/écriture du formulaire, chargement des formats à chaque table
+  const html = read('index.html');
+  for (const id of ['tile-numfmt-field', 'tile-numfmt', 'tile-numfmt-decimals', 'tile-numfmt-compact', 'tile-numfmt-hint']) {
+    assert.ok(html.includes(`id="${id}"`), `index.html : #${id}`);
+  }
+  assert.ok(/<option value="column" data-i18n="tileForm\.numFormat\.column">/.test(html), 'option « Comme dans la colonne »');
+  const main = read('js/main.js');
+  assert.ok(/tileData\.numberFormat = GristBI\.data\.supportsNumberFormat\(\{ type \}\) \? numberFormatFromForm\(\) : undefined/.test(main), 'readTileForm écrit numberFormat (undefined = Automatique)');
+  assert.ok(/setNumberFormatForm\(tile\.numberFormat\)/.test(main), 'startEditTile relit le réglage de la tuile');
+  assert.ok(/setNumberFormatForm\(null\)/.test(main), 'resetTileForm remet Automatique');
+  assert.ok(/await refreshColumnFormats\(tableId, isNewTable\)/.test(main), 'switchTable charge les formats de colonne à chaque (re)chargement');
+  assert.ok(/GristBI\.format\.setColumnInfo\(\{\}, null\)/.test(main), 'registre vidé au changement de table');
+  // chaque clé i18n du réglage existe en fr et en
+  const keys = [...html.matchAll(/data-i18n="(tileForm\.numFormat\.[\w.]+)"/g)].map((m) => m[1])
+    .concat(['tileForm.numFormat.hint.auto', 'tileForm.numFormat.hint.columnCount', 'tileForm.numFormat.hint.columnUnknown', 'tileForm.numFormat.hint.columnNone', 'tileForm.numFormat.hint.columnOk', 'tileForm.numFormat.hint.columnEach']);
+  for (const k of keys) {
+    for (const lang of ['fr', 'en']) {
+      i18n.setLang(lang);
+      assert.notStrictEqual(i18n.t(k, { column: 'X' }), k, `${k} (${lang})`);
+    }
+  }
+  i18n.setLang('fr');
+  assert.ok(/X/.test(i18n.t('tileForm.numFormat.hint.columnOk', { column: 'X' })), 'le nom de la colonne est injecté');
+  console.log(`OK js/format.js — réglage « Format des nombres » : types concernés, verdict « Comme dans la colonne », rendu des trois modes, câblage du panneau, ${keys.length} clés i18n fr/en`);
+}
+
 // measureExportSheet / buildWorkbookSheetsAsync : export Excel RÉEL (plus un simple message) pour
 // une tuile Barres en mode de calcul temporel (Cumul/YTD/N-1) — voir js/export.js. `computeMeasureSeries`
 // est ici FACTICE (une Promise résolue avec un timeSeries écrit à la main), jamais le vrai
@@ -3269,6 +3334,77 @@ const SAMPLE_TIME_SERIES = [
     console.log('OK grist-api:getCurrentUserEmail — colonne déclenchée, ancienne colonne réparée, jamais une valeur d\'erreur comme auteur');
   }
 
+  // grist-api.js:readColumnFormats — type + widgetOptions de chaque colonne de la table de travail et réglages du
+  // document, lus dans les tables système (forme exacte NON vérifiée sur un vrai Grist, voir HYPOTHESES.md).
+  {
+    const vm = require('vm');
+    const fsG = require('fs');
+    const pathG = require('path');
+    const format = require('../js/format.js');
+    const source = fsG.readFileSync(pathG.join(__dirname, '..', 'js', 'grist-api.js'), 'utf8');
+    async function runRead(fetchTable, tableId) {
+      const warns = [];
+      const sandbox = { console: { error() {}, log() {}, warn: (...a) => warns.push(a.join(' ')) }, setTimeout: (fn) => { fn(); return 0; } };
+      sandbox.window = sandbox;
+      sandbox.GristBI = { data, format };
+      sandbox.grist = { docApi: { fetchTable } };
+      vm.runInNewContext(source, sandbox);
+      const out = await sandbox.GristBI.api.readColumnFormats(tableId);
+      return { out: JSON.parse(JSON.stringify(out)), warns };
+    }
+    const system = {
+      _grist_Tables: { id: [1, 2], tableId: ['Ventes', 'Autre'] },
+      _grist_Tables_column: {
+        id: [10, 11, 12, 13, 14, 20],
+        parentId: [1, 1, 1, 1, 1, 2],
+        colId: ['Montant', 'Qte', 'Nom', 'manualSort', 'gristHelper_Display', 'Montant'],
+        type: ['Numeric', 'Int', 'Text', 'ManualSortPos', 'Any', 'Numeric'],
+        widgetOptions: ['{"numMode":"currency","currency":"EUR"}', '{"decimals":0}', '', '', '', '{"decimals":5}']
+      },
+      _grist_DocInfo: { id: [1], documentSettings: ['{"locale":"fr-FR","currency":"EUR"}'] }
+    };
+    const fetchOk = async (id) => { if (!system[id]) throw new Error('inconnue ' + id); return JSON.parse(JSON.stringify(system[id])); };
+
+    // 1. Cas nominal : les colonnes de LA table (pas celles de « Autre »), sans colonne d'aide, + réglages du document
+    let r = await runRead(fetchOk, 'Ventes');
+    assert.deepStrictEqual(Object.keys(r.out.columns).sort(), ['Montant', 'Nom', 'Qte', 'manualSort']);
+    assert.strictEqual(r.out.columns.Montant.type, 'Numeric');
+    assert.strictEqual(r.out.columns.Montant.widgetOptions, '{"numMode":"currency","currency":"EUR"}', 'le JSON reste brut ici, interprété par js/format.js');
+    assert.deepStrictEqual(r.out.docSettings, { locale: 'fr-FR', currency: 'EUR' });
+    // et de bout en bout : ce que lit l'API produit bien un format monétaire
+    format.setColumnInfo(r.out.columns, r.out.docSettings);
+    assert.ok(/€/.test(format.forTile({ numberFormat: { mode: 'column' }, aggFn: 'sum' }, 'Montant', 'fr').format(1234.5)));
+    format.setColumnInfo({}, null);
+
+    // 2. Table inconnue : vide, sans avertissement ni exception
+    r = await runRead(fetchOk, 'Fantome');
+    assert.deepStrictEqual(r.out, { columns: {}, docSettings: null });
+
+    // 3. Tables système illisibles (droits restreints, version de Grist différente) : vide + avertissement
+    r = await runRead(async () => { throw new Error('refusé'); }, 'Ventes');
+    assert.deepStrictEqual(r.out, { columns: {}, docSettings: null });
+    assert.strictEqual(r.warns.length, 1, 'un avertissement, jamais une exception');
+
+    // 4. Réglages du document illisibles : les options de colonne restent utilisables
+    r = await runRead(async (id) => { if (id === '_grist_DocInfo') throw new Error('absente'); return fetchOk(id); }, 'Ventes');
+    assert.strictEqual(r.out.docSettings, null);
+    assert.ok(r.out.columns.Montant, 'colonnes lues malgré tout');
+
+    // 5. `widgetOptions` absent de _grist_Tables_column (ancien moteur / mock sans cette colonne) : chaînes vides
+    r = await runRead(async (id) => {
+      const t = await fetchOk(id);
+      if (id === '_grist_Tables_column') delete t.widgetOptions;
+      return t;
+    }, 'Ventes');
+    assert.strictEqual(r.out.columns.Montant.widgetOptions, '');
+    // 6. `documentSettings` vide, invalide ou sans locale : null, jamais une exception
+    for (const raw of ['', '{}', 'pas du json', '[1]']) {
+      r = await runRead(async (id) => { const t = await fetchOk(id); if (id === '_grist_DocInfo') t.documentSettings = [raw]; return t; }, 'Ventes');
+      assert.strictEqual(r.out.docSettings, null, JSON.stringify(raw));
+    }
+    console.log('OK grist-api:readColumnFormats — colonnes de la bonne table, réglages du document, replis sans exception');
+  }
+
   // --- js/models.js + modeles/modeles.json : modèles de « Nouveau > Depuis un modèle » (consigne GFS 016) ---
   {
     const fs = require('fs');
@@ -3579,7 +3715,220 @@ const SAMPLE_TIME_SERIES = [
         assert.ok(!/Intl\.NumberFormat|toFixed/.test(chartsSrc2), 'aucun format de nombre en dur dans charts.js');
         console.log('OK tuile Table — colonnes, tri (naturel, vides à la fin, stable), nombres bruts, exports plafonnés, conseil et i18n');
       }
+
+      // --- Objectif, courbe de tendance d'une carte KPI et tuile « Progression » ---
+      {
+        // Niveaux : vert dès `good`, orange dès `warn`, rouge en dessous ; seuils par défaut 90 / 60.
+        assert.deepStrictEqual(data.targetProgress(82, 100), { pct: 82, fill: 0.82, level: 'warn' });
+        assert.strictEqual(data.targetProgress(90, 100).level, 'good', 'le seuil lui-même est atteint');
+        assert.strictEqual(data.targetProgress(60, 100).level, 'warn');
+        assert.strictEqual(data.targetProgress(59.9, 100).level, 'bad');
+        assert.strictEqual(data.targetProgress(58, 100).pct, 58, 'pas de bruit de flottant (58/100*100)');
+        assert.deepStrictEqual(data.targetProgress(104, 100), { pct: 104, fill: 1, level: 'good' }, 'dépassement : % réel, barre plafonnée');
+        assert.strictEqual(data.targetProgress(-5, 100).fill, 0, 'valeur négative : barre vide, jamais négative');
+        assert.strictEqual(data.targetProgress(50, 100, 40, 20).level, 'good', 'seuils réglables');
+        assert.strictEqual(data.targetProgress(5, 0), null, 'objectif nul');
+        assert.strictEqual(data.targetProgress(5, -3), null, 'objectif négatif');
+        assert.strictEqual(data.targetProgress(5, null), null);
+        assert.strictEqual(data.targetProgress(null, 100), null);
+        assert.strictEqual(data.targetProgress('', 100), null);
+        assert.strictEqual(data.targetProgress(50n, 100n).pct, 50, 'BigInt (DuckDB)');
+        // Lignes d'une Progression : objectif commun, ou colonne agrégée PAR catégorie (catégorie sans objectif -> sans barre).
+        const groups = [{ dimension: 'Léa', value: 104 }, { dimension: 'Marc', value: 58 }, { dimension: 'Zoé', value: 10 }];
+        const common = data.progressRows(groups, null, 100);
+        assert.deepStrictEqual(common.map((r) => [r.key, r.pct, r.level]), [['Léa', 104, 'good'], ['Marc', 58, 'bad'], ['Zoé', 10, 'bad']]);
+        const perKey = data.progressRows(groups, [{ dimension: 'Léa', value: 200 }, { dimension: 'Marc', value: 58 }], undefined);
+        assert.deepStrictEqual(perKey.map((r) => [r.key, r.target, r.pct, r.level]), [['Léa', 200, 52, 'bad'], ['Marc', 58, 100, 'good'], ['Zoé', null, null, null]]);
+        assert.strictEqual(perKey[2].fill, 0);
+        assert.strictEqual(data.progressRows(groups, null, undefined)[0].pct, null, 'sans objectif du tout : rien à afficher');
+        // Courbe : années triées, mois dans l'ordre des données ; moins de 2 points -> rien ; série plate au milieu.
+        assert.deepStrictEqual(data.sparklineValues([{ dimension: 2025, value: 3 }, { dimension: 2023, value: 1 }, { dimension: 2024, value: 2 }]), [1, 2, 3]);
+        assert.deepStrictEqual(data.sparklineValues([{ dimension: 'Mars', value: 3 }, { dimension: 'Janvier', value: 1 }]), [3, 1], 'ordre des données pour du texte');
+        assert.deepStrictEqual(data.sparklineValues([{ dimension: 'a', value: null }, { dimension: 'b', value: 2 }]), [2], 'valeurs nulles ignorées');
+        assert.strictEqual(data.sparklineGeometry([5], 100, 30, 3), null);
+        assert.strictEqual(data.sparklineGeometry([], 100, 30, 3), null);
+        const geo = data.sparklineGeometry([1, 3, 2, 5], 100, 30, 3);
+        assert.strictEqual(geo.line, 'M0 27 L33.33 15 L66.67 21 L100 3');
+        assert.ok(geo.area.endsWith('L100 30 L0 30 Z'));
+        assert.deepStrictEqual(geo.last, { x: 100, y: 10 });
+        assert.strictEqual(data.sparklineGeometry([4, 4, 4], 100, 30, 3).line, 'M0 15 L50 15 L100 15', 'série plate : trait au milieu');
+        // Exports : Progression en table (type + valeur + objectif + %) ; carte KPI avec objectif ; sans objectif, inchangée.
+        const exRows = [{ R: 'A', M: 80, T: 100 }, { R: 'A', M: 10, T: 0 }, { R: 'B', M: 30, T: 100 }];
+        const exState = { rows: exRows, activeFilters: [], advancedFilters: [], drillIns: {}, comments: [], pages: [] };
+        const progTile = { id: 'pg', type: 'progress', title: 'Obj', dimension: 'R', measure: 'M', aggFn: 'sum', targetColumn: 'T' };
+        assert.strictEqual(data.tileExportKind(progTile), 'table');
+        assert.deepStrictEqual(data.tileExportSheet(progTile, exState), { name: 'Obj', header: ['R', 'Valeur', 'Objectif', '% de l’objectif'], rows: [['A', 90, 100, 90], ['B', 30, 100, 30]] });
+        assert.deepStrictEqual(data.tileExportSheet(Object.assign({}, progTile, { targetColumn: undefined, target: 200 }), exState).rows, [['A', 90, 200, 45], ['B', 30, 200, 15]]);
+        const kpiT = { id: 'k', type: 'kpi', title: 'K', measure: 'M', aggFn: 'sum' };
+        assert.deepStrictEqual(data.tileExportSheet(kpiT, exState), { name: 'K', header: ['Mesure', 'Valeur'], rows: [['sum(M)', 120]] });
+        assert.deepStrictEqual(data.tileExportSheet(Object.assign({}, kpiT, { target: 150 }), exState), { name: 'K', header: ['Mesure', 'Valeur', 'Objectif', '% de l’objectif'], rows: [['sum(M)', 120, 150, 80]] });
+        assert.deepStrictEqual(data.tileExportSheet(Object.assign({}, kpiT, { targetColumn: 'T' }), exState).rows, [['sum(M)', 120, 200, 60]]);
+        // Assistant et format : la Progression a sa ligne d'usage, ses valeurs par défaut (catégorie + mesure), le format des nombres.
+        assert.strictEqual(advice.USE_KEYS.progress, 'advice.use.progress');
+        assert.strictEqual(advice.adviceForType('progress', big, ['Region']).key !== undefined, true);
+        const progDefaults = advice.defaultsForType('progress', big, Object.keys(big[0]));
+        assert.ok(progDefaults.dimension && progDefaults.measure, 'catégorie + mesure préremplies');
+        assert.strictEqual(data.supportsNumberFormat({ type: 'progress' }), true);
+        assert.strictEqual(data.supportsPalette({ type: 'progress' }), false);
+        assert.strictEqual(data.isSortableTile({ type: 'progress' }), false);
+        ['tileForm.type.progress', 'tileForm.target.label', 'tileForm.targetColumn.label', 'tileForm.target.hint', 'tileForm.goodPct.label', 'tileForm.warnPct.label',
+          'tileForm.sparkline.label', 'tileForm.error.targetRequired', 'tileForm.error.targetPositive', 'tileForm.error.thresholds', 'tileTitle.progress',
+          'advice.use.progress', 'chart.kpi.goalPct', 'chart.kpi.goalTarget', 'chart.progress.empty', 'chart.progress.row', 'chart.progress.legend']
+          .forEach((k) => assert.ok(i18n.STRINGS[k] && i18n.STRINGS[k].fr && i18n.STRINGS[k].en, 'traduction fr/en : ' + k));
+        // Câblage lu dans les sources.
+        const mainSrc3 = fs.readFileSync(path.join(root, 'js', 'main.js'), 'utf8');
+        const chartsSrc3 = fs.readFileSync(path.join(root, 'js', 'charts.js'), 'utf8');
+        const indexSrc3 = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+        assert.ok(/const TYPE_CARDS = \[[^\]]*'progress'/.test(mainSrc3) && /<option value="progress"/.test(indexSrc3) && /id="tile-target"/.test(indexSrc3) && /id="tile-sparkline"/.test(indexSrc3));
+        assert.ok(/tile-kpi-spark/.test(mainSrc3) && /tile-kpi-goal/.test(mainSrc3), 'balisage de la carte KPI : courbe + objectif');
+        assert.ok(/tile\.type === 'progress'\) \{\s*renderProgress\(/.test(chartsSrc3), 'renderTile aiguille vers renderProgress');
+        assert.ok(/setProperty\('--kpi-chars'/.test(chartsSrc3), 'la police de la valeur KPI s\'ajuste toujours (lot jauge/KPI)');
+        console.log('OK objectif KPI, courbe, Progression — niveaux et seuils, lignes par catégorie, courbe SVG, exports, conseil et i18n');
+      }
     }
+  }
+
+  // Export Excel avec ExcelJS 4.4.0 (consigne GFS 017, 18/11/2026) : le VRAI paquet vendorisé, exécuté sous Node
+  // (js/export.js se charge sous Node : mise en forme des cellules et construction du classeur, sans DOM). Ce que ces
+  // essais ne voient pas : le chargement paresseux dans un navigateur et le déclenchement du téléchargement.
+  {
+    const nodeFs = require('fs');
+    const nodePath = require('path');
+    const nodeCrypto = require('crypto');
+    const repoRoot = nodePath.join(__dirname, '..');
+    const exportJs = require('../js/export.js');
+    const vendored = nodePath.join(repoRoot, 'js', 'vendor', 'exceljs', 'exceljs.min.js');
+
+    // Le fichier est CELUI de la liste de GFS (même empreinte SHA-384 que son catalogue, 4.4.0) ; SheetJS a disparu.
+    const sri = 'sha384-' + nodeCrypto.createHash('sha384').update(nodeFs.readFileSync(vendored)).digest('base64');
+    assert.strictEqual(sri, 'sha384-Pqp51FUN2/qzfxZxBCtF0stpc9ONI6MYZpVqmo8m20SoaQCzf+arZvACkLkirlPz');
+    assert.ok(nodeFs.existsSync(nodePath.join(repoRoot, 'js', 'vendor', 'exceljs', 'LICENSE')), 'licence à côté du fichier');
+    assert.ok(!nodeFs.existsSync(nodePath.join(repoRoot, 'js', 'vendor', 'xlsx')), 'SheetJS retiré du dépôt');
+    const exportSrc = nodeFs.readFileSync(nodePath.join(repoRoot, 'js', 'export.js'), 'utf8');
+    const indexSrcX = nodeFs.readFileSync(nodePath.join(repoRoot, 'index.html'), 'utf8');
+    assert.ok(!/XLSX\./.test(exportSrc) && !/<script[^>]+xlsx/i.test(indexSrcX), 'plus aucun appel à SheetJS');
+    assert.ok(!/<script[^>]+exceljs/i.test(indexSrcX), 'ExcelJS n\'est jamais une balise statique (chargé au premier export, consigne 013)');
+
+    // cellValue : nombre / texte / booléen / date / vide / erreur / grands entiers / objets
+    const cv = exportJs.cellValue;
+    assert.strictEqual(cv(12.5), 12.5);
+    assert.strictEqual(cv(0), 0);
+    assert.strictEqual(cv(''), '');
+    assert.strictEqual(cv(null), null);
+    assert.strictEqual(cv(undefined), null);
+    assert.strictEqual(cv(true), true);
+    assert.deepStrictEqual(cv(NaN), { error: '#NUM!' });
+    assert.deepStrictEqual(cv(Infinity), { error: '#DIV/0!' });
+    assert.deepStrictEqual(cv(-Infinity), { error: '#DIV/0!' });
+    assert.strictEqual(cv(5n), 5);
+    assert.strictEqual(cv(12345678901234567890n), '12345678901234567890'); // au-delà de 2^53 : du texte, pas un arrondi silencieux
+    assert.strictEqual(cv(['L', 'a']), 'L,a'); // jamais l'objet : ExcelJS le lirait comme une formule/un lien
+    assert.strictEqual(cv({ formula: 'SUM(A1)' }), '[object Object]');
+    assert.strictEqual(cv(new Date('invalide')), null);
+    assert.strictEqual(cv('x'.repeat(40000)).length, 32767);
+
+    // Un classeur complet : écriture puis relecture par ExcelJS lui-même, et inspection du XML réel.
+    const ExcelJSLib = require('../js/vendor/exceljs/exceljs.min.js');
+    const zlibForXlsx = require('zlib');
+    const sheetsForXlsx = [
+      { name: 'Montant par Région', header: ['Région', 'Montant'], rows: [
+        ['Nord', 1234.5], ['Sud', 0], ['=SUM(A1)', 5], ['+cmd|x', -1], ['@x', null], ['', undefined],
+        ['nan', NaN], ['gros', 12345678901234567890n], ['petit', 5n], ['oui', true],
+        ['date', new Date(Date.UTC(2026, 10, 18, 9, 30))], ['liste', ['L', 'a']], ['accentué é ç', 'a\nb'] ] },
+      { name: 'Vide', header: ['A', 'B'], rows: [] }
+    ];
+    const wbX = exportJs.buildWorkbook(ExcelJSLib, sheetsForXlsx);
+    assert.strictEqual(wbX.creator, 'Grist BI');
+    const buf = Buffer.from(await wbX.xlsx.writeBuffer());
+    assert.strictEqual(buf.slice(0, 2).toString('latin1'), 'PK', 'un classeur .xlsx est une archive zip');
+    const back = new ExcelJSLib.Workbook();
+    await back.xlsx.load(buf);
+    assert.deepStrictEqual(back.worksheets.map((w) => w.name), ['Montant par Région', 'Vide']);
+    const first = back.getWorksheet('Montant par Région');
+    assert.strictEqual(first.rowCount, 14); // en-tête + 13 lignes
+    assert.deepStrictEqual(first.getRow(1).values.slice(1), ['Région', 'Montant']);
+    assert.strictEqual(first.getCell('B2').value, 1234.5);
+    assert.strictEqual(first.getCell('B3').value, 0);
+    assert.strictEqual(first.getCell('B3').type, ExcelJSLib.ValueType.Number);
+    assert.strictEqual(first.getCell('A4').value, '=SUM(A1)');
+    assert.strictEqual(first.getCell('A4').type, ExcelJSLib.ValueType.String, 'un texte qui commence par = reste du texte');
+    assert.strictEqual(first.getCell('A5').value, '+cmd|x');
+    assert.strictEqual(first.getCell('A6').value, '@x');
+    assert.strictEqual(first.getCell('B6').value, null);
+    assert.deepStrictEqual(first.getCell('B8').value, { error: '#NUM!' });
+    assert.strictEqual(first.getCell('B9').value, '12345678901234567890');
+    assert.strictEqual(first.getCell('B10').value, 5);
+    assert.strictEqual(first.getCell('B11').value, true);
+    assert.strictEqual(first.getCell('B12').value.toISOString(), '2026-11-18T09:30:00.000Z');
+    assert.strictEqual(first.getCell('B13').value, 'L,a');
+    assert.strictEqual(first.getCell('A14').value, 'accentué é ç');
+    assert.strictEqual(back.getWorksheet('Vide').rowCount, 1); // une feuille vide garde son en-tête
+    // XML réel : aucune formule dans aucune feuille, du texte en chaînes partagées, jamais « NaN » en clair.
+    const xmlFiles = (() => {
+      // Lecteur de zip minimal par le répertoire central (tailles exactes, même quand les entrées sont en flux).
+      let eocd = buf.length - 22;
+      while (eocd >= 0 && buf.readUInt32LE(eocd) !== 0x06054b50) eocd--;
+      assert.ok(eocd >= 0, 'fin d\'archive zip trouvée');
+      const count = buf.readUInt16LE(eocd + 10);
+      let o = buf.readUInt32LE(eocd + 16);
+      const out = {};
+      for (let i = 0; i < count; i++) {
+        assert.strictEqual(buf.readUInt32LE(o), 0x02014b50);
+        const method = buf.readUInt16LE(o + 10);
+        const csize = buf.readUInt32LE(o + 20);
+        const nlen = buf.readUInt16LE(o + 28);
+        const xlen = buf.readUInt16LE(o + 30);
+        const clen = buf.readUInt16LE(o + 32);
+        const local = buf.readUInt32LE(o + 42);
+        const name = buf.slice(o + 46, o + 46 + nlen).toString('utf8');
+        const start = local + 30 + buf.readUInt16LE(local + 26) + buf.readUInt16LE(local + 28);
+        const raw = buf.slice(start, start + csize);
+        if (!name.endsWith('/')) out[name] = (method === 8 ? zlibForXlsx.inflateRawSync(raw) : raw).toString('utf8');
+        o += 46 + nlen + xlen + clen;
+      }
+      return out;
+    })();
+    const sheetXml = xmlFiles['xl/worksheets/sheet1.xml'];
+    assert.ok(sheetXml, 'feuille 1 lisible dans le zip');
+    assert.ok(!/<f[ >]/.test(sheetXml), 'aucune formule écrite, même pour un texte qui commence par = + - @');
+    assert.ok(!/NaN|Infinity/.test(sheetXml), 'aucun nombre non fini écrit en clair');
+    assert.ok(/t="e"><v>#NUM!<\/v>/.test(sheetXml), 'NaN = cellule d\'erreur');
+    assert.ok(xmlFiles['xl/sharedStrings.xml'].includes('=SUM(A1)'), 'le texte est une chaîne partagée');
+
+    // Les noms de feuille que fabrique sanitizeSheetName ne font JAMAIS lever ExcelJS (il est plus strict que
+    // SheetJS : casse, apostrophes, « History »).
+    const titles = ['Ventes', 'ventes', 'VENTES', "'Apostrophe'", "Fin d'", 'History', 'history', 'a'.repeat(40), 'a'.repeat(40),
+      'Ligne: A/B [x]?*', '', '   ', "''", 'x'.repeat(30) + "'y", 'Page 1 - Montant par catégorie et par région en 2026'];
+    const usedX = new Set();
+    const names = titles.map((tt) => data.sanitizeSheetName(tt, usedX));
+    assert.strictEqual(new Set(names.map((nm) => nm.toLowerCase())).size, names.length, 'noms uniques sans tenir compte de la casse');
+    assert.ok(names.every((nm) => nm.length >= 1 && nm.length <= 31 && !/^'|'$/.test(nm) && !/[:\\/?*[\]]/.test(nm) && nm.toLowerCase() !== 'history'));
+    assert.deepStrictEqual(names.slice(0, 3), ['Ventes', 'ventes (2)', 'VENTES (3)']);
+    const wbNames = exportJs.buildWorkbook(ExcelJSLib, names.map((nm) => ({ name: nm, header: ['A'], rows: [[1]] })));
+    assert.strictEqual(wbNames.worksheets.length, titles.length);
+
+    // Bout en bout (hors DuckDB et hors DOM) : les feuilles d'un VRAI état, par la chaîne que js/export.js utilise.
+    const stateX = {
+      rows: [{ Region: 'Nord', Montant: 10 }, { Region: 'Sud', Montant: 20 }, { Region: 'Nord', Montant: 5 }],
+      activeFilters: [], advancedFilters: [], drillIns: {},
+      pages: [
+        { id: 'p1', name: 'Ventes', tiles: [
+          { id: 't1', type: 'bar', title: 'Par région', dimension: 'Region', measure: 'Montant', aggFn: 'sum' },
+          { id: 't2', type: 'kpi', measure: 'Montant', aggFn: 'sum' },
+          { id: 't3', type: 'text', text: 'note' }
+        ] },
+        { id: 'p2', name: 'Autre', tiles: [{ id: 't4', type: 'pivot', dimension: 'Region', columnDimension: 'Region', measure: 'Montant', aggFn: 'sum' }] }
+      ]
+    };
+    const sheetsReal = await data.buildWorkbookSheetsAsync(stateX, async () => { throw new Error('pas de mesure temporelle ici'); });
+    const wbReal = exportJs.buildWorkbook(ExcelJSLib, sheetsReal);
+    const backReal = new ExcelJSLib.Workbook();
+    await backReal.xlsx.load(Buffer.from(await wbReal.xlsx.writeBuffer()));
+    assert.deepStrictEqual(backReal.worksheets.map((w) => w.name), ['Ventes - Par région', 'Ventes - sum(Montant)', 'Autre - sum(Montant)']);
+    assert.deepStrictEqual(backReal.getWorksheet('Ventes - Par région').getRow(2).values.slice(1), ['Nord', 15]);
+    assert.deepStrictEqual(backReal.getWorksheet('Ventes - Par région').getRow(3).values.slice(1), ['Sud', 20]);
+    assert.deepStrictEqual(backReal.getWorksheet('Ventes - sum(Montant)').getRow(2).values.slice(1), ['sum(Montant)', 35]);
+    console.log('OK export Excel ExcelJS 4.4.0 — empreinte de GFS, SheetJS retiré, cellules (types, NaN, grands entiers, objets), texte = formule jamais, noms de feuille, relecture complète');
   }
 })().then(() => {
   console.log('\nTous les tests data.js/state.js/demo-data.js/combobox.js/duckdb-engine.js/i18n.js sont passés.');

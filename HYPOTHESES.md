@@ -3122,6 +3122,16 @@ Point de départ : la capture d'une jauge illisible envoyée par Antoine (gradua
 
 **Vérifié** : voir TEST_PROTOCOL.md (tailles normale, étroite, agrandie, thème sombre). **Non vérifié** : rendu dans un vrai Grist/GFS ; lecteur d'écran sur la jauge (aucun libellé accessible n'a été ajouté).
 
+### Lisibilité des valeurs sur les tuiles — lot 3 : réglage « Format des nombres » et « Comme dans la colonne » (18/11/2026)
+
+Demande d'Antoine : « par défaut les chiffres ont beaucoup de chiffres significatifs » (infobulle de treemap « 600,688.2299999992 ») ; il veut un réglage, et une option « comme dans la colonne » qui reprend le formatage de la colonne Grist. Le défaut lui-même avait été corrigé au lot 1 (Automatique) ; ce lot ajoute le réglage.
+
+**Fait** : champ « Format des nombres » dans « Options avancées » du panneau (tous les types qui montrent un nombre, `data.supportsNumberFormat` : liste `NUMBER_FORMAT_TILE_TYPES`, à compléter pour tout nouveau type) avec trois choix : **Automatique** (défaut, jamais écrit dans la configuration), **Comme dans la colonne**, **Personnalisé** (décimales 0 à 6 ou « selon la valeur » + notation compacte). L'aperçu vivant suit le réglage ; une ligne d'explication dit ce que donnerait « Comme dans la colonne » pour la mesure choisie (`format.columnModeState` : `ok` / `none` / `unknown` / `count`). La configuration porte `tile.numberFormat = {mode: 'column'}` ou `{mode: 'custom', decimals, notation}`. Lecture des options : `GristBI.api.readColumnFormats(tableId)` (`js/grist-api.js`) lit le type et `widgetOptions` de chaque colonne dans `_grist_Tables_column` et `documentSettings` dans `_grist_DocInfo` ; `js/main.js:refreshColumnFormats` l'appelle à chaque `switchTable` (registre vidé au changement de table, pour qu'une colonne de même nom d'une autre table ne reprenne pas son format) puis `GristBI.format.setColumnInfo`.
+
+**Choix assumés** : (1) « Comme dans la colonne » reprend aussi la **locale du document** (séparateurs de Grist) et non celle de l'interface — c'est ce que « comme dans la colonne » veut dire ; Automatique et Personnalisé suivent la langue de l'interface. (2) Une colonne sans réglage de décimales dans Grist reste en Automatique (sinon Grist afficherait jusqu'à 10 décimales, le défaut que ce lot corrige) ; ses autres options (devise, %) sont reprises. (3) Un comptage n'a jamais le format d'une colonne. (4) Une mesure fusionnée par data blending (`Table.colonne`), une colonne dérivée (`Date.Annee`) ou une table sans lecture possible : Automatique, sans erreur. (5) Les libellés d'axe restent compacts (3 chiffres significatifs) quel que soit le mode : la précision se lit dans l'infobulle et la valeur. (6) La table plate (autre fil, `format.cellNumber`) a le même champ : « Comme dans la colonne » y donne à CHAQUE colonne numérique son propre format (vérifié : « 100 000,23 € », « 10 », « 10,0 % » sur trois colonnes), « Personnalisé » s'applique à toutes.
+
+**Non vérifié** : la forme exacte de `_grist_Tables_column.widgetOptions` et de `_grist_DocInfo.documentSettings` dans un vrai Grist (JSON texte, clés `numMode`/`currency`/`decimals`/`maxDecimals`/`numSign`, `locale`/`currency`) est celle de la documentation et du comportement connu du moteur, jamais confirmée sur un document ouvert ; le mock (`dev-tests/grist-stub.js`) a reçu `widgetOptions` et `_grist_DocInfo` d'après cette même hypothèse. À confirmer à la console d'un vrai widget : `JSON.stringify(await grist.docApi.fetchTable('_grist_DocInfo'))` et `fetchTable('_grist_Tables_column')`. Si la forme diffère, la lecture retombe sur Automatique sans erreur (vérifié contre un mock qui lève).
+
 ### Tuiles usuelles des outils BI — lot 1, tuile Texte (18/11/2026)
 
 Étude de départ : `etudes/tuiles-usuelles-dashboard-2026-11-18.md` (fil « Lister les tuiles usuelles de
@@ -3143,6 +3153,36 @@ des nombres étant laissé au fil « Rendre les valeurs lisibles sur chaque tuil
   `grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">` (clics réels : Ajouter > carte Texte > saisie >
   « Ajouter la visualisation » ; `submit` ne part jamais dans ce cadre, c'est `bindFormSubmit`). **Pas testé dans un vrai
   Grist ni dans un vrai GFS.**
+
+- **Export Excel : ExcelJS 4.4.0 à la place de SheetJS 0.18.5** (18/11/2026, fil « Appliquer la nouvelle consigne GFS », consigne 017) :
+  - **Pourquoi** : SheetJS 0.18.5 a deux avis publiés (pollution de prototype GHSA-4r6h-8v6p-xvw6, expression régulière CVE-2024-22363) dont les
+    versions corrigées ne sont qu'à `cdn.sheetjs.com`, REFUSÉ par la politique réseau de l'environnement de développement (403 ; `git.sheetjs.com` injoignable,
+    `github.com/SheetJS` refusé ; npm n'a que la 0.18.5). La 017 proposait ExcelJS 4.4.0 (sans avis, celui de Publipostage+) en alternative « que le porteur
+    tranche » : Antoine a choisi ExcelJS le 18/11 « pour harmoniser les dépendances ». Aucun miroir tiers de SheetJS sur npm n'a été pris.
+  - **Provenance** : `npm pack exceljs@4.4.0`, intégrité de l'archive (`sha512-XctvKaEM…`) = celle du registre ; `dist/exceljs.min.js` (947 702 octets) a la MÊME
+    empreinte SHA-384 (`Pqp51FUN2/…`) et est identique octet pour octet à la copie que GFS vendorise (`prototype/vendor/exceljs/4.4.0/`, son catalogue) ; un test Node
+    refait le calcul. `js/vendor/exceljs/{exceljs.min.js,LICENSE}` (MIT) ; `js/vendor/xlsx/` supprimé. Les licences des paquets que ce bundle embarque (archiver,
+    jszip, saxes, dayjs, uuid…) n'ont pas été relues une à une ; la copie de GFS pour la même version ne porte, elle aussi, que la licence MIT d'ExcelJS (`LICENCES.txt` chez lui).
+  - **Changement de poids** : 881 727 -> 947 702 octets (+ 65 975, soit ~64 Kio) ; toujours chargé AU PREMIER EXPORT seulement (consigne 013 conservée) : vérifié
+    dans un navigateur, aucune requête vers lui avant le clic, une seule après.
+  - **Ce qui a changé dans `js/export.js`** : `cellValue` (nombre fini / texte / booléen / date / cellule vide pour null / cellule d'ERREUR `#NUM!`/`#DIV/0!`
+    pour un nombre non fini — ExcelJS écrirait sinon `NaN` en clair et Excel proposerait de « réparer » le classeur —, BigInt -> nombre si sûr sinon texte,
+    tout objet/tableau -> texte, texte plafonné à 32 767 signes), `buildWorkbook(ExcelJS, sheets)` (pur, testé sous Node avec le vrai paquet), téléchargement
+    par `Blob` + ancre `download` (ce que faisait `XLSX.writeFile`). Auteur du classeur : « Grist BI ». **Les feuilles et leurs valeurs ne changent pas** : même
+    `GristBI.data.buildWorkbookSheetsAsync`.
+  - **Bug trouvé en route (latent avec SheetJS aussi)** : `sanitizeSheetName` ne comparait pas les noms sans tenir compte des majuscules — deux tuiles « Ventes »
+    et « ventes » donnaient deux feuilles « identiques » pour Excel (ExcelJS lève `Worksheet name already exists`, SheetJS levait déjà son équivalent) ; une
+    apostrophe en début/fin de nom et le nom réservé « History » faisaient lever ExcelJS. Corrigé (unicité insensible à la casse, apostrophes retirées, « History »
+    évité) avec ses tests.
+  - **Texte qui ressemble à une formule** (réponse à la consigne 005, voir GFS-ETAT.md) : revérifié avec ExcelJS — `=SUM(A1)`, `+cmd|x`, `@x` sont écrits comme chaînes
+    partagées, 0 balise `<f>` dans le XML du classeur ; ExcelJS ne pose une formule que pour un OBJET `{ formula }`, que `cellValue` ne laisse jamais passer.
+  - **Testé** : Node (le vrai paquet vendorisé : cellules, relecture, XML, noms de feuille, chaîne `buildWorkbookSheetsAsync` -> classeur) + Playwright contre le
+    vrai `index.html` et le faux Grist : clic sur « Exporter en Excel » -> téléchargement `dashboard-bi.xlsx` (11 Ko), relu : une feuille par tuile (texte exclu),
+    la tuile YTD (DuckDB) avec ses 60 vraies valeurs, chargement paresseux. **Cadre isolé** : dans un `<iframe sandbox="allow-scripts">` SEUL aucun téléchargement ne
+    part (Chromium), avant (SheetJS, même constat sur `origin/main`) comme après ; avec `allow-downloads` il part. Le cadre de GFS déclare
+    `allow-scripts allow-forms allow-popups allow-modals allow-downloads` (`prototype/js/broker/frames.js:8`, `docs/cahier-des-charges-gfs.md:185`, lus) : le
+    téléchargement devrait donc partir dans GFS, **non rejoué dans le vrai GFS**. **Non vérifié** : un vrai Grist ; l'ouverture du classeur dans Excel/LibreOffice
+    (relu seulement par ExcelJS et par inspection du XML) ; les exports PDF/PPTX dans un cadre sans `allow-downloads` (même mécanisme, non essayé).
 
 ### Tuiles usuelles des outils BI — lot 1, table plate (18/11/2026)
 
@@ -3166,6 +3206,25 @@ des nombres étant laissé au fil « Rendre les valeurs lisibles sur chaque tuil
   page directe et `<iframe sandbox="allow-scripts">` (clics réels : carte Table, cases, flèches, tri, plafond à 1 200 lignes,
   édition, Excel, anglais). **Pas testé dans un vrai Grist ni un vrai GFS ; types Grist exotiques (Attachments, Reference
   résolue, ChoiceList) vus seulement par leur forme supposée** (`cellText`).
+
+### Tuiles usuelles des outils BI — lot 1, KPI enrichi et tuile Progression (18/11/2026)
+
+- **Carte KPI** (rien ne change pour une carte existante : tout est facultatif) : `tile.kpiSparkline` (case « Tracer la courbe de la tendance »,
+  visible seulement avec une dimension « Tendance vs »), `tile.target` (valeur saisie) ou `tile.targetColumn` (colonne agrégée par le même
+  agrégat que la mesure, prioritaire), `tile.goodPct`/`tile.warnPct` (écrits seulement s'ils diffèrent de 90/60). La courbe est un SVG maison, pas une
+  instance ECharts (rien à disposer) ; ses points sont les groupes de la dimension de tendance (années triées, sinon ordre des données).
+  Le calcul des groupes est partagé avec le delta (un seul `computeGroupBy`, DuckDB au-delà de 5 000 lignes). L'ajustement de police de la valeur
+  (`--kpi-chars`, lot jauge/KPI de l'autre fil) est conservé tel quel.
+- **Tuile Progression** (`type: 'progress'`) : dimension + mesure + agrégat, objectif commun OU colonne d'objectifs agrégée PAR catégorie (une catégorie
+  sans objectif n'a pas de barre, « – »). Un objectif nul ou négatif est refusé (division par zéro, « % atteint » inversé). Cliquable comme une barre de
+  graphique (filtre croisé, re-clic = retire, les autres lignes s'estompent) ; pas de drill-down, pas de tri (l'ordre des données).
+- **Couleurs** : jamais seules (le pourcentage est écrit à côté, la barre porte `role="progressbar"` et un nom accessible) ; vert/orange/rouge = couleurs
+  d'état du widget (`--good`, nouveau `--caution`, `--critical`), jamais celles d'une ambiance GFS.
+- **Pas fait, à décider** : « objectif qui baisse = mieux » (coûts, délais : 120 % est mauvais), objectif par période sur la courbe, courbe lissée (lot 2).
+- **Testé** : Node (bloc « objectif KPI, courbe, Progression » : niveaux et bornes, flottants, `BigInt`, lignes par catégorie, géométrie SVG, exports) ;
+  Playwright contre le vrai `index.html` + `grist-stub.js`, page directe (formulaire, validations, aperçu, clic/clavier, édition, anglais, Excel) et
+  `<iframe sandbox="allow-scripts">`, y compris 6 000 lignes servies avec CORS (DuckDB réel : valeurs `BigInt`). **Pas testé dans un vrai Grist ni un vrai
+  GFS.**
 
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
@@ -3319,7 +3378,7 @@ des nombres étant laissé au fil « Rendre les valeurs lisibles sur chaque tuil
     payload sur la création initiale des ~47 000 lignes ? La reconnexion (relecture seule, sans
     envoi) est-elle bien quasi instantanée sur un vrai document, comme observé dans le mock ?
 11. **Déclenchement du téléchargement Excel depuis l'iframe du widget, jamais vérifié en conditions
-    réelles Grist** : `XLSX.writeFile` (voir `js/export.js`) crée un Blob + une ancre `<a download>`
+    réelles Grist** : l'export (voir `js/export.js` ; `XLSX.writeFile` avant le 18/11/2026) crée un Blob + une ancre `<a download>`
     + un clic synthétique, qui fonctionne dans Chromium headless (Playwright, voir plus haut) et
     repose sur le fait, vérifié dans le code source de Grist, que l'iframe d'un widget custom n'est
     PAS sandboxée (voir ROADMAP.md). Reste non vérifié dans un vrai navigateur à l'intérieur d'un vrai
