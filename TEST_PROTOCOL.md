@@ -577,6 +577,21 @@ délibérément laissé de côté (contenu généré par `js/data.js`/`js/demo-d
 - [ ] **[NON TESTABLE ICI]** Le rendu réel des 4 autres ambiances (Grist Factory, Papier, Brut, Néon) et de la couleur libre — seul le fichier d'exemple "Pop" existe dans le kit
 - [ ] **[NON TESTABLE ICI]** Que GitHub Pages serve bien `kit/` (sous-module) sur le site publié de ce widget précisément — ce sandbox ne peut pas joindre `*.github.io`, voir HYPOTHESES.md
 
+### `js/data.js` + `js/charts.js` + `js/main.js` — courbe/aire, anneau, barres horizontales, tri (18/11/2026, Node pour le tri pur, Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`)
+
+- [x] `sortGroups` : valeur décroissante/croissante, valeurs absentes (`null`/`NaN`) toujours en dernier quel que soit le sens, tri « Libellé » naturel (« T2 » avant « T10 », nombres dans l'ordre numérique) ✅
+- [x] `sortGroups` sans mode / mode vide / mode inconnu : l'agrégat revient TEL QUEL (même référence), jamais de tri en place ✅
+- [x] `isSortableTile` : barres (hors mode mesure temporelle), courbe/aire, camembert seulement — cascade, treemap, radar, nuage de mots, KPI, jauge, nuage de points, tableau croisé jamais ✅
+- [x] `tileExportSheet` : l'export Excel applique le même tri (barres, courbe, camembert) et ignore un `sortMode` qui traîne sur une cascade ; une courbe sans option exporte comme des barres ✅
+- [x] `suggestTiles` : `donutChart` → camembert avec `donut: true`, `pieChart` sans le drapeau ✅
+- [x] Visibilité des 5 nouvelles options (tri, horizontal, aire, anneau, pourcentages) pour chacun des 11 types, barres en mode mesure comprises (toutes masquées) — mesurée par `offsetParent`/`getComputedStyle`, pas seulement `.hidden` 🌐
+- [x] Ajout par le vrai formulaire de 6 tuiles : options enregistrées, aucune option fantôme sur les tuiles ajoutées sans (le formulaire garde ses valeurs d'une tuile à l'autre : le test remet explicitement le tri à « Ordre des données ») 🌐
+- [x] Options ECharts réellement construites : axes inversés/permutés des barres horizontales, ordre trié, `areaStyle` de l'aire, rayon `['40%','65%']` de l'anneau, étiquette « nom » + « 12,5 % » 🌐
+- [x] Clic SOURIS réel sur un point de courbe et sur une barre horizontale : filtre croisé sur la bonne valeur ; re-clic le retire (coordonnées RECALCULÉES : la barre de badges de filtre décale la mise en page) 🌐
+- [x] Édition : pré-remplissage des options, décocher « Anneau » l'efface sans toucher « Pourcentages » ; barres → treemap efface `horizontal`/`sortMode` 🌐
+- [x] Textes anglais du type et des 5 options ; hauteur de tuile stable (10 échantillons avec redimensionnement) ; aucun canvas ne déborde 🌐
+- [ ] **[NON TESTABLE ICI]** Rendu dans un vrai Grist (iframe de widget) ; courbe sur une VRAIE colonne `Date` (le test utilise une année numérique) ; import Power BI d'un `lineChart`/`areaChart` (non branché)
+
 ### CSS — classe de bug à systématiquement re-vérifier
 
 - [x] `.field[hidden]` masque réellement l'élément (pas seulement `display:flex` de `.field` qui gagne à spécificité égale) [BUG RÉEL, trouvé 2 fois sur des champs différents] ✅ (règle en place)

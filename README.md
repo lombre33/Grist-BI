@@ -28,7 +28,9 @@ réellement (voir HYPOTHESES.md).
 
 ## Fonctionnalités du POC
 
-- 6 types de tuiles : barres, camembert, treemap, nuage de points, carte KPI, jauge. Ajout, édition
+- 11 types de tuiles : barres (verticales ou horizontales, avec tri), courbe / aire, camembert (ou
+  anneau, avec pourcentages), treemap, nuage de points, cascade, radar, nuage de mots (rendu en
+  attente d'une bibliothèque, voir GFS-ETAT.md), carte KPI, jauge, tableau croisé. Ajout, édition
   (bouton crayon) et **réorganisation** (◂ ▸, modifie l'ordre sans perdre les autres réglages de la
   tuile). Le nuage de points est une version **agrégée** (un point par catégorie, deux mesures en
   X/Y), pas ligne-à-ligne. La jauge compare une valeur agrégée à un Min/Max défini dans son

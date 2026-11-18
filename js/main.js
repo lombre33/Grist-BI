@@ -192,6 +192,18 @@
   const measureYSelect = document.getElementById('tile-measure-y');
   const aggField = document.getElementById('tile-agg-field');
   const aggSelect = document.getElementById('tile-agg');
+  // Options d'affichage propres à certains types (tri, barres horizontales, aire, anneau,
+  // pourcentages) : voir updateFormFieldsForType pour la visibilité par type.
+  const sortField = document.getElementById('tile-sort-field');
+  const sortSelect = document.getElementById('tile-sort');
+  const horizontalField = document.getElementById('tile-horizontal-field');
+  const horizontalCheckbox = document.getElementById('tile-horizontal');
+  const areaField = document.getElementById('tile-area-field');
+  const areaCheckbox = document.getElementById('tile-area');
+  const donutField = document.getElementById('tile-donut-field');
+  const donutCheckbox = document.getElementById('tile-donut');
+  const showPctField = document.getElementById('tile-show-pct-field');
+  const showPctCheckbox = document.getElementById('tile-show-pct');
   const gaugeMinField = document.getElementById('tile-gauge-min-field');
   const gaugeMinInput = document.getElementById('tile-gauge-min');
   const gaugeMaxField = document.getElementById('tile-gauge-max-field');
@@ -1323,6 +1335,14 @@
     gaugeMaxField.hidden = !isGauge;
     measureModeField.hidden = !isBar;
     dateColumnField.hidden = !hasMeasureMode;
+    // Options d'affichage : Barres en mode mesure temporelle exclu (son axe est un mois calculé, pas
+    // une catégorie à trier ni à orienter, voir GristBI.data.isSortableTile).
+    const isBarBrut = isBar && !hasMeasureMode;
+    sortField.hidden = !GristBI.data.isSortableTile({ type, measureMode: measureModeSelect.value });
+    horizontalField.hidden = !isBarBrut;
+    areaField.hidden = type !== 'line';
+    donutField.hidden = type !== 'pie';
+    showPctField.hidden = type !== 'pie';
     measureYField.hidden = !isScatter;
     measureLabel.textContent = t(isScatter ? 'tileForm.measure.labelX' : 'tileForm.measure.label');
     updateDrillLevelsUI();
@@ -1386,6 +1406,11 @@
     radarModeSelect.value = tile.radarAxisMode === 'columns' ? 'columns' : 'dimension';
     setRadarAxes(tile.radarAxes);
     wordCloudSplitCheckbox.checked = !!tile.wordCloudSplit;
+    sortSelect.value = tile.sortMode || '';
+    horizontalCheckbox.checked = !!tile.horizontal;
+    areaCheckbox.checked = !!tile.areaFill;
+    donutCheckbox.checked = !!tile.donut;
+    showPctCheckbox.checked = !!tile.showPct;
     radarEntityColumnSelect.value = tile.radarEntityColumn || '';
     updateRadarEntityValueOptions();
     radarEntityValueSelect.value = tile.radarEntityValue || '';
@@ -1522,6 +1547,15 @@
     tileData.radarEntityColumn = radarEntityColumn ? radarEntityColumn : undefined;
     tileData.radarEntityValue = (radarEntityColumn && radarEntityValueSelect.value) ? radarEntityValueSelect.value : undefined;
     tileData.radarCompareAverage = (type === 'radar') ? radarCompareAverageCheckbox.checked : undefined;
+    // Options d'affichage (tri, barres horizontales, aire, anneau, pourcentages) : `undefined` quand
+    // décochées ou non pertinentes pour ce type, pour la même raison que les champs ci-dessus
+    // (Object.assign de `store.updateTile` n'efface que les clés présentes). Jamais `false` : un
+    // booléen décoché n'a pas à alourdir la config sauvegardée.
+    tileData.sortMode = (GristBI.data.isSortableTile({ type, measureMode }) && sortSelect.value) ? sortSelect.value : undefined;
+    tileData.horizontal = (isBar && !measureMode && horizontalCheckbox.checked) ? true : undefined;
+    tileData.areaFill = (type === 'line' && areaCheckbox.checked) ? true : undefined;
+    tileData.donut = (type === 'pie' && donutCheckbox.checked) ? true : undefined;
+    tileData.showPct = (type === 'pie' && showPctCheckbox.checked) ? true : undefined;
     if (editingTileId) {
       store.updateTile(editingTileId, tileData);
       stopEditTile();

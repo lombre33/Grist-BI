@@ -2519,6 +2519,51 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     'offsetWidth')` dans l'info-bulle (`_updatePosition`) quand un drill-down redessine un graphique
     sous le pointeur (bénin en apparence, pas investigué).
 
+- **Courbe / aire, anneau, barres horizontales, tri (18/11/2026)** : issus de la comparaison avec
+  l'« Assistant Data Visualisation » de la DRANE d'Orléans-Tours (`gristgouv/drane-orleans-tours-grist-widgets`,
+  fichier `d3js-assistant.html`, étude `etudes/comparaison-assistant-dataviz-drane-2026-11-18.md` dans le
+  dossier partagé du projet) et de la Phase A de l'étude du 03/11. Aucune nouvelle bibliothèque : séries
+  ECharts `line`/`pie`/`bar` déjà vendorisées, donc aucune demande à GFS.
+  - **Code** : `tile.type === 'line'` (nouveau, même formulaire que `bar`), `tile.areaFill` (aire),
+    `tile.donut`/`tile.showPct` (camembert), `tile.horizontal` (barres), `tile.sortMode`
+    (`'value-desc'`/`'value-asc'`/`'label'`, absent = ordre des données). Les cinq champs sont mis à
+    `undefined` quand ils ne s'appliquent pas (même règle que les autres champs propres à un type, voir
+    `js/main.js`, submit), donc changer le type d'une tuile éditée les efface.
+  - **Tri = étape séparée** (`GristBI.data.sortGroups`, `isSortableTile`) : `groupByAggregate` garde son
+    contrat d'ordre d'apparition (CLAUDE.md §7, piège n°14). Triables : barres (hors mode mesure
+    temporelle), courbe/aire, camembert. Jamais cascade (l'ordre EST le sens du cumul), treemap, radar,
+    nuage de mots. Valeurs absentes (`null`/`NaN`, ex. `min` d'un groupe vide) toujours en dernier.
+    Tri « Libellé » = tri naturel (`Intl` `numeric`) : « T2 » avant « T10 », années numériques dans l'ordre.
+    L'export Excel (`tileExportSheet`) applique le même tri : le fichier suit l'ordre affiché.
+  - **Décisions de rendu** : barres horizontales avec axe des catégories INVERSÉ (la 1re catégorie, ou la
+    plus grande avec « Valeur décroissante », est en haut) et libellés tronqués à 110 px avec le nom complet
+    en info-bulle ; anneau = rayon `['40%','65%']` ; pourcentages sur DEUX lignes (« nom » puis « 12,5 % »,
+    format français comme `formatNumber`) — une version à une ligne « nom : 12.5 % » a été essayée d'abord et
+    tronquait justement le pourcentage dans une tuile de 270 px (vu sur capture, pas par un test de code).
+  - **Vérifié** : `node dev-tests/test-data.js` (tri, valeurs absentes, types triables, export Excel dans
+    l'ordre trié, `donutChart` Power BI) et, contre le VRAI `index.html` servi en HTTP local avec
+    `dev-tests/grist-stub.js` (même montage que la vitrine, jamais un vrai Grist), 42 contrôles : visibilité
+    des options pour chacun des 11 types (y compris barres en mode mesure : masquées), 6 tuiles ajoutées par
+    le formulaire sans option fantôme, options ECharts réellement construites, clics SOURIS réels sur un point
+    de courbe et sur une barre horizontale (filtre croisé sur la bonne valeur, re-clic le retire), édition qui
+    pré-remplit puis efface une option décochée, barres → treemap qui efface `horizontal`/`sortMode`, textes
+    en anglais, hauteur de tuile stable sur 10 échantillons avec redimensionnement, aucun canvas qui déborde.
+  - **Piège de test noté** : dès qu'un filtre croisé est posé, la barre de badges de filtres décale TOUTE la
+    mise en page vers le bas — un clic de souris à des coordonnées calculées avant le filtre rate sa cible
+    (le re-clic « ne retirait pas le filtre » : c'était le test, pas l'application). Toujours recalculer les
+    coordonnées avant chaque clic.
+  - **Constat inchangé, déjà noté plus haut (vitrine)** : ECharts lève `Cannot read properties of null
+    (reading 'offsetWidth')` dans l'info-bulle à chaque clic sur un graphique qui se redessine sous le
+    pointeur. Reproduit à l'identique sur `origin/main` (worktree séparé) avec une simple tuile barres : pas
+    introduit par cette fonctionnalité, ni investigué ici.
+  - **Hors périmètre, volontairement** : courbe/aire en mode mesure (Cumul/YTD/N-1, toujours réservé à
+    `bar`) ; plusieurs séries (courbes multiples, barres empilées/groupées) ; import Power BI de
+    `lineChart`/`areaChart` (jamais essayé sur un vrai fichier, et leur rôle « légende/série » pourrait être
+    pris pour la catégorie par `dimensionFields[0]`) ; tri sur la cascade. Une courbe SANS tri garde l'ordre
+    des données : sur une table non chronologique, la courbe saute d'une année à l'autre — le tri
+    « Libellé » règle le cas, mais rien ne le propose encore automatiquement (piste pour le futur assistant
+    de choix de graphique).
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée

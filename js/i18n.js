@@ -339,6 +339,20 @@
     'chart.waterfall.increase': { fr: 'Hausse', en: 'Increase' },
     'chart.waterfall.decrease': { fr: 'Baisse', en: 'Decrease' },
     'chart.radar.groupAverage': { fr: 'Moyenne du groupe', en: 'Group average' },
+
+    // --- Options d'affichage des graphiques (courbe/aire, anneau, barres horizontales, tri) ---
+    // Bloc séparé, en fin de fichier : pour limiter les conflits avec les refontes d'interface en
+    // parallèle qui ajoutent leurs propres clés ailleurs dans ce dictionnaire.
+    'tileForm.type.line': { fr: 'Courbe / aire', en: 'Line / area' },
+    'tileForm.sort.label': { fr: 'Tri', en: 'Sort' },
+    'tileForm.sort.default': { fr: 'Ordre des données', en: 'Data order' },
+    'tileForm.sort.valueDesc': { fr: 'Valeur décroissante', en: 'Value, high to low' },
+    'tileForm.sort.valueAsc': { fr: 'Valeur croissante', en: 'Value, low to high' },
+    'tileForm.sort.byLabel': { fr: 'Libellé (A→Z, 1→9)', en: 'Label (A→Z, 1→9)' },
+    'tileForm.horizontal.label': { fr: 'Barres horizontales (libellés longs, nombreuses catégories)', en: 'Horizontal bars (long labels, many categories)' },
+    'tileForm.area.label': { fr: 'Aire : remplir sous la courbe', en: 'Area: fill under the line' },
+    'tileForm.donut.label': { fr: 'Anneau (trou au centre)', en: 'Donut (hole in the middle)' },
+    'tileForm.showPct.label': { fr: 'Afficher le pourcentage de chaque part', en: 'Show each slice’s percentage' },
   };
 
   // Repli français si `localStorage` lève (consigne GFS 007, point 1) : dans le sous-cadre isolé

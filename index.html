@@ -293,6 +293,7 @@
       <label for="tile-type" data-i18n="tileForm.type.label">Type</label>
       <select id="tile-type">
         <option value="bar" data-i18n="tileForm.type.bar">Barres</option>
+        <option value="line" data-i18n="tileForm.type.line">Courbe / aire</option>
         <option value="pie" data-i18n="tileForm.type.pie">Camembert</option>
         <option value="treemap" data-i18n="tileForm.type.treemap">Treemap</option>
         <option value="scatter" data-i18n="tileForm.type.scatter">Nuage de points</option>
@@ -391,6 +392,39 @@
         <option value="min" data-i18n="tileForm.agg.min">Min</option>
         <option value="max" data-i18n="tileForm.agg.max">Max</option>
       </select>
+    </div>
+    <div class="field" id="tile-sort-field" hidden>
+      <label for="tile-sort" data-i18n="tileForm.sort.label">Tri</label>
+      <select id="tile-sort">
+        <option value="" data-i18n="tileForm.sort.default">Ordre des données</option>
+        <option value="value-desc" data-i18n="tileForm.sort.valueDesc">Valeur décroissante</option>
+        <option value="value-asc" data-i18n="tileForm.sort.valueAsc">Valeur croissante</option>
+        <option value="label" data-i18n="tileForm.sort.byLabel">Libellé (A→Z, 1→9)</option>
+      </select>
+    </div>
+    <div class="field field-checkbox" id="tile-horizontal-field" hidden>
+      <label for="tile-horizontal">
+        <input type="checkbox" id="tile-horizontal" />
+        <span data-i18n="tileForm.horizontal.label">Barres horizontales (libellés longs, nombreuses catégories)</span>
+      </label>
+    </div>
+    <div class="field field-checkbox" id="tile-area-field" hidden>
+      <label for="tile-area">
+        <input type="checkbox" id="tile-area" />
+        <span data-i18n="tileForm.area.label">Aire : remplir sous la courbe</span>
+      </label>
+    </div>
+    <div class="field field-checkbox" id="tile-donut-field" hidden>
+      <label for="tile-donut">
+        <input type="checkbox" id="tile-donut" />
+        <span data-i18n="tileForm.donut.label">Anneau (trou au centre)</span>
+      </label>
+    </div>
+    <div class="field field-checkbox" id="tile-show-pct-field" hidden>
+      <label for="tile-show-pct">
+        <input type="checkbox" id="tile-show-pct" />
+        <span data-i18n="tileForm.showPct.label">Afficher le pourcentage de chaque part</span>
+      </label>
     </div>
     <div class="field" id="tile-gauge-min-field" hidden>
       <label for="tile-gauge-min" data-i18n="tileForm.gaugeMin.label">Min</label>

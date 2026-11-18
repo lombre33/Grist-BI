@@ -38,6 +38,60 @@ const rows = [
   console.log('OK groupByAggregate(avg)');
 }
 
+// sortGroups / isSortableTile : tri d'AFFICHAGE optionnel (barres, courbe/aire, camembert), séparé de
+// groupByAggregate qui garde son ordre d'apparition (piège n°14, CLAUDE.md §7)
+{
+  const agg = [
+    { dimension: 'T10', value: 5 }, { dimension: 'T2', value: 40 }, { dimension: 'T1', value: null },
+    { dimension: 'T3', value: 12 }, { dimension: 'T4', value: NaN }
+  ];
+  const original = agg.map((d) => d.dimension);
+  // Valeur décroissante : valeurs absentes (null/NaN) toujours en dernier, quel que soit le sens
+  assert.deepStrictEqual(data.sortGroups(agg, 'value-desc').map((d) => d.dimension), ['T2', 'T3', 'T10', 'T1', 'T4']);
+  assert.deepStrictEqual(data.sortGroups(agg, 'value-asc').map((d) => d.dimension), ['T10', 'T3', 'T2', 'T1', 'T4']);
+  // Libellé : tri « naturel » (T2 avant T10), pas alphabétique brut (T10 avant T2)
+  assert.deepStrictEqual(data.sortGroups(agg, 'label').map((d) => d.dimension), ['T1', 'T2', 'T3', 'T4', 'T10']);
+  // Libellés numériques (ex. Annee = 2025, un nombre) : ordre numérique, pas lexicographique
+  assert.deepStrictEqual(
+    data.sortGroups([{ dimension: 100, value: 1 }, { dimension: 20, value: 2 }, { dimension: 3, value: 3 }], 'label').map((d) => d.dimension),
+    [3, 20, 100]
+  );
+  // Jamais de tri en place, et sans mode (ou mode inconnu) : l'agrégat revient TEL QUEL
+  assert.deepStrictEqual(agg.map((d) => d.dimension), original);
+  assert.strictEqual(data.sortGroups(agg, undefined), agg);
+  assert.strictEqual(data.sortGroups(agg, ''), agg);
+  assert.strictEqual(data.sortGroups(agg, 'mode-futur-inconnu'), agg);
+  assert.deepStrictEqual(data.sortGroups([], 'value-desc'), []);
+
+  // Types triables : Barres (hors mode mesure temporelle), Courbe/aire, Camembert — jamais Cascade
+  // (l'ordre EST le sens du cumul), Treemap, Radar, Nuage de mots, KPI
+  assert.strictEqual(data.isSortableTile({ type: 'bar' }), true);
+  assert.strictEqual(data.isSortableTile({ type: 'bar', measureMode: 'brut' }), true);
+  assert.strictEqual(data.isSortableTile({ type: 'bar', measureMode: 'ytd' }), false);
+  assert.strictEqual(data.isSortableTile({ type: 'line' }), true);
+  assert.strictEqual(data.isSortableTile({ type: 'pie' }), true);
+  for (const type of ['waterfall', 'treemap', 'radar', 'wordcloud', 'kpi', 'gauge', 'scatter', 'pivot']) {
+    assert.strictEqual(data.isSortableTile({ type }), false, type);
+  }
+  assert.strictEqual(data.isSortableTile(null), false);
+
+  // Export Excel = ordre affiché : tileExportSheet applique le même tri, jamais à un type non triable
+  const exportRows = [
+    { Region: 'Nord', Montant: 100 }, { Region: 'Sud', Montant: 150 }, { Region: 'Est', Montant: 40 }
+  ];
+  const sortState = { rows: exportRows, activeFilters: [], advancedFilters: [], drillIns: {} };
+  const tileOf = (type, extra) => Object.assign({ id: 't', type, title: 'x', dimension: 'Region', measure: 'Montant', aggFn: 'sum' }, extra);
+  assert.deepStrictEqual(data.tileExportSheet(tileOf('bar'), sortState).rows.map((r) => r[0]), ['Nord', 'Sud', 'Est']);
+  assert.deepStrictEqual(data.tileExportSheet(tileOf('bar', { sortMode: 'value-desc' }), sortState).rows.map((r) => r[0]), ['Sud', 'Nord', 'Est']);
+  assert.deepStrictEqual(data.tileExportSheet(tileOf('line', { sortMode: 'label' }), sortState).rows.map((r) => r[0]), ['Est', 'Nord', 'Sud']);
+  assert.deepStrictEqual(data.tileExportSheet(tileOf('pie', { sortMode: 'value-asc' }), sortState).rows.map((r) => r[0]), ['Est', 'Nord', 'Sud']);
+  // Cascade : sortMode (même s'il traînait sur la tuile) est ignoré
+  assert.deepStrictEqual(data.tileExportSheet(tileOf('waterfall', { sortMode: 'value-desc' }), sortState).rows.map((r) => r[0]), ['Nord', 'Sud', 'Est']);
+  // Courbe sans option d'aire : même export que Barres (même chemin de code, en-têtes inclus)
+  assert.deepStrictEqual(data.tileExportSheet(tileOf('line'), sortState), data.tileExportSheet(tileOf('bar'), sortState));
+  console.log('OK sortGroups / isSortableTile / tileExportSheet (tri d\'affichage, valeurs absentes en dernier, types non triables intacts)');
+}
+
 {
   const agg = data.groupByAggregate(rows, 'Region', 'Montant', 'count');
   assert.strictEqual(agg.find((d) => d.dimension === 'Sud').value, 2);
@@ -1741,6 +1795,25 @@ const SAMPLE_TIME_SERIES = [
     assert.strictEqual(kpiSuggestion.tileData, null);
     assert.deepStrictEqual(kpiSuggestion.missingFields, ['Colonne Inconnue']);
     console.log('OK pbixLayout.suggestTiles (correspondance tolérante + colonnes manquantes détectées)');
+  }
+
+  // Un visuel « donut » Power BI devient un camembert avec trou (donut: true) ; un camembert plein
+  // (pieChart) n'a PAS le drapeau ; lineChart/areaChart ne sont toujours pas mappés (voir le
+  // commentaire de VISUAL_TYPE_TO_TILE_TYPE)
+  {
+    assert.strictEqual(pbixLayout.VISUAL_TYPE_TO_TILE_TYPE.donutChart, 'pie');
+    assert.strictEqual(pbixLayout.VISUAL_TYPE_TO_TILE_TYPE.lineChart, undefined);
+    const fields = [
+      { isMeasure: false, property: 'Region', displayName: 'Région' },
+      { isMeasure: true, property: 'SalesAmount', displayName: 'Sales Amount' },
+    ];
+    const suggestions = pbixLayout.suggestTiles([
+      { visualId: 'd', visualType: 'donutChart', tileType: 'pie', title: 'Donut', fields },
+      { visualId: 'p', visualType: 'pieChart', tileType: 'pie', title: 'Pie', fields },
+    ], ['Region', 'SalesAmount']);
+    assert.deepStrictEqual(suggestions[0].tileData, { type: 'pie', measure: 'SalesAmount', aggFn: 'sum', title: 'Donut', dimension: 'Region', donut: true });
+    assert.deepStrictEqual(suggestions[1].tileData, { type: 'pie', measure: 'SalesAmount', aggFn: 'sum', title: 'Pie', dimension: 'Region' });
+    console.log('OK pbixLayout.suggestTiles (donutChart -> camembert avec trou, pieChart inchangé)');
   }
 
   // extractCandidatePhrases : un espace seul ne coupe PAS la phrase candidate (sinon chaque mot

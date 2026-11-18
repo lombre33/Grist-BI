@@ -135,7 +135,10 @@
   // Volontairement absents (pas d'équivalent à 1 dimension + 1 mesure, ou logique trop différente
   // pour une suggestion automatique fiable) : table/tableEx (liste plate de colonnes, sans
   // distinction lignes/colonnes — contrairement à `matrix`, ne correspond pas à notre "pivot"),
-  // lineChart/areaChart/comboChart/map/shapeMap/filledMap/decompositionTree/keyInfluencers/
+  // lineChart/areaChart (équivalent désormais : tuile « Courbe / aire », type 'line' — pas encore
+  // branché ici : jamais essayé sur un vrai fichier .pbix, et leur rôle « légende/série » pourrait
+  // être pris pour la catégorie par `dimensionFields[0]` ci-dessous, à vérifier avant de les
+  // ajouter), comboChart/map/shapeMap/filledMap/decompositionTree/keyInfluencers/
   // qnaVisual (aucun équivalent chez nous), radar (Power BI n'a pas de radar natif, seulement des
   // extensions tierces du marketplace dont le type de visuel n'est pas un nom stable à détecter),
   // slicer (c'est un filtre, pas une tuile), textbox/image/shape/actionButton (pas un visuel de
@@ -339,7 +342,10 @@
         { type: visual.tileType, measure, aggFn: 'sum', title },
         needsDimension ? { dimension } : { dimension: '' },
         needsSecondMeasure ? { measureY } : {},
-        needsColumnDimension ? { columnDimension } : {}
+        needsColumnDimension ? { columnDimension } : {},
+        // Un visuel « donut » Power BI devient un camembert AVEC trou (`tile.donut`, js/charts.js),
+        // plus un camembert plein comme avant l'option « Anneau ».
+        visual.visualType === 'donutChart' ? { donut: true } : {}
       );
 
       return { visual, tileType: visual.tileType, title, missingFields, tileData };
