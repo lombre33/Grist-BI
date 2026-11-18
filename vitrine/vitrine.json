@@ -7,8 +7,8 @@
     {
       "fichier": "1.webp",
       "legende": {
-        "fr": "Un rapport : indicateurs avec tendance et graphiques",
-        "en": "A report: indicators with trend, and charts"
+        "fr": "Indicateurs, courbe, anneau et barres triées",
+        "en": "Indicators, area chart, donut and sorted bars"
       }
     },
     {
@@ -21,8 +21,8 @@
     {
       "fichier": "3.webp",
       "legende": {
-        "fr": "Cascade, N-1, cumul, tableau croisé et nuage de points",
-        "en": "Waterfall, prior year, running total, pivot and scatter"
+        "fr": "Cascade, comparaison N-1 et cumuls dans le temps",
+        "en": "Waterfall, prior-year comparison and running totals"
       }
     }
   ]
