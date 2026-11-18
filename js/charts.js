@@ -698,6 +698,9 @@
         series: [{
           type: 'pie',
           radius: tile.donut ? ['40%', '65%'] : '65%',
+          // ECharts 6 a doublé la 2e partie du trait d'étiquette par défaut (15 -> 30 px) : les noms
+          // longs ("Widget B") se tronquaient alors en "Widge…". On garde le trait court de la v5.
+          labelLine: { length: 15, length2: 15 },
           ...(tile.showPct ? {
             percentPrecision: 1,
             label: { formatter: (p) => `${p.name}\n${formatPercent(p.percent)}` }
@@ -718,6 +721,9 @@
           // générique ci-dessus (drill-down/cross-filter), sans comportement concurrent.
           nodeClick: false,
           breadcrumb: { show: false },
+          // ECharts 6 a remplacé le cadre par défaut (80 % × 80 % centré) par des marges fixes en
+          // pixels (20 / 50), qui laissaient ~60 px de haut dans une tuile de 224 px : cadre explicite.
+          left: 8, right: 8, top: 8, bottom: 8,
           data: agg.map((d) => ({ name: d.dimension, value: d.value, itemStyle: dim(d.dimension) }))
         }]
       };
@@ -809,6 +815,13 @@
       //   (tile.radarAxes), valeur = moyenne de cette colonne sur `rows` (radarColumnValues
       //   ci-dessus, déjà calculé en tenant compte du seuil DuckDB).
       const axisNames = isRadarColumns ? radarAxesColumns : agg.map((d) => String(d.dimension));
+      // Aucun axe (filtre qui ne laisse aucune ligne, colonnes pas encore choisies) : ECharts, en v5
+      // comme en v6, lève « Cannot read properties of undefined (reading 'push') » sur un radar sans
+      // indicateur — l'exception sortait de ce rendu async sans rien afficher. Tuile simplement vide.
+      if (!axisNames.length) {
+        instance.setOption({ series: [] }, true);
+        return;
+      }
       const groupValues = isRadarColumns ? radarColumnValues : agg.map((d) => d.value);
       // Étiquette de la série "groupe" : `tile.measure` en mode dimension (inchangé, même valeur
       // qu'avant la comparaison élève/moyenne ci-dessous) ; en mode colonnes, `tile.title` tant
@@ -847,6 +860,9 @@
         tooltip: { trigger: 'item' },
         legend: series.length > 1 ? { top: 0, data: series.map((s) => s.name) } : undefined,
         radar: {
+          // ECharts 6 a réduit le rayon par défaut (75 % -> 50 %) mais affiche désormais les noms
+          // d'axes en entier : 62 % garde un polygone lisible dans une tuile de 224 px sans les couper.
+          radius: '62%',
           indicator: axisNames.map((name) => ({ name: String(name), max: maxVal || 1, min: minVal }))
         },
         series: [{
