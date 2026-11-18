@@ -15,7 +15,7 @@ délibérément hors scope, et ce qui reste à valider en conditions réelles.
 
 Architecture reprise du widget [publipostageGrist](https://github.com/lombre33/publipostagegrist)
 du même auteur : page statique unique, **aucune étape de build**, config du dashboard stockée dans
-une table Grist interne cachée (`BI_Dashboard_Config`). ECharts (la bibliothèque de graphiques) et
+une table Grist interne cachée (`BI_Dashboard_Config`). ECharts 6.1.0 (la bibliothèque de graphiques) et
 SheetJS (l'export Excel) sont embarqués directement dans le repo (`js/vendor/echarts/` et
 `js/vendor/xlsx/`, tous deux Apache-2.0) plutôt que chargés depuis un CDN externe — un réseau qui
 filtre `cdnjs.cloudflare.com` (proxy d'entreprise/institution, etc.) laisserait sinon les tuiles

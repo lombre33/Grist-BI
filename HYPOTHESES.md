@@ -2795,6 +2795,35 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     (`vitrine/*.webp`) montrent l'ANCIENNE interface et restent à refaire ; (5) les nouveaux types du fil « ECharts 6 »
     (entonnoir, séries, empilé, palette) ne sont pas dans les cartes : ils les ajouteront eux-mêmes via `TYPE_CARDS`.
 
+- **Montée d'ECharts de la 5.6.0 à la 6.1.0** (18/11/2026, demande d'Antoine : « la dernière version la plus stable » ;
+  `js/vendor/echarts/`, `js/charts.js`) : `npm view echarts` donne `latest` = 6.1.0 (19/05/2026, pas de 6.2) ; le tarball
+  `echarts@6.1.0` a été téléchargé, son intégrité `sha512` contrôlée contre le registre, et `dist/echarts.min.js` (1 121 883
+  octets, + 91 Ko) posé avec `LICENSE` et `NOTICE`. **Pas une demande à GFS** : ECharts est ce dont l'app ne peut pas se
+  passer pour tourner seule (protocole « Demander à GFS », étape 1) — voir `GFS-ETAT.md`, « Changements qui touchent GFS ».
+  - **Ce que le guide de migration annonce** (page « v6 upgrade guide » + notes de la 6.1.0, lues mais pas rejouées une à
+    une) : nouveau thème par défaut (palette, positions, tailles), anti-débordement/anti-chevauchement des noms d'axes
+    activés, héritage `rich` -> texte simple. Notre code fixe déjà la palette (`CATEGORICAL_PALETTE`) et la position de
+    chaque légende (`top: 0`), et `containLabel` marche toujours : rien de ce côté n'a bougé. Les ruptures de la 6.1.0
+    (`valueFormatter`, `axis.startValue`, barres qui ne débordent plus de la grille) ne concernent aucun réglage de ce dépôt.
+  - **Trois écarts de rendu trouvés EN COMPARANT les 12 types côte à côte (5.x puis 6.1.0, même jeu de 576 lignes)** :
+    (1) **treemap** : la v6 remplace le cadre par défaut 80 % × 80 % centré par des marges fixes (gauche/droite 20 px,
+    haut/bas 50 px) : 62 px de haut dans une tuile de 224 px, quatre rectangles en bandeau — corrigé par un cadre explicite
+    (`left/right/top/bottom: 8`), la treemap occupe maintenant plus de place qu'avant ; (2) **camembert/anneau** : trait
+    d'étiquette `length2` 15 -> 30 px, donc « Widget B » tronqué en « Widge… » — corrigé (`labelLine: { length: 15, length2: 15 }`) ;
+    (3) **radar** : rayon par défaut 75 % -> 50 % (polygone minuscule) mais noms d'axes désormais entiers et non coupés
+    (en v5 ils étaient grisés et rognés en haut/en bas) — rayon explicite 62 %.
+  - **Bug réel trouvé au passage (pas dû à la v6)** : un radar sans aucun axe (filtre qui ne laisse aucune ligne, ou
+    colonnes pas encore choisies en mode « compétences en colonnes ») lève `Cannot read properties of undefined (reading
+    'push')` dans ECharts 5 comme 6, hors du rendu async, tuile restée vide sans message. Gardé : tuile vide, aucune
+    exception (`js/charts.js`, branche radar).
+  - **Vérifié (Playwright, Chromium, vrai `index.html`/harnais + `dev-tests/grist-stub.js`)** : `echarts.version` = 6.1.0
+    (la v5 vendorisée annonçait 5.5.1 alors que son bundle était la 5.6.0) ; 12 types de tuile rendus sans aucun message
+    de console ; `getDataURL({pixelRatio: 2, backgroundColor})` rend un PNG (exports PDF/PPTX) ; clic souris réel sur
+    secteur, rectangle de treemap, point de nuage de points (filtre croisé) et barre (drill-down) ; info-bulle d'une barre ;
+    radar vidé par un filtre. **Non vérifié** : le nuage de mots (n'utilise pas ECharts, rendu toujours en attente de
+    d3-cloud chez GFS) ; les tuiles en mode mesure DuckDB (cumul/YTD/N-1) sous la v6 (même API `showLoading`/`bar`, mais
+    pas rejouées : le harnais n'a pas de colonne date) ; le thème sombre ; un vrai Grist ou un vrai GFS.
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée

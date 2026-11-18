@@ -88,7 +88,7 @@ suivants lisent `GristBI.i18n.t()` comme un global déjà prêt.
 | `js/export.js` | Construit le classeur `.xlsx` (une feuille par tuile, toutes pages confondues) via SheetJS vendorisé (`window.XLSX`) et déclenche le téléchargement ; async depuis que les tuiles en mode mesure (Cumul/YTD/N-1) y exportent leurs vraies valeurs via `GristBI.duckdbEngine.timeSeriesMeasures`, injecté dans `GristBI.data.buildWorkbookSheetsAsync`. |
 | `js/pdf-export.js` | Export PDF (page actuellement affichée uniquement) via pdfmake, chargé depuis un CDN externe et non vendorisé (exception, voir §8) — capture l'image de chaque graphique déjà rendu (`GristBI.charts.getInstance`) plutôt que de recalculer, ce qui évite le mur asynchrone des tuiles en mode mesure DAX rencontré par l'export Excel. |
 | `js/pptx-export.js` | Export PPTX (page actuellement affichée uniquement) via PptxGenJS, même dérogation CDN/même stratégie de capture d'image que `js/pdf-export.js` — une diapositive par tuile (image ou tableau natif `slide.addTable`, selon `GristBI.data.tileExportKind`) plutôt qu'une grille façon écran. |
-| `js/vendor/echarts/`, `js/vendor/xlsx/`, `js/vendor/duckdb/`, `js/vendor/apache-arrow/`, `js/vendor/flatbuffers/`, `js/vendor/tslib/` | Bibliothèques tierces **vendorisées localement, jamais chargées depuis un CDN externe** — voir §7 pour la raison (bug réel rencontré). |
+| `js/vendor/echarts/` (**ECharts 6.1.0** depuis le 18/11/2026, `dist/echarts.min.js` du paquet npm + `LICENSE` + `NOTICE`), `js/vendor/xlsx/`, `js/vendor/duckdb/`, `js/vendor/apache-arrow/`, `js/vendor/flatbuffers/`, `js/vendor/tslib/` | Bibliothèques tierces **vendorisées localement, jamais chargées depuis un CDN externe** — voir §7 pour la raison (bug réel rencontré). |
 | `kit/` | **Sous-module Git** (`lombre33/grist-factory-kit`, public, GPL 3.0 — pas une bibliothèque tierce vendorisée comme la ligne ci-dessus, et pas davantage une « nouvelle bibliothèque » au sens du protocole GFS §8 : l'adresse de ce dépôt est documentée dans ses propres consignes, référencée directement sans passer par une demande à GFS). Pointe sur un commit ≥ `8afa569` (Kit 0.6.0+, l'ambiance de GFS). Ce widget n'en importe pour l'instant que `kit/js/ambiance.js` et, depuis le 18/11/2026, `kit/js/dialogs.js` (+ `kit/css/windows.css`, voir la ligne `js/dialogs.js`) (`js/main.js`, tout en haut du fichier, via un `import()` dynamique — même mécanisme que `js/duckdb-engine.js`/`js/charts.js:loadD3Cloud` pour charger un module ES depuis un script classique) : `Ambiance.start()` au démarrage, qui pose les jetons de couleur/forme de l'ambiance GFS choisie sur `<html>`, lus par `css/style.css` — voir §7/§8. N'importe aucun autre module du kit (pas encore de traduction/thème/fenêtres communs : ce lot ne couvre que l'ambiance, voir la consigne GFS 004). |
 | `vitrine/` | Carte et fiche de l'app dans la fenêtre « Apps et extensions » de GFS (consigne 014, 17/11/2026) : `vitrine.json` (description ≤ 280 caractères et trois légendes ≤ 60, fr/en) + `1.webp`/`2.webp`/`3.webp` (960 × 600, ≤ 60 Ko, données d'exemple sans nom de personne). Jamais chargé par `index.html` : GFS en copie les images chez lui. Prises avec le vrai `index.html` et le faux Grist du dépôt, PAS dans un vrai Grist — voir HYPOTHESES.md. |
 | `dev-tests/` | Harnais de test hors Grist — voir §5. `dev-tests/harness.html` est **régénéré** depuis `index.html` par `node dev-tests/sync-harness.js` (ne plus l'éditer à la main : `test-data.js` échoue s'il diverge). |
@@ -451,6 +451,16 @@ Cette liste condense les bugs réels les plus instructifs (détail complet dans 
     ouvre sa liste au focus ; donner le focus à un champ combobox par programme (ouverture du panneau, focus d'une erreur) recouvre
     les champs suivants. Le panneau focalise donc le conteneur d'étape (`tabindex="-1"`, `preventScroll`) et, après avoir mis le focus
     sur un combobox en erreur, ferme sa liste par un Échap synthétique.
+
+21. **Monter ECharts, c'est changer des DÉFAUTS, pas seulement des numéros** (5.x -> 6.1.0, 18/11/2026). La v6 a un autre thème et
+    d'autres cadres par défaut : treemap sans cadre explicite = marges fixes 20/50 px (62 px de haut dans une tuile de 224 px, au lieu de
+    80 % × 80 % centré), `labelLine.length2` du camembert 15 -> 30 px (les noms se tronquaient en « Widge… »), rayon du radar 75 % -> 50 %.
+    `js/charts.js` pose donc ces trois réglages explicitement ; tout NOUVEAU type de tuile doit fixer lui-même ses cadres/marges/rayons
+    plutôt que de compter sur les défauts d'ECharts (la palette, elle, est déjà toujours explicite : `CATEGORICAL_PALETTE`). Autre
+    piège, plus ancien : un radar sans aucun indicateur (filtre qui ne laisse aucune ligne) lève « reading 'push' » dans ECharts 5 comme
+    6 — gardé. Et `echarts.version` de la v5 vendorisée annonçait 5.5.1 alors que le bundle était la 5.6.0 : ne pas s'y fier. Test :
+    attendre que `GristBI.store.getState().rows` soit rempli (~10 s dans le harnais) AVANT d'ajouter des tuiles, sinon elles se
+    rendent sans donnée et masquent tout écart visuel.
 
 ## 8. Règles du projet (vérifiées dans le code et la documentation)
 
