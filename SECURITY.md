@@ -22,6 +22,10 @@ Grist et, à la demande, de `pdfmake`/`PptxGenJS` (version figée, empreinte SRI
 
 La restriction fine des données passe par les règles d'accès natives de Grist, pas par le widget.
 
+La configuration d'un rapport (`BI_Dashboard_Config`) est traitée comme une entrée non fiable : une ligne partagée peut avoir été écrite par une autre personne du document.
+Les identifiants de tuile qu'elle contient sont ramenés à `[A-Za-z0-9_-]` à la lecture (`js/state.js`), et toute chaîne qu'elle porte (titres, noms de pages et de vues, valeurs de
+filtre) est échappée avant d'être écrite dans la page.
+
 L'état de l'audit automatisé `gwaudit` (ce qui est corrigé, ce qui est voulu, ce qui reste) est tenu dans
 [`AUDIT-GW.md`](AUDIT-GW.md).
 

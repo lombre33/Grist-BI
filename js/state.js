@@ -17,6 +17,53 @@
   //   drillDimensions?, drillCrossFilter?, trendDimension?, measureY?, gaugeMin?, gaugeMax? }
   const DEFAULT_PAGE_ID = 'page_default';
 
+  // Un id de tuile est lu depuis la configuration (`BI_Dashboard_Config`, une ligne que d'autres
+  // personnes du document peuvent avoir écrite : consigne GFS 005) puis reposé dans du balisage
+  // (`data-tile-id="…"`) et dans des sélecteurs CSS (`[data-tile-id="…"]`). Un id forgé comme
+  // `x"><img src=x onerror=…>` exécutait donc du script dans le widget (accès `full`) : trouvé par la
+  // revue C-XSS-01 de l'audit gwaudit, 18/11/2026 (HYPOTHESES.md, bug réel n°37). Les ids que ce widget
+  // fabrique lui-même (`tile_…`, `page_…`, `bm_…`, `stress_…`, `__preview__`) n'ont que lettres, chiffres,
+  // `_` et `-` : tout autre caractère d'un id relu devient `_`.
+  const UNSAFE_ID_CHARS = /[^A-Za-z0-9_-]/g;
+
+  // `used` : ids déjà pris (ils sont uniques dans tout le rapport, pages confondues). Un id vide, absent,
+  // qui n'est ni un texte ni un nombre, ou déjà pris reçoit un suffixe numérique : jamais deux tuiles
+  // sous le même id (le DOM et les caches de rendu sont indexés par id).
+  function safeTileId(raw, used) {
+    let id = (typeof raw === 'string' || typeof raw === 'number') ? String(raw).replace(UNSAFE_ID_CHARS, '_') : '';
+    if (!id) id = 'tile';
+    if (used.has(id)) {
+      let n = 2;
+      while (used.has(id + '_' + n)) n++;
+      id = id + '_' + n;
+    }
+    used.add(id);
+    return id;
+  }
+
+  // Rend des pages dont toutes les tuiles ont un id sûr et unique. Rend la MÊME référence quand rien ne
+  // change (le cas de toute configuration écrite par ce widget) : `main.js:render()` compare `state.pages`
+  // par référence pour décider d'une sauvegarde, une copie à chaque chargement en déclencherait une.
+  function sanitizePages(pages) {
+    const used = new Set();
+    let changed = false;
+    const out = pages.map((page) => {
+      const tiles = Array.isArray(page && page.tiles) ? page.tiles : [];
+      let pageChanged = !Array.isArray(page && page.tiles);
+      const safeTiles = tiles.map((tile) => {
+        if (!tile || typeof tile !== 'object') { pageChanged = true; return null; }
+        const id = safeTileId(tile.id, used);
+        if (id === tile.id) return tile;
+        pageChanged = true;
+        return Object.assign({}, tile, { id });
+      }).filter(Boolean);
+      if (!pageChanged && safeTiles.length === tiles.length) return page;
+      changed = true;
+      return Object.assign({}, page, { tiles: safeTiles });
+    });
+    return changed ? out : pages;
+  }
+
   // Sérialisation JSON à clés triées : deux objets de même contenu donnent la même chaîne, quel que
   // soit l'ordre dans lequel leurs clés ont été posées.
   function stableStringify(value) {
@@ -127,7 +174,7 @@
     // remplace TOUTES les pages d'un coup, contrairement à addTile/updateTile/... qui n'agissent
     // que sur la page courante.
     function setPages(newPages, newCurrentPageId) {
-      pages = (newPages && newPages.length) ? newPages : [{ id: DEFAULT_PAGE_ID, name: 'Page 1', tiles: [] }];
+      pages = (newPages && newPages.length) ? sanitizePages(newPages) : [{ id: DEFAULT_PAGE_ID, name: 'Page 1', tiles: [] }];
       currentPageId = (newCurrentPageId && pages.some((p) => p.id === newCurrentPageId)) ? newCurrentPageId : pages[0].id;
       // Un autre rapport / une autre table n'a plus les mêmes tuiles : seules celles qui existent
       // encore restent agrandies (aucune, dans la pratique, les ids de tuile étant uniques).
@@ -390,5 +437,5 @@
     };
   }
 
-  return { createStore, sameSnapshot, DEFAULT_PAGE_ID };
+  return { createStore, sameSnapshot, sanitizePages, safeTileId, DEFAULT_PAGE_ID };
 });
