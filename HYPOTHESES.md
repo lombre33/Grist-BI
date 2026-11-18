@@ -2669,6 +2669,42 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     hébergeur ; le rendu des fenêtres a été vu en clair et en sombre mais jamais sous une ambiance
     GFS choisie.
 
+- **Barre unique, menus, pastilles de filtre, modes Lecture/Édition** (18/11/2026, lot 1 de l'audit
+  UI/UX en vue de l'alpha — `index.html`, `js/appbar.js`, `js/main.js`, `css/style.css`) : l'audit
+  mesurait 24 contrôles permanents sur 7 bandes de même poids, et une 1re tuile à y = 431 / 521 /
+  583 / 921 px pour 1220 / 900 / 600 / 420 px de large. Mesures de la nouvelle disposition (vrai
+  `index.html`, tableau de démonstration à 9 tuiles) : barre de 48 px sur une ligne, **1re tuile à
+  y ≤ 80 en Lecture (95 avec des filtres actifs)** à 1000 × 600 ; à 700 et 420 px la barre tient en
+  73–75 px (2 lignes : outils, puis onglets), jamais de défilement horizontal de la page.
+  - **Structure** : une barre — pastille « Données » (table + nombre de lignes, ouvre le sélecteur
+    de table, la jointure et l'import Power BI), onglets de page, boutons Filtre / Vues / Exporter
+    (menus), « Modifier / Terminer », thème, pastille Alpha, logo Grist Factory (conservé, décision
+    d'Antoine du 29/09). Le badge « POC » devient « Alpha » (« Harnais local » dans le harnais).
+  - **Lecture / Édition** (`body[data-mode]`, `.edit-only`/`.read-only`) : Lecture par défaut ; à
+    chaque changement de table, Lecture si une page a des tuiles, Édition sinon. **Non persisté** :
+    revenir dans le widget rouvre en Lecture, c'est voulu pour une alpha (l'écran d'un lecteur de
+    tableau de bord n'est pas celui d'un auteur) ; à reconsidérer si Antoine préfère mémoriser.
+  - **Menus** (`js/appbar.js`) : un panneau ouvert à la fois, Échap (focus rendu au bouton), clic
+    ailleurs ou sortie du focus (Tab) les ferment, placés en `position: fixed` et rabattus dans le
+    cadre (le panneau Grist peut ne faire que 700 × 400). Fonctions pures (`placePopover`,
+    `tabKeyTarget`, `menuKeyTarget`) testées sous Node.
+  - **Pastilles de filtre** : les filtres croisés (clic dans un graphique) et avancés
+    (Filtre → menu) sont visibles en permanence sous la barre, un clic sur la pastille retire ce
+    filtre ; avant, ils n'étaient lisibles que dans la barre de filtres avancés ou en cliquant
+    sur un graphique.
+  - **Harnais** : `dev-tests/harness.html` n'est plus une copie faite à la main mais REGÉNÉRÉ par
+    `node dev-tests/sync-harness.js` ; `test-data.js` échoue s'il diverge d'`index.html` (bug réel
+    n°27 de `TEST_PROTOCOL.md`).
+  - **Écran étroit** : sous 760 px, libellés des boutons masqués ; sous 560 px, le compteur de
+    lignes et le libellé « Terminer » disparaissent (le nom accessible reste), pour que le nom de
+    la table reste lisible sur la 1re ligne.
+  - **Limites** : (1) les captures de la vitrine GFS (`vitrine/*.webp`) montrent l'ANCIENNE interface
+    et sont à refaire avant de les republier ; (2) le panneau latéral « Ajouter une visualisation »
+    (lot 2) n'est pas encore là : le formulaire d'ajout est celui d'avant, simplement masqué en
+    Lecture ; (3) rien n'a été vu sous une ambiance GFS choisie sur la nouvelle barre, ni dans un
+    vrai Grist ; (4) clavier réel et lecteur d'écran non essayés (rôles ARIA et ordre de tabulation
+    vérifiés par script seulement).
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée

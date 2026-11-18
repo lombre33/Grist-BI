@@ -222,6 +222,16 @@
   const clearFilterBtn = document.getElementById('clear-filter');
   const filterBadgesEl = document.getElementById('filter-badges');
   const rowCountEl = document.getElementById('row-count');
+  const dataPillNameEl = document.getElementById('data-pill-name');
+  const chipsRowEl = document.getElementById('chips-row');
+  const filterToggleBtn = document.getElementById('filter-toggle');
+  const filterCountEl = document.getElementById('filter-count');
+  const viewsToggleBtn = document.getElementById('views-toggle');
+  const exportToggleBtn = document.getElementById('export-toggle');
+  const modeToggleBtn = document.getElementById('mode-toggle');
+  const modeToggleLabelEl = document.getElementById('mode-toggle-label');
+  const welcomeEl = document.getElementById('welcome');
+  const emptyStateReadHintEl = document.getElementById('empty-state-readhint');
   const bookmarkSelect = document.getElementById('bookmark-select');
   const deleteBookmarkBtn = document.getElementById('delete-bookmark');
   const saveBookmarkBtn = document.getElementById('save-bookmark');
@@ -719,9 +729,37 @@
       form.querySelectorAll('input, select, button, textarea').forEach((el) => { el.disabled = !enabled; });
     }
     for (const el of [bookmarkSelect, saveBookmarkBtn, exportExcelBtn, exportPdfBtn, exportPptxBtn, addPageBtn,
+                       filterToggleBtn, viewsToggleBtn, exportToggleBtn, modeToggleBtn,
                        blendSecondaryTableInput, blendPrimaryColumnInput, blendSecondaryColumnInput]) {
       el.disabled = !enabled;
     }
+  }
+
+  // Mode Lecture / Édition (audit UI/UX du 18/11/2026) : `body[data-mode]` masque en lecture tout ce
+  // qui sert à CONSTRUIRE le tableau de bord (`.edit-only` : formulaire d'ajout, « + » des pages,
+  // déplacer/modifier/supprimer une tuile, jointure, import). Pas persisté : à chaque connexion à une
+  // table, un tableau de bord qui a déjà des tuiles s'ouvre en lecture, un tableau vide en édition ;
+  // le bouton de la barre bascule ensuite à la main. Au démarrage (rien de connecté) : lecture, pour
+  // ne pas montrer un formulaire inutilisable le temps du chargement.
+  let mode = 'read';
+  function applyMode() {
+    document.body.dataset.mode = mode;
+    const editing = mode === 'edit';
+    modeToggleBtn.setAttribute('aria-pressed', String(editing));
+    const label = t(editing ? 'mode.done' : 'mode.edit');
+    modeToggleLabelEl.textContent = label;
+    // Écran très étroit : le libellé visible disparaît (css), le nom accessible reste.
+    modeToggleBtn.setAttribute('aria-label', label);
+  }
+  function setMode(next) {
+    mode = next === 'edit' ? 'edit' : 'read';
+    if (mode === 'read' && editingTileId) stopEditTile(); // on ne laisse pas une édition en cours derrière un formulaire masqué
+    GristBI.appbar.closePopovers();
+    applyMode();
+  }
+  function autoMode() {
+    const hasTiles = store.getState().pages.some((p) => p.tiles && p.tiles.length > 0);
+    setMode(hasTiles ? 'read' : 'edit');
   }
 
   // État de la connexion aux données, distinct de « une table est connectée » : tant que le
@@ -730,9 +768,21 @@
   // trompeur s'affichait pendant tout le chargement). 'connecting' | 'noTables' | 'failed' ; sans
   // objet dès qu'une table est connectée (`currentTableId`).
   let connectionState = 'connecting';
+  // Vrai une fois la configuration de la table lue (switchTable) : `currentTableId` est posé AVANT cette
+  // lecture, qui peut durer une dizaine de secondes sur un document neuf (création de
+  // BI_Dashboard_Config, voir `tableExistsConfirmed`) — pendant ce temps « 0 ligne » et « Ce tableau de
+  // bord est vide » seraient faux, la table n'est pas encore prête.
+  let dashboardReady = false;
   function connectionMessage() {
     if (connectionState === 'noTables') return t('status.noTables');
     if (connectionState === 'failed') return t('status.connectionFailed');
+    return t('status.connecting');
+  }
+  // Texte COURT de la pastille « Données » tant qu'aucune table n'est connectée (la phrase complète
+  // ci-dessus va dans l'état vide, assez large pour elle).
+  function connectionShortMessage() {
+    if (connectionState === 'noTables') return t('status.noTables.short');
+    if (connectionState === 'failed') return t('status.failed.short');
     return t('status.connecting');
   }
   // `currentTableId` reste `null` tant qu'aucune table n'a pu être rejointe : un rendu déclenché
@@ -744,9 +794,11 @@
   // remplacé (le `textContent` de l'ancien code détruisait son <span> à jamais : une fois une
   // première table connectée, le conseil ne revenait plus).
   function renderConnectionStatus(state) {
-    const connected = Boolean(currentTableId);
-    rowCountEl.textContent = connected ? t('status.rowCount', { n: state.rows.length }) : connectionMessage();
+    const connected = Boolean(currentTableId) && dashboardReady;
+    dataPillNameEl.textContent = currentTableId ? currentTableId : connectionShortMessage();
+    rowCountEl.textContent = connected ? t('status.rowCount', { n: state.rows.length }) : '';
     emptyStateHintEl.hidden = !connected;
+    emptyStateReadHintEl.hidden = !connected;
     emptyStateStatusEl.hidden = connected;
     emptyStateStatusEl.textContent = connected ? '' : connectionMessage();
     retryConnectBtn.hidden = connected || connectionState !== 'failed';
@@ -811,11 +863,13 @@
       if (commentsCountEl) {
         const n = GristBI.data.commentsForTile(state.comments, tile.id).length;
         commentsCountEl.hidden = n === 0;
+        commentsCountEl.parentElement.classList.toggle('has-comments', n > 0);
         commentsCountEl.textContent = n > 99 ? '99+' : String(n);
       }
     });
 
     emptyState.hidden = state.tiles.length > 0;
+    welcomeEl.hidden = state.tiles.length > 0;
     // Temps de rendu affiché dans le bandeau : utile pour repérer à l'œil un ralentissement sur une
     // table de travail à fort volume, sans devoir ouvrir les DevTools à chaque fois.
     const renderStart = performance.now();
@@ -831,9 +885,11 @@
     renderPageTabs(state.pages, state.currentPageId);
     renderFilterBadges(state.activeFilters);
     renderAdvancedFilterBadges(state.advancedFilters);
+    renderFilterSummary(state.activeFilters.length + state.advancedFilters.length);
+    applyMode();
     // Avant renderBookmarks() : deleteBookmarkBtn doit rester déterminé par la sélection courante
     // (voir renderBookmarks ci-dessous), pas par ce bascule générique.
-    setTableDependentControlsEnabled(Boolean(currentTableId));
+    setTableDependentControlsEnabled(Boolean(currentTableId) && dashboardReady);
     renderBookmarks(state.bookmarks);
     renderConnectionStatus(state);
 
@@ -865,27 +921,38 @@
   }
 
   // Une page ne se supprime jamais toute seule (state.js:removePage refuse de vider la dernière),
-  // donc pas besoin de gérer un état "aucune page" ici. Double-clic = renommer (pattern déjà utilisé
-  // nulle part ailleurs dans ce fichier mais discoverable, comme un onglet de tableur) ; le bouton
-  // de suppression (icône `close`) n'apparaît que sur l'onglet actif pour ne pas encombrer les
-  // onglets inactifs, et seulement s'il y a plus d'une page (sinon il ne ferait jamais rien).
+  // donc pas besoin de gérer un état "aucune page" ici. Onglets d'un `tablist` ARIA (audit UI/UX du
+  // 18/11/2026) : `role="tab"` + `aria-selected`, un seul onglet dans l'ordre de tabulation
+  // (`tabindex` itinérant), flèches ← → / Début / Fin pour passer d'une page à l'autre
+  // (`GristBI.appbar.tabKeyTarget`, testé sous Node). Renommer (double-clic) et supprimer (croix de
+  // l'onglet actif, seulement s'il y a plus d'une page) ne sont offerts qu'en mode Édition ; la croix
+  // est un 2e bouton à côté de l'onglet, jamais un contrôle imbriqué dans un bouton.
+  function updateTabsOverflow() {
+    pageTabsEl.classList.toggle('overflows', pageTabsEl.scrollWidth > pageTabsEl.clientWidth + 1);
+  }
+  window.addEventListener('resize', updateTabsOverflow);
+  let restoreTabFocus = false; // le rendu qui suit une flèche doit rendre le focus à l'onglet actif
   function renderPageTabs(pages, currentPageId) {
     pageTabsEl.innerHTML = pages.map((p) => {
       const active = p.id === currentPageId;
       const removeBtn = active && pages.length > 1
-        ? `<span class="page-tab-remove" data-page-id="${escapeHtml(p.id)}" title="${escapeHtml(t('pages.remove.title'))}">${icon('close')}</span>`
+        ? `<button type="button" class="page-tab-remove edit-only" data-page-id="${escapeHtml(p.id)}" title="${escapeHtml(t('pages.remove.title'))}" aria-label="${escapeHtml(t('pages.remove.title'))}">${icon('close')}</button>`
         : '';
-      return `<button type="button" class="page-tab${active ? ' active' : ''}" data-page-id="${escapeHtml(p.id)}">
-        ${escapeHtml(p.name)}${removeBtn}
-      </button>`;
+      return `<span class="page-tab-group${active ? ' active' : ''}"><button type="button" class="page-tab${active ? ' active' : ''}" role="tab" aria-selected="${active}" tabindex="${active ? 0 : -1}" data-page-id="${escapeHtml(p.id)}">${escapeHtml(p.name)}</button>${removeBtn}</span>`;
     }).join('');
-    for (const tab of pageTabsEl.querySelectorAll('.page-tab')) {
+    const tabs = Array.from(pageTabsEl.querySelectorAll('.page-tab'));
+    tabs.forEach((tab, index) => {
       const pageId = tab.dataset.pageId;
-      tab.addEventListener('click', (e) => {
-        if (e.target.closest('.page-tab-remove')) return; // géré séparément ci-dessous
-        store.setCurrentPage(pageId);
+      tab.addEventListener('click', () => store.setCurrentPage(pageId));
+      tab.addEventListener('keydown', (e) => {
+        const target = GristBI.appbar.tabKeyTarget(e.key, index, tabs.length);
+        if (target == null) return;
+        e.preventDefault();
+        restoreTabFocus = true;
+        store.setCurrentPage(tabs[target].dataset.pageId);
       });
       tab.addEventListener('dblclick', async () => {
+        if (mode !== 'edit') return;
         const page = pages.find((p) => p.id === pageId);
         const answer = await GristBI.dialogs.prompt({
           title: t('pages.rename.title'), label: t('pages.rename.prompt'),
@@ -894,10 +961,17 @@
         const name = (answer || '').trim();
         if (name) store.renamePage(pageId, name);
       });
+    });
+    const activeTab = pageTabsEl.querySelector('.page-tab.active');
+    if (activeTab && typeof activeTab.scrollIntoView === 'function') activeTab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    if (restoreTabFocus) {
+      restoreTabFocus = false;
+      if (activeTab) activeTab.focus();
     }
+    updateTabsOverflow();
     for (const removeBtn of pageTabsEl.querySelectorAll('.page-tab-remove')) {
       removeBtn.addEventListener('click', async (e) => {
-        e.stopPropagation(); // ne pas aussi déclencher le clic de l'onglet parent (setCurrentPage, no-op ici)
+        e.stopPropagation();
         const pageId = removeBtn.dataset.pageId;
         const page = pages.find((p) => p.id === pageId);
         const ok = await GristBI.dialogs.confirm({
@@ -922,7 +996,15 @@
     for (const btn of filterBadgesEl.querySelectorAll('.filter-chip-remove')) {
       btn.addEventListener('click', () => store.clearFilter(btn.dataset.column));
     }
-    clearFilterBtn.hidden = activeFilters.length === 0;
+  }
+
+  // Rangée de pastilles sous la barre (visible seulement avec au moins un filtre, croisé ou avancé),
+  // « Effacer les filtres » (les deux familles) et compteur sur le bouton « Filtre ».
+  function renderFilterSummary(total) {
+    chipsRowEl.hidden = total === 0;
+    clearFilterBtn.hidden = total === 0;
+    filterCountEl.hidden = total === 0;
+    filterCountEl.textContent = String(total);
   }
 
   // Mêmes clés que les options du <select> "Période" du formulaire de filtre avancé (voir
@@ -995,12 +1077,12 @@
     // reconstruction (voir le commentaire en tête de render()).
     const header = `<div class="tile-header"><span class="tile-title" title="${escapeHtml(GristBI.i18n.tileTitle(tile))}">${escapeHtml(GristBI.i18n.tileTitle(tile))}</span>
         <span class="tile-actions">
-          <button class="tile-move-left" type="button" data-i18n-aria="tile.moveLeft" data-i18n-title="tile.moveLeft" aria-label="${escapeHtml(t('tile.moveLeft'))}" title="${escapeHtml(t('tile.moveLeft'))}">${icon('chevronLeft')}</button>
-          <button class="tile-move-right" type="button" data-i18n-aria="tile.moveRight" data-i18n-title="tile.moveRight" aria-label="${escapeHtml(t('tile.moveRight'))}" title="${escapeHtml(t('tile.moveRight'))}">${icon('chevronRight')}</button>
-          <button class="tile-edit" type="button" data-i18n-aria="tile.edit.aria" data-i18n-title="tile.edit.title" aria-label="${escapeHtml(t('tile.edit.aria'))}" title="${escapeHtml(t('tile.edit.title'))}">${icon('edit')}</button>
+          <button class="tile-move-left edit-only" type="button" data-i18n-aria="tile.moveLeft" data-i18n-title="tile.moveLeft" aria-label="${escapeHtml(t('tile.moveLeft'))}" title="${escapeHtml(t('tile.moveLeft'))}">${icon('chevronLeft')}</button>
+          <button class="tile-move-right edit-only" type="button" data-i18n-aria="tile.moveRight" data-i18n-title="tile.moveRight" aria-label="${escapeHtml(t('tile.moveRight'))}" title="${escapeHtml(t('tile.moveRight'))}">${icon('chevronRight')}</button>
+          <button class="tile-edit edit-only" type="button" data-i18n-aria="tile.edit.aria" data-i18n-title="tile.edit.title" aria-label="${escapeHtml(t('tile.edit.aria'))}" title="${escapeHtml(t('tile.edit.title'))}">${icon('edit')}</button>
           <button class="tile-comments" type="button" data-i18n-aria="tile.comments.aria" data-i18n-title="tile.comments.title" aria-label="${escapeHtml(t('tile.comments.aria'))}" title="${escapeHtml(t('tile.comments.title'))}">${icon('comment')}<span class="tile-comments-count" hidden></span></button>
           <button class="tile-detail" type="button" data-i18n-aria="tile.detail.aria" data-i18n-title="tile.detail.title" aria-label="${escapeHtml(t('tile.detail.aria'))}" title="${escapeHtml(t('tile.detail.title'))}">${icon('search')}</button>
-          <button class="tile-remove" type="button" data-i18n-aria="tile.remove.aria" data-i18n-title="tile.remove.title" aria-label="${escapeHtml(t('tile.remove.aria'))}" title="${escapeHtml(t('tile.remove.title'))}">${icon('close')}</button>
+          <button class="tile-remove edit-only" type="button" data-i18n-aria="tile.remove.aria" data-i18n-title="tile.remove.title" aria-label="${escapeHtml(t('tile.remove.aria'))}" title="${escapeHtml(t('tile.remove.title'))}">${icon('close')}</button>
         </span></div>`;
     el.innerHTML = tile.type === 'kpi'
       ? `${header}
@@ -1680,11 +1762,15 @@
     filterDateStartInput.value = '';
     filterDateEndInput.value = '';
     filterTextInput.value = '';
+    GristBI.appbar.closePopovers(); // le filtre est posé : sa pastille apparaît sous la barre
   });
 
   bookmarkSelect.addEventListener('change', () => {
     deleteBookmarkBtn.disabled = !bookmarkSelect.value;
-    if (bookmarkSelect.value) store.applyBookmark(bookmarkSelect.value);
+    if (bookmarkSelect.value) {
+      store.applyBookmark(bookmarkSelect.value);
+      GristBI.appbar.closePopovers();
+    }
   });
 
   deleteBookmarkBtn.addEventListener('click', () => {
@@ -1751,7 +1837,8 @@
     if (name) store.addPage(name);
   });
 
-  clearFilterBtn.addEventListener('click', () => store.clearFilter());
+  clearFilterBtn.addEventListener('click', () => { store.clearFilter(); store.clearAdvancedFilter(); });
+  modeToggleBtn.addEventListener('click', () => setMode(mode === 'edit' ? 'read' : 'edit'));
 
   // Même convention d'ouverture/fermeture que Publipostage+ (js/settings.js de ce widget frère) :
   // `hidden` natif, pas de fermeture au clic sur le fond — un clic accidentel sur l'overlay pendant
@@ -1948,6 +2035,9 @@
     currentTableId = tableId;
     currentPrimaryRows = rows;
     if (isNewTable) {
+      dashboardReady = false;
+      connectionState = 'connecting';
+      renderConnectionStatus(store.getState());
       store.clearFilter();
       store.clearAdvancedFilter();
       if (editingTileId) stopEditTile(); // le formulaire en cours d'édition référence une tuile de l'ancienne table
@@ -1977,6 +2067,8 @@
       } finally {
         suppressNextSave = false;
       }
+      dashboardReady = true;
+      autoMode();
       refreshBlendPicker();
     }
     await applyBlend(currentBlend);

@@ -1578,6 +1578,60 @@ const SAMPLE_TIME_SERIES = [
   console.log('OK i18n.tileTitle — titre auto-composé traduit, repli sur le titre stocké (fr/en)');
 }
 
+// Barre unique (audit UI/UX du 18/11/2026, lot 1) : placement des menus déroulants et navigation au
+// clavier des onglets/menus — les fonctions pures de js/appbar.js ; le câblage DOM (ouverture, Échap,
+// focus) est exercé par les scripts Playwright, jamais depuis Node.
+{
+  const appbar = require('../js/appbar.js');
+  const vp = { width: 700, height: 400 };
+  // Cas nominal : le bord gauche du panneau s'aligne sur celui du bouton, 6 px sous lui.
+  let spot = appbar.placePopover({ left: 100, right: 160, bottom: 48 }, { width: 300 }, vp);
+  assert.deepStrictEqual(spot, { left: 100, top: 54, maxHeight: 400 - 54 - 8 });
+  // Débordement à droite : le bord DROIT du panneau s'aligne sur celui du bouton.
+  spot = appbar.placePopover({ left: 600, right: 660, bottom: 48 }, { width: 300 }, vp);
+  assert.strictEqual(spot.left, 360, 'rabattu sur le bord droit du bouton');
+  // Bouton trop près du bord gauche ET panneau plus large que l'espace : jamais hors cadre (marge 8).
+  spot = appbar.placePopover({ left: 2, right: 40, bottom: 48 }, { width: 300 }, vp);
+  assert.strictEqual(spot.left, 8, 'marge minimale respectée à gauche');
+  spot = appbar.placePopover({ left: 10, right: 690, bottom: 48 }, { width: 900 }, vp);
+  assert.ok(spot.left >= 8 || 900 + 16 > vp.width, 'un panneau plus large que le cadre ne passe pas en marge négative arbitraire');
+  // Cadre très bas : la hauteur maximale ne tombe jamais sous 120 px (le panneau défile).
+  spot = appbar.placePopover({ left: 10, right: 60, bottom: 300 }, { width: 200 }, { width: 700, height: 360 });
+  assert.strictEqual(spot.maxHeight, 120);
+  // Onglets : ← → circulaires, Début/Fin, touche non gérée → null, aucun onglet → null.
+  assert.strictEqual(appbar.tabKeyTarget('ArrowRight', 2, 3), 0);
+  assert.strictEqual(appbar.tabKeyTarget('ArrowRight', 0, 3), 1);
+  assert.strictEqual(appbar.tabKeyTarget('ArrowLeft', 0, 3), 2);
+  assert.strictEqual(appbar.tabKeyTarget('Home', 2, 3), 0);
+  assert.strictEqual(appbar.tabKeyTarget('End', 0, 3), 2);
+  assert.strictEqual(appbar.tabKeyTarget('a', 0, 3), null);
+  assert.strictEqual(appbar.tabKeyTarget('ArrowRight', 0, 0), null);
+  assert.strictEqual(appbar.tabKeyTarget('ArrowRight', 0, 1), 0, 'un seul onglet : reste dessus');
+  // Menus verticaux : ↓ ↑ circulaires ; depuis « aucun actif » (-1), ↓ → premier, ↑ → dernier.
+  assert.strictEqual(appbar.menuKeyTarget('ArrowDown', -1, 4), 0);
+  assert.strictEqual(appbar.menuKeyTarget('ArrowUp', -1, 4), 3);
+  assert.strictEqual(appbar.menuKeyTarget('ArrowDown', 3, 4), 0);
+  assert.strictEqual(appbar.menuKeyTarget('ArrowUp', 0, 4), 3);
+  assert.strictEqual(appbar.menuKeyTarget('End', 0, 4), 3);
+  assert.strictEqual(appbar.menuKeyTarget('ArrowLeft', 0, 4), null);
+  assert.strictEqual(appbar.menuKeyTarget('ArrowDown', -1, 0), null);
+  console.log('OK appbar — placePopover (bords, marge, hauteur mini), tabKeyTarget, menuKeyTarget');
+}
+
+// `dev-tests/harness.html` recopie le <body> d'index.html (voir dev-tests/sync-harness.js) : un id ajouté
+// à l'un et oublié dans l'autre faisait planter js/main.js dès son chargement dans le harnais (bug réel
+// n°27). Faux ici = lancer `node dev-tests/sync-harness.js`.
+{
+  const syncHarness = require('./sync-harness.js');
+  assert.ok(syncHarness.isInSync(), 'dev-tests/harness.html diffère d\'index.html : lancer `node dev-tests/sync-harness.js`');
+  // Le badge est la seule différence voulue.
+  const harness = require('fs').readFileSync(require('path').join(__dirname, 'harness.html'), 'utf8');
+  assert.ok(harness.includes('Harnais local') && !harness.includes('data-i18n="topbar.badgeAlpha"'));
+  // Les chemins du harnais sont rebasés d'un niveau : aucun `src="js/` nu ne doit y subsister.
+  assert.ok(!/(src|href)="(js|css|img|kit)\//.test(harness), 'chemin non rebasé dans harness.html');
+  console.log('OK sync-harness — harness.html est identique à index.html (au badge près)');
+}
+
 // Consigne GFS 007, point 1 : dans le sous-cadre isolé d'un hébergeur comme GFS (sandbox sans
 // allow-same-origin), LIRE `localStorage` lève une exception — y compris à travers un simple
 // `typeof` (un `typeof` ne masque qu'une référence jamais déclarée, pas une exception levée par un

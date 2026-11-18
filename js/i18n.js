@@ -35,7 +35,7 @@
   const STRINGS = {
     // --- Bandeau du haut ---
     'topbar.title': { fr: 'Dashboard BI', en: 'BI Dashboard' },
-    'topbar.badgePoc': { fr: 'POC', en: 'POC' },
+    'topbar.badgeAlpha': { fr: 'Alpha', en: 'Alpha' },
     'topbar.clearFilters': { fr: 'Effacer les filtres', en: 'Clear filters' },
     'status.rowCount': { fr: '{n} {n|ligne|lignes}', en: '{n} {n|row|rows}' },
     'status.renderTime': { fr: 'rendu : {ms} ms', en: 'rendered: {ms} ms' },
@@ -58,7 +58,6 @@
     },
 
     // --- Pages ---
-    'pages.addPage': { fr: '+ Page', en: '+ Page' },
     'pages.addPage.title': { fr: 'Ajouter une page', en: 'Add a page' },
     'pages.remove.title': { fr: 'Supprimer cette page', en: 'Delete this page' },
     'pages.rename.prompt': { fr: 'Nouveau nom de la page :', en: 'New page name:' },
@@ -107,7 +106,7 @@
     },
 
     // --- Filtres avancés ---
-    'filters.advanced.label': { fr: 'Filtre avancé', en: 'Advanced filter' },
+    'filters.advanced.label': { fr: 'Colonne', en: 'Column' },
     'filters.range.label': { fr: 'Plage', en: 'Range' },
     'filters.min.placeholder': { fr: 'Min', en: 'Min' },
     'filters.max.placeholder': { fr: 'Max', en: 'Max' },
@@ -317,11 +316,35 @@
     // --- Connexion / statut (js/main.js:bootstrap) ---
     'status.connecting': { fr: 'Connexion…', en: 'Connecting…' },
     'status.noTables': {
-      fr: 'Aucune table dans ce document — choisissez-en une via le sélecteur ci-dessus, ou créez-en une dans Grist.',
-      en: 'No table in this document — pick one from the selector above, or create one in Grist.'
+      fr: 'Aucune table dans ce document — choisissez-en une via le sélecteur en haut à gauche, ou créez-en une dans Grist.',
+      en: 'No table in this document — pick one from the selector at the top left, or create one in Grist.'
     },
     'status.connectionFailed': { fr: 'Échec de la connexion aux données — voir la console (F12).', en: 'Failed to connect to the data — see the console (F12).' },
     'status.retry': { fr: 'Réessayer', en: 'Retry' },
+    // Libellés COURTS de la pastille « Données » (la phrase complète va dans l'état vide, ci-dessous).
+    'status.noTables.short': { fr: 'Aucune table', en: 'No table' },
+    'status.failed.short': { fr: 'Connexion impossible', en: 'Connection failed' },
+
+    // --- Barre unique, menus, modes Lecture/Édition (js/main.js, js/appbar.js ; audit UI/UX du
+    // 18/11/2026, lot 1). Bloc à part pour ne pas se marcher dessus avec `advice.*`. ---
+    'bar.filter': { fr: 'Filtre', en: 'Filter' },
+    'bar.views': { fr: 'Vues', en: 'Views' },
+    'bar.export': { fr: 'Exporter', en: 'Export' },
+    'mode.edit': { fr: 'Modifier', en: 'Edit' },
+    'mode.done': { fr: 'Terminer', en: 'Done' },
+    'pages.tablist': { fr: 'Pages', en: 'Pages' },
+    'pages.rename.hint': { fr: 'Double-clic pour renommer', en: 'Double-click to rename' },
+    'data.popover.aria': { fr: 'Données', en: 'Data' },
+    'filters.popover.aria': { fr: 'Filtre', en: 'Filter' },
+    'filters.popover.title': { fr: 'Ajouter un filtre', en: 'Add a filter' },
+    'views.popover.aria': { fr: 'Vues', en: 'Views' },
+    'views.saved': { fr: 'Vues sauvegardées', en: 'Saved views' },
+    'export.menu.aria': { fr: 'Exporter', en: 'Export' },
+    'blend.title': { fr: 'Joindre une autre table', en: 'Join another table' },
+    'emptyState.readHint': {
+      fr: 'Ce tableau de bord est vide. Cliquez sur « Modifier » pour ajouter une visualisation.',
+      en: 'This dashboard is empty. Click “Edit” to add a visualization.',
+    },
 
     // --- Fenêtres de dialogue du kit (js/dialogs.js, audit UI/UX du 18/11/2026) : remplacent
     // window.prompt/confirm/alert, muets dans le cadre isolé de GFS (pas de `allow-modals`). ---
