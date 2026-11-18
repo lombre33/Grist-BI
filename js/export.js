@@ -140,8 +140,8 @@
   }
 
   function fillRange(ws, row, fromCol, toCol, argb) {
-    for (let c = fromCol; c <= toCol; c++) {
-      ws.getCell(row, c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb } };
+    for (let col = fromCol; col <= toCol; col++) {
+      ws.getCell(row, col).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb } };
     }
   }
 
@@ -195,7 +195,7 @@
         pageSetup: { paperSize: 9, orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0 }
       });
       const widestTable = page.blocks.reduce((n, b) => Math.max(n, (b.header || []).length), MIN_BLOCK_COLS);
-      for (let c = 1; c <= widestTable; c++) ws.getColumn(c).width = c === 1 ? FIRST_COL_WIDTH : OTHER_COL_WIDTH;
+      for (let col = 1; col <= widestTable; col++) ws.getColumn(col).width = col === 1 ? FIRST_COL_WIDTH : OTHER_COL_WIDTH;
 
       let r = 1;
       ws.getCell(r, 1).value = cellValue(page.title === undefined ? page.name : page.title);
@@ -298,16 +298,16 @@
 
   function downloadBlob(blob, filename) {
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.style.display = 'none';
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.style.display = 'none';
     // Dans le DOM le temps du clic synthétique : certains navigateurs ignorent un clic sur une
     // ancre détachée. Jamais vérifié en conditions réelles Grist/GFS (voir HYPOTHESES.md) : dans le
     // cadre isolé de GFS (`sandbox="allow-scripts"`), un téléchargement peut demander `allow-downloads`.
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 30000);
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => { link.remove(); URL.revokeObjectURL(url); }, 30000);
   }
 
   // Calcul réellement injecté dans buildExportPagesAsync pour une tuile Barres en mode mesure

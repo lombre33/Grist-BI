@@ -437,6 +437,8 @@
   // Envoie `actions` par lots de `ACTION_CHUNK_SIZE` plutôt qu'en un seul appel géant - voir la
   // justification au niveau d'ACTION_CHUNK_SIZE. `onProgress(phase, sent, total)` est appelé après
   // chaque lot (facultatif), pour afficher une progression réelle plutôt qu'un bouton figé.
+  // Les lots partent EN SÉRIE, volontairement (audit gwaudit A-PERF-01, AUDIT-GW.md) : l'ordre des
+  // `AddRecord` est l'ordre des lignes de la table, et un échec en route laisse un préfixe connu.
   async function applyActionsInChunks(phase, actions, onProgress) {
     for (let i = 0; i < actions.length; i += ACTION_CHUNK_SIZE) {
       const chunk = actions.slice(i, i + ACTION_CHUNK_SIZE);
