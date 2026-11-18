@@ -6,7 +6,7 @@
  * que `init()` n'a pas été appelée explicitement par une feature qui en a réellement besoin —
  * jamais au démarrage du widget (`bootstrap()` ne l'appelle pas). Les fichiers sont servis depuis
  * le même dépôt/la même origine que le reste du widget (jamais un CDN, même convention
- * qu'ECharts/SheetJS), donc AUCUN coût réseau tant qu'aucun code ne les demande explicitement.
+ * qu'ECharts/ExcelJS), donc AUCUN coût réseau tant qu'aucun code ne les demande explicitement.
  *
  * `groupByAggregate`/`aggregateSingle`/`pivotTable` reproduisent la même signature et les mêmes
  * agrégateurs (sum/avg/count/min/max) que leurs équivalents purs JS de js/data.js, vérifiés

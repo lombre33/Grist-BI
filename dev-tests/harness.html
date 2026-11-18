@@ -158,8 +158,8 @@
       <div class="field" id="filter-number-field">
         <label for="filter-min" data-i18n="filters.range.label">Plage</label>
         <span class="range-inputs">
-          <input type="number" id="filter-min" data-i18n-placeholder="filters.min.placeholder" placeholder="Min" />
-          <input type="number" id="filter-max" data-i18n-placeholder="filters.max.placeholder" placeholder="Max" />
+          <input type="number" id="filter-min" data-i18n-aria="filters.min.aria" aria-label="Valeur minimale" data-i18n-placeholder="filters.min.placeholder" placeholder="Min" />
+          <input type="number" id="filter-max" data-i18n-aria="filters.max.aria" aria-label="Valeur maximale" data-i18n-placeholder="filters.max.placeholder" placeholder="Max" />
         </span>
       </div>
       <div class="field" id="filter-date-mode-field" hidden>
@@ -172,8 +172,8 @@
       <div class="field" id="filter-date-range-field" hidden>
         <label for="filter-date-start" data-i18n="filters.dateRange.label">Du / au</label>
         <span class="range-inputs">
-          <input type="date" id="filter-date-start" />
-          <input type="date" id="filter-date-end" />
+          <input type="date" id="filter-date-start" data-i18n-aria="filters.dateStart.aria" aria-label="Date de début" />
+          <input type="date" id="filter-date-end" data-i18n-aria="filters.dateEnd.aria" aria-label="Date de fin" />
         </span>
       </div>
       <div class="field" id="filter-relative-date-field" hidden>
@@ -208,7 +208,7 @@
       <p id="views-empty" class="filter-hint" data-i18n="views.empty" hidden>Aucune vue sauvegardée pour l'instant. Posez des filtres, puis sauvegardez-les ici pour y revenir en un clic.</p>
     </div>
     <div class="pop-actions pop-actions-stack">
-      <button id="update-bookmark" type="button" class="btn-primary" data-close-popover hidden></button>
+      <button id="update-bookmark" type="button" class="btn-primary" data-close-popover hidden>Mettre à jour la vue</button>
       <button id="save-bookmark" type="button" class="btn-secondary" data-close-popover>Sauvegarder la vue actuelle</button>
     </div>
   </div>
@@ -306,7 +306,7 @@
       <p class="pbix-import-hint" data-i18n="pbixImport.dataHint">Pour les vraies données du fichier (pas seulement sa mise en page) : exportez-les depuis Power BI
         (clic droit sur un visuel → « Exporter les données », ou « Analyser dans Excel »), puis déposez le CSV obtenu
         ci-dessous — ou importez-le via l'import natif de Grist. Les tuiles ci-dessus retrouveront alors les bonnes colonnes.</p>
-      <input type="file" id="pbix-import-file" accept=".pbix,.pbit" />
+      <input type="file" id="pbix-import-file" accept=".pbix,.pbit" data-i18n-aria="pbixImport.fileAria" aria-label="Fichier Power BI (.pbix ou .pbit)" />
       <p id="pbix-import-status" class="pbix-import-status"></p>
       <ul id="pbix-import-results" class="pbix-import-results"></ul>
       <button id="pbix-import-create" type="button" class="btn-primary" data-i18n="pbixImport.createSelected" hidden>Créer les tuiles sélectionnées</button>
@@ -316,7 +316,7 @@
       <p data-i18n="pbixImport.csvIntro">Déposez ici le CSV exporté depuis Power BI (clic droit sur un visuel → « Exporter les données », ou
         « Analyser dans Excel » puis enregistrement en CSV). Le widget détecte les colonnes et leur type et vous montre
         un aperçu ; la table n'est créée dans votre document Grist qu'après votre confirmation explicite.</p>
-      <input type="file" id="csv-import-file" accept=".csv" />
+      <input type="file" id="csv-import-file" accept=".csv" data-i18n-aria="pbixImport.csvFileAria" aria-label="Fichier CSV exporté de Power BI" />
       <p id="csv-import-status" class="pbix-import-status"></p>
       <div id="csv-import-preview" class="csv-import-preview" hidden>
         <label for="csv-import-table-name" data-i18n="pbixImport.csvTableName">Nom de la table</label>
@@ -346,7 +346,7 @@
   </p>
 
   <div class="workspace" id="workspace">
-  <div class="workspace-main" id="workspace-main">
+  <main class="workspace-main" id="workspace-main">
   
   <section id="tiles-focus" class="tiles-focus" role="region" data-i18n-aria="zoom.zone.aria" aria-label="Tuiles agrandies" hidden>
     <div class="tiles-focus-bar">
@@ -357,7 +357,7 @@
     </div>
     <div id="tiles-focus-grid" class="tiles-focus-grid"></div>
   </section>
-  <main id="tiles" class="tiles" role="tabpanel"></main>
+  <div id="tiles" class="tiles" role="tabpanel"></div>
   
   <section id="welcome" class="welcome">
   
@@ -369,7 +369,7 @@
       <ul id="welcome-cards" class="welcome-cards"></ul>
     </div>
     <div class="welcome-actions">
-      <button id="welcome-add-all" type="button" class="btn-primary" hidden></button>
+      <button id="welcome-add-all" type="button" class="btn-primary" hidden>Ajouter ces visualisations</button>
       <button id="welcome-import" type="button" class="btn-secondary" data-i18n="welcome.importPbix">Importer un fichier Power BI…</button>
     </div>
   </div>
@@ -384,7 +384,7 @@
   </p>
   <button id="welcome-add" type="button" class="btn-primary edit-only" data-i18n="tilePanel.welcomeAdd" hidden>Ajouter une visualisation</button>
   </section>
-  </div>
+  </main>
 
   <aside id="tile-panel" class="tile-panel edit-only" role="dialog" aria-modal="false" aria-labelledby="tile-panel-title" hidden>
     <header class="tile-panel-header">
@@ -419,6 +419,7 @@
         <option value="wordcloud" data-i18n="tileForm.type.wordcloud">Nuage de mots</option>
         <option value="kpi" data-i18n="tileForm.type.kpi">Carte KPI</option>
         <option value="gauge" data-i18n="tileForm.type.gauge">Jauge</option>
+        <option value="progress" data-i18n="tileForm.type.progress">Progression</option>
         <option value="pivot" data-i18n="tileForm.type.pivot">Tableau croisé</option>
         <option value="table" data-i18n="tileForm.type.table">Table</option>
         <option value="text" data-i18n="tileForm.type.text">Texte</option>
@@ -480,6 +481,24 @@
           <option value="min" data-i18n="tileForm.agg.min">Min</option>
           <option value="max" data-i18n="tileForm.agg.max">Max</option>
         </select>
+      </div>
+      <div class="field" id="tile-target-field" hidden>
+        <label for="tile-target" data-i18n="tileForm.target.label">Objectif (valeur)</label>
+        <input type="number" id="tile-target" min="0" step="any" />
+      </div>
+      <div class="field" id="tile-target-column-field" hidden>
+        <label for="tile-target-column" data-i18n="tileForm.targetColumn.label">Objectif (colonne, facultatif)</label>
+        <div class="combobox">
+          <input type="text" id="tile-target-column" class="combobox-input" />
+          <ul class="combobox-list" hidden></ul>
+        </div>
+        <p class="field-hint" data-i18n="tileForm.target.hint">Une colonne d'objectifs est agrégée comme la mesure et prend le pas sur la valeur saisie.</p>
+      </div>
+      <div class="field" id="tile-thresholds-field" hidden>
+        <label for="tile-good-pct" data-i18n="tileForm.goodPct.label">Vert à partir de (% de l'objectif)</label>
+        <input type="number" id="tile-good-pct" value="90" min="0" step="any" />
+        <label for="tile-warn-pct" data-i18n="tileForm.warnPct.label">Orange à partir de (% de l'objectif)</label>
+        <input type="number" id="tile-warn-pct" value="60" min="0" step="any" />
       </div>
       <div class="field" id="tile-gauge-min-field" hidden>
         <label for="tile-gauge-min" data-i18n="tileForm.gaugeMin.label">Min</label>
@@ -545,6 +564,12 @@
                 <input type="text" id="tile-trend-dimension" class="combobox-input" />
                 <ul class="combobox-list" hidden></ul>
               </div>
+            </div>
+            <div class="field field-checkbox" id="tile-sparkline-field" hidden>
+              <label for="tile-sparkline">
+                <input type="checkbox" id="tile-sparkline" />
+                <span data-i18n="tileForm.sparkline.label">Tracer la courbe de la tendance</span>
+              </label>
             </div>
             <div class="field" id="tile-radar-entity-column-field" hidden>
               <label for="tile-radar-entity-column" data-i18n="tileForm.radarEntity.columnLabel">Comparer une valeur (colonne)</label>

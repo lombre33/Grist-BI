@@ -840,6 +840,17 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 - [x] `<iframe sandbox="allow-scripts">` : parcours au clic (Ajouter > carte Texte > saisie > bouton), aucune erreur ni boîte de dialogue 🌐
 - [ ] Rendu dans un vrai Grist / un vrai GFS ⬜ **[NON TESTABLE ICI]**
 
+### `js/export.js` + `js/vendor/exceljs/` + `sanitizeSheetName` — export Excel avec ExcelJS 4.4.0 (consigne GFS 017, 18/11/2026 ; Node avec le VRAI paquet vendorisé, Playwright contre `index.html`)
+
+- [x] Empreinte SHA-384 de `js/vendor/exceljs/exceljs.min.js` = celle du catalogue de GFS (`Pqp51FUN2/…`) ; `LICENSE` à côté ; `js/vendor/xlsx/` absent ; aucun `XLSX.` dans `js/export.js` ; aucune balise `<script>` d'ExcelJS ou de SheetJS dans `index.html` ✅
+- [x] `cellValue` : nombre (0 compris), texte (vide compris), booléen, `null`/`undefined` -> vide, `NaN`/`±Infinity` -> cellule d'erreur, BigInt sûr -> nombre, BigInt > 2^53 -> texte, tableau -> texte (jamais l'objet), date invalide -> vide, texte > 32 767 -> plafonné ✅
+- [x] Classeur écrit puis relu par ExcelJS : noms de feuille, en-tête, types de cellule (`ValueType`), date, feuille vide (en-tête seul) ; **XML inspecté** (lecteur de zip par le répertoire central) : 0 `<f>`, `t="e"` pour NaN, aucun `NaN`/`Infinity` en clair, texte `=SUM(A1)` en chaîne partagée ✅
+- [x] `sanitizeSheetName` : unicité SANS tenir compte de la casse (« Ventes »/« ventes »/« VENTES » -> `Ventes`, `ventes (2)`, `VENTES (3)`), apostrophe en début/fin (y compris laissée par la coupe à 31), « History »/« history », nom vide ou d'espaces, caractères interdits ; tous acceptés par `addWorksheet` ✅ (mutation vérifiée : la comparaison sensible à la casse fait échouer le test)
+- [x] Chaîne complète sans DOM : état réel -> `buildWorkbookSheetsAsync` -> `buildWorkbook` -> `writeBuffer` -> relecture (valeurs d'une barre agrégée, d'un KPI ; tuile Texte exclue ; préfixe de page) ✅
+- [x] 🌐 Navigateur (`index.html` + faux Grist, 5 760 lignes) : aucune requête vers ExcelJS avant le clic, une après ; téléchargement `dashboard-bi.xlsx` ; relu : une feuille par tuile (aire, séries, barres par mois, KPI), tuile en mode mesure YTD avec ses 60 valeurs DuckDB, tuile Texte exclue ; aucune erreur de page ✅
+- [x] 🌐 `<iframe sandbox="allow-scripts">` : AUCUN téléchargement (comme avec SheetJS sur `origin/main`) ; `sandbox="allow-scripts allow-downloads"` : téléchargement reçu ✅ — constat, pas un défaut de l'app ; le cadre de GFS déclare `allow-downloads` (lu)
+- [ ] **[NON TESTABLE ICI]** le vrai GFS (le téléchargement dans son cadre), un vrai Grist, l'ouverture du `.xlsx` dans Excel/LibreOffice, les exports PDF/PPTX dans un cadre sans `allow-downloads`
+
 ### `js/data.js` + `js/format.js` + `js/charts.js` + panneau — table plate (18/11/2026 ; Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`)
 
 - [x] Colonnes : celles de `tile.columns` qui existent encore, dans l'ordre choisi ; sans ligne, la liste choisie telle quelle ✅
@@ -865,6 +876,18 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 - [x] Le vrai `index.html` charge sans erreur ; 6 000 lignes (DuckDB, `BigInt`) : KPI, infobulle et axe inchangés 🌐
 - [ ] Ambiance réelle de GFS (jetons posés par le kit) ⬜ **[NON TESTABLE ICI]**
 - [ ] Rendu dans un vrai Grist ⬜ **[NON TESTABLE ICI]**
+
+### `js/data.js` + `js/charts.js` + panneau — KPI avec objectif et courbe, tuile Progression (18/11/2026 ; Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`)
+
+- [x] Niveaux : seuil lui-même atteint, 59,9 -> rouge, dépassement (104 %) avec barre plafonnée, valeur négative -> barre vide, seuils réglables ✅
+- [x] Objectif nul / négatif / absent / valeur vide -> rien (jamais de division par zéro) ; `58/100*100` sans bruit de flottant ; `BigInt` ✅
+- [x] Lignes de Progression : objectif commun, colonne agrégée par catégorie, catégorie sans objectif sans barre ✅
+- [x] Courbe : années triées, texte dans l'ordre des données, nulls ignorés, moins de 2 points -> rien, série plate au milieu, tracé exact ✅
+- [x] Exports : Progression et KPI avec objectif en tables (Objectif, % de l'objectif), KPI sans objectif inchangée ✅
+- [x] Formulaire : champs d'objectif sur KPI et Progression seulement, case courbe visible seulement avec une dimension de tendance, objectif <= 0 refusé, objectif obligatoire pour la Progression, seuil orange >= vert refusé, seuils par défaut non écrits 🌐
+- [x] Rendu : 80 % orange / 100 % vert, texte « 80 % de l'objectif » + « objectif 11 688 », courbe à 2 tracés + point final, clic et clavier = filtre croisé, re-clic le retire, anglais 🌐
+- [x] 6 000 lignes (DuckDB, `BigInt`) dans un cadre isolé : valeur 60 000, 600 % partout, aucune erreur 🌐 (le serveur de test doit envoyer les en-têtes CORS : un module ES chargé depuis une origine `null` est refusé sans eux)
+- [ ] Rendu dans un vrai Grist / un vrai GFS ⬜ **[NON TESTABLE ICI]**
 
 ### CSS — classe de bug à systématiquement re-vérifier
 
