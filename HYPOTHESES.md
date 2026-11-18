@@ -2695,9 +2695,14 @@ dans une seule instance de widget, avec ses propres tuiles internes.
   - **Harnais** : `dev-tests/harness.html` n'est plus une copie faite à la main mais REGÉNÉRÉ par
     `node dev-tests/sync-harness.js` ; `test-data.js` échoue s'il diverge d'`index.html` (bug réel
     n°27 de `TEST_PROTOCOL.md`).
-  - **Écran étroit** : sous 760 px, libellés des boutons masqués ; sous 560 px, le compteur de
-    lignes et le libellé « Terminer » disparaissent (le nom accessible reste), pour que le nom de
-    la table reste lisible sur la 1re ligne.
+  - **Largeurs réduites, par paliers** (les onglets de page sont la navigation, ils gardent au moins
+    150 px ; c'est le reste qui s'allège) : ≤ 1100 px la pastille Alpha et le compteur de lignes
+    disparaissent ; ≤ 900 px les libellés des boutons aussi (leur nom reste dans `aria-label`/`title`) ;
+    ≤ 760 px les onglets passent sur une 2e ligne défilable ; ≤ 560 px le libellé « Terminer »
+    disparaît (le nom accessible reste). Corrigé après la 1re version : à 800 px les onglets de page
+    avaient une largeur de 0 (ils cédaient seuls de la place) et le nom de la table était rogné à
+    « V. » à 1000 px — mesuré sur captures, pas à l'œil. La pastille « Alpha » n'est donc visible qu'au-delà
+    de 1100 px ; le panneau de Grist fait souvent moins.
   - **Limites** : (1) les captures de la vitrine GFS (`vitrine/*.webp`) montrent l'ANCIENNE interface
     et sont à refaire avant de les republier ; (2) le panneau latéral « Ajouter une visualisation »
     (lot 2) n'est pas encore là : le formulaire d'ajout est celui d'avant, simplement masqué en
