@@ -407,24 +407,45 @@
   }
 
   // Option ECharts d'une jauge en demi-cercle. Éléments : arc de fond + arc de progression arrondi, aiguille fine
-  // (elle ne dépasse pas 66 % du rayon, donc jamais sur l'anneau) et moyeu, bornes min/max en `graphic` sous les
-  // extrémités de l'arc (pas de graduations intermédiaires : sur 250 px elles se chevauchaient entre elles et avec
-  // l'aiguille, « 825,5 k » sur « 1,7 M »), valeur sous le moyeu, police réduite jusqu'à ce qu'elle tienne,
-  // sinon compacte (« 5,43 Bn » plutôt qu'un nombre coupé).
+  // (elle ne dépasse pas 74 % du rayon, donc jamais sur l'anneau) et moyeu, bornes min/max en `graphic` sous les
+  // extrémités de l'arc, valeur sous le moyeu, police réduite jusqu'à ce qu'elle tienne, sinon compacte (« 5,43 Bn »
+  // plutôt qu'un nombre coupé). Graduations intermédiaires : À L'EXTÉRIEUR de l'arc (un trait, puis le libellé),
+  // jamais dedans — dans l'arc elles se chevauchaient entre elles et avec l'aiguille (« 825,5 k » sur « 1,7 M ») ; leur
+  // place est réservée avant de dimensionner l'arc (`GristBI.format.gaugeLayout(w, h, ticks)`), qui rétrécit un peu,
+  // et elles disparaissent d'abord (moins, puis aucune) plutôt que de faire trop rétrécir l'arc ou de sortir de la tuile.
   function gaugeOption(tile, g) {
     const th = chartTheme();
-    const L = GristBI.format.gaugeLayout(g.w, g.h);
+    const F = GristBI.format;
     const family = th.font;
     const bound = (v) => g.fmt.axis(v);
+    // Graduations : le plus grand nombre que la place permet, des valeurs rondes (1 M, 2 M, 3 M).
+    const base = F.gaugeLayout(g.w, g.h);
+    let L = base;
+    let ticks = [];
+    for (let n = F.gaugeTickBudget(base.r); n >= 1 && !ticks.length; n--) {
+      const items = F.gaugeTicks(g.min, g.max, n).map((v) => ({ text: bound(v), frac: (v - g.min) / (g.max - g.min) }));
+      if (!items.length) continue;
+      const lay = F.gaugeLayout(g.w, g.h, items.map((it) => ({ frac: it.frac, w10: measureText(it.text, 10, 400, family) })));
+      if (!lay.overflow && lay.r >= Math.max(44, 0.72 * base.r)) {
+        L = lay;
+        ticks = items;
+      }
+    }
     let text = g.hasValue ? (g.fmt.format(g.value) || '–') : '–';
-    let fs = GristBI.format.fitFont(text, L.valueMaxWidth, L.valueMaxFont, L.valueMinFont, (s, px) => measureText(s, px, 700, family));
+    let fs = F.fitFont(text, L.valueMaxWidth, L.valueMaxFont, L.valueMinFont, (s, px) => measureText(s, px, 700, family));
     if (fs <= L.valueMinFont && measureText(text, fs, 700, family) > L.valueMaxWidth) {
       text = g.fmt.axis(g.value) || text;
-      fs = GristBI.format.fitFont(text, L.valueMaxWidth, L.valueMaxFont, L.valueMinFont, (s, px) => measureText(s, px, 700, family));
+      fs = F.fitFont(text, L.valueMaxWidth, L.valueMaxFont, L.valueMinFont, (s, px) => measureText(s, px, 700, family));
     }
     const endX = L.r - L.ringW / 2;
     const labelY = L.ringW / 2 + 4; // sous le bout arrondi de l'arc, qui dépasse de la moitié de son épaisseur
     const labelStyle = { fill: th.muted, font: `${L.labelFont}px ${family}`, textAlign: 'center', textVerticalAlign: 'top' };
+    const tickElements = [];
+    for (const it of ticks) {
+      const P = F.gaugeTickPlacement(L, it.frac);
+      tickElements.push({ type: 'line', silent: true, shape: { x1: P.x1, y1: P.y1, x2: P.x2, y2: P.y2 }, style: { stroke: th.muted, lineWidth: 1 } });
+      tickElements.push({ type: 'text', silent: true, x: P.x, y: P.y, style: { text: it.text, fill: th.muted, font: `${L.tick.font}px ${family}`, textAlign: P.align, textVerticalAlign: P.valign } });
+    }
     return {
       series: [{
         type: 'gauge',
@@ -458,7 +479,7 @@
         elements: [
           { type: 'text', silent: true, x: L.cx - endX, y: L.cy + labelY, style: Object.assign({ text: bound(g.min) }, labelStyle) },
           { type: 'text', silent: true, x: L.cx + endX, y: L.cy + labelY, style: Object.assign({ text: bound(g.max) }, labelStyle) }
-        ]
+        ].concat(tickElements)
       }
     };
   }
