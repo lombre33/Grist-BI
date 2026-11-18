@@ -2319,13 +2319,13 @@ const SAMPLE_TIME_SERIES = [
   const format = require('../js/format.js');
 
   // types concernés : ceux qui affichent un nombre ; pas de réglage pour un type inconnu ni null
-  for (const type of ['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo', 'histogram']) {
+  for (const type of ['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo', 'histogram', 'heatmap']) {
     assert.strictEqual(data.supportsNumberFormat({ type }), true, type);
   }
   assert.strictEqual(data.supportsNumberFormat({ type: 'text' }), false, 'la tuile Texte ne montre aucun nombre');
   assert.strictEqual(data.supportsNumberFormat({ type: 'inconnu' }), false);
   assert.strictEqual(data.supportsNumberFormat(null), false);
-  assert.deepStrictEqual(data.NUMBER_FORMAT_TILE_TYPES.filter((ty) => !['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo', 'histogram'].includes(ty)), []);
+  assert.deepStrictEqual(data.NUMBER_FORMAT_TILE_TYPES.filter((ty) => !['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo', 'histogram', 'heatmap'].includes(ty)), []);
 
   // verdict de « Comme dans la colonne » : sert l'explication affichée sous le réglage
   format.setColumnInfo({
@@ -2384,8 +2384,8 @@ const SAMPLE_TIME_SERIES = [
   const charts = read('js/charts.js');
   const main = read('js/main.js');
   const css = read('css/style.css');
-  // une seule dernière étape avant setOption, pour les trois chemins ECharts (graphiques, mesures temporelles, histogramme)
-  assert.strictEqual((charts.match(/finalizeOption\(option, instance\);\s*\n\s*instance\.setOption\(option, true\);/g) || []).length, 3, 'finalizeOption avant chaque setOption d\'option');
+  // une seule dernière étape avant setOption, pour les quatre chemins ECharts (graphiques, mesures temporelles, histogramme, carte de chaleur)
+  assert.strictEqual((charts.match(/finalizeOption\(option, instance\);\s*\n\s*instance\.setOption\(option, true\);/g) || []).length, 4, 'finalizeOption avant chaque setOption d\'option');
   assert.strictEqual((charts.match(/^\s*confineTooltip\(option\);/gm) || []).length, 1, 'confineTooltip n\'est plus appelée qu\'à l\'intérieur de finalizeOption');
   // les jetons du thème viennent de la page, pas de couleurs en dur
   for (const token of ["'--surface'", "'--border-strong'", "'--border'", "'--text-secondary'"]) assert.ok(charts.includes(token), `chartTheme lit ${token}`);
@@ -4277,6 +4277,158 @@ const SAMPLE_TIME_SERIES = [
         }
       }
     }
+  }
+
+  // Carte de chaleur (`type: 'heatmap'`) et tableau croisé coloré (`tile.pivotHeat`) : rampes, couleur du texte, grille, filtres de case,
+  // export, défauts, conseil, i18n, câblage.
+  {
+    const fsH = require('fs');
+    const pathH = require('path');
+    const rootH = pathH.join(__dirname, '..');
+    const hex = /^#[0-9a-f]{6}$/;
+    const lum = (h) => {
+      const [r, g, b] = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((c) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)));
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    const contrast = (a, b) => { const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x); return (hi + 0.05) / (lo + 0.05); };
+
+    // Rampes : 4 arrêts, du plus clair au plus foncé (luminance strictement décroissante), tirées des dégradés validés de PALETTES.
+    assert.deepStrictEqual(Object.keys(data.HEAT_RAMPS), ['blue', 'orange', 'green', 'gray']);
+    Object.entries(data.HEAT_RAMPS).forEach(([key, stops]) => {
+      assert.strictEqual(stops.length, 4, key);
+      stops.forEach((c) => assert.ok(hex.test(c), key + ' ' + c));
+      for (let i = 1; i < stops.length; i++) assert.ok(lum(stops[i]) < lum(stops[i - 1]), key + ' : clair -> foncé, arrêt ' + i);
+      assert.deepStrictEqual(stops.slice(1), [data.PALETTES[key][5], data.PALETTES[key][3], data.PALETTES[key][0]], key + ' reprend le dégradé validé de PALETTES');
+    });
+    // Palette catégorielle ou inconnue : le bleu ; clé piégée : jamais une propriété d'Object.
+    for (const key of [undefined, null, '', 'standard', 'okabe', 'inconnue', 'constructor', '__proto__', 'toString', 42]) assert.strictEqual(data.heatStops(key), data.HEAT_RAMPS.blue, String(key));
+    assert.strictEqual(data.heatStops('orange'), data.HEAT_RAMPS.orange);
+
+    // heatColor : bornes exactes, interpolation, hors bornes et NaN ramenés dans [0 ; 1], luminance monotone.
+    const blue = data.HEAT_RAMPS.blue;
+    assert.strictEqual(data.heatColor(0, blue), blue[0]);
+    assert.strictEqual(data.heatColor(1, blue), blue[3]);
+    assert.strictEqual(data.heatColor(1 / 3, blue), blue[1], 'arrêts régulièrement espacés');
+    assert.strictEqual(data.heatColor(-5, blue), blue[0]); assert.strictEqual(data.heatColor(9, blue), blue[3]); assert.strictEqual(data.heatColor(NaN, blue), blue[0]);
+    for (const stops of Object.values(data.HEAT_RAMPS)) {
+      let prev = Infinity;
+      for (let i = 0; i <= 40; i++) { const c = data.heatColor(i / 40, stops); assert.ok(hex.test(c), c); const l = lum(c); assert.ok(l <= prev + 1e-9, 'luminance non croissante le long de la rampe'); prev = l; }
+    }
+
+    // Texte blanc ou noir : celui des deux qui contraste le plus ; jamais sous 4,5:1 sur aucune couleur d'aucune rampe.
+    assert.strictEqual(data.heatTextColor('#eef4fc'), '#000000'); assert.strictEqual(data.heatTextColor('#002f63'), '#ffffff');
+    let worst = Infinity;
+    for (const stops of Object.values(data.HEAT_RAMPS)) {
+      for (let i = 0; i <= 100; i++) {
+        const bg = data.heatColor(i / 100, stops);
+        const fg = data.heatTextColor(bg);
+        assert.ok(fg === '#000000' || fg === '#ffffff');
+        const ratio = contrast(bg, fg);
+        worst = Math.min(worst, ratio);
+        assert.ok(ratio >= 4.5, 'contraste ' + ratio.toFixed(2) + ' sur ' + bg);
+        assert.ok(ratio + 1e-9 >= contrast(bg, fg === '#ffffff' ? '#000000' : '#ffffff'), 'le meilleur des deux');
+      }
+    }
+
+    // Grille : bornes, cellule sans valeur (null, vide, booléen, texte) ni couleur ni influence sur l'échelle.
+    assert.deepStrictEqual(data.heatRange([[1, null], [5, '']]), { min: 1, max: 5 });
+    assert.deepStrictEqual(data.heatRange([['4', 2.5], [true, false]]), { min: 2.5, max: 4 }, 'chaîne numérique comptée, booléens jamais');
+    assert.strictEqual(data.heatRange([]), null); assert.strictEqual(data.heatRange([[null, null]]), null); assert.strictEqual(data.heatRange(null), null);
+    const grid = [[10, null, 50], [30, 0, 'x']];
+    const hc = data.heatCellColors(grid, blue);
+    assert.strictEqual(hc[0][0] && hc[0][0].bg, data.heatColor(0.2, blue));
+    assert.strictEqual(hc[0][1], null, 'intersection sans donnée : aucune couleur, jamais « la plus claire »');
+    assert.strictEqual(hc[1][2], null, 'texte : aucune couleur');
+    assert.strictEqual(hc[1][1].bg, blue[0], 'le minimum (0) est le plus clair'); assert.strictEqual(hc[0][2].bg, blue[3], 'le maximum est le plus foncé');
+    assert.strictEqual(hc[0][2].fg, '#ffffff'); assert.strictEqual(hc[1][1].fg, '#000000');
+    // Toutes les valeurs égales : couleur du milieu ; aucune valeur : que des null ; négatifs : l'échelle s'ajuste.
+    assert.deepStrictEqual(data.heatCellColors([[7, 7]], blue).map((l) => l.map((c) => c.bg)), [[data.heatColor(0.5, blue), data.heatColor(0.5, blue)]]);
+    assert.deepStrictEqual(data.heatCellColors([[null]], blue), [[null]]); assert.deepStrictEqual(data.heatCellColors([], blue), []);
+    const neg = data.heatCellColors([[-10, 0, 10]], blue)[0];
+    assert.strictEqual(neg[0].bg, blue[0]); assert.strictEqual(neg[2].bg, blue[3]); assert.strictEqual(neg[1].bg, data.heatColor(0.5, blue));
+    // Valeurs BigInt de DuckDB : une cellule BigInt n'est jamais une couleur (les cellules numériques du pivot sont des Number).
+    assert.doesNotThrow(() => data.heatCellColors([[1, 2n]], blue));
+
+    // Clic sur une case : quels toggleFilter, sans lever le filtre d'une ligne déjà choisie.
+    const eq = (column, value) => ({ column, value, sourceTileId: 'h' });
+    assert.deepStrictEqual(data.cellFilterToggles([], 'Region', 'Nord', 'Produit', 'A'), [{ column: 'Region', value: 'Nord' }, { column: 'Produit', value: 'A' }], 'rien de posé : les deux');
+    assert.deepStrictEqual(data.cellFilterToggles([eq('Region', 'Nord'), eq('Produit', 'A')], 'Region', 'Nord', 'Produit', 'A'), [{ column: 'Region', value: 'Nord' }, { column: 'Produit', value: 'A' }], 'déjà la sélection : les deux, qui la retirent');
+    assert.deepStrictEqual(data.cellFilterToggles([eq('Region', 'Nord'), eq('Produit', 'A')], 'Region', 'Nord', 'Produit', 'B'), [{ column: 'Produit', value: 'B' }], 'autre case de la même ligne : la ligne reste');
+    assert.deepStrictEqual(data.cellFilterToggles([eq('Region', 'Nord')], 'Region', 'Sud', 'Produit', 'A'), [{ column: 'Region', value: 'Sud' }, { column: 'Produit', value: 'A' }]);
+    assert.deepStrictEqual(data.cellFilterToggles([{ column: 'Region', type: 'range', min: 0, max: 5 }], 'Region', '3', 'Produit', 'A').map((c) => c.column), ['Region', 'Produit'], 'un filtre de plage n\'est pas une égalité');
+    {
+      const st = state.createStore();
+      st.setRows([{ Region: 'Nord', Produit: 'A', M: 1 }, { Region: 'Nord', Produit: 'B', M: 2 }, { Region: 'Sud', Produit: 'A', M: 4 }]);
+      st.addTile({ id: 'hm', type: 'heatmap', dimension: 'Region', columnDimension: 'Produit', measure: 'M', aggFn: 'sum', title: 'H' });
+      const click = (r, c) => data.cellFilterToggles(st.getState().activeFilters, 'Region', r, 'Produit', c).forEach((x) => st.toggleFilter(x.column, x.value, 'hm'));
+      click('Nord', 'A');
+      assert.deepStrictEqual(st.getState().activeFilters.map((f) => [f.column, f.value]), [['Region', 'Nord'], ['Produit', 'A']]);
+      click('Nord', 'B');
+      assert.deepStrictEqual(st.getState().activeFilters.map((f) => [f.column, f.value]), [['Region', 'Nord'], ['Produit', 'B']], 'la ligne Nord reste filtrée');
+      click('Nord', 'B');
+      assert.deepStrictEqual(st.getState().activeFilters, [], 'un 2e clic sur la même case retire les deux filtres');
+      assert.strictEqual(data.rowsForTile(st.getState().tiles[0], st.getState()).length, 3, 'la carte reste affichée en entier');
+    }
+
+    // Types : palette (carte toujours ; tableau croisé seulement coloré), format oui, tri / séries / empilé non.
+    assert.strictEqual(data.supportsPalette({ type: 'heatmap' }), true);
+    assert.strictEqual(data.supportsPalette({ type: 'pivot' }), false); assert.strictEqual(data.supportsPalette({ type: 'pivot', pivotHeat: false }), false);
+    assert.strictEqual(data.supportsPalette({ type: 'pivot', pivotHeat: true }), true);
+    assert.strictEqual(data.supportsNumberFormat({ type: 'heatmap' }), true);
+    assert.strictEqual(data.isSortableTile({ type: 'heatmap' }), false); assert.strictEqual(data.isSeriesTile({ type: 'heatmap', seriesColumn: 'R' }), false);
+    assert.strictEqual(data.isStackedTile({ type: 'heatmap', seriesColumn: 'R', stacked: true }), false);
+
+    // Export Excel : la même grille que le tableau croisé (cases vides vides, Total en plus) ; la couleur n'est pas exportée.
+    const hmRows = [{ Region: 'Nord', Produit: 'A', M: 10 }, { Region: 'Nord', Produit: 'B', M: 5 }, { Region: 'Sud', Produit: 'A', M: 30 }];
+    const hmState = { rows: hmRows, activeFilters: [], advancedFilters: [], drillIns: {}, comments: [], pages: [] };
+    const hmTile = { id: 'hx', type: 'heatmap', title: 'Carte', dimension: 'Region', columnDimension: 'Produit', measure: 'M', aggFn: 'sum' };
+    assert.strictEqual(data.tileExportKind(hmTile), 'image');
+    const hmSheet = data.tileExportSheet(hmTile, hmState);
+    assert.deepStrictEqual(hmSheet, Object.assign({}, data.tileExportSheet(Object.assign({}, hmTile, { type: 'pivot' }), hmState), { name: 'Carte' }));
+    assert.deepStrictEqual(hmSheet.header, ['Region', 'A', 'B', 'Total']);
+    assert.deepStrictEqual(hmSheet.rows, [['Nord', 10, 5, 15], ['Sud', 30, '', 30], ['Total', 40, 5, 45]]);
+    assert.strictEqual(data.tileExportKind(Object.assign({}, hmTile, { type: 'pivot', pivotHeat: true })), 'table', 'le tableau croisé reste un tableau, coloré ou non');
+
+    // Formulaire : valeurs par défaut (deux vraies catégories, comme le tableau croisé), conseils.
+    const cats = [];
+    ['Nord', 'Sud', 'Est'].forEach((Region) => ['A', 'B', 'C'].forEach((Produit) => cats.push({ Region, Produit, Montant: 10 + cats.length })));
+    const hd = advice.defaultsForType('heatmap', cats, ['Region', 'Produit', 'Montant']);
+    assert.ok(hd && hd.dimension && hd.columnDimension && hd.dimension !== hd.columnDimension && hd.measure === 'Montant', 'deux catégories différentes et une mesure préremplies');
+    assert.strictEqual(advice.adviceForType('heatmap', cats.map((r) => ({ Region: r.Region, Montant: r.Montant })), ['Region', 'Montant']).key, 'advice.fit.needTwoDimensions');
+    assert.strictEqual(advice.adviceForType('heatmap', cats, ['Region', 'Produit', 'Montant']).key, 'advice.use.heatmap');
+    assert.strictEqual(advice.TILE_TYPES.includes('heatmap'), false, 'jamais proposé à l\'accueil');
+    assert.deepStrictEqual(advice.suggestTiles(cats, ['Region', 'Produit', 'Montant'], { limit: 30, t: (k) => k }).filter((c) => c.type === 'heatmap'), []);
+    assert.strictEqual(advice.adviceForTile({ type: 'heatmap', dimension: 'Region', columnDimension: 'Produit', measure: 'Montant', aggFn: 'sum' }, cats), null);
+    const wide = [];
+    for (let i = 0; i < 30; i++) for (let j = 0; j < 3; j++) wide.push({ J: 'j' + i, H: 'h' + j, M: i + j });
+    const tooBig = advice.adviceForTile({ type: 'heatmap', dimension: 'J', columnDimension: 'H', measure: 'M', aggFn: 'sum' }, wide);
+    assert.deepStrictEqual([tooBig.key, tooBig.level, tooBig.vars], ['advice.heatmap.tooBig', 'warn', { rows: 30, columns: 3 }]);
+    assert.strictEqual(advice.adviceForTile({ type: 'heatmap', dimension: 'H', columnDimension: 'J', measure: 'M', aggFn: 'sum' }, wide).key, 'advice.heatmap.tooBig', 'trop de colonnes aussi');
+    assert.strictEqual(advice.previewFor({ type: 'heatmap', dimension: 'Region', columnDimension: 'Produit', measure: 'Montant', aggFn: 'sum' }, cats).kind, 'grid');
+
+    // i18n fr/en, titre automatique.
+    ['tileForm.type.heatmap', 'tileForm.pivotHeat.label', 'tileForm.palette.heatHint', 'tileTitle.heatmap', 'chart.heatmap.empty', 'advice.use.heatmap', 'advice.heatmap.tooBig']
+      .forEach((k) => assert.ok(i18n.STRINGS[k] && i18n.STRINGS[k].fr && i18n.STRINGS[k].en, 'traduction fr/en : ' + k));
+    i18n.setLang('en');
+    assert.strictEqual(i18n.tileTitle({ title: 'x', titleKey: 'tileTitle.heatmap', titleVars: { measure: 'M', dimension: 'A', columnDimension: 'B' } }), 'M by A × B');
+    assert.strictEqual(i18n.t('advice.heatmap.tooBig', { rows: 30, columns: 3 }).includes('30 rows × 3 columns'), true);
+    i18n.setLang('fr');
+
+    // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
+    const mainH = fsH.readFileSync(pathH.join(rootH, 'js', 'main.js'), 'utf8');
+    const chartsH = fsH.readFileSync(pathH.join(rootH, 'js', 'charts.js'), 'utf8');
+    const indexH = fsH.readFileSync(pathH.join(rootH, 'index.html'), 'utf8');
+    assert.ok(/const TYPE_CARDS = \[[^\]]*'heatmap'/.test(mainH) && /<option value="heatmap"/.test(indexH) && /id="tile-pivot-heat"/.test(indexH) && /'type-heatmap'/.test(mainH));
+    assert.ok(/currentTile\.type === 'heatmap'/.test(chartsH) && /toggleCellFilters\(currentTile/.test(chartsH), 'le clic d\'une case pose les filtres de la ligne et de la colonne');
+    assert.ok(/type: 'heatmap'/.test(chartsH) && /visualMap/.test(chartsH) && /inverse: true/.test(chartsH));
+    assert.ok(!/Intl\.NumberFormat|toFixed/.test(chartsH), 'aucun format de nombre en dur dans charts.js');
+    // Seules des couleurs CALCULÉES (hex des rampes) entrent dans un attribut `style` du tableau croisé, jamais une chaîne de la configuration.
+    assert.ok(/style="background:\$\{c\.bg\};color:\$\{c\.fg\}"/.test(chartsH) && !/style="[^"]*\$\{tile\./.test(chartsH));
+    // Carte de chaleur et pivot restent hors drill-down (deux dimensions déjà affichées en même temps).
+    assert.ok(/type !== 'heatmap'/.test(mainH));
+    const cssH = fsH.readFileSync(pathH.join(rootH, 'css', 'style.css'), 'utf8');
+    assert.ok(/\.pivot-heat \.pivot-cell\.pivot-active/.test(cssH), 'une cellule colorée sélectionnée reste repérable (contour, pas un fond écrasé par la couleur)');
+    console.log('OK carte de chaleur et tableau croisé coloré — rampes, contraste du texte (min ' + worst.toFixed(1) + ':1), grille, clic de case, export, défauts, conseil et i18n');
   }
 
   // Export Excel avec ExcelJS 4.4.0 (consigne GFS 017, 18/11/2026) : le VRAI paquet vendorisé, exécuté sous Node
