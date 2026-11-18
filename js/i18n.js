@@ -75,12 +75,17 @@
     'bookmarks.exportPptx': { fr: 'Exporter en PPTX', en: 'Export to PPTX' },
     'export.none': { fr: 'Aucune tuile à exporter.', en: 'No tile to export.' },
     'export.failed': { fr: "Échec de l'export Excel — voir la console (F12).", en: 'Excel export failed — see the console (F12).' },
-    // Classeur Excel (js/export.js) : une feuille par page, un bloc par tuile (graphique en image + données).
+    // Classeur Excel (js/export.js) : par page, une feuille « tableau de bord » (une image par tuile, à sa place) et une feuille de données (un tableau Excel par tuile).
     'export.xlsx.subtitle': { fr: 'Exporté le {date} · {rows} {rows|ligne|lignes} de données', en: 'Exported on {date} · {rows} data {rows|row|rows}' },
-    'export.xlsx.filters': { fr: '{n} {n|filtre actif appliqué|filtres actifs appliqués} aux chiffres ci-dessous', en: '{n} active {n|filter|filters} applied to the figures below' },
-    'export.xlsx.noImage': { fr: 'Graphique indisponible pour cette tuile : ses données sont ci-dessous.', en: 'Chart unavailable for this tile: its data is below.' },
+    'export.xlsx.filters': { fr: '{n} {n|filtre actif appliqué|filtres actifs appliqués} aux chiffres', en: '{n} active {n|filter|filters} applied to the figures' },
+    'export.xlsx.noImage': { fr: 'Visuel indisponible pour cette tuile : ses données sont dans la feuille de données.', en: 'Visual unavailable for this tile: its data is in the data sheet.' },
+    'export.xlsx.noRows': { fr: 'Aucune donnée pour cette tuile avec les filtres actuels.', en: 'No data for this tile with the current filters.' },
     'export.xlsx.truncated': { fr: '… {n} {n|ligne de plus n’est pas exportée|lignes de plus ne sont pas exportées}', en: '… {n} more {n|row is|rows are} not exported' },
-    'export.xlsx.cut': { fr: 'Feuille pleine : les tuiles suivantes de cette page ne sont pas exportées.', en: 'Sheet full: the following tiles of this page are not exported.' },
+    'export.xlsx.cut': { fr: 'Feuille pleine : les tableaux suivants ne sont pas exportés.', en: 'Sheet full: the following tables are not exported.' },
+    'export.xlsx.dataSuffix': { fr: 'données', en: 'data' },
+    'export.xlsx.dataSheet': { fr: 'Données', en: 'Data' },
+    'export.xlsx.toData': { fr: 'Données de cette page ›', en: 'Data for this page ›' },
+    'export.xlsx.toDashboard': { fr: '‹ Tableau de bord', en: '‹ Dashboard' },
     'export.xlsx.preparing': { fr: 'Préparation du classeur Excel…', en: 'Preparing the Excel workbook…' },
     // PDF et PPTX (js/pdf-export.js, js/pptx-export.js) : la page est photographiée telle qu'elle est dessinée (js/snapshot.js).
     'export.pdf.failed': { fr: "Échec de l'export PDF — voir la console (F12).", en: 'PDF export failed — see the console (F12).' },

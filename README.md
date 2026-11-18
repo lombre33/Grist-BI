@@ -73,14 +73,16 @@ réellement (voir HYPOTHESES.md).
   `Date`, recherche texte (insensible à la casse) pour le reste. Le type de champ affiché s'adapte
   automatiquement à la colonne choisie, en inspectant une valeur réelle (pas son nom). Se cumulent en
   ET avec les filtres croisés existants et s'appliquent à toutes les tuiles.
-- **Export Excel** : « Exporter en Excel » télécharge un classeur `.xlsx` qui reflète le tableau de bord —
-  une feuille par page, et dans chaque page un bloc par tuile : son **graphique en image**, puis les
-  données qui le dessinent (une carte KPI, un tableau croisé ou une table plate n'ont que leur tableau),
-  agrégées exactement comme à l'écran — mêmes filtres croisés, filtres avancés et niveau de drill-down par
-  tuile appliqués. Basé sur [ExcelJS](https://github.com/exceljs/exceljs)
-  embarqué localement (SheetJS jusqu'au 18/11/2026) ; les graphiques sont redessinés hors écran puis
-  photographiés (quelques secondes pour un grand tableau de bord). Le déclenchement du téléchargement depuis l'iframe du widget n'est pas
-  encore vérifié en conditions réelles Grist (voir HYPOTHESES.md). Une tuile en mode mesure (voir
+- **Export Excel** (refait le 18/11/2026) : « Exporter en Excel » télécharge un classeur `.xlsx` qui garde la mise en page du
+  tableau de bord. Pour **chaque page** : une feuille **« tableau de bord »** où chaque tuile est une image (la carte telle qu'on la voit,
+  style compris), posée **là où l'écran la met** (grille, Rapport, Planche, Vedette ou Rail), et une feuille **de données** où chaque
+  tuile est un **tableau Excel nommé** (filtres, tri, tableau croisé dynamique en deux clics), avec des liens d'une feuille à l'autre. Une
+  carte KPI, un tableau croisé ou une table plate sont des images comme les autres, et ont aussi leur tableau de données. Les données sont
+  agrégées exactement comme à l'écran — mêmes filtres croisés, filtres avancés et niveau de drill-down par tuile. Basé sur
+  [ExcelJS](https://github.com/exceljs/exceljs) embarqué localement (SheetJS jusqu'au 18/11/2026) ; les cartes sont redessinées hors écran
+  puis photographiées (quelques secondes pour un grand tableau de bord). Ce sont des images : pas des graphiques Excel modifiables, et une
+  disposition sans carte (Rapport, Planche, Rail) y apparaît avec l'habillage d'une carte. Le déclenchement du téléchargement depuis
+  l'iframe du widget n'est pas encore vérifié en conditions réelles Grist (voir HYPOTHESES.md). Une tuile en mode mesure (voir
   ci-dessous) exporte ses vraies valeurs (Cumul/YTD/N-1, calculées via DuckDB-WASM comme
   à l'écran), pas un texte d'excuse.
 - **Export PDF et PPTX** (refaits le 18/11/2026) : la page affichée est photographiée telle qu'elle est dessinée — même grille, même
@@ -234,8 +236,8 @@ tuiles (treemap plat, nuage de points agrégé, jauge), des **dashboards multi-p
 croisés/drill-down délibérément globaux entre pages, format de config persisté rétrocompatible avec
 les deux formats antérieurs), des **filtres avancés typés** (plage numérique, plage de dates,
 dates relatives, recherche texte — une colonne `Date` ISO a été ajoutée aux jeux de données pour les
-rendre démontrables), un **export Excel** (SheetJS à l'origine, ExcelJS depuis le 18/11/2026, embarqué localement, une feuille par page avec le graphique en image
-et les données de chaque tuile, reflétant exactement les filtres/drill-down actifs à l'écran), une **autocomplétion** (composant
+rendre démontrables), un **export Excel** (SheetJS à l'origine, ExcelJS depuis le 18/11/2026, embarqué localement, par page, un tableau de bord en images posées comme à l'écran
+et une feuille de données en tableaux Excel, reflétant exactement les filtres/drill-down actifs à l'écran), une **autocomplétion** (composant
 Combobox maison) sur tous les sélecteurs de colonne du formulaire de tuile et de la barre de
 filtres, un **sélecteur de table** (Combobox également) permettant de reconnecter le widget à
 n'importe quelle table du document — la connexion automatique à `BI_StressTest` reste le

@@ -642,6 +642,8 @@
     el.querySelector('.tile-move-right').addEventListener('click', () => moveBy(1));
     return el;
   }
+  // Pour js/export.js : la carte d'une tuile (sans ses boutons) reconstruite hors écran, pour photographier TOUTES les pages de l'export Excel.
+  GristBI.buildTileElement = buildTileElement;
 
   viewsListEl.addEventListener('click', async (e) => {
     const applyBtn = e.target.closest('.views-item-apply');
