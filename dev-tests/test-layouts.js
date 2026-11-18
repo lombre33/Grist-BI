@@ -500,6 +500,141 @@ const mk = (types) => types.map((type, i) => ({ id: `${type}${i}`, type }));
   }
   console.log('OK agencements — CSS : trois seuils = js/layouts.js, --lu = 28 px, rangées fixes, jamais de min-height, règles communes 640/900 identiques, pas d\'ombre de carte, boutons au survol seulement, contrastes AA');
 
+  // --- 8b. Positions en pixels (export Excel) -----------------------------------------------------------------------------------
+  // `slots` rejoue en pixels le placement que fait le CSS : l'export Excel pose chaque tuile là où l'écran la met. Ce qui compte : (a) les
+  // constantes sont celles des feuilles de style (sinon le classeur dériverait de l'écran sans aucune erreur), (b) jamais deux tuiles l'une sur
+  // l'autre, quels que soient l'agencement, la largeur et le nombre de tuiles, (c) la ligne est pleine, (d) la grille d'origine reprend sous le
+  // seuil de l'agencement, comme le CSS.
+  {
+    const baseCss = parseCssRules(read('css', 'style.css'));
+    const tilesRule = baseCss.find((r) => r.selector === '.tiles' && r.ctx.length === 0);
+    assert.strictEqual(tilesRule.decls['grid-template-columns'], `repeat(auto-fill, minmax(${layouts.GRID_MIN_TILE_W}px, 1fr))`, 'grille d\'origine : colonnes de 270 px au moins');
+    assert.strictEqual(tilesRule.decls.gap, `${layouts.GRID_GAP}px`, 'grille d\'origine : 14 px entre les cartes');
+    assert.strictEqual(baseCss.find((r) => r.selector === '.tile' && r.ctx.length === 0 && r.decls.height).decls.height, `${layouts.GRID_TILE_H}px`, 'hauteur d\'une carte');
+    const own = (id) => rules.filter((r) => r.selector === `#tiles[data-layout="${id}"]`);
+    const colGap = (decls) => (decls['column-gap'] !== undefined ? decls['column-gap'] : String(decls.gap || '').split(/\s+/).pop());
+    // L'écart entre colonnes de chaque agencement = la DERNIÈRE déclaration de ses règles (`column-gap` ou 2e valeur de `gap`).
+    const finalGap = (id) => own(id).reduce((g, r) => (r.decls['column-gap'] !== undefined || r.decls.gap !== undefined ? colGap(r.decls) : g), null);
+    assert.strictEqual(finalGap('report'), `${layouts.COLUMN_GAP.report}px`);
+    assert.strictEqual(finalGap('spotlight'), `${layouts.COLUMN_GAP.spotlight}px`);
+    assert.strictEqual(parseFloat(finalGap('board')), layouts.COLUMN_GAP.board, 'la Planche n\'a pas d\'écart : les filets séparent');
+    assert.strictEqual(finalGap('rail'), `${layouts.COLUMN_GAP.rail}px`);
+    assert.ok(rules.some((r) => r.selector === '#tiles[data-layout="rail"][data-has-rail]' && r.decls['grid-template-columns'] === `${layouts.RAIL_COLUMN_W}px repeat(12, minmax(0, 1fr))`), 'colonne de 252 px du Rail');
+
+    const boxOf = (it) => ({ x0: it.x, y0: it.y, x1: it.x + it.w, y1: it.y + it.h });
+    const overlap = (a, b, eps = 1e-6) => a.x0 < b.x1 - eps && b.x0 < a.x1 - eps && a.y0 < b.y1 - eps && b.y0 < a.y1 - eps;
+    const assertNoOverlap = (sl, label) => {
+      const ids = Object.keys(sl.items);
+      for (let i = 0; i < ids.length; i++) {
+        const a = boxOf(sl.items[ids[i]]);
+        assert.ok(a.x0 >= -1e-6 && a.y0 >= -1e-6 && a.x1 <= sl.width + 1e-6 && a.y1 <= sl.height + 1e-6, `${label} : ${ids[i]} dans la zone`);
+        for (let j = i + 1; j < ids.length; j++) assert.ok(!overlap(a, boxOf(sl.items[ids[j]])), `${label} : ${ids[i]} recouvre ${ids[j]}`);
+      }
+    };
+
+    // Grille d'origine : même nombre de colonnes que `auto-fill`, cases de largeur égale, hauteur fixe.
+    for (const [w, cols] of [[1, 1], [269, 1], [270, 1], [553, 1], [554, 2], [837, 2], [838, 3], [839, 3], [1200, 4], [1500, 5]]) {
+      const sl = layouts.slots('grid', DEMO, w);
+      const first = sl.items.k1;
+      const got = Math.round((w + layouts.GRID_GAP) / (first.w + layouts.GRID_GAP));
+      assert.strictEqual(got, cols, `grille à ${w} px : ${cols} colonne(s)`);
+      assert.strictEqual(sl.layout, 'grid');
+      assert.ok(DEMO.every((t) => sl.items[t.id].h === layouts.GRID_TILE_H));
+      assert.strictEqual(sl.height, Math.ceil(DEMO.length / cols) * layouts.GRID_TILE_H + (Math.ceil(DEMO.length / cols) - 1) * layouts.GRID_GAP);
+      assert.deepStrictEqual(sl.order, DEMO.map((t) => t.id), 'grille : l\'ordre enregistré');
+      assertNoOverlap(sl, `grille ${w}`);
+      if (w >= layouts.GRID_MIN_TILE_W) assert.ok(first.w >= layouts.GRID_MIN_TILE_W - 1e-6, `grille ${w} : une carte n\'est jamais plus étroite que 270 px`);
+      const lastCol = (DEMO.length - 1) % cols;
+      if (DEMO.length >= cols) assert.ok(Math.abs(sl.items[DEMO[cols - 1].id].x + sl.items[DEMO[cols - 1].id].w - w) < 1e-6, `grille ${w} : la ligne est pleine`);
+      assert.ok(lastCol >= 0);
+    }
+    // Sous le seuil d'un agencement, la grille d'origine reprend — comme le CSS (`@container` ne s'applique pas).
+    for (const id of NEW_LAYOUTS) {
+      const min = layouts.minWidthOf(id);
+      assert.strictEqual(layouts.slots(id, DEMO, min - 1).layout, 'grid', `${id} à ${min - 1} px : grille`);
+      assert.strictEqual(layouts.slots(id, DEMO, min).layout, id, `${id} à ${min} px : l\'agencement`);
+    }
+    assert.strictEqual(layouts.slots('inconnu', DEMO, 1200).layout, 'grid');
+    assert.strictEqual(layouts.slots("x\"><img onerror=1>", DEMO, 1200).layout, 'grid');
+
+    // Quatre agencements x largeurs x effectifs : jamais de recouvrement, la ligne pleine, mêmes dimensions que le plan, même ordre que l'écran.
+    for (const id of NEW_LAYOUTS) {
+      for (const width of [layouts.minWidthOf(id), 1200, 1500]) {
+        for (let figures = 0; figures <= 13; figures += (figures < 4 || figures > 11 ? 1 : 3)) {
+          for (let charts = 0; charts <= 14; charts += (charts < 4 || charts > 11 ? 1 : 3)) {
+            const tiles = mk(Array(figures).fill('kpi').concat(Array(charts).fill('bar')));
+            const sl = layouts.slots(id, tiles, width);
+            const label = `${id} ${width} px, ${figures} chiffres + ${charts} graphiques`;
+            assert.strictEqual(sl.layout, id, label);
+            assert.deepStrictEqual(sl.order, layouts.displayOrder(id, tiles).map((t) => t.id), `${label} : l\'ordre affiché`);
+            assert.strictEqual(Object.keys(sl.items).length, tiles.length, `${label} : toutes les tuiles`);
+            assertNoOverlap(sl, label);
+            if (tiles.length) {
+              const right = Math.max(...Object.values(sl.items).map((it) => it.x + it.w));
+              // Un Rail qui n'a que des chiffres n'a pas de graphique à droite : la grille garde ses douze pistes vides, comme à l'écran.
+              const railOnly = id === 'rail' && charts === 0 && layouts.plan(id, tiles).hasRail;
+              assert.ok(Math.abs(right - (railOnly ? layouts.RAIL_COLUMN_W : width)) < 1e-6, `${label} : la ligne est pleine (${right} / ${width})`);
+              assert.ok(Math.abs(Math.max(...Object.values(sl.items).map((it) => it.y + it.h)) - sl.height) < 1e-6, `${label} : la hauteur est celle de la dernière rangée`);
+            } else assert.strictEqual(sl.height, 0);
+            const p = layouts.plan(id, tiles);
+            for (const t of tiles) assert.strictEqual(sl.items[t.id].h, p.items[t.id].rows * layouts.ROW_UNIT, `${label} : ${t.id} a la hauteur de son plan`);
+          }
+        }
+      }
+    }
+    // Le Rail : la colonne de gauche fait 252 px, les graphiques commencent après elle ; sans rail, douze colonnes seulement.
+    {
+      const sl = layouts.slots('rail', DEMO, 1200);
+      const p = layouts.plan('rail', DEMO);
+      assert.strictEqual(p.hasRail, true);
+      for (const t of DEMO) {
+        const it = sl.items[t.id];
+        if (p.items[t.id].group === 'rail') assert.ok(it.x === 0 && it.w === layouts.RAIL_COLUMN_W, `${t.id} : dans la colonne de 252 px`);
+        else assert.ok(it.x >= layouts.RAIL_COLUMN_W + layouts.COLUMN_GAP.rail - 1e-6, `${t.id} : après la colonne de gauche`);
+      }
+      const noRail = layouts.slots('rail', mk(['bar', 'pie', 'line']), 1200);
+      assert.ok(Math.min(...Object.values(noRail.items).map((it) => it.x)) === 0, 'sans rail : les graphiques partent du bord');
+    }
+    // Espace minimal entre deux tuiles : la Planche (écart nul) est rognée, la grille (14 px) ne l'est pas.
+    {
+      const flat = layouts.slots('board', DEMO, 1200);
+      const gapped = layouts.slots('board', DEMO, 1200, { minGap: 12 });
+      assert.strictEqual(gapped.height, flat.height, 'la hauteur de la page ne change pas');
+      for (const t of DEMO) {
+        assert.ok(Math.abs(gapped.items[t.id].w - (flat.items[t.id].w - 12)) < 1e-6 && Math.abs(gapped.items[t.id].h - (flat.items[t.id].h - 12)) < 1e-6, `${t.id} : rognée de 12 px dans les deux sens`);
+      }
+      assertNoOverlap(gapped, 'Planche espacée');
+      const ids = Object.keys(gapped.items);
+      for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) {
+        const a = boxOf(gapped.items[ids[i]]);
+        const b = boxOf(gapped.items[ids[j]]);
+        const dx = Math.max(a.x0 - b.x1, b.x0 - a.x1);
+        const dy = Math.max(a.y0 - b.y1, b.y0 - a.y1);
+        assert.ok(Math.max(dx, dy) >= 12 - 1e-6, `Planche espacée : ${ids[i]} et ${ids[j]} à moins de 12 px`);
+      }
+      assert.deepStrictEqual(layouts.slots('grid', DEMO, 1200, { minGap: 12 }), layouts.slots('grid', DEMO, 1200), 'grille : 14 px >= 12, rien à rogner');
+      assert.deepStrictEqual(layouts.slots('report', DEMO, 1200, { minGap: 12 }).items.k1.x, layouts.slots('report', DEMO, 1200).items.k1.x + 0, 'Rapport : 56 px d\'écart horizontal, rien à rogner à gauche');
+    }
+    // placeOnGrid : « row dense » — un trou laissé par une tuile large est comblé par la suivante qui y tient ; un départ imposé est respecté.
+    {
+      const placed = layouts.placeOnGrid([{ id: 'a', span: 8, rows: 2 }, { id: 'b', span: 8, rows: 1 }, { id: 'c', span: 4, rows: 1 }, { id: 'd', span: 4, rows: 1 }], 12);
+      assert.deepStrictEqual(placed.map((q) => [q.id, q.row, q.col]), [['a', 0, 0], ['b', 2, 0], ['c', 0, 8], ['d', 1, 8]], 'c et d comblent le trou à droite de a');
+      assert.deepStrictEqual(layouts.placeOnGrid([{ id: 'x', span: 3, rows: 1, start: 3 }, { id: 'y', span: 3, rows: 1, start: 3 }], 12).map((q) => [q.row, q.col]), [[0, 2], [1, 2]], 'départ imposé (colonne 3), poussé vers le bas s\'il est pris');
+      assert.deepStrictEqual(layouts.placeOnGrid([{ id: 'w', span: 99, rows: 0 }], 12)[0], { id: 'w', row: 0, col: 0, span: 12, rows: 1 }, 'portée et hauteur bornées');
+      assert.deepStrictEqual(layouts.placeOnGrid([], 12), []);
+    }
+    // Entrées bizarres : jamais d'exception, une zone vide.
+    for (const bad of [null, undefined, 'x', 42, [], [null, { type: 'bar' }, { id: 5 }]]) {
+      for (const id of layouts.LAYOUT_IDS) {
+        const sl = layouts.slots(id, bad, NaN);
+        assert.strictEqual(sl.width, 1);
+        assert.deepStrictEqual(sl.items, {});
+        assert.strictEqual(sl.height, 0);
+      }
+    }
+  }
+  console.log('OK agencements — positions en pixels (export Excel) : constantes = feuilles de style, grille auto-fill, repli sous le seuil, 4 agencements x 3 largeurs x effectifs sans recouvrement, ligne pleine, Rail, espace minimal, placeOnGrid');
+
   // --- 9. Câblage ---------------------------------------------------------------------------------------------------------
   {
     const main = read('js', 'main.js');

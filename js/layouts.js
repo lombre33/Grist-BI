@@ -214,6 +214,126 @@
     return p.order.map((tid) => byId.get(tid));
   }
 
+  // ---- Positions en pixels (export Excel, 18/11/2026) -----------------------------------------------------------------------------------
+  // Le navigateur place les tuiles par CSS (`css/style.css` : grille `auto-fill`, `css/layouts.css` : 12 colonnes à remplissage « row dense ») ;
+  // un classeur n'a pas de CSS. `slots` rejoue ce placement, en pixels, pour une zone de travail de `width` px : le plan (`plan`) donne la
+  // largeur et la hauteur de chaque tuile, l'ordre AFFICHÉ donne l'ordre de pose, le reste est le calcul d'une grille CSS — chaque tuile
+  // prend, dans l'ordre, la première place libre, de haut en bas puis de gauche à droite (ou, au Rail, dans la colonne que le plan lui impose).
+  // Mêmes constantes que les feuilles de style (un test Node les compare) : 270 px et 14 px de la grille, écarts de colonnes de chaque agencement,
+  // colonne de 252 px du Rail.
+  const GRID_MIN_TILE_W = 270;
+  const GRID_TILE_H = 224;
+  const GRID_GAP = 14;
+  const COLUMN_GAP = { report: 56, board: 0, spotlight: 44, rail: 36 };
+  const RAIL_COLUMN_W = 252;
+
+  // Place `items` (`{ id, span, rows, start? }`, dans l'ordre de pose) sur une grille de `columns` pistes : `occupied[row]` = pistes prises.
+  function placeOnGrid(items, columns) {
+    const occupied = [];
+    const isFree = (row, col, span, rows) => {
+      if (col < 0 || col + span > columns) return false;
+      for (let r = row; r < row + rows; r++) {
+        for (let c = col; c < col + span; c++) if (occupied[r] && occupied[r][c]) return false;
+      }
+      return true;
+    };
+    const take = (row, col, span, rows) => {
+      for (let r = row; r < row + rows; r++) {
+        occupied[r] = occupied[r] || [];
+        for (let c = col; c < col + span; c++) occupied[r][c] = true;
+      }
+    };
+    return items.map((item) => {
+      const span = Math.max(1, Math.min(columns, item.span));
+      const rows = Math.max(1, item.rows);
+      let row = 0;
+      let col = 0;
+      if (item.start) {
+        col = Math.max(0, Math.min(columns - span, item.start - 1));
+        while (!isFree(row, col, span, rows)) row += 1;
+      } else {
+        search: for (;;) {
+          for (let c = 0; c + span <= columns; c++) {
+            if (isFree(row, c, span, rows)) { col = c; break search; }
+          }
+          row += 1;
+        }
+      }
+      take(row, col, span, rows);
+      return { id: item.id, row, col, span, rows };
+    });
+  }
+
+  // Les rectangles (en px, `x`/`y` depuis le coin haut gauche de la zone) des tuiles d'une page.
+  //   { layout, width, height, order: [id, ...], items: { [id]: { x, y, w, h } } }
+  // `layout` = l'agencement RÉELLEMENT appliqué : sous la largeur minimale d'un agencement la grille d'origine reprend (comme le CSS).
+  // `minGap` : espace minimal voulu entre deux tuiles (px) ; un agencement sans carte (Planche : écart nul, les filets séparent) reçoit de quoi
+  // respirer, chaque tuile étant rognée de la moitié du manque de chaque côté — jamais de tuile qui en touche une autre.
+  function slots(layoutId, tiles, width, options) {
+    const opts = options || {};
+    const minGap = opts.minGap > 0 ? opts.minGap : 0;
+    const w = Math.max(1, Number(width) || 0);
+    const list = (Array.isArray(tiles) ? tiles : []).filter((t) => t && typeof t.id === 'string');
+    let id = normalizeLayoutId(layoutId);
+    if (w < minWidthOf(id)) id = DEFAULT_LAYOUT;
+    const items = {};
+    let order;
+    let height = 0;
+    let gapX;
+    let gapY;
+
+    if (id === 'grid') {
+      const cols = Math.max(1, Math.floor((w + GRID_GAP) / (GRID_MIN_TILE_W + GRID_GAP)));
+      const cellW = (w - (cols - 1) * GRID_GAP) / cols;
+      gapX = GRID_GAP;
+      gapY = GRID_GAP;
+      order = list.map((t) => t.id);
+      list.forEach((t, i) => {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        items[t.id] = { x: col * (cellW + GRID_GAP), y: row * (GRID_TILE_H + GRID_GAP), w: cellW, h: GRID_TILE_H };
+      });
+      const rowCount = Math.ceil(list.length / cols);
+      height = rowCount ? rowCount * GRID_TILE_H + (rowCount - 1) * GRID_GAP : 0;
+    } else {
+      const p = plan(id, list);
+      gapX = COLUMN_GAP[id];
+      gapY = 0;
+      order = p.order.slice();
+      const columns = COLUMNS + (p.hasRail ? 1 : 0);
+      // Pistes : au Rail, la 1re fait 252 px ; les douze autres se partagent le reste (`minmax(0, 1fr)`).
+      const fixedW = p.hasRail ? RAIL_COLUMN_W : 0;
+      const fr = (w - fixedW - (columns - 1) * gapX) / COLUMNS;
+      const trackLeft = [];
+      const trackSize = [];
+      let left = 0;
+      for (let c = 0; c < columns; c++) {
+        trackLeft.push(left);
+        trackSize.push(p.hasRail && c === 0 ? RAIL_COLUMN_W : fr);
+        left += trackSize[c] + gapX;
+      }
+      const placed = placeOnGrid(p.order.map((tid) => ({ id: tid, span: p.items[tid].span, rows: p.items[tid].rows, start: p.items[tid].start })), columns);
+      let lastRow = 0;
+      placed.forEach((q) => {
+        const x = trackLeft[q.col];
+        const right = trackLeft[q.col + q.span - 1] + trackSize[q.col + q.span - 1];
+        items[q.id] = { x, y: q.row * ROW_UNIT, w: right - x, h: q.rows * ROW_UNIT };
+        lastRow = Math.max(lastRow, q.row + q.rows);
+      });
+      height = lastRow * ROW_UNIT;
+    }
+
+    const insetX = Math.max(0, (minGap - gapX) / 2);
+    const insetY = Math.max(0, (minGap - gapY) / 2);
+    if (insetX || insetY) {
+      for (const key of Object.keys(items)) {
+        const it = items[key];
+        items[key] = { x: it.x + insetX, y: it.y + insetY, w: Math.max(1, it.w - 2 * insetX), h: Math.max(1, it.h - 2 * insetY) };
+      }
+    }
+    return { layout: id, width: w, height, order, items };
+  }
+
   // Cible d'un clic sur ◀ (direction -1) ou ▶ (+1) : la tuile la plus proche dans cette direction QUI EST DU MÊME GROUPE (sinon, en
   // dépassant un chiffre, un graphique ne changerait rien à l'écran). `null` si aucune (bouton désactivé). Grille : la voisine.
   function moveTarget(layoutId, tiles, id, direction) {
@@ -275,6 +395,7 @@
     DEFAULT_LAYOUT, LAYOUT_ID, LAYOUTS, LAYOUT_IDS, COLUMNS, ROW_UNIT, ROWS, THUMB_W, THUMB_H,
     FIGURE_TYPES, RAIL_TYPES, HERO_TYPES,
     isKnown, hasGoal, normalizeLayoutId, isWellFormed, configValue, minWidthOf,
-    spansFor, figuresPerRow, startsFor, groupOf, plan, displayOrder, moveTarget, thumb
+    GRID_MIN_TILE_W, GRID_TILE_H, GRID_GAP, COLUMN_GAP, RAIL_COLUMN_W,
+    spansFor, figuresPerRow, startsFor, groupOf, plan, displayOrder, moveTarget, thumb, placeOnGrid, slots
   };
 });

@@ -1550,6 +1550,8 @@
     el.querySelector('.tile-move-right').addEventListener('click', () => moveBy(1));
     return el;
   }
+  // Pour js/export.js : la carte d'une tuile (sans ses boutons) reconstruite hors écran, pour photographier TOUTES les pages de l'export Excel.
+  GristBI.buildTileElement = buildTileElement;
 
   // Nom saisi une fois, mémorisé d'une session à l'autre comme la langue — pas la peine de le
   // retaper à chaque commentaire. Dans GFS (consigne 007, point 3), passe par

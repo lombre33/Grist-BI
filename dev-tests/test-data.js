@@ -6058,9 +6058,11 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     assert.strictEqual(exportJs.numberFormatFor(0.0006), '0.00##', 'une moyenne de 0,0006 ne s\'affiche pas « 0,00 »');
     assert.strictEqual(exportJs.numberFormatFor(-0.25), '0.00##');
 
-    // Un classeur complet : écriture puis relecture par ExcelJS lui-même, et inspection du XML réel. Une FEUILLE PAR PAGE, un BLOC par tuile
-    // (bandeau de titre, [image], en-tête, lignes) — la mise en page du premier export (une feuille par tuile) a disparu (retour d'Antoine, 18/11/2026).
+    // Le classeur d'un tableau de bord (refonte du 18/11/2026 : 2e retour d'Antoine, « les tuiles sont en dessous les unes des autres », données
+    // éparpillées) : par page, une feuille « tableau de bord » (une image par tuile, posée à la place que lui donne la mise en page) et une feuille
+    // de DONNÉES où chaque tuile est un TABLEAU EXCEL nommé. Écriture puis relecture par ExcelJS lui-même, et inspection du XML réel.
     const ExcelJSLib = require('../js/vendor/exceljs/exceljs.min.js');
+    const layoutsX = require('../js/layouts.js');
     const zlibForXlsx = require('zlib');
     const PNG_1PX = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
     // Lecteur de zip minimal par le répertoire central (tailles exactes, même quand les entrées sont en flux).
@@ -6100,7 +6102,14 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
       ws.eachRow((row, n) => { if (!found && n >= (from || 1) && row.getCell(1).value === text) found = n; });
       return found;
     };
+    const colNumber = (letters) => letters.split('').reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0);
+    const xmlOf = (files, name) => files[name].toString('utf8');
+    // Feuille (1-based, dans l'ordre du classeur) -> son fichier XML : ExcelJS numérote les feuilles dans l'ordre d'ajout.
+    const sheetXmlOf = (files, n) => xmlOf(files, 'xl/worksheets/sheet' + n + '.xml');
+    // Formules d'une feuille : la seule permise est un lien HYPERLINK vers une autre feuille (le reste est écrit en valeurs).
+    const formulasOf = (xml) => (xml.match(/<f>[^<]*<\/f>/g) || []).map((f) => f.slice(3, -4).replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&'));
 
+    // ---- Les feuilles de données : un tableau Excel par tuile, valeurs jamais en formule -----------------------------------------------------------------
     const pagesForXlsx = [{
       id: 'p1', name: 'Montant par Région', title: 'Montant par Région', blocks: [
         { tileId: 'a', kind: 'table', name: 'Données', header: ['Région', 'Montant'], rows: [
@@ -6114,14 +6123,12 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     const wbX = exportJs.buildWorkbook(ExcelJSLib, pagesForXlsx, { subtitle: () => 'Exporté le 18 novembre 2026 · 3 lignes' });
     assert.strictEqual(wbX.creator, 'Grist BI');
     const { back, files: xmlFiles } = await reload(wbX);
-    assert.deepStrictEqual(back.worksheets.map((w) => w.name), ['Montant par Région'], 'une feuille par PAGE, pas une par tuile');
-    const first = back.getWorksheet('Montant par Région');
+    assert.deepStrictEqual(back.worksheets.map((w) => w.name), ['Montant par Région - données'], 'une page sans mise en page n\'a que sa feuille de données, une seule par PAGE');
+    const first = back.worksheets[0];
     assert.strictEqual(first.getCell('A1').value, 'Montant par Région');
     assert.strictEqual(first.getCell('A1').font.bold, true);
-    assert.strictEqual(first.getCell('A2').value, 'Exporté le 18 novembre 2026 · 3 lignes', 'sous-titre');
     const titleA = rowOf(first, 'Données');
-    assert.strictEqual(titleA, 4, 'bandeau de titre du 1er bloc (titre de page, sous-titre, ligne blanche)');
-    assert.strictEqual(first.getCell(titleA, 1).font.bold, true);
+    assert.ok(titleA > 1 && first.getCell(titleA, 1).font.bold, 'bandeau de titre du 1er tableau');
     const hA = titleA + 1;
     assert.deepStrictEqual(first.getRow(hA).values.slice(1), ['Région', 'Montant']);
     assert.strictEqual(first.getCell(hA, 1).font.bold, true);
@@ -6149,91 +6156,183 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     assert.strictEqual(cellB('moyenne').value, 0.0006);
     assert.strictEqual(cellB('moyenne').numFmt, '0.00##');
     const titleB = rowOf(first, 'Vide');
-    assert.ok(titleB > at('moyenne') + 2, 'deux lignes d\'air entre deux blocs');
+    assert.ok(titleB > at('moyenne') + 2, 'deux lignes d\'air entre deux tableaux');
     assert.deepStrictEqual(first.getRow(titleB + 1).values.slice(1), ['A', 'B']);
-    assert.strictEqual(first.getRow(titleB + 2).getCell(1).value, null, 'un bloc sans ligne garde son en-tête');
+    assert.ok(/Aucune donnée/.test(String(first.getCell(titleB + 2, 1).value)), 'un tableau sans ligne garde son en-tête et le dit');
+    // Un TABLEAU EXCEL par tuile qui a des lignes (pas pour « Vide ») : nom valide, plage exacte (en-tête + 15 lignes), colonnes nommées.
+    const tableFiles = Object.keys(xmlFiles).filter((f) => /^xl\/tables\/table\d+\.xml$/.test(f));
+    assert.strictEqual(tableFiles.length, 1, 'un seul tableau : celui qui a des lignes');
+    const tableXml = xmlOf(xmlFiles, tableFiles[0]);
+    assert.ok(/ name="T01_Donnees" displayName="T01_Donnees" ref="A\d+:B\d+"/.test(tableXml), 'nom de tableau T01_Donnees');
+    assert.ok(tableXml.includes(`ref="A${hA}:B${hA + 15}"`), 'plage = en-tête + 15 lignes');
+    assert.ok(/headerRowCount="1"/.test(tableXml) && /<tableColumn id="1" name="Région"/.test(tableXml) && /<tableColumn id="2" name="Montant"/.test(tableXml));
+    assert.ok(/<filterColumn colId="0" hiddenButton="0"\/>/.test(tableXml), 'boutons de filtre');
     // La 1re colonne est celle des libellés : une année n'est pas une valeur (jamais « 2 022 »).
     const wbYear = exportJs.buildWorkbook(ExcelJSLib, [{ name: 'Années', title: 'Années', blocks: [{ tileId: 'y', kind: 'table', name: 'Par année', header: ['Annee', 'Montant'], rows: [[2022, 552746.81]] }] }]);
-    const yearCell = (await reload(wbYear)).back.getWorksheet('Années').getCell(5, 1);
+    const wsYear = (await reload(wbYear)).back.worksheets[0];
+    const yearCell = wsYear.getCell(rowOf(wsYear, 'Annee') + 1, 1);
     assert.strictEqual(yearCell.value, 2022);
     assert.ok(!yearCell.numFmt || yearCell.numFmt === 'General', 'pas de séparateur de milliers sur une année');
     assert.strictEqual(yearCell.alignment.horizontal, 'left', 'alignée comme un libellé');
-    // XML réel : aucune formule dans aucune feuille, du texte en chaînes partagées, jamais « NaN » en clair.
-    const sheetXml = xmlFiles['xl/worksheets/sheet1.xml'].toString('utf8');
-    assert.ok(sheetXml, 'feuille 1 lisible dans le zip');
-    assert.ok(!/<f[ >]/.test(sheetXml), 'aucune formule écrite, même pour un texte qui commence par = + - @');
+    // XML réel : aucune formule dans une feuille sans lien, du texte en chaînes partagées, jamais « NaN » en clair.
+    const sheetXml = sheetXmlOf(xmlFiles, 1);
+    assert.deepStrictEqual(formulasOf(sheetXml), [], 'aucune formule écrite, même pour un texte qui commence par = + - @');
     assert.ok(!/NaN|Infinity/.test(sheetXml), 'aucun nombre non fini écrit en clair');
     assert.ok(/t="e"><v>#NUM!<\/v>/.test(sheetXml), 'NaN = cellule d\'erreur');
-    assert.ok(xmlFiles['xl/sharedStrings.xml'].toString('utf8').includes('=SUM(A1)'), 'le texte est une chaîne partagée');
+    assert.ok(xmlOf(xmlFiles, 'xl/sharedStrings.xml').includes('=SUM(A1)'), 'le texte est une chaîne partagée');
     assert.ok(/fitToPage="1"/.test(sheetXml) && /fitToWidth="1"/.test(sheetXml) && /fitToHeight="0"/.test(sheetXml), 'toute la largeur de la page à l\'impression');
-    assert.ok(/showGridLines="0"/.test(sheetXml), 'pas de quadrillage : le bloc est la mise en page');
+    assert.ok(/showGridLines="0"/.test(sheetXml), 'pas de quadrillage');
 
-    // Images : le graphique en PNG sous le titre du bloc, les données JUSTE en dessous, les lignes recouvertes réservées (le bloc suivant ne passe pas dessous).
-    const pagesImg = [{ id: 'p', name: 'Avec image', title: 'Avec image', blocks: [
-      { tileId: 'g1', kind: 'image', name: 'Barres', header: ['Région', 'Montant'], rows: [['Nord', 10], ['Sud', 20]], image: { base64: 'data:image/png;base64,' + PNG_1PX, width: 560, height: 298 } },
-      { tileId: 'g2', kind: 'image', name: 'Sans image', header: ['Région', 'Montant'], rows: [['Est', 5]] },
-      { tileId: 'g3', kind: 'text', name: 'Note', header: ['Texte'], rows: [['Cliquez, tout se filtre\n• une barre : toutes les tuiles se filtrent']] },
-      { tileId: 'g4', kind: 'table', name: 'Tronquée', header: ['Enceinte Bluetooth Premium Édition', 'Montant'], rows: [['a', 1]], truncated: 7 }
-    ] }];
-    const wbImg = exportJs.buildWorkbook(ExcelJSLib, pagesImg, {
-      title: (b) => 'T:' + b.name,
-      labels: { noImage: 'IMAGE INDISPONIBLE', truncated: (n) => 'RESTE ' + n }
+    // En-tête à retour à la ligne : hauteur EXPLICITE (sinon le tableur la calcule seul et décale ce qui est dessous).
+    const wbHead = exportJs.buildWorkbook(ExcelJSLib, [{ name: 'En-têtes', title: 'En-têtes', blocks: [
+      { tileId: 'g4', kind: 'table', name: 'Tronquée', header: ['Enceinte Bluetooth Premium Édition', 'Montant'], rows: [['a', 1]], truncated: 7 },
+      { tileId: 'g5', kind: 'table', name: 'Simple', header: ['Région', 'Montant'], rows: [['Est', 5]] }
+    ] }], { labels: { truncated: (n) => 'RESTE ' + n } });
+    const wsHead = (await reload(wbHead)).back.worksheets[0];
+    const titleTrunc = rowOf(wsHead, 'Tronquée');
+    assert.strictEqual(wsHead.getRow(titleTrunc + 1).height, 33, 'en-tête sur deux lignes (2 x 15 pt + 3) : hauteur EXPLICITE');
+    assert.strictEqual(wsHead.getCell(titleTrunc + 3, 1).value, 'RESTE 7', 'lignes laissées de côté : dites');
+    assert.strictEqual(wsHead.getRow(rowOf(wsHead, 'Simple') + 1).height, 15, 'un en-tête sur une ligne reste à la hauteur normale');
+
+    // Noms de colonne d'un tableau (texte, jamais vide, uniques sans tenir compte de la casse), nom de tableau, nom de feuille.
+    assert.deepStrictEqual(exportJs.tableHeaders(['Montant', 'montant', 'Montant', '', null, 2022, ' a\nb ']), ['Montant', 'montant (2)', 'Montant (3)', 'Colonne 4', 'Colonne 5', '2022', 'a b']);
+    assert.strictEqual(exportJs.tableHeaders(['x'.repeat(300)])[0].length, 255, 'Excel limite un nom de colonne à 255 signes');
+    assert.strictEqual(exportJs.tableNameFor(3, 'Montant par Région'), 'T03_Montant_par_Region');
+    assert.strictEqual(exportJs.tableNameFor(12, '   '), 'T12_donnees');
+    assert.strictEqual(exportJs.tableNameFor(1, 'A1:B2 « x »'), 'T01_A1_B2_x');
+    assert.ok(/^T01_[A-Za-z0-9_]{1,30}$/.test(exportJs.tableNameFor(1, 'Un titre vraiment beaucoup trop long pour un nom de tableau Excel')));
+    // Les noms de feuille ne font JAMAIS lever ExcelJS (plus strict que SheetJS : casse, apostrophes, « History »).
+    const titles = ['Ventes', 'ventes', 'VENTES', "'Apostrophe'", "Fin d'", 'History', 'history', 'a'.repeat(40), 'a'.repeat(40),
+      'Ligne: A/B [x]?*', '', '   ', "''", 'x'.repeat(30) + "'y", 'Page 1 - Montant par catégorie et par région en 2026'];
+    const usedX = new Set();
+    const names = titles.map((tt) => exportJs.uniqueSheetName(tt, usedX));
+    assert.strictEqual(new Set(names.map((nm) => nm.toLowerCase())).size, names.length, 'noms uniques sans tenir compte de la casse');
+    assert.ok(names.every((nm) => nm.length >= 1 && nm.length <= 31 && !/^'|'$/.test(nm) && !/[:\\/?*[\]]/.test(nm) && nm.toLowerCase() !== 'history'));
+    assert.deepStrictEqual(names.slice(0, 3), ['Ventes', 'ventes (2)', 'VENTES (3)']);
+    const wbNames = exportJs.buildWorkbook(ExcelJSLib, titles.map((tt, i) => ({ id: 'n' + i, name: tt, title: tt + ' ', blocks: [{ tileId: 'n', kind: 'table', name: 'x', header: ['A'], rows: [[1]] }] })));
+    assert.strictEqual(wbNames.worksheets.length, titles.length, 'une feuille de données par page, quels que soient les titres');
+    assert.strictEqual(new Set(wbNames.worksheets.map((w) => w.name.toLowerCase())).size, titles.length);
+
+    // Un lien d'une feuille à l'autre : la formule HYPERLINK d'Excel, apostrophes et guillemets échappés (le « hyperlink » d'ExcelJS est relu
+    // de travers par LibreOffice — fichier externe, fragment doublé — et aucun essai ne dit ce qu'en fait Excel).
+    assert.deepStrictEqual(exportJs.sheetLink('Ventes', 'Aller'), { formula: 'HYPERLINK("#\'Ventes\'!A1","Aller")', result: 'Aller' });
+    assert.strictEqual(exportJs.sheetLink('L\'équipe "Q1"', 'Aller à "x"').formula, 'HYPERLINK("#\'L\'\'équipe ""Q1""\'!A1","Aller à ""x""")');
+
+    // ---- La feuille « tableau de bord » : les tuiles à leur place, jamais l'une sur l'autre ---------------------------------------------------------------
+    const DASH_TYPES = ['kpi', 'kpi', 'gauge', 'bar', 'line', 'bar', 'pie', 'pie', 'treemap', 'text', 'progress'];
+    const dashTiles = DASH_TYPES.map((type, i) => ({ id: 'd' + i, type, ...(i === 0 ? { target: 3500000 } : {}) }));
+    const NO_IMAGE_ID = 'd7';
+    const dashPage = (layout, name) => ({
+      id: 'pg-' + layout, name, title: name, layout,
+      slots: layoutsX.slots(layout, dashTiles, exportJs.DASH_WIDTH, { minGap: 12 }),
+      blocks: dashTiles.map((tile) => ({
+        tileId: tile.id, tile, kind: tile.type === 'text' ? 'text' : 'table', name: 'Tuile ' + tile.id,
+        header: tile.type === 'text' ? ['Texte'] : ['K', 'V'], rows: tile.type === 'text' ? [['une note']] : [['x', 1]],
+        image: tile.id === NO_IMAGE_ID ? undefined : { base64: 'data:image/png;base64,' + PNG_1PX }
+      }))
     });
-    const { back: backImg, files: filesImg } = await reload(wbImg);
-    const wsImg = backImg.getWorksheet('Avec image');
-    assert.ok(filesImg['xl/media/image1.png'] && filesImg['xl/media/image1.png'].slice(1, 4).toString() === 'PNG', 'le PNG est dans le classeur, tel quel');
-    assert.strictEqual(Object.keys(filesImg).filter((f) => /^xl\/media\//.test(f)).length, 1, 'une seule image : la tuile sans image n\'en a pas');
-    const titleImg = rowOf(wsImg, 'T:Barres');
-    assert.ok(titleImg > 0 && wsImg.getCell(titleImg, 1).font.bold, 'titre affiché par l\'appelant (opts.title)');
-    const drawing = filesImg['xl/drawings/drawing1.xml'].toString('utf8');
-    const fromRow = Number(/<xdr:from><xdr:col>0<\/xdr:col><xdr:colOff>\d+<\/xdr:colOff><xdr:row>(\d+)<\/xdr:row>/.exec(drawing)[1]);
-    assert.strictEqual(fromRow, titleImg, 'l\'image démarre juste sous le bandeau de titre (ligne suivante, comptée depuis 0)');
-    assert.ok(/<xdr:ext cx="5334000" cy="2838450"/.test(drawing) || /cx="5334000"/.test(drawing), '560 px de large dans la feuille (1 px = 9525 EMU)');
-    const headerImg = rowOf(wsImg, 'Région', titleImg);
-    assert.strictEqual(headerImg, titleImg + 1 + Math.ceil(298 / 20) + 1, 'les données commencent sous les 15 lignes que recouvre l\'image (20 px par ligne), pas dessous');
-    assert.ok(!/IMAGE INDISPONIBLE/.test(String(wsImg.getCell(titleImg + 1, 1).value)), 'un bloc avec image n\'a pas de mention « indisponible »');
-    const titleNoImg = rowOf(wsImg, 'T:Sans image');
-    assert.strictEqual(wsImg.getCell(titleNoImg + 1, 1).value, 'IMAGE INDISPONIBLE', 'tuile graphique sans image : le dit, et garde ses données');
-    assert.strictEqual(wsImg.getCell(titleNoImg + 3, 1).value, 'Est');
-    const titleNote = rowOf(wsImg, 'T:Note');
-    const noteCell = wsImg.getCell(titleNote + 1, 1);
-    assert.ok(noteCell.value.startsWith('Cliquez') && noteCell.value.includes('\n'), 'une note : le texte lui-même');
-    assert.ok(noteCell.alignment.wrapText && noteCell.isMerged, 'étalée sur plusieurs colonnes, à la ligne');
-    assert.ok(wsImg.getRow(titleNote + 1).height >= 30, 'et assez haute pour ses deux lignes');
-    const titleTrunc = rowOf(wsImg, 'T:Tronquée');
-    assert.strictEqual(wsImg.getRow(titleTrunc + 1).height, 33, 'en-tête à retour à la ligne (deux lignes de 15 pt + 3) : hauteur EXPLICITE (sinon le tableur décale les lignes sous les images déjà posées)');
-    assert.strictEqual(wsImg.getCell(titleTrunc + 3, 1).value, 'RESTE 7', 'lignes laissées de côté : dites');
-    const simpleHeaderRow = wsImg.getRow(headerImg);
-    assert.strictEqual(simpleHeaderRow.height, 15, 'un en-tête sur une ligne reste à la hauteur normale');
+    const anchorsOf = (files, n) => {
+      const xml = xmlOf(files, 'xl/drawings/drawing' + n + '.xml');
+      const out = [];
+      const re = /<xdr:twoCellAnchor editAs="twoCell"><xdr:from><xdr:col>(\d+)<\/xdr:col><xdr:colOff>0<\/xdr:colOff><xdr:row>(\d+)<\/xdr:row><xdr:rowOff>0<\/xdr:rowOff><\/xdr:from><xdr:to><xdr:col>(\d+)<\/xdr:col><xdr:colOff>0<\/xdr:colOff><xdr:row>(\d+)<\/xdr:row><xdr:rowOff>0<\/xdr:rowOff><\/xdr:to>/g;
+      let m;
+      while ((m = re.exec(xml))) out.push({ c0: +m[1] + 1, r0: +m[2] + 1, c1: +m[3], r1: +m[4] }); // cellules 1-based, bornes comprises
+      return out;
+    };
+    const touches = (a, b) => a.c0 <= b.c1 + 1 && b.c0 <= a.c1 + 1 && a.r0 <= b.r1 + 1 && b.r0 <= a.r1 + 1; // se touchent ou se recouvrent
+    for (const layoutId of layoutsX.LAYOUT_IDS) {
+      const page = dashPage(layoutId, 'Page ' + layoutId);
+      assert.strictEqual(page.slots.layout, layoutId, layoutId + ' : à 1 200 px l\'agencement choisi s\'applique');
+      const wbDash = exportJs.buildWorkbook(ExcelJSLib, [page], { title: (b) => b.name });
+      const { back: backDash, files: filesDash } = await reload(wbDash);
+      assert.deepStrictEqual(backDash.worksheets.map((w) => w.name), ['Page ' + layoutId, 'Page ' + layoutId + ' - données'], layoutId + ' : le tableau de bord puis ses données');
+      const wsDash = backDash.worksheets[0];
+      // Toutes les tuiles avec image sont ancrées par leurs deux coins ; celle sans image a une case annoncée à sa place.
+      const anchors = anchorsOf(filesDash, 1);
+      assert.strictEqual(anchors.length, dashTiles.length - 1, layoutId + ' : une image par tuile dessinée');
+      const merges = (wsDash.model.merges || []).map((rg) => { const m = /^([A-Z]+)(\d+):([A-Z]+)(\d+)$/.exec(rg); return { c0: colNumber(m[1]), r0: +m[2], c1: colNumber(m[3]), r1: +m[4] }; });
+      assert.strictEqual(merges.length, 1, layoutId + ' : une case pour la tuile sans image');
+      const rects = anchors.concat(merges);
+      for (const rect of rects) assert.ok(rect.c0 >= 1 && rect.c1 <= 120 && rect.r0 >= 5 && rect.c1 >= rect.c0 && rect.r1 >= rect.r0, layoutId + ' : dans la feuille, sous le bandeau du haut');
+      for (let i = 0; i < rects.length; i++) for (let j = i + 1; j < rects.length; j++) assert.ok(!touches(rects[i], rects[j]), layoutId + ' : deux tuiles ne se touchent ni ne se recouvrent (' + JSON.stringify(rects[i]) + ' / ' + JSON.stringify(rects[j]) + ')');
+      // Chaque rectangle a la taille de sa place, à une case (10 px) près ; la feuille entière tient dans la hauteur de la mise en page.
+      const byId = new Map();
+      page.blocks.forEach((b) => byId.set(b.tileId, page.slots.items[b.tileId]));
+      const sizes = page.blocks.filter((b) => b.image).map((b) => byId.get(b.tileId));
+      anchors.forEach((a, i) => {
+        const s = sizes[i];
+        assert.ok(Math.abs((a.c1 - a.c0 + 1) * 10 - s.w) <= 10 && Math.abs((a.r1 - a.r0 + 1) * 10 - s.h) <= 10, layoutId + ' : taille de la place ' + JSON.stringify(s) + ' -> ' + JSON.stringify(a));
+        assert.ok(Math.abs((a.c0 - 1) * 10 - s.x) <= 5 && Math.abs((a.r0 - 5) * 10 - s.y) <= 5, layoutId + ' : position de la place');
+      });
+      // Bandeau du haut (titre, sous-titre, lien, respiration) puis lignes de 7,5 pt ; 120 colonnes étroites ; un seul lien, vers la feuille de données.
+      assert.deepStrictEqual([1, 2, 3, 4].map((n) => wsDash.getRow(n).height), [26, 16, 16, 8]);
+      assert.strictEqual(wsDash.getRow(5).height, 7.5);
+      const dashXml = sheetXmlOf(filesDash, 1);
+      assert.ok(/<col min="1" max="120" width="1\.4285714285714286" customWidth="1"\/>/.test(dashXml), layoutId + ' : 120 colonnes de 10 px');
+      assert.deepStrictEqual(formulasOf(dashXml), ['HYPERLINK("#\'Page ' + layoutId + ' - données\'!A1","Données de cette page ›")']);
+      assert.strictEqual(wsDash.getCell('A1').value, 'Page ' + layoutId);
+      assert.strictEqual(Object.keys(filesDash).filter((f) => /^xl\/media\//.test(f)).length, dashTiles.length - 1, layoutId + ' : un PNG par image');
+      const placeholder = wsDash.getCell(merges[0].r0, merges[0].c0);
+      assert.ok(String(placeholder.value).startsWith('Tuile d7\n') && /Visuel indisponible/.test(String(placeholder.value)) && placeholder.alignment.wrapText, layoutId + ' : la tuile sans image le dit, avec son titre');
+      // Les données : un tableau par tuile qui en a (la note n'en a pas), liens retour, aucune autre formule.
+      const dataXml = sheetXmlOf(filesDash, 2);
+      assert.deepStrictEqual(formulasOf(dataXml), ['HYPERLINK("#\'Page ' + layoutId + '\'!A1","‹ Tableau de bord")']);
+      const tables = Object.keys(filesDash).filter((f) => /^xl\/tables\/table\d+\.xml$/.test(f)).map((f) => /displayName="([^"]+)"/.exec(xmlOf(filesDash, f))[1]);
+      assert.strictEqual(tables.length, dashTiles.length - 1, layoutId + ' : un tableau par tuile, sauf la note');
+      assert.strictEqual(new Set(tables.map((t) => t.toLowerCase())).size, tables.length, 'noms de tableau uniques');
+      assert.ok(tables.every((t) => /^T\d\d_[A-Za-z0-9_]+$/.test(t)), 'noms de tableau valides : ' + tables.join(','));
+    }
 
-    // Une feuille pleine ne reçoit pas un bloc à moitié : mention, puis arrêt (Excel s'arrête à 1 048 576 lignes).
+    // Deux pages, une feuille de données chacune, et un nom de page qui demande des guillemets : le tableau de bord, ses données, la page suivante.
+    const trickyName = 'L\'équipe: "Q1" [x]';
+    const twoPages = [dashPage('board', trickyName), dashPage('report', 'Suite')];
+    const wbTwo = exportJs.buildWorkbook(ExcelJSLib, twoPages, { title: (b) => b.name });
+    const { back: backTwo, files: filesTwo } = await reload(wbTwo);
+    assert.deepStrictEqual(backTwo.worksheets.map((w) => w.name), ['L\'équipe "Q1" x', 'L\'équipe "Q1" x - données', 'Suite', 'Suite - données'], 'ordre : tableau de bord et données de la page 1, puis de la page 2');
+    assert.deepStrictEqual(formulasOf(sheetXmlOf(filesTwo, 1)), ['HYPERLINK("#\'L\'\'équipe ""Q1"" x - données\'!A1","Données de cette page ›")'], 'apostrophes doublées, guillemets doublés');
+    assert.deepStrictEqual(formulasOf(sheetXmlOf(filesTwo, 2)), ['HYPERLINK("#\'L\'\'équipe ""Q1"" x\'!A1","‹ Tableau de bord")']);
+    const tableNamesTwo = Object.keys(filesTwo).filter((f) => /^xl\/tables\/table\d+\.xml$/.test(f)).map((f) => /displayName="([^"]+)"/.exec(xmlOf(filesTwo, f))[1]);
+    assert.strictEqual(tableNamesTwo.length, 20);
+    assert.strictEqual(new Set(tableNamesTwo).size, 20, 'noms de tableau uniques dans TOUT le classeur, pas seulement dans une feuille');
+
+    // Les trois rangements des données (carte de décision du 18/11/2026 ; le défaut est une feuille par page).
+    const modes = {};
+    for (const mode of ['perPage', 'perTile', 'single']) {
+      const wbM = exportJs.buildWorkbook(ExcelJSLib, twoPages, { title: (b) => b.name, dataMode: mode });
+      modes[mode] = wbM.worksheets.map((w) => w.name);
+    }
+    assert.deepStrictEqual(modes.perPage, ['L\'équipe "Q1" x', 'L\'équipe "Q1" x - données', 'Suite', 'Suite - données']);
+    assert.strictEqual(modes.perTile.length, 2 + 2 * 10, 'une feuille par tuile qui a des données (10 par page : la note n\'en a pas), après le tableau de bord de sa page');
+    assert.deepStrictEqual(modes.perTile.slice(0, 3), ['L\'équipe "Q1" x', 'Tuile d0', 'Tuile d1']);
+    assert.strictEqual(new Set(modes.perTile.map((n) => n.toLowerCase())).size, modes.perTile.length, 'noms uniques : la 2e « Tuile d0 » devient « Tuile d0 (2) »');
+    assert.ok(modes.perTile.includes('Tuile d0 (2)'));
+    assert.deepStrictEqual(modes.single, ['L\'équipe "Q1" x', 'Suite', 'Données'], 'une seule feuille de données, après les tableaux de bord');
+    const wbSingle = exportJs.buildWorkbook(ExcelJSLib, twoPages, { title: (b) => b.name, dataMode: 'single' });
+    const { back: backSingle } = await reload(wbSingle);
+    const wsSingle = backSingle.getWorksheet('Données');
+    assert.ok(rowOf(wsSingle, 'L\'équipe: "Q1" [x] › Tuile d0') > 0 && rowOf(wsSingle, 'Suite › Tuile d0') > 0, 'chaque tableau dit de quelle page il vient');
+    assert.strictEqual(exportJs.buildWorkbook(ExcelJSLib, twoPages, { dataMode: 'inconnu' }).worksheets.length, 4, 'un rangement inconnu retombe sur une feuille par page');
+    // Une page SANS mise en page (pas de `slots`) n'a que ses données ; une page sans tableau (que des notes) n'a pas de feuille de données.
+    const notesOnly = { id: 'pn', name: 'Notes', title: 'Notes', layout: 'grid', slots: layoutsX.slots('grid', [dashTiles[9]], 1200), blocks: [dashPage('grid', 'x').blocks[9]] };
+    assert.deepStrictEqual(exportJs.buildWorkbook(ExcelJSLib, [notesOnly], {}).worksheets.map((w) => w.name), ['Notes'], 'que des notes : le tableau de bord seul, sans lien vers des données qui n\'existent pas');
+    assert.deepStrictEqual(formulasOf(sheetXmlOf((await reload(exportJs.buildWorkbook(ExcelJSLib, [notesOnly], {}))).files, 1)), [], 'pas de lien vers une feuille absente');
+
+    // Une feuille pleine ne reçoit pas un tableau à moitié : mention, puis arrêt (Excel s'arrête à 1 048 576 lignes).
     const wbFull = exportJs.buildWorkbook(ExcelJSLib, [{ name: 'Pleine', title: 'Pleine', blocks: [
       { tileId: 'big', kind: 'table', name: 'Énorme', header: ['A'], rows: new Array(1000001) },
       { tileId: 'next', kind: 'table', name: 'Suivant', header: ['A'], rows: [[1]] }
     ] }], { labels: { cut: 'FEUILLE PLEINE' } });
-    const wsFull = wbFull.getWorksheet('Pleine');
-    assert.strictEqual(rowOf(wsFull, 'FEUILLE PLEINE'), 3, 'le bloc qui ne tient plus n\'est pas écrit');
+    const wsFull = wbFull.worksheets[0];
+    assert.ok(rowOf(wsFull, 'FEUILLE PLEINE') > 0, 'le tableau qui ne tient plus n\'est pas écrit : la mention le dit');
     assert.strictEqual(rowOf(wsFull, 'Suivant'), 0, 'et rien ne le suit');
     assert.ok(wsFull.rowCount < 10);
-
-    // Les noms de feuille que fabrique sanitizeSheetName ne font JAMAIS lever ExcelJS (il est plus strict que
-    // SheetJS : casse, apostrophes, « History »).
-    const titles = ['Ventes', 'ventes', 'VENTES', "'Apostrophe'", "Fin d'", 'History', 'history', 'a'.repeat(40), 'a'.repeat(40),
-      'Ligne: A/B [x]?*', '', '   ', "''", 'x'.repeat(30) + "'y", 'Page 1 - Montant par catégorie et par région en 2026'];
-    const usedX = new Set();
-    const names = titles.map((tt) => data.sanitizeSheetName(tt, usedX));
-    assert.strictEqual(new Set(names.map((nm) => nm.toLowerCase())).size, names.length, 'noms uniques sans tenir compte de la casse');
-    assert.ok(names.every((nm) => nm.length >= 1 && nm.length <= 31 && !/^'|'$/.test(nm) && !/[:\\/?*[\]]/.test(nm) && nm.toLowerCase() !== 'history'));
-    assert.deepStrictEqual(names.slice(0, 3), ['Ventes', 'ventes (2)', 'VENTES (3)']);
-    const wbNames = exportJs.buildWorkbook(ExcelJSLib, names.map((nm) => ({ name: nm, title: nm, blocks: [{ tileId: 'n', kind: 'table', name: 'x', header: ['A'], rows: [[1]] }] })));
-    assert.strictEqual(wbNames.worksheets.length, titles.length);
 
     // Bout en bout (hors DuckDB et hors DOM) : les pages d'un VRAI état, par la chaîne que js/export.js utilise.
     const stateX = {
       rows: [{ Region: 'Nord', Montant: 10, Date: '2025-01-15' }, { Region: 'Sud', Montant: 20, Date: '2025-02-15' }, { Region: 'Nord', Montant: 5, Date: '2026-01-15' }],
       activeFilters: [], advancedFilters: [], drillIns: {},
       pages: [
-        { id: 'p1', name: 'Ventes', tiles: [
+        { id: 'p1', name: 'Ventes', layout: 'board', tiles: [
           { id: 't1', type: 'bar', title: 'Par région', dimension: 'Region', measure: 'Montant', aggFn: 'sum' },
           { id: 't2', type: 'kpi', measure: 'Montant', aggFn: 'sum' },
           { id: 't3', type: 'text', text: 'note' },
@@ -6245,21 +6344,24 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     };
     const computeCalls = [];
     const pagesReal = await data.buildExportPagesAsync(stateX, async (tile, rows) => { computeCalls.push([tile.id, rows.length]); return [{ period: '2025-01-01', value: 10, cumulative: 10, ytd: 10, previousYear: null }]; });
-    assert.deepStrictEqual(pagesReal.map((p) => [p.id, p.name, p.title]), [['p1', 'Ventes', 'Ventes'], ['p2', 'ventes (2)', 'ventes']], 'une page sans tuile n\'a pas de feuille ; noms uniques sans tenir compte de la casse');
+    assert.deepStrictEqual(pagesReal.map((p) => [p.id, p.name, p.title, p.layout]), [['p1', 'Ventes', 'Ventes', 'board'], ['p2', 'ventes (2)', 'ventes', undefined]], 'une page sans tuile n\'a pas de feuille ; noms uniques sans tenir compte de la casse ; la disposition de la page suit');
     assert.deepStrictEqual(pagesReal[0].blocks.map((b) => [b.tileId, b.kind]), [['t1', 'image'], ['t2', 'table'], ['t3', 'text'], ['t5', 'image']], 'l\'ordre enregistré, la note comprise');
     assert.deepStrictEqual(computeCalls, [['t5', 3]], 'seule la tuile en mode mesure passe par le calcul injecté');
     assert.strictEqual(pagesReal[0].blocks[0].tile, stateX.pages[0].tiles[0], 'la tuile elle-même suit son bloc (js/export.js la dessine)');
+    for (const page of pagesReal) page.slots = layoutsX.slots(page.layout, page.blocks.map((b) => b.tile), exportJs.DASH_WIDTH, { minGap: 12 });
+    assert.strictEqual(pagesReal[0].slots.layout, 'board', 'la page « Ventes » est en Planche');
+    assert.strictEqual(pagesReal[1].slots.layout, 'grid', 'une page sans disposition est en grille');
     const wbReal = exportJs.buildWorkbook(ExcelJSLib, pagesReal, { title: (b) => b.tile.title || b.name });
     const { back: backReal } = await reload(wbReal);
-    assert.deepStrictEqual(backReal.worksheets.map((w) => w.name), ['Ventes', 'ventes (2)']);
-    const wsV = backReal.getWorksheet('Ventes');
+    assert.deepStrictEqual(backReal.worksheets.map((w) => w.name), ['Ventes', 'Ventes - données', 'ventes (2)', 'ventes - données (2)'], 'noms uniques sans tenir compte de la casse, même pour les feuilles de données');
+    const wsV = backReal.getWorksheet('Ventes - données');
     const hRegion = rowOf(wsV, 'Region', rowOf(wsV, 'Par région'));
     assert.deepStrictEqual(wsV.getRow(hRegion).values.slice(1), ['Region', 'Montant']);
     assert.deepStrictEqual(wsV.getRow(hRegion + 1).values.slice(1), ['Nord', 15]);
     assert.deepStrictEqual(wsV.getRow(hRegion + 2).values.slice(1), ['Sud', 20]);
     assert.deepStrictEqual(wsV.getRow(rowOf(wsV, 'Mesure') + 1).values.slice(1), ['sum(Montant)', 35]);
     assert.ok(rowOf(wsV, 'Cumul') > 0 && rowOf(wsV, 'Période') > 0, 'le bloc en mode mesure a ses vraies valeurs');
-    assert.ok(rowOf(wsV, 'note') > 0, 'la note est dans la page, comme à l\'écran');
+    assert.strictEqual(rowOf(wsV, 'note'), 0, 'la note n\'a pas de données : elle n\'est que sur le tableau de bord');
     // Le même état filtré : les blocs suivent l'écran (filtre posé par une AUTRE tuile ; la tuile source reste entière).
     const pagesFiltered = await data.buildExportPagesAsync(Object.assign({}, stateX, { activeFilters: [{ column: 'Region', type: 'eq', value: 'Nord', sourceTileId: 't1' }] }), async () => []);
     assert.deepStrictEqual(pagesFiltered[0].blocks[0].rows, [['Nord', 15], ['Sud', 20]], 'la tuile qui pose le filtre croisé reste non filtrée sur son propre filtre');
@@ -6268,18 +6370,24 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     const flat = await data.buildWorkbookSheetsAsync(stateX, async () => []);
     assert.deepStrictEqual(flat.map((s) => s.name), ['Ventes - Par région', 'Ventes - sum(Montant)', 'Ventes - Cumul', 'ventes - sum(Montant) (2)']);
 
-    // Photographie des graphiques (navigateur : voir TEST_PROTOCOL.md) — ce que ce fichier garantit, lu dans les sources.
+    // Photographie des cartes (navigateur : voir TEST_PROTOCOL.md) — ce que ce fichier garantit, lu dans les sources.
     {
       const xl = exportSrc;
-      assert.ok(typeof exportJs.captureTileImages === 'function' && typeof exportJs.stateForClone === 'function');
-      assert.ok(/Object\.assign\(\{\}, block\.tile, \{ id: cloneId \}\)/.test(xl) && /'__xl_'/.test(xl), 'chaque graphique est redessiné SOUS UN IDENTIFIANT DE COPIE, jamais dans l\'instance affichée');
+      assert.ok(typeof exportJs.captureDashboardImages === 'function' && typeof exportJs.stateForClone === 'function');
+      assert.ok(!('captureTileImages' in exportJs), 'l\'ancienne photographie (un graphique par tuile, taille fixe) a disparu');
+      assert.ok(/GristBI\.buildTileElement\(tile, \{ preview: true \}\)/.test(xl), 'la carte est reconstruite HORS ÉCRAN par le même corps que l\'aperçu du panneau (pages non affichées comprises)');
+      assert.ok(/Object\.assign\(\{\}, job\.block\.tile, \{ id: cloneId \}\)/.test(xl) && /'__xl_'/.test(xl), 'chaque carte est redessinée SOUS UN IDENTIFIANT DE COPIE, jamais dans l\'instance affichée');
       assert.ok(!/getInstance\(block\.tileId\)|getInstance\(item\.block\.tile\.id\)|getInstance\(tile\.id\)/.test(xl), 'jamais l\'instance affichée : l\'écran n\'est pas touché');
+      assert.ok(/width:' \+ Math\.round\(job\.slot\.w\)[\s\S]*height:' \+ Math\.round\(job\.slot\.h\)/.test(xl), 'la carte a la taille de sa place dans la mise en page');
       assert.ok(/finally \{[\s\S]*disposeTile[\s\S]*host\.remove\(\)/.test(xl), 'les copies et le conteneur hors écran sont libérés même si un dessin échoue');
       assert.ok(/await GristBI\.charts\.renderTile\(/.test(xl), 'le dessin est ATTENDU avant de photographier (renderTile rend la promesse)');
+      assert.ok(/whenSettled\(15000\)/.test(xl), 'les calculs en vol (DuckDB, « Calcul… ») sont attendus');
       assert.ok(/isFinished\(\)/.test(xl) && /ANIMATION_WAIT_MS/.test(xl), 'l\'animation d\'entrée d\'ECharts est attendue (bornée), pas photographiée à mi-course');
-      assert.ok(/dataUrl\.replace\(\/\^data:image\\\/png;base64,\/, ''\)/.test(xl) || /replace\(\/\^data:image\\\/png;base64,\/, ''\)/.test(xl), 'le PNG est passé à ExcelJS en base64 nu');
-      assert.ok(/CAPTURE_BATCH/.test(xl) && /dispose/.test(xl), 'dessinés par lots : la mémoire des canevas est bornée');
-      assert.ok(/isWordCloudCanvas/.test(xl) && /display === 'none'/.test(xl), 'le nuage de mots masqué (extension absente) n\'a pas d\'image');
+      assert.ok(/GristBI\.snapshot\.capture\(item\.el, \{ pad: 0, scale: CAPTURE_SCALE, skipSettle: true \}\)/.test(xl), 'photographiée par js/snapshot.js, celui du PDF et du PPTX');
+      assert.ok(/replace\(\/\^data:image\\\/png;base64,\/, ''\)/.test(xl), 'le PNG est passé à ExcelJS en base64 nu');
+      assert.ok(/CAPTURE_BATCH/.test(xl) && /dispose/.test(xl), 'dessinées par lots : la mémoire des canevas est bornée');
+      assert.ok(/\{ tl: \{ col: c0, row: bannerRows \+ r0 \}, br: \{ col: c1, row: bannerRows \+ r1 \}, editAs: 'twoCell' \}/.test(xl), 'image ancrée par ses DEUX coins : elle reste dans ses cellules même si le tableur mesure les colonnes autrement');
+      assert.ok(!/GristBI\.snapshot\.captureTile\(|getDataURL/.test(xl), 'la carte entière (titre, fond, style), jamais seulement le canevas du graphique');
       // L'état d'une copie : le filtre croisé posé par la tuile ne la filtre pas, son drill-down est le sien ; l'état d'origine reste intact.
       const liveState = { activeFilters: [{ column: 'Region', value: 'Nord', sourceTileId: 'T' }, { column: 'Canal', value: 'Web', sourceTileId: 'U' }], drillIns: { T: [{ column: 'Annee', value: 2025 }] }, advancedFilters: [{ column: 'Montant' }] };
       const cloneState = exportJs.stateForClone(liveState, { id: 'T' }, '__xl_0');
@@ -6290,11 +6398,14 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
       const chartsSrcX = readCharts();
       assert.ok(/return renderChart\(tile, rows, state, container, drillPath\);/.test(chartsSrcX), 'renderTile rend la promesse du dessin');
       const mainSrcX = nodeFs.readFileSync(nodePath.join(repoRoot, 'js', 'main.js'), 'utf8');
+      assert.ok(/GristBI\.buildTileElement = buildTileElement;/.test(mainSrcX), 'main.js offre la carte d\'une tuile à l\'export');
       const excelListener = mainSrcX.slice(mainSrcX.indexOf("exportExcelBtn.addEventListener('click'"), mainSrcX.indexOf("exportPdfBtn.addEventListener('click'"));
       assert.ok(/dataset\.busy/.test(excelListener) && /finally \{/.test(excelListener), 'pas de second export pendant le premier ; le bouton est rendu même après un échec');
       assert.ok(!/EXPORTS_AVAILABLE/.test(excelListener), 'l\'export Excel est rouvert : il ne dépend plus du drapeau des autres');
+      assert.ok(/page\.slots = GristBI\.layouts\.slots\(page\.layout, page\.blocks\.map\(\(b\) => b\.tile\), DASH_WIDTH, \{ minGap: DASH_MIN_GAP \}\)/.test(xl), 'la mise en page de chaque page vient de la disposition de la page, sur une largeur fixe (le même fichier quelle que soit la fenêtre)');
+      assert.ok(/dataMode: 'perPage'/.test(xl), 'rangement des données par défaut : une feuille par page');
     }
-    console.log('OK export Excel — une feuille par page, bloc par tuile (titre, image réservée, données), cellules (types, NaN, grands entiers, objets, formats), texte = formule jamais, noms de feuille, bout en bout, photographie des graphiques lue dans les sources');
+    console.log('OK export Excel — par page : tableau de bord (images ancrées à leur place, 5 dispositions, sans recouvrement) + feuille de données (tableaux Excel nommés), 3 rangements, liens HYPERLINK échappés, cellules (types, NaN, grands entiers, objets, formats), texte = formule jamais, noms uniques, bout en bout, photographie lue dans les sources');
   }
 
   // Les trois exports sont ouverts (18/11/2026) : l'Excel refait par un autre fil (une feuille par page, graphiques en images), le PDF et le PPTX
@@ -6313,7 +6424,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     assert.ok(!/EXPORTS_AVAILABLE/.test(mainE) && !/EXPORTS_AVAILABLE/.test(indexE), 'plus aucun drapeau de désactivation des exports');
     assert.ok(!/export\.soon/.test(indexE) && !i18n.STRINGS['export.soon'], 'plus de mention « bientôt disponible »');
     // Textes du classeur Excel : fr ET en, variables identiques.
-    for (const key of ['export.xlsx.subtitle', 'export.xlsx.filters', 'export.xlsx.noImage', 'export.xlsx.truncated', 'export.xlsx.cut', 'export.xlsx.preparing']) {
+    for (const key of ['export.xlsx.subtitle', 'export.xlsx.filters', 'export.xlsx.noImage', 'export.xlsx.noRows', 'export.xlsx.truncated', 'export.xlsx.cut', 'export.xlsx.dataSuffix', 'export.xlsx.dataSheet', 'export.xlsx.toData', 'export.xlsx.toDashboard', 'export.xlsx.preparing']) {
       const entry = i18n.STRINGS[key];
       assert.ok(entry && entry.fr && entry.en, key + ' : fr et en');
       const vars = (str) => (str.match(/\{(\w+)[|}]/g) || []).map((x) => x.replace(/[{|}]/g, '')).sort().join(',');
@@ -6322,10 +6433,15 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     i18n.setLang('fr');
     assert.strictEqual(i18n.t('export.xlsx.subtitle', { date: '18 novembre 2026', rows: 1 }), 'Exporté le 18 novembre 2026 · 1 ligne de données');
     assert.strictEqual(i18n.t('export.xlsx.subtitle', { date: '18 novembre 2026', rows: 5760 }), 'Exporté le 18 novembre 2026 · 5760 lignes de données');
-    assert.strictEqual(i18n.t('export.xlsx.filters', { n: 1 }), '1 filtre actif appliqué aux chiffres ci-dessous');
+    assert.strictEqual(i18n.t('export.xlsx.filters', { n: 1 }), '1 filtre actif appliqué aux chiffres');
+    assert.strictEqual(i18n.t('export.xlsx.noImage'), 'Visuel indisponible pour cette tuile : ses données sont dans la feuille de données.');
+    assert.strictEqual(i18n.t('export.xlsx.toData'), 'Données de cette page ›');
+    assert.strictEqual(i18n.t('export.xlsx.toDashboard'), '‹ Tableau de bord');
     assert.strictEqual(i18n.t('export.xlsx.truncated', { n: 7 }), '… 7 lignes de plus ne sont pas exportées');
     i18n.setLang('en');
-    assert.strictEqual(i18n.t('export.xlsx.filters', { n: 2 }), '2 active filters applied to the figures below');
+    assert.strictEqual(i18n.t('export.xlsx.filters', { n: 2 }), '2 active filters applied to the figures');
+    assert.strictEqual(i18n.t('export.xlsx.toData'), 'Data for this page ›');
+    assert.strictEqual(i18n.t('export.xlsx.dataSheet'), 'Data');
     i18n.setLang('fr');
     console.log('OK exports — Excel, PDF et PPTX ouverts, plus de drapeau ni de bouton grisé ; textes du classeur fr/en');
   }
