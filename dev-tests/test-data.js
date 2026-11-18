@@ -4949,6 +4949,84 @@ const SAMPLE_TIME_SERIES = [
     console.log('OK flux (Sankey) — flux par paire, écartés, sources et cibles distinctes (jamais de cycle), plafond, store (nœud, lien), export, défauts, conseils, i18n, câblage');
   }
 
+  // Bulles (nuage de points + taille + couleur, 18/11/2026, lot 3 de l'étude des tuiles usuelles, §5.5) : points alignés par nom,
+  // diamètres à aire proportionnelle, tailles sans aire, export, conseils, i18n, câblage. Le nuage de points simple ne change pas.
+  {
+    const fsB = require('fs');
+    const pathB = require('path');
+    const rootB = pathB.join(__dirname, '..');
+    // Diamètres : l'aire suit la valeur (diamètre ~ racine carrée), plancher, pas d'aire pour une taille <= 0 ou absente.
+    assert.deepStrictEqual(data.bubbleDiameters([100, 25, 0, -3, null, undefined, 4n], 40, 6), [40, 20, null, null, null, null, 8]);
+    assert.deepStrictEqual(data.bubbleDiameters([1, 10000], 40, 6), [6, 40], 'plancher : une très petite bulle reste visible');
+    assert.deepStrictEqual(data.bubbleDiameters([0, -1, null], 40), [null, null, null], 'aucune taille positive : aucune bulle');
+    assert.deepStrictEqual(data.bubbleDiameters([], 40), []); assert.deepStrictEqual(data.bubbleDiameters(undefined, 40), []);
+    assert.deepStrictEqual(data.bubbleDiameters([4, 1], 'x'), [40, 20], 'diamètre maximal invalide : 40 par défaut');
+    assert.deepStrictEqual(data.bubbleDiameters([9, 1], 4, 10), [4, 4], 'un plancher au-dessus du maximum n\'agrandit pas le maximum');
+    const ds = data.bubbleDiameters([50, 200, 800], 60, 1); assert.ok(Math.abs((ds[2] / ds[0]) ** 2 - 16) < 1e-9 && Math.abs((ds[1] / ds[0]) ** 2 - 4) < 1e-9, 'l\'aire est proportionnelle, pas le diamètre');
+    // Points : alignement PAR NOM (BigInt DuckDB et nombre JS sont la même dimension), trou = null, point sans X ou Y écarté.
+    {
+      const gx = [{ dimension: 'a', value: 1 }, { dimension: 2n, value: 3n }, { dimension: null, value: 9 }, { dimension: 'z', value: 5 }];
+      const gy = [{ dimension: 'a', value: 5 }, { dimension: 2, value: 7 }, { dimension: null, value: 4 }];
+      const gs = [{ dimension: 'a', value: 100 }, { dimension: 2, value: 'x' }];
+      const r = data.bubblePoints(gx, gy, gs);
+      assert.deepStrictEqual(r.points.map((q) => [String(q.dimension), q.x, q.y, q.size]), [['a', 1, 5, 100], ['2', 3, 7, null], ['null', 9, 4, null]], 'alignement par nom ; taille absente ou non numérique = null, jamais 0');
+      assert.strictEqual(r.skipped, 1, 'z n\'a pas de Y : écarté');
+      const none = data.bubblePoints(gx, gy); assert.ok(none.points.every((q) => !('size' in q)), 'sans mesure de taille, pas de champ size');
+      assert.deepStrictEqual(data.bubblePoints([], [], []), { points: [], skipped: 0 }); assert.deepStrictEqual(data.bubblePoints(undefined, undefined, undefined), { points: [], skipped: 0 });
+      assert.strictEqual(data.bubblePoints([{ dimension: 'a', value: NaN }], [{ dimension: 'a', value: 1 }]).skipped, 1, 'X non fini : écarté');
+    }
+    // Types : seule la combinaison nuage de points + taille / couleur ; isSeriesTile (barres et courbes) ne bouge pas.
+    assert.strictEqual(data.isBubbleTile({ type: 'scatter', measureSize: 'M' }), true); assert.strictEqual(data.isBubbleTile({ type: 'scatter' }), false); assert.strictEqual(data.isBubbleTile({ type: 'bar', measureSize: 'M' }), false); assert.strictEqual(data.isBubbleTile(null), false);
+    assert.strictEqual(data.isColorSplitTile({ type: 'scatter', seriesColumn: 'G' }), true); assert.strictEqual(data.isColorSplitTile({ type: 'scatter' }), false); assert.strictEqual(data.isColorSplitTile({ type: 'line', seriesColumn: 'G' }), false);
+    assert.strictEqual(data.isSeriesTile({ type: 'scatter', seriesColumn: 'G' }), false, 'la couleur d\'un nuage de points n\'est pas une série de barres : ni pile, ni tri');
+    assert.strictEqual(data.isStackedTile({ type: 'scatter', seriesColumn: 'G', stacked: true }), false);
+    assert.strictEqual(data.supportsPalette({ type: 'scatter' }), true); assert.strictEqual(data.supportsNumberFormat({ type: 'scatter' }), true);
+    // Export : nuage simple inchangé ; + taille = une colonne ; + couleur = une colonne « série » et un jeu de points par valeur.
+    const rowsB = [];
+    for (let i = 0; i < 12; i++) rowsB.push({ Produit: 'P' + (i % 4), Gamme: i % 4 < 2 ? 'A' : 'B', Prix: 10 + (i % 4) * 5 + i % 3, Marge: 20 + (i % 4) * 4, CA: 100 + i * 10 });
+    const stB = { rows: rowsB, activeFilters: [], advancedFilters: [], drillIns: {}, comments: [], pages: [] };
+    const plainB = { id: 'sc', type: 'scatter', title: 'S', dimension: 'Produit', measure: 'Prix', measureY: 'Marge', aggFn: 'avg' };
+    const sheetPlain = data.tileExportSheet(plainB, stB);
+    assert.deepStrictEqual(sheetPlain.header, ['Produit', 'Prix', 'Marge']); assert.strictEqual(sheetPlain.rows.length, 4);
+    const sheetSize = data.tileExportSheet(Object.assign({}, plainB, { measureSize: 'CA', aggFnSize: 'sum' }), stB);
+    assert.deepStrictEqual(sheetSize.header, ['Produit', 'Prix', 'Marge', 'CA']);
+    const p0 = rowsB.filter((r) => r.Produit === 'P0');
+    assert.deepStrictEqual(sheetSize.rows[0], ['P0', p0.reduce((a, r) => a + r.Prix, 0) / p0.length, 20, p0.reduce((a, r) => a + r.CA, 0)], 'taille = SOMME (agrégat propre), axes = moyenne');
+    const sheetColor = data.tileExportSheet(Object.assign({}, plainB, { measureSize: 'CA', seriesColumn: 'Gamme' }), stB);
+    assert.deepStrictEqual(sheetColor.header, ['Produit', 'Gamme', 'Prix', 'Marge', 'CA']); assert.strictEqual(sheetColor.rows.length, 4, 'chaque produit n\'a qu\'une gamme : 4 lignes');
+    assert.deepStrictEqual(sheetColor.rows.map((r) => r[1]), ['A', 'A', 'B', 'B']);
+    assert.deepStrictEqual(data.tileExportSheet(Object.assign({}, plainB, { seriesColumn: 'Gamme' }), stB).header, ['Produit', 'Gamme', 'Prix', 'Marge'], 'couleur sans taille');
+    assert.deepStrictEqual(data.tileExportSheet(Object.assign({}, plainB, { measureSize: 'CA' }), Object.assign({}, stB, { rows: [] })).rows, [], 'aucune ligne : en-têtes seuls');
+    assert.strictEqual(data.tileExportKind(plainB), 'image');
+    // Conseils : couleur = colonne des points, trop de couleurs, tailles sans aire ; rien pour un graphique sain ; colonnes absentes sans exception.
+    const goodB = Object.assign({}, plainB, { measureSize: 'CA', aggFnSize: 'sum', seriesColumn: 'Gamme' });
+    assert.strictEqual(advice.adviceForTile(goodB, rowsB), null);
+    assert.strictEqual(advice.adviceForTile(Object.assign({}, goodB, { seriesColumn: 'Produit' }), rowsB).key, 'advice.bubble.sameAsDimension');
+    const manyB = []; for (let i = 0; i < 40; i++) manyB.push({ Produit: 'P' + i, Gamme: 'G' + i, Prix: i + 1, Marge: i + 2, CA: i + 3 });
+    assert.deepStrictEqual(advice.adviceForTile(Object.assign({}, goodB, { dimension: 'Produit' }), manyB), { key: 'advice.bubble.tooManyColors', vars: { n: 40, max: 8 }, level: 'warn' });
+    assert.deepStrictEqual(advice.adviceForTile({ type: 'scatter', dimension: 'Produit', measure: 'Prix', measureY: 'Marge', aggFn: 'sum', measureSize: 'CA' }, rowsB.concat([{ Produit: 'Neg', Gamme: 'A', Prix: 1, Marge: 1, CA: -500 }])), { key: 'advice.bubble.sizeSign', vars: { n: 1 }, level: 'warn' });
+    assert.doesNotThrow(() => advice.adviceForTile({ type: 'scatter', dimension: 'Produit', measure: 'Prix', measureY: 'Marge', aggFn: 'sum', measureSize: 'Absente', seriesColumn: 'Absente2' }, rowsB));
+    assert.strictEqual(advice.adviceForTile(plainB, rowsB), null, 'nuage de points simple : aucun conseil nouveau');
+    // i18n : libellés, titre, conseils.
+    ['tileForm.measureSize.label', 'tileForm.aggSize.label', 'tileForm.series.labelColor', 'tileTitle.bubble', 'chart.bubble.size', 'advice.bubble.sizeSign', 'advice.bubble.tooManyColors', 'advice.bubble.sameAsDimension']
+      .forEach((k) => assert.ok(i18n.STRINGS[k] && i18n.STRINGS[k].fr && i18n.STRINGS[k].en, 'traduction fr/en : ' + k));
+    i18n.setLang('fr'); assert.strictEqual(i18n.t('tileTitle.bubble', { measure: 'Prix', measureY: 'Marge', dimension: 'Produit', measureSize: 'CA' }), 'Prix et Marge par Produit, taille : CA');
+    i18n.setLang('en'); assert.strictEqual(i18n.t('tileTitle.bubble', { measure: 'Prix', measureY: 'Marge', dimension: 'Produit', measureSize: 'CA' }), 'Prix and Marge by Produit, size: CA'); i18n.setLang('fr');
+    // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
+    const mainB = fsB.readFileSync(pathB.join(rootB, 'js', 'main.js'), 'utf8');
+    const chartsB = fsB.readFileSync(pathB.join(rootB, 'js', 'charts.js'), 'utf8');
+    const indexB = fsB.readFileSync(pathB.join(rootB, 'index.html'), 'utf8');
+    assert.ok(/id="tile-measure-size"/.test(indexB) && /id="tile-agg-size"/.test(indexB) && /id="tile-series-label"/.test(indexB), 'champs de taille et libellé de la couleur');
+    assert.ok(/measureSizeSelect, trendDimensionSelect/.test(mainB), 'la colonne de taille est un combobox strict');
+    assert.ok(/\|\| type === 'line' \|\| isScatter\) \? seriesSelect\.value : ''/.test(mainB), 'la colonne Séries est lue pour un nuage de points (couleur)');
+    assert.ok(/tileData\.measureSize = \(isScatter && measureSizeSelect\.value\)/.test(mainB) && /tileData\.aggFnSize = \(isScatter && measureSizeSelect\.value && aggSizeSelect\.value !== aggFn\)/.test(mainB), 'taille écrite seulement pour un nuage de points ; son agrégat seulement s\'il diffère');
+    assert.ok(/p\.isBubble\) \{ key = 'tileTitle\.bubble'/.test(mainB), 'titre automatique des bulles');
+    assert.ok(/computeScatterSplit\(rows, dimension, tile\)/.test(chartsB) && /bubbleDiameters\(allSizes, diameterMax\)/.test(chartsB) && /if \(bubble\) instance\.__refit = /.test(chartsB), 'une couleur = un calcul par couleur ; diamètres en pixels qui suivent le redimensionnement');
+    assert.ok(/escapeHtml\(String\(params\.name\)\)/.test(chartsB) && /escapeHtml\(tile\.measureSize\)/.test(chartsB), 'noms échappés dans l\'infobulle');
+    assert.ok(!/Intl\.NumberFormat|toFixed/.test(chartsB), 'aucun format de nombre en dur dans charts.js');
+    console.log('OK bulles — points alignés par nom, diamètres à aire proportionnelle, tailles sans aire, export, conseils, i18n, câblage');
+  }
+
   // Export Excel avec ExcelJS 4.4.0 (consigne GFS 017, 18/11/2026) : le VRAI paquet vendorisé, exécuté sous Node
   // (js/export.js se charge sous Node : mise en forme des cellules et construction du classeur, sans DOM). Ce que ces
   // essais ne voient pas : le chargement paresseux dans un navigateur et le déclenchement du téléchargement.

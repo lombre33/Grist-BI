@@ -8,7 +8,7 @@
   const GristBI = global.GristBI || (global.GristBI = {});
   const {
     groupByAggregate, sameValue, aggregateSingle, pivotTable, trendFromGroups, targetProgress, progressRows, sparklineValues, sparklineGeometry, measureSeriesForTile,
-    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, comboSeries, comboModeOf, histogramBins, histogramFilter, histogramBinIsActive, boxStatsByGroup, sankeyFlows, topFlows, SANKEY_MAX_LINKS, filterSelects, lineShapeOf, isStackedPercentTile, stackShares, supportsValueLabels, refLineKind, refLineValue, cellFilterToggles, heatStops, heatRange, heatCellColors, heatTextColor, isStackedTile, splitBySeries, assembleSeries, paletteColors, PALETTES, escapeHtml,
+    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, comboSeries, comboModeOf, histogramBins, histogramFilter, histogramBinIsActive, boxStatsByGroup, sankeyFlows, topFlows, SANKEY_MAX_LINKS, isBubbleTile, bubblePoints, bubbleDiameters, filterSelects, lineShapeOf, isStackedPercentTile, stackShares, supportsValueLabels, refLineKind, refLineValue, cellFilterToggles, heatStops, heatRange, heatCellColors, heatTextColor, isStackedTile, splitBySeries, assembleSeries, paletteColors, PALETTES, escapeHtml,
     tileDrillLevels, currentDimension, rowsForTile, wordFrequency
   } = GristBI.data;
   const { t } = GristBI.i18n;
@@ -75,6 +75,19 @@
     return Promise.all(splitBySeries(rows, seriesColumn, t('chart.series.empty')).map(async (sr) => ({
       name: sr.name, groups: await computeGroupBy(sr.rows, dimensionCol, measureCol, aggFn)
     })));
+  }
+
+  // Bulles avec une colonne de couleur (`tile.seriesColumn` d'un nuage de points) : pour chaque valeur de la colonne, les groupes
+  // X, Y et taille de SES lignes, en parallèle (une seule latence DuckDB à payer, comme computeSeriesGroups).
+  async function computeScatterSplit(rows, dimensionCol, tile) {
+    return Promise.all(splitBySeries(rows, tile.seriesColumn, t('chart.series.empty')).map(async (sr) => {
+      const [gx, gy, gs] = await Promise.all([
+        computeGroupBy(sr.rows, dimensionCol, tile.measure, tile.aggFn),
+        computeGroupBy(sr.rows, dimensionCol, tile.measureY, tile.aggFn),
+        tile.measureSize ? computeGroupBy(sr.rows, dimensionCol, tile.measureSize, tile.aggFnSize || tile.aggFn) : Promise.resolve(null)
+      ]);
+      return { name: sr.name, gx, gy, gs };
+    }));
   }
 
   async function computeAggregateSingle(rows, measureCol, aggFn) {
@@ -1076,7 +1089,7 @@
     // l'entité comparée (ses propres lignes seulement) est elle aussi calculée en parallèle du
     // reste plutôt qu'après coup.
     const hasSeries = isSeriesTile(tile);
-    const [agg, aggY, radarColumnValues, radarEntityColumnValues, radarEntityAgg, seriesGroups] = await Promise.all([
+    const [agg, aggY, radarColumnValues, radarEntityColumnValues, radarEntityAgg, seriesGroups, aggSize, scatterSplit] = await Promise.all([
       isRadarColumns ? Promise.resolve(null) : computeGroupBy(rows, dimension, tile.measure, tile.aggFn),
       tile.type === 'scatter' ? computeGroupBy(rows, dimension, tile.measureY, tile.aggFn)
         // Combo : la 2e mesure (courbe) a son propre agrégat ; en Pareto la courbe se déduit des barres.
@@ -1085,7 +1098,10 @@
       isRadarColumns ? Promise.all(radarAxesColumns.map((col) => computeAggregateSingle(rows, col, 'avg'))) : Promise.resolve(null),
       (isRadarColumns && hasRadarEntity) ? Promise.all(radarAxesColumns.map((col) => computeAggregateSingle(radarEntityRows, col, 'avg'))) : Promise.resolve(null),
       (!isRadarColumns && tile.type === 'radar' && hasRadarEntity) ? computeGroupBy(radarEntityRows, dimension, tile.measure, tile.aggFn) : Promise.resolve(null),
-      hasSeries ? computeSeriesGroups(rows, dimension, tile.seriesColumn, tile.measure, tile.aggFn) : Promise.resolve(null)
+      hasSeries ? computeSeriesGroups(rows, dimension, tile.seriesColumn, tile.measure, tile.aggFn) : Promise.resolve(null),
+      // Bulles : la 3e mesure (taille, son propre agrégat) ; avec une colonne de couleur, tout se calcule PAR couleur (computeScatterSplit).
+      (tile.type === 'scatter' && tile.measureSize && !tile.seriesColumn) ? computeGroupBy(rows, dimension, tile.measureSize, tile.aggFnSize || tile.aggFn) : Promise.resolve(null),
+      (tile.type === 'scatter' && tile.seriesColumn) ? computeScatterSplit(rows, dimension, tile) : Promise.resolve(null)
     ]);
     if (isStale(tile.id, seq) || instance.isDisposed()) return; // rendu plus récent entre-temps
     // Inconditionnel, même raison que renderGauge ci-dessus : un rendu qui repasse sous le seuil
@@ -1264,36 +1280,66 @@
       };
     } else if (tile.type === 'scatter') {
       // Version agrégée (pas ligne-à-ligne) : un point par valeur de la dimension, ses coordonnées
-      // X/Y sont les agrégats de deux mesures DIFFÉRENTES sur ce même groupe. Les deux appels à
+      // X/Y sont les agrégats de deux mesures DIFFÉRENTES sur ce même groupe. Les appels à
       // computeGroupBy (ci-dessus, en parallèle) portent sur le même `rows`/`dimension`, donc le
-      // même ensemble de groupes, mais on associe par NOM de dimension (Map) plutôt que par index
-      // pour rester correct même si l'ordre venait à diverger un jour entre les deux appels.
-      const aggYByDimension = new Map(aggY.map((d) => [d.dimension, d.value]));
+      // même ensemble de groupes, mais on associe par NOM de dimension (`bubblePoints`) plutôt que par
+      // index pour rester correct même si l'ordre venait à diverger un jour entre les appels.
+      // Bulles (`tile.measureSize`, `tile.seriesColumn`) : l'aire d'une bulle = la 3e mesure (échelle commune à
+      // toutes les couleurs, voir `bubbleDiameters`), une couleur et une entrée de légende par valeur de la colonne.
+      instance.__refit = undefined;
+      const bubble = isBubbleTile(tile);
+      const fSize = bubble ? fmtFor({ ...tile, aggFn: tile.aggFnSize || tile.aggFn }, tile.measureSize) : null;
+      const sets = scatterSplit
+        ? scatterSplit.map((sr) => ({ name: sr.name, points: bubblePoints(sr.gx, sr.gy, sr.gs).points }))
+        : [{ name: '', points: bubblePoints(agg, aggY, aggSize).points }];
+      const allSizes = [].concat(...sets.map((set) => set.points.map((pt) => pt.size)));
+      // Diamètre maximal : une fraction de la plus petite côté de la tuile (en pixels : suit le redimensionnement, voir __refit).
+      const maxDiameter = () => Math.max(18, Math.min(56, Math.round(Math.min(instance.getWidth() || 300, instance.getHeight() || 220) * 0.18)));
+      const buildSeries = (diameterMax) => {
+        const diameters = bubble ? bubbleDiameters(allSizes, diameterMax) : null;
+        let k = 0;
+        return sets.map((set) => {
+          const items = [];
+          set.points.forEach((pt) => {
+            const diameter = diameters ? diameters[k] : 14;
+            k++;
+            if (diameter === null) return; // taille nulle, négative ou absente : pas d'aire, pas de bulle
+            // `name` explicite : contrairement à bar (axe catégoriel, ECharts déduit params.name de
+            // l'index sur l'axe), scatter a deux axes numériques -> rien n'associe un point à sa
+            // catégorie sans ce champ, et le gestionnaire de clic générique deviendrait muet
+            // (params.name undefined, drill/cross-filter sur une valeur "undefined").
+            items.push({
+              name: pt.dimension,
+              value: bubble ? [pt.x, pt.y, pt.size] : [pt.x, pt.y],
+              symbolSize: diameter,
+              itemStyle: dim(pt.dimension) || (bubble ? { opacity: 0.8 } : undefined)
+            });
+          });
+          return { type: 'scatter', name: set.name || undefined, symbolSize: 14, data: items };
+        });
+      };
+      const showLegend = sets.length > 1;
       option = {
         color: palette,
-        grid: numericGrid,
+        grid: showLegend ? { ...numericGrid, top: 40 } : numericGrid,
+        legend: showLegend ? { top: 0, type: 'scroll' } : undefined,
         tooltip: {
           trigger: 'item',
-          formatter: (params) => `${escapeHtml(String(params.name))}<br/>`
-            + `${escapeHtml(tile.measure)} : ${f.format(params.value[0])}<br/>`
-            + `${escapeHtml(tile.measureY)} : ${fY.format(params.value[1])}`
+          formatter: (params) => {
+            const v = params.value || [];
+            const lines = [escapeHtml(String(params.name))];
+            if (showLegend && params.seriesName) lines.push(`${params.marker || ''}${escapeHtml(tile.seriesColumn)} : ${escapeHtml(String(params.seriesName))}`);
+            lines.push(`${escapeHtml(tile.measure)} : ${f.format(v[0])}`);
+            lines.push(`${escapeHtml(tile.measureY)} : ${fY.format(v[1])}`);
+            if (bubble) lines.push(`${escapeHtml(tile.measureSize)} (${t('chart.bubble.size')}) : ${fSize.format(v[2]) || '–'}`);
+            return lines.join('<br/>');
+          }
         },
         xAxis: { type: 'value', axisLabel: { formatter: f.axis } },
         yAxis: { type: 'value', axisLabel: { formatter: fY.axis } },
-        series: [{
-          type: 'scatter',
-          symbolSize: 14,
-          // `name` explicite : contrairement à bar (axe catégoriel, ECharts déduit params.name de
-          // l'index sur l'axe), scatter a deux axes numériques -> rien n'associe un point à sa
-          // catégorie sans ce champ, et le gestionnaire de clic générique deviendrait muet
-          // (params.name undefined, drill/cross-filter sur une valeur "undefined").
-          data: agg.map((d) => ({
-            name: d.dimension,
-            value: [d.value, aggYByDimension.get(d.dimension)],
-            itemStyle: dim(d.dimension)
-          }))
-        }]
+        series: buildSeries(maxDiameter())
       };
+      if (bubble) instance.__refit = () => instance.setOption({ series: buildSeries(maxDiameter()) });
     } else if (tile.type === 'waterfall') {
       // Pas de série ECharts native "waterfall" (voir ROADMAP.md) : simulation standard par 2
       // séries de barres empilées — une invisible (`base`, la partie du cumul déjà atteinte avant

@@ -1000,6 +1000,21 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 - [ ] Rendu dans un vrai Grist / un vrai GFS ⬜ **[NON TESTABLE ICI]**
 - **Piège de test** : l'animation d'entrée du Sankey dure plus d'une seconde, les libellés paraissent rognés tant qu'elle n'est pas finie ; attendre ≥ 2,5 s avant une capture.
 
+### `js/data.js` + `js/charts.js` + panneau — bulles (nuage de points + taille + couleur, 18/11/2026 ; Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`, 480 et 6 000 lignes)
+
+- [x] `bubbleDiameters` : l'aire (pas le diamètre) suit la valeur, plancher, maximum invalide, plancher au-dessus du maximum, taille nulle / négative / absente / `BigInt` ✅
+- [x] `bubblePoints` : alignement par NOM (`2n` et `2`), mesure absente = `null` jamais 0, point sans X ou Y écarté et compté, sans taille = pas de champ `size`, entrées vides ✅
+- [x] `isBubbleTile` / `isColorSplitTile` ; `isSeriesTile` et `isStackedTile` restent faux pour un nuage de points ✅
+- [x] Export Excel : nuage simple inchangé ; + taille (agrégat propre) ; + couleur (colonne « série », un jeu de points par couleur) ; aucune ligne = en-têtes seuls ✅
+- [x] Conseils : colonne de couleur = colonne des points, trop de couleurs, tailles sans aire, rien pour un graphique sain, colonnes absentes sans exception ✅ ; i18n fr/en ✅
+- [x] Formulaire : champ de taille, agrégat de la taille visible seulement avec une taille, libellé « Couleur », tuile enregistrée avec `measureSize`/`aggFnSize`/`seriesColumn` et le titre `tileTitle.bubble` 🌐
+- [x] Rendu : une série par couleur = calcul pur, **aire ~ taille**, diamètre maximal attendu, légende ; infobulle survolée (taille nommée, noms échappés) 🌐
+- [x] **Clic réel de souris sur une bulle libre** = filtre ; autres bulles à 0,3 ; 2e clic = filtre retiré 🌐 ; agrandissement = bulle maximale plus grosse (`__refit`) 🌐
+- [x] Filtre d'une autre tuile : tailles recalculées ; taille négative = bulle absente + conseil ; nuage de points simple inchangé ; nuage de points -> barres -> bulles sans reliquat ; aucune erreur console 🌐
+- [x] 6 000 lignes (DuckDB), page directe ET cadre isolé : mêmes vérifications 🌐
+- [ ] Rendu dans un vrai Grist / un vrai GFS ⬜ **[NON TESTABLE ICI]** ; thème sombre non rejoué pour cette tuile ⬜
+- **Piège de test** : les grosses bulles se chevauchent ; viser le centre d'une bulle recouverte par une autre clique sur la voisine. Choisir une bulle dont le centre est libre.
+
 ### CSS — classe de bug à systématiquement re-vérifier
 
 - [x] `.field[hidden]` masque réellement l'élément (pas seulement `display:flex` de `.field` qui gagne à spécificité égale) [BUG RÉEL, trouvé 2 fois sur des champs différents] ✅ (règle en place)
