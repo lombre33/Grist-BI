@@ -536,6 +536,17 @@
     'dialog.cancel': { fr: 'Annuler', en: 'Cancel' },
     'dialog.close': { fr: 'Fermer', en: 'Close' },
     'dialog.notice.title': { fr: 'Information', en: 'Notice' },
+
+    // --- Extensions de GFS (js/extensions.js, consigne 019) : une fonction d'extension est grisée, jamais masquée ---
+    'ext.name.nuage-de-mots': { fr: 'Nuage de mots', en: 'Word cloud' },
+    'ext.name.mots-cles-pdf': { fr: 'Mots-clés des PDF', en: 'PDF keywords' },
+    'ext.pending.hosted': { fr: 'Pas encore : extension « {extension} » à ajouter', en: 'Not yet: add the “{extension}” extension' },
+    'ext.pending.standalone': { fr: 'Pas encore : disponible dans Grist Factory Suite', en: 'Not yet: available in Grist Factory Suite' },
+    'ext.standalone.title': { fr: 'Cette fonction demande Grist Factory Suite', en: 'This feature needs Grist Factory Suite' },
+    'ext.standalone.body': {
+      fr: '« {feature} » fait partie de l’extension « {extension} », disponible quand Grist BI tourne dans Grist Factory Suite. Pour l’ajouter sans rien perdre : dans le panneau de droite de Grist, remplacez l’adresse du widget par celle de Grist Factory Suite. Ne passez pas par la galerie des widgets : elle effacerait les réglages de cette vue. Vos rapports et vos réglages restent tels quels, et vous pourrez revenir à l’adresse de Grist BI à tout moment.',
+      en: '“{feature}” is part of the “{extension}” extension, available when Grist BI runs inside Grist Factory Suite. To add it without losing anything: in Grist’s right panel, replace the widget’s address with the Grist Factory Suite address. Do not use the widget gallery: it would erase this view’s settings. Your reports and settings stay as they are, and you can switch back to the Grist BI address at any time.'
+    },
     'dialog.error.title': { fr: 'Une erreur est survenue', en: 'Something went wrong' },
     'pages.new.title': { fr: 'Nouvelle page', en: 'New page' },
     'pages.new.confirm': { fr: 'Créer la page', en: 'Create page' },
@@ -684,7 +695,8 @@
 
     // --- Graphiques (js/charts.js) ---
     'chart.unavailable': { fr: 'ECharts indisponible — voir le bandeau en haut de page.', en: 'ECharts unavailable — see the banner at the top of the page.' },
-    'chart.wordCloudUnavailable': { fr: 'Nuage de mots indisponible pour le moment (extension en attente d’ajout).', en: 'Word cloud unavailable for now (extension pending approval).' },
+    'chart.wordCloudNeedsExtension': { fr: 'Nuage de mots : l’extension « Nuage de mots » n’est pas encore ajoutée (Apps et extensions, dans Grist Factory Suite).', en: 'Word cloud: the “Word cloud” extension is not added yet (Apps and extensions, in Grist Factory Suite).' },
+    'chart.wordCloudNeedsGfs': { fr: 'Nuage de mots : fonction de l’extension « Nuage de mots », disponible quand Grist BI tourne dans Grist Factory Suite.', en: 'Word cloud: a feature of the “Word cloud” extension, available when Grist BI runs inside Grist Factory Suite.' },
     'chart.measureFailed': { fr: 'Échec du calcul de la mesure — voir la console (F12).', en: 'Measure calculation failed — see the console (F12).' },
     'chart.computing': { fr: 'Calcul…', en: 'Computing…' },
     'chart.pivot.total': { fr: 'Total', en: 'Total' },

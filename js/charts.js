@@ -764,32 +764,13 @@
   // (getOrCreateWordCloudCanvas) et fait sa propre détection de clic/survol (hitTestWordCloud) —
   // bien plus de code que les autres types de tuile, qui délèguent tout cela à ECharts.
   //
-  // Chargement paresseux via import() dynamique d'un spécificateur NU ("d3-cloud"), résolu par
-  // l'`importmap` d'index.html (voir js/vendor/apache-arrow, flatbuffers, tslib pour le même
-  // mécanisme) — absent de cet importmap tant que GFS n'a pas ajouté la bibliothèque (voir
-  // GFS-ETAT.md "Demandes à GFS", protocole du 03/11/2026 : plus aucune lib chargée en dur par
-  // l'app elle-même). Sans entrée dans l'importmap, le navigateur rejette IMMÉDIATEMENT cet
-  // import() (spécificateur non résolu) — aucune requête réseau, donc rien à voir avec le piège
-  // silencieux `typeof echarts === 'undefined'` (CLAUDE.md §7 n°4) : ici l'échec est explicite
-  // (promesse rejetée), juste intercepté pour afficher le même message qu'avant plutôt que de
-  // laisser une exception non gérée remonter jusqu'au rendu de la tuile.
-  let _d3CloudPromise = null;
-  function loadD3Cloud() {
-    if (!_d3CloudPromise) {
-      _d3CloudPromise = import('d3-cloud').catch((e) => {
-        console.warn('[GristBI] d3-cloud indisponible (bibliothèque pas encore fournie par GFS)', e);
-        return null;
-      });
-    }
-    return _d3CloudPromise;
-  }
-
-  // La bibliothèque est-elle déclarée dans l'`importmap` d'index.html ? Réponse immédiate, sans rien charger : sert à ne pas proposer
-  // le type « Nuage de mots » dans « Ajouter une visualisation » tant que GFS n'a pas fourni d3-cloud (une tuile qui n'afficherait
-  // que « indisponible » n'a pas sa place dans une version publiée). Une tuile Nuage de mots déjà enregistrée garde son message.
-  function isWordCloudAvailable() {
-    const el = typeof document !== 'undefined' ? document.querySelector('script[type="importmap"]') : null;
-    return Boolean(el && GristBI.data.importMapHas(el.textContent, 'd3-cloud'));
+  // d3-cloud vient de GFS (consigne 019, 18/11/2026) : l'extension « Nuage de mots » (`nuage-de-mots`) que la personne ajoute dans
+  // « Apps et extensions ». Ce dépôt n'en garde ni copie, ni import map, ni adresse : js/extensions.js lit `GfsLink.library('d3-cloud')`,
+  // charge `src` par `<script type="module" integrity>` et rend la classe `CloudLayout` (`GfsPaquets['d3-cloud'].modules['d3-cloud'].default`).
+  // Rend `null` sans l'extension (seule, ou pas encore ajoutée) : la tuile écrit alors son message, jamais une exception. Le résultat
+  // « absente » n'est pas gardé : l'extension peut être ajoutée pendant que l'app est ouverte (js/main.js repeint alors les tuiles).
+  async function loadD3Cloud() {
+    return GristBI.extensions ? GristBI.extensions.load('nuage-de-mots') : null;
   }
 
   // Même plage que l'ancien `sizeRange: [14, 48]` d'echarts-wordcloud.
@@ -832,7 +813,7 @@
       const word = layout.place(sprite);
       if (!word) return; // n'a pas pu être placé dans l'espace disponible (trop de mots/trop
         // grands pour cette tuile) : nuage incomplet plutôt qu'une erreur JS, même esprit que le
-        // message "chart.wordCloudUnavailable" plus bas
+        // messages "chart.wordCloudNeedsExtension"/"chart.wordCloudNeedsGfs" plus bas
       const style = dim(d.dimension);
       measureCtx.font = `${word.size}px ${WORD_CLOUD_FONT}`;
       placed.push({
@@ -998,7 +979,8 @@
     const mod = await loadD3Cloud();
     if (isStale(tile.id, seq) || instance.isDisposed()) return; // périmé pendant le chargement de la lib
     if (!mod) {
-      instance.showUnavailable(t('chart.wordCloudUnavailable'));
+      const hosted = GristBI.extensions && GristBI.extensions.stateOf('nuage-de-mots') === 'inactive';
+      instance.showUnavailable(t(hosted ? 'chart.wordCloudNeedsExtension' : 'chart.wordCloudNeedsGfs'));
       return;
     }
     const CloudLayout = mod.default || mod.CloudLayout;
@@ -2368,5 +2350,5 @@
   // via convertToPixel) - ne pas s'appuyer dessus pour de la logique applicative.
   function getInstance(tileId) { return chartInstances.get(tileId) || null; }
 
-  GristBI.charts = { renderTile, resizeAll, disposeTile, getInstance, isWordCloudAvailable };
+  GristBI.charts = { renderTile, resizeAll, disposeTile, getInstance };
 })(window);

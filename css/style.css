@@ -1460,6 +1460,11 @@ td.pivot-cell:not(.pivot-cell-empty):not(.pivot-total-cell):hover { background: 
 .type-card-advice { font-size: 11.5px; line-height: 1.35; color: var(--text-secondary); }
 .type-card-advice[data-level="warn"] { color: var(--warning-text); }
 .type-card-advice:empty { display: none; }
+/* Une fonction d'extension de GFS pas encore ajoutée : grisée, jamais masquée (consigne 019) ; le clic ouvre la fenêtre d'ajout de GFS
+   ou, seule, la fenêtre du grisé. Pas d'opacité : le texte garde son contraste. */
+.type-card-locked { background: var(--surface-sunken); border-style: dashed; }
+.type-card-locked .icon { color: var(--text-muted); }
+.type-card-locked .type-card-name { color: var(--text-secondary); }
 @media (max-width: 480px) { .type-grid { grid-template-columns: minmax(0, 1fr); } }
 
 /* Étape « Régler ». */

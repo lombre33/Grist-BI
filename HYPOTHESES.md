@@ -3284,6 +3284,8 @@ Dernier lot de l'audit : tout ce qui, hors des nombres eux-mêmes, rendait une t
 
 ### Correctifs avant l'alpha — « Nuage de mots » plus proposé sans d3-cloud (18/11/2026)
 
+> **Remplacé le 18/11/2026 par la consigne GFS 019 (section suivante) :** la carte n'est plus retirée mais GRISÉE, et d3-cloud ne vient plus de l'importmap mais de GFS. `importMapHas` et `isWordCloudAvailable` n'existent plus.
+
 - **Pourquoi** : la carte « Nuage de mots » de « Ajouter une visualisation » créait une tuile qui n'affichait que « indisponible pour le moment » (d3-cloud attend GFS,
   GFS-ETAT.md). Pour l'alpha standalone, on ne propose pas un type qui ne marche pas.
 - **Comment** : `GristBI.charts.isWordCloudAvailable()` lit l'`importmap` d'index.html (`GristBI.data.importMapHas`, pure) : sans entrée `d3-cloud`, le navigateur
@@ -3294,6 +3296,33 @@ Dernier lot de l'audit : tout ce qui, hors des nombres eux-mêmes, rendait une t
   mots à l'accueil (`suggestTiles`). Un appel direct à `GristBI.openTilePanel({ type: 'wordcloud' })` n'est pas bloqué.
 - **Testé** : Node (`importMapHas` : présent/absent/illisible, câblage lu dans la source, importmap réel d'index.html) ; Playwright contre le vrai `index.html` +
   `grist-stub.js` : 15 cartes sans d3-cloud, 16 avec une entrée d'importmap ajoutée à la volée, carte conservée en modifiant une tuile Nuage de mots. **Pas testé dans un vrai Grist.**
+
+### Extensions de GFS — « Nuage de mots » grisé et branché sur d3-cloud de GFS (consigne 019, 18/11/2026)
+
+- **Ce que GFS a fait** (consigne 019) : `d3-cloud` (2.0.0, ESM seul) est dans sa liste en forme `module`, servi par GFS seul ; deux extensions de Grist-BI sont déclarées dans son manifeste, `nuage-de-mots` et
+  `mots-cles-pdf` (pdf.js, la même copie que Publipostage+). L'app les reçoit par `GfsLink.library(id)` = `{ src, integrite, forme: 'module' }` ou `null`, charge `src` par `<script type="module" integrity
+  crossorigin="anonymous">` et lit `GfsPaquets['d3-cloud'].modules['d3-cloud'].default` (la classe `CloudLayout`). Plus d'`import('d3-cloud')`, plus d'entrée d'importmap (il n'y en avait pas).
+- **Ce qui est fait ici** : `js/extensions.js` (UMD, chargé entre `data.js` et `charts.js`) : `stateFor`/`stateOf` (`standalone` = app seule, `inactive` = dans GFS sans l'extension, `active`), `moduleFrom`,
+  `load(id)` (null sans l'extension, même si son fichier est déjà en mémoire : une extension RETIRÉE en cours de route se grise comme au démarrage suivant), `requestInstall(id)` (`GfsLink.install` quand
+  hébergée, `'standalone'` sinon : l'appelant montre la fenêtre du grisé), `attach(promesse du lien)` et `onChange` (réveillé quand GFS a répondu ET à chaque événement `extensions`, jamais en app seule).
+  `js/charts.js:loadD3Cloud` = `GristBI.extensions.load('nuage-de-mots')`. `js/main.js` : la carte « Nuage de mots » reste dans « Ajouter une visualisation », **grisée** (`aria-disabled`,
+  `.type-card-locked`, trait en tirets, jamais d'opacité) avec « Pas encore : extension « Nuage de mots » à ajouter » (dans GFS) ou « Pas encore : disponible dans Grist Factory Suite » (seule) ;
+  un clic ne choisit pas le type : dans GFS il appelle `GfsLink.install('nuage-de-mots')` (la fenêtre « Apps et extensions » s'ouvre sur sa ligne), seule il ouvre la fenêtre du grisé du guide (section 5,
+  `ext.standalone.*`). Un changement d'état repeint toutes les tuiles et refait les cartes. Une tuile enregistrée sans l'extension écrit `chart.wordCloudNeedsExtension` / `chart.wordCloudNeedsGfs`.
+  `importMapHas` (js/data.js) et `isWordCloudAvailable` (js/charts.js) sont supprimés.
+- **Vérifié l'API 2.x** : `placeWordCloud` utilise `new CloudLayout().size([w, h]).overflow(false)`, `layout.getSprite(texte, { size, font, padding, rotate })` et `layout.place(sprite)`, les mots du plus grand au
+  plus petit : exactement la suite que la consigne décrit (jamais l'ancienne `cloud().words().on('end').start()`). Joué cette fois avec le VRAI paquet (voir « Testé »).
+- **Testé** : Node (`dev-tests/test-data.js`, bloc « Extensions de GFS ») : états (seule, hébergée sans, avec, source sans empreinte, extension inconnue), `moduleFrom`, `load` avec un faux `document` (balise
+  `type=module`, `src`, `integrity`, `crossOrigin='anonymous'`, pas de deuxième balise, rien chargé sans extension), événement `extensions`, retrait, `requestInstall` (install appelé, annulation sans exception,
+  seule -> `'standalone'`), câblage lu dans les sources (aucune carte retirée, importmap sans bibliothèque d'extension, aucune adresse en dur). Playwright : le vrai `index.html` dans un
+  `<iframe sandbox="allow-scripts">` servi par un FAUX GFS parent qui parle le vrai kit 0.24.0 (contexte avec `extensions`/`bibliotheques`, appel `installer`, événement `extensions`), avec le **VRAI d3-cloud 2.0.0**
+  (tarball npm, intégrité sha512 comparée à celle du registre) assemblé en fichier de forme `module` comme la consigne le décrit : app seule (carte grisée, fenêtre du grisé), dans GFS sans l'extension (carte grisée,
+  appel `installer { extension: 'nuage-de-mots' }`, tuile enregistrée = message), l'extension ajoutée SANS rechargement (carte dégrisée, tuile repeinte : 68 000 px encrés), retirée (message de retour),
+  extension déjà active au contexte (nuage de 250 x 162 px dessiné). Aucune erreur de console, aucune politique de contenu touchée.
+- **Pas vérifié** : le fichier `d3-cloud` de GFS lui-même (fixture à moi, assemblée d'après la description de la consigne ; les octets, l'empreinte et l'adresse réels sont ceux de GFS), la fenêtre « Apps et extensions »
+  de GFS, un vrai Grist. **Le texte de la fenêtre du grisé** est celui du guide (section 5, « proposition ») moins l'adresse de GFS : le guide ne donne pas d'adresse définitive et dit lui-même que les mots exacts du
+  panneau de Grist restent à relever dans un vrai Grist (question posée à GFS dans `GFS-ETAT.md`). **`mots-cles-pdf` n'est PAS branché** : `js/pdf-text.js`/`js/keywords.js` ne sont chargés par aucune page ; c'est
+  le fil « Recherche sémantique sur publications » qui les branche (il reçoit pdf.js par `GristBI.extensions.load('mots-cles-pdf')` ; pdf.js tourne DANS la page : lire les pages une à une, en rendant la main).
 
 ### Tuiles usuelles des outils BI — lot 2, histogramme (18/11/2026)
 
