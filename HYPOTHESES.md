@@ -3282,6 +3282,19 @@ Dernier lot de l'audit : tout ce qui, hors des nombres eux-mêmes, rendait une t
 - **Testé** : Node (règle présente, piste créée cachée, `renderKpi` la cache/montre) ; Playwright contre le vrai `index.html` + `grist-stub.js` SANS le correctif injecté
   dans les captures. **Pas testé dans un vrai Grist.**
 
+### Correctifs avant l'alpha — « Nuage de mots » plus proposé sans d3-cloud (18/11/2026)
+
+- **Pourquoi** : la carte « Nuage de mots » de « Ajouter une visualisation » créait une tuile qui n'affichait que « indisponible pour le moment » (d3-cloud attend GFS,
+  GFS-ETAT.md). Pour l'alpha standalone, on ne propose pas un type qui ne marche pas.
+- **Comment** : `GristBI.charts.isWordCloudAvailable()` lit l'`importmap` d'index.html (`GristBI.data.importMapHas`, pure) : sans entrée `d3-cloud`, le navigateur
+  rejetterait de toute façon `import('d3-cloud')` sur-le-champ, la réponse est donc la même sans rien charger. `renderTypeCards` (js/main.js) retire alors la carte ;
+  **ajouter `d3-cloud` à l'importmap suffit à la faire revenir** (rien d'autre à changer, hormis le test « index.html : d3-cloud pas encore déclaré »).
+- **Gardé volontairement** : la carte reste visible quand on modifie une tuile Nuage de mots déjà enregistrée (« Changer de type » la montre cochée) ; le `<select>`
+  caché garde l'option (relecture d'une tuile enregistrée) ; une tuile déjà enregistrée garde son message « indisponible » ; `advice.js` ne propose jamais de nuage de
+  mots à l'accueil (`suggestTiles`). Un appel direct à `GristBI.openTilePanel({ type: 'wordcloud' })` n'est pas bloqué.
+- **Testé** : Node (`importMapHas` : présent/absent/illisible, câblage lu dans la source, importmap réel d'index.html) ; Playwright contre le vrai `index.html` +
+  `grist-stub.js` : 15 cartes sans d3-cloud, 16 avec une entrée d'importmap ajoutée à la volée, carte conservée en modifiant une tuile Nuage de mots. **Pas testé dans un vrai Grist.**
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée

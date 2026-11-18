@@ -871,6 +871,7 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 - [x] Barres de 6 catégories à libellés longs : six libellés tronqués (« Tab… », « Cla… »), plus un seul libellé coupé à gauche ; 24 catégories : un libellé sur k ; barres horizontales : graduations « 0, 300 k, 600 k, 900 k, 1,2 M » (« 200 k400 k600 k » collés avant) 🌐
 - [x] Entonnoir : nom tronqué + valeur sur la 2e ligne, plus de libellé coupé à droite ; radar à noms de 44 caractères : noms tronqués, aucun coupé par le bord de la tuile 🌐
 - [x] Nuage de mots sans d3-cloud : le message « indisponible » est lisible au centre de la tuile ✅🌐
+- [x] Nuage de mots sans d3-cloud : aucune carte « Nuage de mots » dans « Ajouter une visualisation » (15 cartes) ; avec une entrée `d3-cloud` dans l'importmap, la carte revient (16) ; en modifiant une tuile Nuage de mots enregistrée, « Changer de type » la montre ; `importMapHas` rend `false` sur un JSON illisible, vide ou sans `imports` ✅🌐
 - [x] Rendu repris au changement de thème : `emulateMedia({colorScheme: 'dark'})` puis jeton `--surface` posé par le CSSOM -> quadrillage, fond d'infobulle et texte changent ; réécrire `--chrome-h` ne relance AUCUN rendu (compteur de `setOption`) 🌐
 - [x] Avertissement radar « colonnes » : Quantité 19 / Marge 0,2 / Montant 65 000 -> `advice.radar.mixedScales` (colonnes citées) ; compétences sur 20, un seul axe, colonne vide : rien ✅
 - [x] Le vrai `index.html` charge sans erreur ; 6 000 lignes (DuckDB, `BigInt`) : KPI, infobulle et axe inchangés 🌐

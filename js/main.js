@@ -2324,7 +2324,9 @@
     const rows = store.getState().rows;
     const columns = availableColumns(rows);
     typeGridEl.innerHTML = '';
-    TYPE_CARDS.forEach((type) => {
+    // « Nuage de mots » n'est proposé que si d3-cloud est fourni (importmap d'index.html) ; la tuile qu'on modifie garde sa carte.
+    const wordCloudOffered = GristBI.charts.isWordCloudAvailable() || (Boolean(editingTileId) && tileTypeSelect.value === 'wordcloud');
+    TYPE_CARDS.filter((type) => type !== 'wordcloud' || wordCloudOffered).forEach((type) => {
       const advice = GristBI.advice ? GristBI.advice.adviceForType(type, rows, columns) : null;
       const card = document.createElement('button');
       card.type = 'button';

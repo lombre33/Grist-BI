@@ -2336,6 +2336,37 @@ const SAMPLE_TIME_SERIES = [
   console.log('OK carte KPI — piste d\'objectif : [hidden] respecté (piège n°10), cachée sans objectif, visible avec');
 }
 
+// Nuage de mots : plus proposé dans « Ajouter une visualisation » tant que d3-cloud n'est pas fourni (18/11/2026)
+{
+  const fs = require('fs');
+  const path = require('path');
+  const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+  // importMapHas : pure, ne lève jamais
+  const withCloud = '{"imports":{"apache-arrow":"./a.mjs","d3-cloud":"./js/vendor/d3-cloud/index.js"}}';
+  const withoutCloud = '{"imports":{"apache-arrow":"./a.mjs","flatbuffers":"./f.js","tslib":"./t.js"}}';
+  assert.strictEqual(data.importMapHas(withCloud, 'd3-cloud'), true, 'entrée présente');
+  assert.strictEqual(data.importMapHas(withoutCloud, 'd3-cloud'), false, 'entrée absente');
+  assert.strictEqual(data.importMapHas(withCloud, 'd3'), false, 'pas de correspondance partielle');
+  for (const bad of ['', 'pas du json', 'null', '[]', '{}', '{"imports":null}', '{"imports":[]}', '{"imports":{"d3-cloud":""}}', '{"imports":{"d3-cloud":null}}', undefined, null, 42]) {
+    assert.strictEqual(data.importMapHas(bad, 'd3-cloud'), false, 'illisible ou vide -> false : ' + JSON.stringify(bad));
+  }
+  // câblage : la carte n'est filtrée que dans renderTypeCards, la tuile en cours de modification garde la sienne,
+  // la liste TYPE_CARDS et le <select> (qui sert à relire une tuile existante) ne changent pas
+  const main = read('js/main.js');
+  const charts = read('js/charts.js');
+  const html = read('index.html');
+  assert.ok(/isWordCloudAvailable\(\) \|\| \(Boolean\(editingTileId\) && tileTypeSelect\.value === 'wordcloud'\)/.test(main), 'carte Nuage de mots : seulement si d3-cloud est fourni ou si on modifie une tuile Nuage de mots');
+  assert.ok(/TYPE_CARDS\.filter\(\(type\) => type !== 'wordcloud' \|\| wordCloudOffered\)/.test(main), 'le filtre ne retire que wordcloud');
+  assert.ok(/'wordcloud'/.test(main.match(/const TYPE_CARDS = \[[^\]]*\]/)[0]), 'TYPE_CARDS garde wordcloud (l\'ajouter à l\'importmap suffit à le rendre)');
+  assert.ok(/<option value="wordcloud"/.test(html), 'le <select> garde l\'option (relecture d\'une tuile enregistrée)');
+  assert.ok(/importMapHas\(el\.textContent, 'd3-cloud'\)/.test(charts) && /isWordCloudAvailable \}/.test(charts), 'charts.js lit l\'importmap et expose isWordCloudAvailable');
+  // l'importmap réel d'index.html ne déclare pas encore d3-cloud : si GFS le fournit, ce test doit être mis à jour avec la carte
+  const map = html.match(/<script type="importmap">([\s\S]*?)<\/script>/)[1];
+  assert.strictEqual(data.importMapHas(map, 'd3-cloud'), false, 'index.html : d3-cloud pas encore déclaré (en attente de GFS)');
+  assert.strictEqual(data.importMapHas(map, 'apache-arrow'), true, 'index.html : importmap lisible (apache-arrow)');
+  console.log('OK nuage de mots — carte proposée seulement si d3-cloud est dans l\'importmap (importMapHas), tuile existante conservée');
+}
+
 // measureExportSheet / buildWorkbookSheetsAsync : export Excel RÉEL (plus un simple message) pour
 // une tuile Barres en mode de calcul temporel (Cumul/YTD/N-1) — voir js/export.js. `computeMeasureSeries`
 // est ici FACTICE (une Promise résolue avec un timeSeries écrit à la main), jamais le vrai

@@ -1162,8 +1162,22 @@
     return /blocked by[^]*access rules/i.test(text);
   }
 
+  // Un module ES « optionnel » (d3-cloud, pas encore fourni par GFS) est-il déclaré dans l'`importmap` de la page ? `text` est le
+  // contenu JSON de la balise `<script type="importmap">`. Sans entrée, `import('d3-cloud')` est rejeté sur-le-champ par le
+  // navigateur (spécificateur non résolu) : la réponse est donc la même que celle de l'import, sans le tenter ni toucher au réseau.
+  // Illisible/absent -> false (jamais d'exception : appelé au dessin d'une carte).
+  function importMapHas(text, specifier) {
+    try {
+      const map = JSON.parse(text);
+      const imports = map && map.imports;
+      return Boolean(imports && typeof imports === 'object' && typeof imports[specifier] === 'string' && imports[specifier]);
+    } catch (e) {
+      return false;
+    }
+  }
+
   return {
-    tableToRows, epochSecondsToIsoDate, applyFilters, matchesFilter, sameValue, parseDateValue,
+    importMapHas, tableToRows, epochSecondsToIsoDate, applyFilters, matchesFilter, sameValue, parseDateValue,
     relativeDateRange, RELATIVE_DATE_PRESETS, groupByAggregate, aggregateSingle, wordFrequency, pivotTable,
     distinctColumnValues, computeTrend, trendFromGroups, periodLabel, measureSeriesForTile,
     waterfallSeries, sortGroups, isSortableTile, isSeriesTile, comboModeOf, paretoSeries, comboSeries, isStackedTile, splitBySeries, assembleSeries, PALETTES, PALETTE_KEYS, paletteColors, supportsPalette, supportsNumberFormat, NUMBER_FORMAT_TILE_TYPES, escapeHtml,
