@@ -1084,6 +1084,39 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 - [ ] Rendu dans un vrai Grist / un vrai GFS ⬜ **[NON TESTABLE ICI]**
 - **Piège de test** : les comboboxes du formulaire n'offrent que les colonnes du harnais au moment du chargement (Region, Produit, Mois, Quantite, Montant) : un essai qui remplace les lignes par d'autres noms de colonnes ne peut pas les choisir en tapant (le mode strict les refuse). Réutiliser ces noms, `Mois` et `Quantite` portant des dates ISO.
 
+### `js/data.js` + `js/charts.js` + panneau — Petits multiples (18/11/2026 ; Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`, 60 et 6 060 lignes, clair et sombre)
+
+- [x] `isSmallMultiplesTile` : barres brutes ou courbe + colonne Séries + `true` exact ; faux sans Séries, en mode mesure, sur un autre type, pour `'true'` ✅
+- [x] Empilé / 100 % / repère / étiquettes ignorés quand la case est cochée, et BIEN restitués en la décochant (rien n'est effacé de la tuile) ✅ ; `refLineValue` = null
+- [x] `smallMultiplesPanels` : 12 au plus, les premières, le reste compté ✅ ; `smallMultiplesRange` : 0 au plus haut, négatifs, 2 à 4 intervalles entiers et la plus haute valeur ≥ 50 % de l'échelle pour 19 maxima, vides/texte/BigInt ignorés, rien = 0 à 1 ✅ ; `smallMultiplesGrid` : colonnes selon la forme de la tuile, dans la tuile, sans recouvrement (titres compris), marges réservées, zone nulle sans exception
+- [x] Export Excel identique à celui des mêmes séries superposées ✅ ; conseils (> 12 séries remplace celui des couleurs, une série, > 24 catégories, cas sain = rien, colonnes absentes sans exception) ✅ ; i18n fr/en ✅ ; câblage lu dans les sources (case, champs masqués, `readTileForm`, chaîne de `renderChart`, `__refit`, aucun HTML dans le nom de série) ✅
+- [x] Formulaire : case absente sans Séries, présente avec ; cochée = pile / barres horizontales / étiquettes / repère masqués ; tuile enregistrée avec `smallMultiples: true` et SANS `stacked`/`horizontal` bien qu'ils aient été cochés ; édition relit la case 🌐
+- [x] Option ECharts = calcul pur : un panneau, un titre, un jeu d'axes et une couleur par région, valeurs exactes dans l'ordre des catégories de la tuile, MÊMES `min`/`max`/`interval` partout, graduations des valeurs en 1re colonne seulement, catégories sous le dernier panneau de chaque colonne, aucune légende 🌐
+- [x] Géométrie : chaque panneau dans la tuile, assez grand pour se lire, aucun recouvrement 🌐 ; agrandir = panneaux plus larges (`__refit`) et retour exact à la taille d'origine 🌐
+- [x] **Clic réel de souris** sur une barre du 4e panneau (pixel par `convertToPixel`) : filtre de la catégorie, TOUS les panneaux estompent les autres catégories, tuile source entière, 2e clic = retiré 🌐 ; infobulle = catégorie + série survolée seulement, jamais les autres régions 🌐
+- [x] Courbe en aire lissée : 4 séries `line` avec `smooth` et `areaStyle` 🌐 ; décocher : 1 grille, 4 séries, `__refit` indéfini, pile restituée ; recocher avec `stacked` resté dans la tuile : aucune pile 🌐
+- [x] 14 séries = 12 panneaux + note « Les 12 premières séries sur 14 » + conseil `tooMany` 🌐 ; nom de série hostile (`<img onerror>`) : aucune balise injectée dans l'infobulle, rien exécuté 🌐
+- [x] Quatre styles globaux (fluide, éditorial, console, verre) : toujours 4 panneaux, sans erreur ; captures relues 🌐 ; 6 060 lignes (DuckDB), page directe ET cadre isolé : mêmes vérifications 🌐
+- [ ] Rendu dans un vrai Grist / un vrai GFS ⬜ **[NON TESTABLE ICI]**
+- **Piège de test** : l'ordre des catégories suit le tri de la tuile, pas l'ordre d'apparition des lignes : un essai qui compare les valeurs lit les catégories de l'option. Un clic réel vise `instance.convertToPixel({ xAxisIndex: i, yAxisIndex: i }, [catégorie, valeur])` du bon panneau (rangés par colonne puis rangée).
+
+### `js/data.js` + `js/charts.js` + panneau — Soleil (18/11/2026 ; Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`, 20 et 6 020 lignes, clair et sombre)
+
+- [x] `sunburstLevels` : dimension + liste, sans doublon ni vide, 4 au plus ✅ ; `sunburstTree` : valeur d'une part = part propre + enfants, vide honnête d'un parent plus grand que ses enfants, ligne sans 1er anneau ignorée, part négative/absente non dessinée (comptée) ✅
+- [x] La somme de l'export (`paths`) = la somme des lignes retenues, négatives comprises, sans rien plafonner ✅ ; comptage (négatives comprises), moyenne/min/max d'une ancienne configuration lus comme une somme, `BigInt` et chaînes numériques, cellules vides/texte pour 0 ✅
+- [x] Plafond de 15 parts par part parente (les plus grandes restent, le parent GARDE sa taille) ✅ ; tri (valeur croissante/décroissante, nom), ordre d'apparition par défaut ✅ ; valeurs de niveau comparées en `String()` ✅
+- [x] `sunburstFilterToggles` : pose chaque anneau, 2e clic = tout retiré, voisin de la même branche = seul l'anneau qui change bouge (jamais le filtre commun levé), remonter retire les anneaux plus profonds, filtre d'une AUTRE tuile jamais touché, filtre de plage non confondu ✅ ; enchaînement de 9 clics sur le vrai store ✅
+- [x] `sunburstNodeSelected` : un filtre sur un anneau plus profond ne concerne pas les parents ✅ ; export Excel (une ligne par part où des lignes s'arrêtent, anneaux vides complétés, filtres d'une autre tuile appliqués, aucune ligne = en-têtes seuls) ✅
+- [x] Valeurs par défaut : vraie hiérarchie jugée sur les valeurs (jamais le nom), sinon deux premières catégories, Somme/Comptage ✅ ; conseils (moyenne/min/max, négatives, > 4 anneaux, couleurs, petites parts écartées, cas sain = rien, colonnes absentes sans exception) ✅ ; i18n fr/en et pluriels ✅
+- [x] Formulaire : libellés « Anneau central » / « Anneaux suivants », drill-down et case croisée masqués, tri/palette/format visibles, **moyenne refusée sous le champ Agrégat**, **colonne en double refusée**, tuile enregistrée avec ses anneaux, titre `Mesure : A › B › C` 🌐 ; édition relit la liste ✅ 🌐
+- [x] Option ECharts = calcul pur : mêmes chemins et valeurs à tous les anneaux, `nodeClick: false`, `emphasis.focus: 'none'` 🌐 ; pas de fil d'Ariane de drill-down 🌐
+- [x] **Clics réels de souris** (angle et rayon moyens de `getItemLayout`) : anneau central → filtre `Region` ; anneau 2 → `Region` + `Produit` ; voisin de la même branche → `Produit` remplacé, `Region` gardé ; remonter → anneau profond retiré ; 2e clic → tout retiré ; anneau 3 → trois filtres ; estompage exact de chaque part 🌐
+- [x] Infobulle (chemin, valeur, part du total) ; agrandir = rayon x3 et retour ; changer de type (treemap) puis revenir : l'élément est recréé et le soleil se redessine 🌐 ; tri et comptage 🌐
+- [x] 20 produits sous une région : 15 + note « 5 petites parts non dessinées » + conseil ; noms hostiles (`<img onerror>`, `"><b id=pwn>`) : infobulle en texte, aucune balise injectée, rien exécuté 🌐 ; quatre styles globaux sans erreur, captures relues 🌐 ; 6 020 lignes (DuckDB), page directe ET cadre isolé 🌐
+- [ ] Plafond de « + Niveau » à 3 anneaux supplémentaires et message `sunburstTooManyRings` ⬜ (câblage lu dans les sources par le test Node, jamais joué dans le navigateur)
+- [ ] Rendu dans un vrai Grist / un vrai GFS ⬜ **[NON TESTABLE ICI]**
+- **Piège de test** : `getData().getRawDataItem(i)` rend aussi la racine virtuelle, sans `path` : chercher une part par son chemin en tolérant l'absence. Un test d'estompage lit `itemStyle.opacity` de l'option (1 ou 0,3), pas un pixel.
+
 ### CSS — classe de bug à systématiquement re-vérifier
 
 - [x] `.field[hidden]` masque réellement l'élément (pas seulement `display:flex` de `.field` qui gagne à spécificité égale) [BUG RÉEL, trouvé 2 fois sur des champs différents] ✅ (règle en place)

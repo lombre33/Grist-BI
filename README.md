@@ -28,8 +28,8 @@ réellement (voir HYPOTHESES.md).
 
 ## Fonctionnalités du POC
 
-- 22 types de tuiles : barres (verticales ou horizontales, avec tri), histogramme (clic = filtre par plage), boîte à moustaches (médiane, quartiles et valeurs aberrantes par groupe, clic = filtre du groupe), flux / Sankey (d'une catégorie à une autre, clic = filtre du nœud ou du lien), calendrier (une case par jour, clic = filtre du jour), Gantt (une barre par tâche de sa date de début à sa date de fin, couleur par statut, repère « aujourd'hui », clic = filtre de la tâche ou du statut), courbe / aire, barres + courbe à double axe (ou Pareto), camembert (ou
-  anneau, avec pourcentages), treemap, entonnoir, nuage de points (ou bulles : une 3e mesure en taille, une couleur par catégorie), cascade, radar, nuage de mots (extension de
+- 23 types de tuiles : barres (verticales ou horizontales, avec tri), histogramme (clic = filtre par plage), boîte à moustaches (médiane, quartiles et valeurs aberrantes par groupe, clic = filtre du groupe), flux / Sankey (d'une catégorie à une autre, clic = filtre du nœud ou du lien), calendrier (une case par jour, clic = filtre du jour), Gantt (une barre par tâche de sa date de début à sa date de fin, couleur par statut, repère « aujourd'hui », clic = filtre de la tâche ou du statut), courbe / aire, barres + courbe à double axe (ou Pareto), camembert (ou
+  anneau, avec pourcentages), treemap, soleil (anneaux hiérarchiques : un anneau par colonne, clic = filtre de chaque anneau jusqu'à la part), entonnoir, nuage de points (ou bulles : une 3e mesure en taille, une couleur par catégorie), cascade, radar, nuage de mots (extension de
   Grist Factory Suite : **grisé, jamais masqué, dans « Ajouter une visualisation » tant que l'extension « Nuage de mots » n'est pas ajoutée** ; voir GFS-ETAT.md, consigne 019), carte KPI (avec courbe de tendance, objectif et seuils de couleur), jauge, progression (une barre par catégorie, en % de l'objectif), tableau croisé (cellules colorables selon leur valeur), carte de chaleur (le même calcul en cases colorées, clic = filtre ligne + colonne), table plate (colonnes au choix, tri d'un clic sur l'en-tête, 500 lignes affichées), texte (une note sans donnée : titre, liste, gras, jamais d'HTML brut). Ajout, édition
   (bouton crayon) et **réorganisation** (◂ ▸, modifie l'ordre sans perdre les autres réglages de la
   tuile). Le nuage de points est une version **agrégée** (un point par catégorie, deux mesures en
@@ -37,7 +37,8 @@ réellement (voir HYPOTHESES.md).
   formulaire.
 - **Séries multiples, empilé, palettes** (Options avancées d'une tuile) : barres et courbe/aire peuvent
   tracer une série par valeur d'une colonne (« Séries »), côte à côte ou **empilées** (barres et aire,
-  info-bulle avec le total) ; chaque tuile peut aussi choisir sa **palette** (Standard 8 couleurs,
+  info-bulle avec le total) ou en **petits multiples** (un petit graphique par valeur de la colonne, tous
+  sur la même échelle, jusqu'à 12) ; chaque tuile peut aussi choisir sa **palette** (Standard 8 couleurs,
   Okabe-Ito pour le daltonisme, ou un dégradé bleu/orange/vert/gris pour des catégories ordonnées).
 - Constructeur de tuile simple : dimension + mesure + agrégat (somme/moyenne/comptage/min/max) —
   volontairement **pas** un langage de mesures façon DAX complet (voir HYPOTHESES.md). Une tuile

@@ -3698,6 +3698,54 @@ Constat (en testant le style global des tuiles) : sur une courbe ou des barres v
   aucune tâche, gantt -> barres -> gantt, édition). Le style global (glass, console…) a été regardé sur capture : en verre, l'axe et la légende collants gardent un fond opaque (une bande pâle sur la carte translucide).
   **Pas testé dans un vrai Grist ni un vrai GFS.**
 
+### Tuiles usuelles des outils BI — lot 3, petits multiples (18/11/2026)
+
+- **Ce qui est livré** (PR 13 du plan, §5.8 de `etudes/tuiles-usuelles-dashboard-2026-11-18.md`) : une OPTION des barres et de la courbe/aire, pas un type — la case « Un petit graphique par série (même échelle pour tous) »,
+  visible dès qu'une colonne « Séries » est choisie. Au lieu de superposer les séries (une couleur chacune sur un seul graphique), un petit graphique par valeur de la colonne, rangés en grille, tous sur les mêmes catégories
+  ET sur la même échelle des valeurs (sinon un petit panneau ressemblerait à un grand). Le titre du panneau est le nom de la série. Les calculs sont ceux des séries multiples (un `groupByAggregate` par série, DuckDB au-delà de
+  5 000 lignes) ; seule la mise en page change. Clic sur une barre ou un point = drill-down ou filtre de la catégorie, comme un graphique unique ; les catégories non retenues s'estompent dans TOUS les panneaux.
+- **Choix** : UNE instance ECharts à N grilles (plutôt que N instances) : un seul rendu, un seul gestionnaire de clic, le style global des tuiles et le thème s'appliquent par `finalizeOption`/`styles.applyToOption`
+  sans écrire rien de plus. La géométrie est en pixels (`smallMultiplesGrid`) et `instance.__refit` la recalcule au redimensionnement. Échelle commune de 0 au plus haut, pas rond, 2 à 4 intervalles, la plus serrée possible
+  (`smallMultiplesRange`) ; graduations des valeurs sur la 1re colonne seulement, noms des catégories sous le dernier panneau de chaque colonne, et retirés quand chacun aurait moins de 24 px (l'infobulle les donne).
+  Empilé, 100 %, barres horizontales, ligne de repère et étiquettes de valeur sont ignorés tant que la case est cochée (le formulaire les masque, `readTileForm` écarte leur valeur) mais jamais effacés de la tuile. Au plus
+  12 panneaux (« Les 12 premières séries sur 14 » + avertissement) ; l'export Excel garde toutes les séries et est identique à celui des séries superposées.
+- **Pas fait, à décider** : échelles propres à chaque panneau (case « échelles indépendantes » : utile quand les ordres de grandeur divergent, mais trompeur par défaut), petits multiples sur d'autres types (camembert, nuage de
+  points, carte de chaleur), choix du nombre de colonnes, panneau « Total » en tête, tri des panneaux par valeur.
+- **Conseils** : plus de 12 séries (remplace l'avertissement de couleurs, qui n'a plus de sens), une seule série, plus de 24 catégories (illisibles dans un petit panneau). Jamais proposé à l'écran d'accueil ni préremplit.
+- **Testé** : Node (bloc « petits multiples » : prédicats, empilé/repère/étiquettes ignorés puis restitués en décochant, plafond de panneaux, échelle commune pour 19 maxima de 0,07 à 1 234 567, grille sans recouvrement pour
+  10 tailles, export identique, conseils, i18n, câblage) ; Playwright contre le vrai `index.html` + `grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`, 60 et 6 060 lignes, clair et sombre (formulaire : case
+  masquée sans Séries, champs exclus masqués, tuile enregistrée sans pile ni barres horizontales ; option = calcul pur ; géométrie dans la tuile sans recouvrement ; **clic réel de souris** sur une barre d'un panneau,
+  infobulle limitée à la série survolée, estompage dans tous les panneaux, 2e clic = retiré ; agrandissement = panneaux plus grands puis retour exact ; courbe en aire lissée ; décocher = graphique unique sans refit ;
+  14 séries = 12 panneaux + note + conseil ; nom de série hostile (`<img onerror>`) sans HTML injecté ; les quatre styles globaux ; export).
+- **Constat visuel** : avec 12 panneaux dans une tuile de 224 px, les barres sont fines mais lisibles et l'échelle commune montre aussitôt quelles séries dominent ; dans un panneau étroit ECharts n'écrit qu'un nom
+  de catégorie sur deux et tronque les autres (« Ch… » pour Charlie), et sous 24 px par nom ils sont retirés (l'infobulle les donne). Rendu dans un vrai Grist / GFS : non testé ici.
+
+### Tuiles usuelles des outils BI — lot 3, soleil (18/11/2026)
+
+- **Ce qui est livré** (PR 14 du plan, §5.3 de `etudes/tuiles-usuelles-dashboard-2026-11-18.md`) : un nouveau type « Soleil (anneaux hiérarchiques) » (`type: 'sunburst'`). L'anneau central est `tile.dimension`, les anneaux suivants sont la
+  liste « Anneaux suivants » (`tile.drillDimensions`, la même liste de niveaux que pour un camembert, mais ici TOUS se dessinent à la fois et il n'y a PAS de drill-down). Une part d'un anneau est une valeur de sa colonne DANS la part
+  de l'anneau d'en dessous ; son angle est la somme (ou le comptage) de ses lignes. Un clic sur une part pose le filtre de CHAQUE anneau jusqu'à elle (un seul filtre par colonne, comme ailleurs) ; remonter (clic sur un anneau plus
+  intérieur de la même branche) retire les anneaux plus profonds, un 2e clic sur la même part retire tout ; les parts hors sélection s'estompent. Tri (valeur ou nom, dans chaque anneau), palette et format de nombre comme les
+  autres tuiles. Jamais proposé à l'écran d'accueil.
+- **Choix** : (1) Somme ou Comptage SEULEMENT (une moyenne ne se répartit pas en sous-parts : le formulaire la refuse, un ancien réglage est lu comme une somme et le conseil le dit) ; (2) au plus 4 anneaux (centre + 3) et 15 parts par part
+  parente (les plus grandes), au-delà les petites parts sont comptées (note + conseil) et leur place reste un VIDE dans l'anneau (le parent garde sa vraie taille : un parent rétréci aux seuls enfants dessinés mentirait) ; (3) une
+  ligne sans valeur au 1er anneau est ignorée, sans valeur plus profond elle s'arrête à l'anneau d'avant (sa valeur reste dans la part parente) ; (4) une part de taille nulle ou négative n'a pas d'angle : non dessinée, signalée,
+  mais gardée dans l'export Excel (une ligne par part où des lignes s'arrêtent, la somme des lignes de l'export est celle des lignes retenues) ; (5) la couleur d'une racine vient de la palette, ses descendants s'éclaircissent
+  vers la couleur de la carte ; (6) le survol n'estompe rien (`emphasis.focus: 'none'` : l'estompage par défaut d'ECharts ressemblait à un filtre) ; (7) pas de fil d'Ariane « cliquer pour détailler » ; (8) « + Niveau » du formulaire
+  s'arrête à 3 anneaux supplémentaires et la case « filtre croisé » du drill-down est masquée.
+- **Valeurs par défaut** : deux catégories de 2 à 15 valeurs, de préférence une VRAIE hiérarchie jugée sur les valeurs (chaque valeur de la colonne du dehors n'apparaît que sous une valeur de la colonne du centre), sinon les deux
+  premières ; Somme (Comptage sans mesure).
+- **Pas fait, à décider** : zoom sur une part (clic = recentrer l'arbre sur elle, comme `nodeClick: 'rootToNode'` d'ECharts) — écarté, un clic filtre déjà ; part « Autres » regroupant les petites parts écartées ; anneaux au-delà
+  de 4 ; clic sur le centre pour tout retirer.
+- **Conseils** : moyenne/min/max (avertissement), valeurs négatives (avertissement), plus de 4 anneaux (avertissement), plus de parts centrales que de couleurs (conseil), petites parts écartées (conseil).
+- **Testé** : Node (bloc « soleil » : niveaux, arbre — valeurs, ignorées, écartées, négatives, somme de l'export —, comptage, BigInt et chaînes numériques, plafond et tri, filtres de chaque anneau dont l'enchaînement de clics sur le
+  vrai store, part retenue, types, export, défauts, conseils, i18n fr/en et pluriels, câblage) ; Playwright contre le vrai `index.html` + `grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`, 20 et 6 020 lignes,
+  clair et sombre (formulaire : anneaux et libellés, moyenne refusée, colonne en double refusée, enregistrement — le plafond de « + Niveau » n'est lu que dans les sources ; option = calcul pur à tous les anneaux ; **clics réels de souris** sur une part de chaque anneau : filtres posés,
+  remontée, 2e clic, voisin de la même branche, estompage ; infobulle ; agrandissement = anneaux plus grands ; tri ; comptage ; conseils ; changement de type et retour ; édition ; 20 produits sous une région = 15 + note +
+  conseil ; noms hostiles `<img onerror>` sans HTML injecté ; les quatre styles globaux ; export).
+- **Constat visuel** : dans une tuile de 224 px le soleil est petit (~65 px de rayon à trois anneaux, en sombre comme en clair) : les noms ne tiennent que sur les grandes parts et l'infobulle donne le reste ; agrandir la tuile suffit (rayon x3).
+  Avec beaucoup de petites parts sous une même part (20 produits), les noms se tassent (« Nor… ») : c'est l'avertissement « plus de 15 » qui le dit. Rendu dans un vrai Grist / GFS : non testé ici.
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée

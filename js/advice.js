@@ -51,6 +51,7 @@
   const FUNNEL_MAX_STAGES = 10;
   // Autant de séries que de couleurs de la palette du tableau de bord (js/charts.js:CATEGORICAL_PALETTE).
   const SERIES_MAX = 8;
+  const SMALL_MULTIPLES_MAX_CATEGORIES = 24; // au-delà, les catégories d'un petit panneau (une cinquantaine de pixels de large) ne se lisent plus
   const LONG_LABEL = 14;
 
   // Même liste que js/data.js (GRIST_TECHNICAL_COLUMNS) : `manualSort` n'est jamais une donnée.
@@ -77,6 +78,7 @@
     gantt: 'advice.use.gantt',
     pie: 'advice.use.pie',
     treemap: 'advice.use.treemap',
+    sunburst: 'advice.use.sunburst',
     funnel: 'advice.use.funnel',
     scatter: 'advice.use.scatter',
     waterfall: 'advice.use.waterfall',
@@ -832,6 +834,35 @@
         }
         break;
       }
+      case 'sunburst': {
+        // Deux anneaux au moins : deux catégories (un soleil à un seul anneau n'est qu'un camembert). De préférence une VRAIE hiérarchie, jugée sur
+        // les valeurs : chaque valeur de la colonne du dehors n'apparaît que sous UNE valeur de la colonne du centre (département dans région) ;
+        // sinon les deux premières petites catégories. Toujours Somme (ou Comptage) : l'angle d'une part s'additionne.
+        const small = ctx.categories.filter((d) => d.kind === 'text' && d.distinct >= 2 && d.distinct <= data.SUNBURST_MAX_CHILDREN);
+        let pair = null;
+        for (const parent of small) {
+          for (const child of small) {
+            if (parent.id === child.id || child.distinct <= parent.distinct) continue;
+            const owners = new Map();
+            let nested = true;
+            for (const r of rows) {
+              const c = r[child.id];
+              const p = r[parent.id];
+              if (c == null || c === '' || p == null || p === '') continue;
+              const seen = owners.get(String(c));
+              if (seen === undefined) owners.set(String(c), String(p));
+              else if (seen !== String(p)) { nested = false; break; }
+            }
+            if (nested && !pair) pair = [parent.id, child.id];
+          }
+        }
+        if (!pair && small.length >= 2) pair = [small[0].id, small[1].id];
+        out.dimension = pair ? pair[0] : ((small[0] && small[0].id) || dimensionFallback);
+        const other = pair ? pair[1] : ctx.categories.map((d) => d.id).find((id) => id !== out.dimension);
+        if (other) out.drillDimensions = [other];
+        out.aggFn = measure ? 'sum' : 'count';
+        break;
+      }
       case 'pivot':
       case 'heatmap':
       case 'sankey': {
@@ -934,6 +965,18 @@
       if (nodes > data.SANKEY_MAX_NODES) return warn('advice.sankey.tooManyNodes', { nodes });
       if (sk.dropped > 0) return tip('advice.sankey.dropped', { n: sk.dropped });
     }
+    if (type === 'sunburst' && tile.dimension) {
+      // Un anneau additionne ses parts ; une valeur négative n'a pas d'angle ; au-delà de la palette, les couleurs des parts centrales se répètent ;
+      // des anneaux au-delà du plafond ou des petites parts écartées ne se voient pas.
+      if (tile.aggFn === 'avg' || tile.aggFn === 'min' || tile.aggFn === 'max') return warn('advice.sunburst.notAdditive');
+      const levelsWanted = [tile.dimension].concat(data.tileDrillLevels(tile)).filter((c, i, all) => c && all.indexOf(c) === i);
+      const sb = data.sunburstTree(rows, data.sunburstLevels(tile), tile.measure, tile.aggFn);
+      if (sb.negative > 0) return warn('advice.sunburst.negative');
+      if (levelsWanted.length > data.SUNBURST_MAX_LEVELS) return warn('advice.sunburst.tooManyLevels', { max: data.SUNBURST_MAX_LEVELS });
+      const colors = data.paletteColors(tile.palette).length;
+      if (sb.roots.length > colors) return tip('advice.sunburst.tooManyColors', { n: sb.roots.length, max: colors });
+      if (sb.hidden > 0) return tip('advice.sunburst.hidden', { n: sb.hidden, max: data.SUNBURST_MAX_CHILDREN });
+    }
     if (type === 'combo') {
       if (tile.comboMode === 'pareto') {
         if (tile.aggFn === 'avg' || tile.aggFn === 'min' || tile.aggFn === 'max') return warn('advice.combo.paretoAgg');
@@ -972,7 +1015,13 @@
       // Au-delà du nombre de couleurs de la palette choisie, ECharts reprend au début : deux séries
       // auraient la même couleur. Le plafond suit donc la palette (8 en Standard, 6 en Okabe-Ito…).
       const seriesCap = Math.min(SERIES_MAX, data.paletteColors(tile.palette).length);
-      if (seriesCount > seriesCap) return warn('advice.series.tooMany', { n: seriesCount, max: seriesCap });
+      // Petits multiples : une couleur par série n'est plus le sujet (chaque série a son panneau) ; le plafond est le nombre de panneaux,
+      // et des catégories trop nombreuses n'ont plus la place de se lire dans un panneau étroit.
+      const small = data.isSmallMultiplesTile(tile);
+      if (small && seriesCount > data.SMALL_MULTIPLES_MAX) return warn('advice.smallMultiples.tooMany', { n: seriesCount, max: data.SMALL_MULTIPLES_MAX });
+      if (small && seriesCount < 2) return tip('advice.smallMultiples.single');
+      if (small && n > SMALL_MULTIPLES_MAX_CATEGORIES) return tip('advice.smallMultiples.tooManyCategories', { n, max: SMALL_MULTIPLES_MAX_CATEGORIES });
+      if (!small && seriesCount > seriesCap) return warn('advice.series.tooMany', { n: seriesCount, max: seriesCap });
       // Une pile additionne les hauteurs : sans sens pour une moyenne, un minimum ou un maximum.
       if (data.isStackedTile(tile) && (tile.aggFn === 'avg' || tile.aggFn === 'min' || tile.aggFn === 'max')) return warn('advice.stacked.notAdditive');
       // 100 % : une part n'a de sens que pour des valeurs positives (un total nul ou une pile qui descend sous zéro ne se lit pas en %).
@@ -1041,6 +1090,7 @@
       case 'pivot':
       case 'heatmap':
       case 'sankey':
+      case 'sunburst':
         return ctx.categories.filter((d) => d.distinct >= 2).length < 2 ? 'advice.fit.needTwoDimensions' : null;
       case 'wordcloud':
         return ctx.profiles.some((p) => p.kind === 'text' && p.role !== 'constant') ? null : 'advice.fit.needText';

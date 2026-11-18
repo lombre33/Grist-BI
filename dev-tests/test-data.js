@@ -2459,13 +2459,13 @@ const SAMPLE_TIME_SERIES = [
   const format = require('../js/format.js');
 
   // types concernés : ceux qui affichent un nombre ; pas de réglage pour un type inconnu ni null
-  for (const type of ['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo', 'histogram', 'heatmap', 'box', 'sankey', 'calendar']) {
+  for (const type of ['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo', 'histogram', 'heatmap', 'box', 'sankey', 'calendar', 'sunburst']) {
     assert.strictEqual(data.supportsNumberFormat({ type }), true, type);
   }
   assert.strictEqual(data.supportsNumberFormat({ type: 'text' }), false, 'la tuile Texte ne montre aucun nombre');
   assert.strictEqual(data.supportsNumberFormat({ type: 'inconnu' }), false);
   assert.strictEqual(data.supportsNumberFormat(null), false);
-  assert.deepStrictEqual(data.NUMBER_FORMAT_TILE_TYPES.filter((ty) => !['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo', 'histogram', 'heatmap', 'box', 'sankey', 'calendar'].includes(ty)), []);
+  assert.deepStrictEqual(data.NUMBER_FORMAT_TILE_TYPES.filter((ty) => !['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo', 'histogram', 'heatmap', 'box', 'sankey', 'calendar', 'sunburst'].includes(ty)), []);
 
   // verdict de « Comme dans la colonne » : sert l'explication affichée sous le réglage
   format.setColumnInfo({
@@ -2525,7 +2525,7 @@ const SAMPLE_TIME_SERIES = [
   const main = read('js/main.js');
   const css = read('css/style.css');
   // une seule dernière étape avant setOption, pour les sept chemins ECharts (graphiques, mesures temporelles, histogramme, carte de chaleur, boîte, flux, calendrier)
-  assert.strictEqual((charts.match(/finalizeOption\(option, instance\);\s*\n\s*instance\.setOption\(option, true\);/g) || []).length, 7, 'finalizeOption avant chaque setOption d\'option');
+  assert.strictEqual((charts.match(/finalizeOption\(option, instance\);\s*\n\s*instance\.setOption\(option, true\);/g) || []).length, 8, 'finalizeOption avant chaque setOption d\'option');
   assert.strictEqual((charts.match(/^\s*confineTooltip\(option\);/gm) || []).length, 1, 'confineTooltip n\'est plus appelée qu\'à l\'intérieur de finalizeOption');
   // les jetons du thème viennent de la page, pas de couleurs en dur
   for (const token of ["'--surface'", "'--border-strong'", "'--border'", "'--text-secondary'"]) assert.ok(charts.includes(token), `chartTheme lit ${token}`);
@@ -5402,7 +5402,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     const chartsK = fsK.readFileSync(pathK.join(rootK, 'js', 'charts.js'), 'utf8');
     const indexK = fsK.readFileSync(pathK.join(rootK, 'index.html'), 'utf8');
     assert.ok(/const TYPE_CARDS = \[[^\]]*'sankey'/.test(mainK) && /<option value="sankey"/.test(indexK) && /'type-sankey':/.test(mainK), 'carte, option et icône du type');
-    assert.ok(/type !== 'sankey' && type !== 'calendar'( && type !== 'gantt')?; \}/.test(mainK), 'pas de drill-down (flux, calendrier)');
+    assert.ok(/type !== 'sankey' && type !== 'calendar'( && type !== 'gantt')?( && type !== 'sunburst')?; \}/.test(mainK), 'pas de drill-down (flux, calendrier)');
     assert.ok(/isGrid = isPivot \|\| isHeatmap \|\| isSankey/.test(mainK) && /sankeyDimsDiffer/.test(mainK) && /sankeyTargetRequired/.test(mainK), 'deux colonnes obligatoires et différentes, messages propres au flux');
     assert.ok(/currentTile\.type === 'sankey'/.test(chartsK) && /params\.dataType === 'edge'/.test(chartsK) && /toggleCellFilters\(currentTile, from\.value, to\.value\)/.test(chartsK) && /toggleFilter\(node\.column, node\.value, currentTile\.id\)/.test(chartsK), 'nœud = filtre de sa colonne, lien = source ET cible');
     assert.ok(/instance\.__refit = \(\) => \{\s*const p = place\(\);/.test(chartsK), 'les marges de libellés suivent le redimensionnement');
@@ -5693,7 +5693,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     const indexG = fsG.readFileSync(pathG.join(rootG, 'index.html'), 'utf8');
     const cssG = fsG.readFileSync(pathG.join(rootG, 'css', 'style.css'), 'utf8');
     assert.ok(/const TYPE_CARDS = \[[^\]]*'gantt'/.test(mainG) && /<option value="gantt"/.test(indexG) && /'type-gantt':/.test(mainG), 'carte, option et icône du type');
-    assert.ok(/type !== 'calendar' && type !== 'gantt'; \}/.test(mainG), 'pas de drill-down');
+    assert.ok(/type !== 'calendar' && type !== 'gantt'(?: && type !== 'sunburst')?; \}/.test(mainG), 'pas de drill-down');
     assert.ok(/id="tile-start-column"/.test(indexG) && /id="tile-end-column"/.test(indexG) && /startColumnSelect, endColumnSelect,/.test(mainG), 'deux champs de colonne branchés comme comboboxes');
     assert.ok(/inferColumnKind\(startColumnSelect\.value\) !== 'date'\) fail\('tile-start-column', 'tileForm\.error\.calendarNotDate'\)/.test(mainG) && /inferColumnKind\(endColumnSelect\.value\) !== 'date'\) fail\('tile-end-column', 'tileForm\.error\.calendarNotDate'\)/.test(mainG), 'début et fin doivent être de vraies dates');
     assert.ok(/!isText && !isTable && !isGantt && !measure\) fail\('tile-measure'/.test(mainG) && /tileData\.measure = undefined; tileData\.aggFn = undefined; \}\s*\n\s*tileData\.startColumn/.test(mainG), 'aucune mesure exigée ni écrite');
@@ -5707,6 +5707,234 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     assert.ok(/\.gantt-tick \{[^}]*overflow: hidden; text-overflow: ellipsis/.test(cssG), 'chaque graduation est rognée à sa case : jamais posée sur la voisine');
     assert.ok(!/Intl\.NumberFormat|toFixed/.test(chartsG), 'aucun format de nombre en dur dans charts.js');
     console.log('OK gantt — barres début/fin, lignes sans dates écartées, tri, plafond, axe du temps, aujourd\'hui, store (libellé, statut), export, défauts, conseils, i18n, câblage');
+  }
+
+  // Petits multiples (18/11/2026) : un petit graphique par valeur de la colonne Séries, même échelle, mêmes catégories ; option des barres/courbe, pas un type.
+  {
+    const fsS = require('fs'), pathS = require('path'), rootS = pathS.join(__dirname, '..');
+    // Prédicats : barres brutes ou courbe avec une colonne Séries, case cochée ; jamais sans Séries, en mode mesure, ni sur un autre type.
+    const smBar = { type: 'bar', dimension: 'P', measure: 'M', aggFn: 'sum', seriesColumn: 'R', smallMultiples: true };
+    assert.strictEqual(data.isSmallMultiplesTile(smBar), true);
+    assert.strictEqual(data.isSmallMultiplesTile(Object.assign({}, smBar, { type: 'line' })), true);
+    assert.strictEqual(data.isSmallMultiplesTile(Object.assign({}, smBar, { smallMultiples: undefined })), false);
+    assert.strictEqual(data.isSmallMultiplesTile(Object.assign({}, smBar, { smallMultiples: 'true' })), false, 'seul `true` compte');
+    assert.strictEqual(data.isSmallMultiplesTile(Object.assign({}, smBar, { seriesColumn: '' })), false, 'sans colonne Séries : rien à séparer');
+    assert.strictEqual(data.isSmallMultiplesTile(Object.assign({}, smBar, { measureMode: 'ytd', dateColumn: 'D' })), false, 'mode mesure : une seule série par nature');
+    assert.strictEqual(data.isSmallMultiplesTile(Object.assign({}, smBar, { type: 'pie' })), false);
+    assert.strictEqual(data.isSmallMultiplesTile(null), false);
+    // Rien d'empilé, ni repère, ni étiquettes : les options valables pour des séries superposées sont ignorées (elles restent lisibles si la case est décochée).
+    const wished = Object.assign({}, smBar, { stacked: true, stackPercent: true, refLine: 'average', valueLabels: true, horizontal: true });
+    assert.strictEqual(data.isStackedTile(wished), false); assert.strictEqual(data.isStackedPercentTile(wished), false);
+    assert.strictEqual(data.supportsRefLine(wished), false); assert.strictEqual(data.refLineKind(wished), ''); assert.strictEqual(data.refLineValue(wished, [1, 2, 3]), null); assert.strictEqual(data.supportsValueLabels(wished), false);
+    assert.strictEqual(data.isStackedTile(Object.assign({}, wished, { smallMultiples: undefined })), true, 'décochée : la pile revient');
+    assert.strictEqual(data.supportsRefLine(Object.assign({}, wished, { smallMultiples: undefined })), true);
+    assert.strictEqual(data.isSeriesTile(smBar), true, 'ce sont bien les calculs des séries multiples');
+
+    // Panneaux : au plus 12, le reste compté.
+    const mk = (n) => Array.from({ length: n }, (_, i) => ({ name: 'S' + i, values: [i] }));
+    assert.deepStrictEqual(data.smallMultiplesPanels(mk(4)).hidden, 0); assert.strictEqual(data.smallMultiplesPanels(mk(4)).panels.length, 4);
+    const big14 = data.smallMultiplesPanels(mk(14)); assert.strictEqual(big14.panels.length, 12); assert.strictEqual(big14.hidden, 2); assert.strictEqual(big14.panels[11].name, 'S11', 'les premières séries');
+    assert.deepStrictEqual(data.smallMultiplesPanels(mk(5), 3).panels.map((x) => x.name), ['S0', 'S1', 'S2']); assert.strictEqual(data.smallMultiplesPanels(null).panels.length, 0); assert.strictEqual(data.SMALL_MULTIPLES_MAX, 12);
+
+    // Échelle commune : de 0 au plus haut (négatifs compris), 2 à 4 intervalles, la plus serrée ; valeurs vides/texte/BigInt.
+    const rg = (vals) => data.smallMultiplesRange([{ values: vals }]);
+    assert.deepStrictEqual(rg([6021]), { min: 0, max: 7500, step: 2500 }, '6 021 s\'arrête à 7 500, pas à 10 000');
+    assert.deepStrictEqual(rg([2014]), { min: 0, max: 3000, step: 1000 });
+    assert.deepStrictEqual(rg([100]), { min: 0, max: 100, step: 50 }, 'jamais une échelle à un seul intervalle');
+    assert.deepStrictEqual(rg([12]), { min: 0, max: 15, step: 5 });
+    assert.deepStrictEqual(rg([0.35]), { min: 0, max: 0.4, step: 0.2 }); assert.deepStrictEqual(rg([-3, 2]), { min: -4, max: 2, step: 2 }); assert.deepStrictEqual(rg([-100, 50]), { min: -100, max: 50, step: 50 });
+    assert.deepStrictEqual(rg([0, 0]), { min: 0, max: 1, step: 0.5 }, 'rien à montrer : 0 à 1'); assert.deepStrictEqual(rg([null, 'x', true, NaN]), { min: 0, max: 1, step: 0.5 }); assert.deepStrictEqual(data.smallMultiplesRange([]), { min: 0, max: 1, step: 0.5 }); assert.deepStrictEqual(data.smallMultiplesRange(null), { min: 0, max: 1, step: 0.5 });
+    assert.deepStrictEqual(rg([BigInt(6021)]), rg([6021]), 'DuckDB rend des BigInt');
+    assert.deepStrictEqual(data.smallMultiplesRange([{ values: [1, null] }, { values: [12, 3] }, { values: [5] }]), { min: 0, max: 15, step: 5 }, 'tous les panneaux, un seul jeu de bornes');
+    for (const hi of [1, 2, 3, 5, 7, 9, 12, 33, 99, 101, 250, 999, 1500, 4800, 6021, 12345, 1234567, 0.07, 0.9]) {
+      const r = rg([hi]); const k = (r.max - r.min) / r.step;
+      assert.ok(r.max >= hi && r.min <= 0, 'couvre ' + hi); assert.ok(Math.abs(k - Math.round(k)) < 1e-9 && k >= 2 && k <= 4, 'de 2 à 4 intervalles entiers pour ' + hi + ' : ' + k);
+      assert.ok(hi / r.max >= 0.5, 'la plus haute valeur remplit au moins la moitié de l\'échelle (' + hi + ' sur ' + r.max + ')');
+    }
+
+    // Grille : colonnes choisies pour la plus grande zone de tracé, dans la tuile, sans recouvrement, jamais une dimension nulle.
+    const gr = (n, w, h, o) => data.smallMultiplesGrid(n, w, h, o);
+    assert.strictEqual(gr(1, 270, 180).cols, 1); assert.strictEqual(gr(4, 270, 180).cols, 2); assert.strictEqual(gr(4, 270, 180).rows, 2); assert.strictEqual(gr(12, 270, 180).cols, 4);
+    assert.strictEqual(gr(4, 1200, 200).cols, 4, 'tuile très large : une rangée'); assert.strictEqual(gr(4, 200, 900).cols, 1, 'tuile très haute : une colonne');
+    for (const [n, w, h] of [[1, 270, 180], [2, 270, 180], [3, 270, 180], [4, 270, 180], [5, 270, 180], [7, 300, 200], [12, 270, 180], [12, 1200, 600], [6, 80, 60], [9, 0, 0]]) {
+      const g = gr(n, w, h); assert.strictEqual(g.cols * g.rows >= n, true); assert.ok(g.plotW >= 1 && g.plotH >= 1);
+      assert.strictEqual(g.xs.length, g.cols); assert.strictEqual(g.ys.length, g.rows);
+      if (w > 0 && h > 0 && w > 120 && h > 100) {
+        assert.ok(g.xs[g.cols - 1] + g.plotW <= w + 1e-6, 'dans la largeur ' + [n, w, h]); assert.ok(g.ys[g.rows - 1] + g.plotH <= h + 1e-6, 'dans la hauteur ' + [n, w, h]);
+        for (let c = 1; c < g.cols; c++) assert.ok(g.xs[c] >= g.xs[c - 1] + g.plotW, 'colonnes sans recouvrement'); for (let r = 1; r < g.rows; r++) assert.ok(g.ys[r] - g.titleH >= g.ys[r - 1] + g.plotH, 'rangées sans recouvrement (titre compris)');
+      }
+    }
+    assert.deepStrictEqual(gr(3, 300, 200, { left: 60, bottom: 40 }).xs[0], 60, 'marge gauche réservée aux graduations'); assert.ok(gr(1, 300, 200, { bottom: 60 }).plotH < gr(1, 300, 200, { bottom: 10 }).plotH, 'marge basse réservée aux catégories');
+
+    // Export Excel : celui des mêmes séries superposées (la mise en page ne change pas les données).
+    const rowsS = []; ['N', 'S', 'E'].forEach((r, ri) => ['a', 'b', 'c', 'd'].forEach((p, pi) => rowsS.push({ R: r, P: p, M: (ri + 1) * (pi + 1) })));
+    const stS = { rows: rowsS, activeFilters: [], advancedFilters: [], drillIns: {}, comments: [], pages: [] };
+    const sheetOn = data.tileExportSheet(Object.assign({ id: 'x', title: 'Montants' }, smBar), stS); const sheetOff = data.tileExportSheet(Object.assign({ id: 'x', title: 'Montants' }, smBar, { smallMultiples: undefined }), stS);
+    assert.deepStrictEqual(sheetOn, sheetOff); assert.ok(sheetOn.rows.length > 0);
+
+    // Conseils : plus de 12 séries (seuls 12 panneaux), une seule série, trop de catégories ; la couleur n'est plus le sujet (> 8 séries ne dit rien de la palette).
+    const many = []; for (let r = 0; r < 14; r++) for (let p = 0; p < 3; p++) many.push({ R: 'S' + r, P: 'p' + p, M: r + p });
+    assert.deepStrictEqual(advice.adviceForTile(smBar, many), { key: 'advice.smallMultiples.tooMany', vars: { n: 14, max: 12 }, level: 'warn' });
+    assert.strictEqual(advice.adviceForTile(Object.assign({}, smBar, { smallMultiples: undefined }), many).key, 'advice.series.tooMany', 'sans la case : l\'avertissement de couleurs');
+    const ten = []; for (let r = 0; r < 10; r++) for (let p = 0; p < 3; p++) ten.push({ R: 'S' + r, P: 'p' + p, M: r + p });
+    assert.strictEqual(advice.adviceForTile(smBar, ten), null, '10 séries : plus de limite de couleurs, 10 panneaux');
+    assert.strictEqual(advice.adviceForTile(Object.assign({}, smBar, { smallMultiples: undefined }), ten).key, 'advice.series.tooMany');
+    assert.deepStrictEqual(advice.adviceForTile(smBar, rowsS.filter((r) => r.R === 'N')), { key: 'advice.smallMultiples.single', vars: {}, level: 'tip' });
+    const wide = []; for (let r = 0; r < 3; r++) for (let p = 0; p < 30; p++) wide.push({ R: 'S' + r, P: 'p' + p, M: r + p });
+    assert.deepStrictEqual(advice.adviceForTile(smBar, wide), { key: 'advice.smallMultiples.tooManyCategories', vars: { n: 30, max: 24 }, level: 'tip' });
+    assert.strictEqual(advice.adviceForTile(smBar, rowsS), null, 'un cas sain : aucun conseil');
+    assert.doesNotThrow(() => advice.adviceForTile({ type: 'bar', dimension: 'Absente', measure: 'Autre', aggFn: 'sum', seriesColumn: 'Encore', smallMultiples: true }, rowsS));
+
+    // i18n : fr/en, et la note dit combien de panneaux sont dessinés.
+    ['tileForm.smallMultiples.label', 'chart.smallMultiples.hidden', 'advice.smallMultiples.tooMany', 'advice.smallMultiples.single', 'advice.smallMultiples.tooManyCategories']
+      .forEach((k) => assert.ok(i18n.STRINGS[k] && i18n.STRINGS[k].fr && i18n.STRINGS[k].en, 'traduction fr/en : ' + k));
+    i18n.setLang('fr'); assert.strictEqual(i18n.t('chart.smallMultiples.hidden', { shown: 12, n: 14 }), 'Les 12 premières séries sur 14');
+    i18n.setLang('en'); assert.strictEqual(i18n.t('chart.smallMultiples.hidden', { shown: 12, n: 14 }), 'First 12 of 14 series'); i18n.setLang('fr');
+
+    // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
+    const mainS = fsS.readFileSync(pathS.join(rootS, 'js', 'main.js'), 'utf8');
+    const chartsS = fsS.readFileSync(pathS.join(rootS, 'js', 'charts.js'), 'utf8');
+    const indexS = fsS.readFileSync(pathS.join(rootS, 'index.html'), 'utf8');
+    assert.ok(/id="tile-small-multiples"/.test(indexS) && /id="tile-small-multiples-field"/.test(indexS) && /data-i18n="tileForm\.smallMultiples\.label"/.test(indexS), 'case et champ du formulaire');
+    assert.ok(/smallMultiplesCheckbox\.addEventListener\('change', updateFormFieldsForType\)/.test(mainS), 'la case relance l\'affichage des champs qu\'elle exclut');
+    assert.ok(/smallMultiplesField\.hidden = !\(seriesSelect\.value && \(isBarBrut \|\| type === 'line'\)\)/.test(mainS), 'visible avec une colonne Séries, barres brutes ou courbe');
+    assert.ok(/\[stackField, stackPercentField, horizontalField, valueLabelsField, refLineField, refValueField\]\.forEach/.test(mainS), 'les champs exclus sont masqués');
+    assert.ok(/tileData\.smallMultiples = smallOnForm \? true : undefined/.test(mainS) && /tileData\.stacked = \(seriesColumn && !smallOnForm &&/.test(mainS) && /horizontalCheckbox\.checked && !smallOnForm/.test(mainS) && /valueLabelsCheckbox\.checked && !smallOnForm/.test(mainS) && /!stackPctForm && !smallOnForm/.test(mainS), 'readTileForm écarte ce qui est exclu : jamais une valeur cachée qui bloque ou revient');
+    assert.ok(/smallMultiplesCheckbox\.checked = !!tile\.smallMultiples/.test(mainS) && /smallMultiplesCheckbox\.checked = false;/.test(mainS), 'édition et réinitialisation');
+    assert.ok(/const smallOn = !!multi && isSmallMultiplesTile\(tile\);\s*\n\s*if \(smallOn\) \{/.test(chartsS), 'branché dans la chaîne de renderChart (le nombre de finalizeOption/setOption ne change pas)');
+    assert.ok(/instance\.__refit = undefined; \/\/ une géométrie en pixels/.test(chartsS) && /instance\.__refit = \(\) => \{\s*\n\s*const w = instance\.getWidth\(\);/.test(chartsS), 'la géométrie en pixels est reposée au redimensionnement, et levée quand la case est décochée');
+    const bs = chartsS.slice(chartsS.indexOf('function buildSmallMultiplesOption'), chartsS.indexOf('async function renderChart'));
+    assert.ok(/String\(sr\.name\)/.test(bs) && !/innerHTML|formatter: \(/.test(bs.replace(/formatter: f\.axis/g, '')), 'le nom de série n\'est que du texte canvas, aucune chaîne en HTML');
+    assert.ok(/xAxisIndex: i, yAxisIndex: i/.test(bs) && /min: range\.min,\s*\n\s*max: range\.max,\s*\n\s*interval: range\.step/.test(bs), 'chaque panneau a ses axes, tous sur la même échelle');
+    assert.ok(!/Intl\.NumberFormat|toFixed/.test(chartsS), 'aucun format de nombre en dur dans charts.js');
+    console.log('OK petits multiples — prédicats, échelle commune, grille, panneaux plafonnés, export inchangé, conseils, i18n, câblage');
+  }
+
+  // Soleil (18/11/2026) : une répartition hiérarchique en anneaux ; l'angle d'une part est une quantité qui s'additionne, un clic filtre chaque anneau jusqu'à la part.
+  {
+    const fsU = require('fs'), pathU = require('path'), rootU = pathU.join(__dirname, '..');
+    const U = (R, P, M, V) => ({ R, P, M, V });
+    const rowsU = [
+      U('Nord', 'N1', 'a', 10), U('Nord', 'N1', 'b', 20), U('Nord', 'N2', 'a', 5), U('Nord', '', 'a', 7), // la 4e s'arrête à l'anneau central
+      U('Sud', 'S1', 'a', 40),
+      U('', 'X', 'a', 99), // aucune valeur au 1er anneau : ignorée
+      U('Est', 'E1', 'a', -5) // taille négative : pas d'angle
+    ];
+    const treeU = (o) => data.sunburstTree(rowsU, ['R', 'P', 'M'], 'V', 'sum', o && o.sort, o && o.cap);
+    // Niveaux : la dimension puis la liste, sans doublon ni vide, au plus 4.
+    assert.deepStrictEqual(data.sunburstLevels({ dimension: 'A', drillDimensions: ['B', 'A', '', 'C', 'D', 'E'] }), ['A', 'B', 'C', 'D']);
+    assert.deepStrictEqual(data.sunburstLevels({ dimension: 'A' }), ['A']); assert.deepStrictEqual(data.sunburstLevels(null), []); assert.strictEqual(data.SUNBURST_MAX_LEVELS, 4); assert.strictEqual(data.SUNBURST_MAX_CHILDREN, 15);
+    // Arbre : valeur d'une part = sa part propre + ses enfants ; ignorées, écartées, négatives ; la somme de l'export est celle des lignes retenues.
+    const tU = treeU();
+    assert.deepStrictEqual(tU.roots.map((r) => [r.name, r.value]), [['Nord', 42], ['Sud', 40]], 'une part négative n\'est pas dessinée');
+    assert.deepStrictEqual(tU.roots[0].children.map((c) => [c.name, c.value]), [['N1', 30], ['N2', 5]]);
+    assert.deepStrictEqual(tU.roots[0].children[0].children.map((c) => [c.path.join('/'), c.value]), [['Nord/N1/a', 10], ['Nord/N1/b', 20]]);
+    assert.strictEqual(tU.total, 82); assert.strictEqual(tU.ignored, 1); assert.strictEqual(tU.depth, 3); assert.ok(tU.dropped >= 1 && tU.negative >= 1); assert.strictEqual(tU.hidden, 0);
+    assert.strictEqual(tU.roots[0].value - tU.roots[0].children.reduce((a, c) => a + c.value, 0), 7, 'la ligne qui s\'arrête à l\'anneau central laisse un vide honnête dans sa part');
+    assert.deepStrictEqual(tU.paths.map((p) => [p.path.join('/'), p.value]), [['Nord', 7], ['Nord/N1/a', 10], ['Nord/N1/b', 20], ['Nord/N2/a', 5], ['Sud/S1/a', 40], ['Est/E1/a', -5]]);
+    assert.strictEqual(tU.paths.reduce((a, p) => a + p.value, 0), 77, 'somme de l\'export = somme des lignes retenues (la ligne ignorée exclue)');
+    assert.strictEqual(tU.levels.join(','), 'R,P,M');
+    // Comptage, moyenne héritée lue comme une somme, BigInt et chaînes numériques, cellules vides.
+    const cU = data.sunburstTree(rowsU, ['R', 'P', 'M'], 'V', 'count');
+    assert.deepStrictEqual(cU.roots.map((r) => [r.name, r.value]), [['Nord', 4], ['Sud', 1], ['Est', 1]], 'un comptage compte les lignes, négatives comprises');
+    assert.strictEqual(data.sunburstTree(rowsU, ['R', 'P'], null, 'sum').roots[0].value, 4, 'sans mesure : comptage');
+    assert.deepStrictEqual(data.sunburstTree(rowsU, ['R', 'P', 'M'], 'V', 'avg').roots.map((r) => r.value), tU.roots.map((r) => r.value), 'moyenne/min/max d\'une ancienne configuration : lus comme une somme');
+    assert.strictEqual(data.sunburstTree([{ A: 'x', B: 'y', M: BigInt(5) }, { A: 'x', B: 'y', M: '7' }, { A: 'x', B: 'y', M: null }, { A: 'x', B: 'y', M: 'texte' }], ['A', 'B'], 'M', 'sum').roots[0].value, 12, 'BigInt (DuckDB), chaîne numérique, vide et texte comptés pour 0');
+    assert.strictEqual(data.sunburstTree([{ A: 2024, B: 1 }, { A: '2024', B: 2 }], ['A', 'B'], null, 'count').roots.length, 1, 'une valeur de niveau est comparée en String()');
+    assert.deepStrictEqual(data.sunburstTree([], ['A'], 'M', 'sum').roots, []); assert.deepStrictEqual(data.sunburstTree(null, null, 'M', 'sum').roots, []); assert.strictEqual(data.sunburstTree(rowsU, [], 'V', 'sum').ignored, rowsU.length);
+    assert.strictEqual(data.sunburstTree(rowsU, ['R', 'R', 'P'], 'V', 'sum').levels.join(','), 'R,P', 'une colonne qui revient ne fait pas un anneau de plus');
+    // Plafond par part : les plus grandes, le reste compté ; tri : ordre d'apparition par défaut, sinon celui du tri de la tuile.
+    const capU = treeU({ cap: 1 });
+    assert.strictEqual(capU.roots.length, 1); assert.strictEqual(capU.roots[0].name, 'Nord'); assert.strictEqual(capU.roots[0].children.length, 1); assert.strictEqual(capU.roots[0].children[0].children[0].name, 'b', 'la plus grande part reste');
+    assert.strictEqual(capU.hidden, 3); assert.strictEqual(capU.roots[0].value, 42, 'le parent garde sa vraie taille : les parts écartées laissent un vide honnête, jamais un parent rétréci qui prétendrait ne rien contenir de plus');
+    assert.strictEqual(capU.paths.length, tU.paths.length, 'l\'export garde tout, plafond ou non');
+    assert.deepStrictEqual(treeU({ sort: 'value-asc' }).roots.map((r) => r.name), ['Sud', 'Nord']); assert.deepStrictEqual(treeU({ sort: 'label' }).roots.map((r) => r.name), ['Nord', 'Sud']); assert.deepStrictEqual(treeU({ sort: 'value-desc' }).roots[0].children.map((c) => c.name), ['N1', 'N2']);
+    const wideU = []; for (let i = 0; i < 20; i++) wideU.push({ R: 'Nord', P: 'p' + i, V: i + 1 });
+    assert.strictEqual(data.sunburstTree(wideU, ['R', 'P'], 'V', 'sum').hidden, 5, '20 parts : les 15 plus grandes, 5 comptées'); assert.strictEqual(data.sunburstTree(wideU, ['R', 'P'], 'V', 'sum').roots[0].children.length, 15);
+    assert.ok(!data.sunburstTree(wideU, ['R', 'P'], 'V', 'sum').roots[0].children.some((c) => c.name === 'p0'), 'les plus petites sont celles qu\'on écarte');
+    // Filtres d'un clic : chaque anneau jusqu'à la part ; 2e clic = tout retirer ; remonter retire les anneaux plus profonds ; les filtres d'une AUTRE tuile restent.
+    const cols = ['R', 'P', 'M'];
+    const tg = (f, values) => data.sunburstFilterToggles(f, cols, values, 't');
+    const F = (column, value, sourceTileId) => ({ column, value, sourceTileId });
+    assert.deepStrictEqual(tg([], ['Nord', 'N1']), [{ column: 'R', value: 'Nord' }, { column: 'P', value: 'N1' }]);
+    assert.deepStrictEqual(tg([F('R', 'Nord', 't'), F('P', 'N1', 't')], ['Nord', 'N1']), [{ column: 'R', value: 'Nord' }, { column: 'P', value: 'N1' }], '2e clic sur la même part : tout part');
+    assert.deepStrictEqual(tg([F('R', 'Nord', 't'), F('P', 'N1', 't')], ['Nord', 'N2']), [{ column: 'P', value: 'N2' }], 'un voisin dans la même branche : seul l\'anneau qui change bouge (jamais le filtre commun levé)');
+    assert.deepStrictEqual(tg([F('R', 'Nord', 't'), F('P', 'N1', 't'), F('M', 'a', 't')], ['Nord']), [{ column: 'P', value: 'N1' }, { column: 'M', value: 'a' }], 'remonter : les anneaux plus profonds sont retirés, Nord reste');
+    assert.deepStrictEqual(tg([F('R', 'Nord', 't'), F('P', 'N1', 'autre')], ['Nord']), [{ column: 'R', value: 'Nord' }], 'le filtre d\'une autre tuile sur un anneau plus profond n\'est pas touché');
+    assert.deepStrictEqual(tg([F('R', 'Sud', 't')], ['Nord', 'N1']), [{ column: 'R', value: 'Nord' }, { column: 'P', value: 'N1' }], 'une autre région : remplacée, puis le produit');
+    assert.deepStrictEqual(tg([{ column: 'R', type: 'range', min: 0, max: 9 }], ['Nord']), [{ column: 'R', value: 'Nord' }], 'un filtre de plage n\'est pas « déjà la bonne valeur »');
+    assert.deepStrictEqual(tg(null, []), []); assert.deepStrictEqual(data.sunburstFilterToggles([], null, ['x'], 't'), []);
+    // Application dans le store : l'enchaînement des appels donne le bon état à chaque clic, jamais un anneau commun levé par erreur.
+    {
+      const stU = state.createStore(); stU.setRows(rowsU); stU.addTile({ id: 't', type: 'sunburst', dimension: 'R', drillDimensions: ['P', 'M'], measure: 'V', aggFn: 'sum' });
+      const click = (values) => data.sunburstFilterToggles(stU.getState().activeFilters, cols, values, 't').forEach((c) => stU.toggleFilter(c.column, c.value, 't'));
+      const now = () => stU.getState().activeFilters.map((f) => f.column + '=' + f.value).join('|');
+      click(['Nord']); assert.strictEqual(now(), 'R=Nord'); click(['Nord', 'N1']); assert.strictEqual(now(), 'R=Nord|P=N1'); click(['Nord', 'N2']); assert.strictEqual(now(), 'R=Nord|P=N2');
+      click(['Nord', 'N2', 'a']); assert.strictEqual(now(), 'R=Nord|P=N2|M=a'); click(['Nord']); assert.strictEqual(now(), 'R=Nord'); click(['Nord']); assert.strictEqual(now(), '');
+      click(['Sud', 'S1', 'a']); assert.strictEqual(now(), 'R=Sud|P=S1|M=a'); click(['Sud', 'S1', 'a']); assert.strictEqual(now(), '');
+    }
+    // Part retenue ? Un filtre sur un anneau plus profond ne concerne pas ses parents.
+    const sel = (f, path) => data.sunburstNodeSelected(f, cols, path);
+    assert.strictEqual(sel([], ['Nord']), true); assert.strictEqual(sel([F('R', 'Nord', 't')], ['Nord', 'N1']), true); assert.strictEqual(sel([F('R', 'Nord', 't')], ['Sud']), false); assert.strictEqual(sel([F('R', 'Nord', 't'), F('P', 'N1', 't')], ['Nord']), true, 'le parent contient la part retenue');
+    assert.strictEqual(sel([F('R', 'Nord', 't'), F('P', 'N1', 't')], ['Nord', 'N2']), false); assert.strictEqual(sel([F('R', 'Nord', 't'), F('P', 'N1', 't')], ['Nord', 'N1', 'a']), true); assert.strictEqual(sel(null, null), true);
+    assert.strictEqual(sel([{ column: 'R', type: 'range', min: 0, max: 1 }], ['Nord']), false, 'un filtre de plage sur un nom : aucune part ne passe');
+    // Types : tri, palette et format oui ; ni séries, ni repère, ni étiquettes ; jamais de drill-down.
+    assert.strictEqual(data.isSortableTile({ type: 'sunburst' }), true); assert.strictEqual(data.supportsPalette({ type: 'sunburst' }), true); assert.strictEqual(data.supportsNumberFormat({ type: 'sunburst' }), true);
+    assert.strictEqual(data.isSeriesTile({ type: 'sunburst', seriesColumn: 'P' }), false); assert.strictEqual(data.supportsRefLine({ type: 'sunburst' }), false); assert.strictEqual(data.supportsValueLabels({ type: 'sunburst' }), false); assert.strictEqual(data.tileExportKind({ type: 'sunburst' }), 'image');
+    // Export Excel : une ligne par part où des lignes s'arrêtent, rangs vides complétés ; filtres des autres tuiles appliqués.
+    const tileU = { id: 't', type: 'sunburst', dimension: 'R', drillDimensions: ['P', 'M'], measure: 'V', aggFn: 'sum', title: 'Soleil' };
+    const stateU = { rows: rowsU, activeFilters: [], advancedFilters: [], drillIns: {}, comments: [], pages: [] };
+    const shU = data.tileExportSheet(tileU, stateU);
+    assert.deepStrictEqual(shU.header, ['R', 'P', 'M', 'V']);
+    assert.deepStrictEqual(shU.rows, [['Nord', '', '', 7], ['Nord', 'N1', 'a', 10], ['Nord', 'N1', 'b', 20], ['Nord', 'N2', 'a', 5], ['Sud', 'S1', 'a', 40], ['Est', 'E1', 'a', -5]], 'rien n\'est plafonné ni écarté dans l\'export, les négatives y sont');
+    assert.deepStrictEqual(data.tileExportSheet(Object.assign({}, tileU, { aggFn: 'count' }), stateU).rows[0], ['Nord', '', '', 1]);
+    assert.deepStrictEqual(data.tileExportSheet(tileU, Object.assign({}, stateU, { activeFilters: [{ column: 'R', value: 'Sud', sourceTileId: 'autre' }] })).rows, [['Sud', 'S1', 'a', 40]]);
+    assert.deepStrictEqual(data.tileExportSheet(tileU, Object.assign({}, stateU, { rows: [] })).rows, [], 'aucune ligne : en-têtes seuls');
+    // Valeurs par défaut : une vraie hiérarchie jugée sur les VALEURS (jamais le nom), sinon les deux premières catégories ; toujours Somme/Comptage ; jamais proposé à l'accueil.
+    const hier = []; ['Nord', 'Sud', 'Est'].forEach((r, ri) => { for (let p = 0; p < 3; p++) for (let m = 0; m < 2; m++) for (let k = 0; k < 3; k++) hier.push({ Region: r, Produit: r + '-' + (p + 1), Mois: 'M' + m, Montant: 100.5 + (ri * 9 + p * 3 + m + k) * 7.25 }); });
+    const dU = advice.defaultsForType('sunburst', hier, ['Region', 'Produit', 'Mois', 'Montant']);
+    assert.ok(dU && dU.dimension === 'Region' && JSON.stringify(dU.drillDimensions) === '["Produit"]' && dU.measure === 'Montant' && dU.aggFn === 'sum', JSON.stringify(dU));
+    const flat = []; for (let i = 0; i < 60; i++) flat.push({ A: ['x', 'y', 'z'][i % 3], B: ['p', 'q', 'r', 's'][(i * 7 + (i >> 2)) % 4], Montant: 100.5 + i * 7.25 });
+    const dF = advice.defaultsForType('sunburst', flat, ['A', 'B', 'Montant']);
+    assert.ok(dF && dF.dimension && dF.drillDimensions && dF.drillDimensions.length === 1 && dF.drillDimensions[0] !== dF.dimension, JSON.stringify(dF));
+    assert.strictEqual(advice.defaultsForType('sunburst', hier.map((r) => ({ Region: r.Region, Produit: r.Produit })), ['Region', 'Produit']).aggFn, 'count', 'aucune mesure : comptage');
+    assert.strictEqual(advice.TILE_TYPES.includes('sunburst'), false, 'jamais proposé à l\'accueil');
+    assert.strictEqual(advice.adviceForType('sunburst', hier, ['Region', 'Produit', 'Mois', 'Montant']).key, 'advice.use.sunburst');
+    assert.strictEqual(advice.adviceForType('sunburst', hier.map((r) => ({ Region: r.Region, Montant: r.Montant })), ['Region', 'Montant']).key, 'advice.fit.needTwoDimensions', 'une seule catégorie : le type est déconseillé');
+    // Conseils : moyenne/min/max, valeurs négatives, anneaux au-delà du plafond, couleurs qui se répètent, petites parts écartées ; rien pour un soleil sain.
+    const tileA = { type: 'sunburst', dimension: 'Region', drillDimensions: ['Produit'], measure: 'Montant', aggFn: 'sum' };
+    assert.strictEqual(advice.adviceForTile(tileA, hier), null);
+    for (const agg of ['avg', 'min', 'max']) assert.strictEqual(advice.adviceForTile(Object.assign({}, tileA, { aggFn: agg }), hier).key, 'advice.sunburst.notAdditive', agg);
+    assert.strictEqual(advice.adviceForTile(tileA, hier.map((r, i) => (i === 0 ? Object.assign({}, r, { Montant: -9999 }) : r))).key, 'advice.sunburst.negative');
+    assert.deepStrictEqual(advice.adviceForTile(Object.assign({}, tileA, { drillDimensions: ['Produit', 'Mois', 'Montant', 'Region2', 'X'] }), hier), { key: 'advice.sunburst.tooManyLevels', vars: { max: 4 }, level: 'warn' });
+    const manyRoots = []; for (let i = 0; i < 10; i++) for (let k = 0; k < 2; k++) manyRoots.push({ Region: 'R' + i, Produit: 'P' + k, Montant: 1 + i + k });
+    assert.deepStrictEqual(advice.adviceForTile(tileA, manyRoots), { key: 'advice.sunburst.tooManyColors', vars: { n: 10, max: 8 }, level: 'tip' });
+    assert.deepStrictEqual(advice.adviceForTile(tileA, wideU.map((r) => ({ Region: r.R, Produit: r.P, Montant: r.V }))), { key: 'advice.sunburst.hidden', vars: { n: 5, max: 15 }, level: 'tip' });
+    assert.doesNotThrow(() => advice.adviceForTile({ type: 'sunburst', dimension: 'Absente', drillDimensions: ['Autre'], measure: 'Rien', aggFn: 'sum' }, hier));
+    // i18n : fr/en pour tout ; les pluriels de la note disent combien de petites parts sont écartées.
+    ['tileForm.type.sunburst', 'tileForm.drill.labelRings', 'tileForm.dimension.labelRing', 'tileTitle.sunburst', 'tileForm.error.sunburstAdditive', 'tileForm.error.sunburstTooManyRings', 'chart.sunburst.empty', 'chart.sunburst.hidden', 'advice.use.sunburst', 'advice.sunburst.notAdditive', 'advice.sunburst.negative', 'advice.sunburst.tooManyLevels', 'advice.sunburst.tooManyColors', 'advice.sunburst.hidden']
+      .forEach((k) => assert.ok(i18n.STRINGS[k] && i18n.STRINGS[k].fr && i18n.STRINGS[k].en, 'traduction fr/en : ' + k));
+    i18n.setLang('fr'); assert.strictEqual(i18n.t('chart.sunburst.hidden', { n: 1 }), '1 petite part non dessinée'); assert.strictEqual(i18n.t('chart.sunburst.hidden', { n: 5 }), '5 petites parts non dessinées');
+    assert.strictEqual(i18n.t('tileTitle.sunburst', { measure: 'Montant', levels: 'Region › Produit' }), 'Montant : Region › Produit');
+    i18n.setLang('en'); assert.strictEqual(i18n.t('chart.sunburst.hidden', { n: 1 }), '1 small part not drawn'); assert.strictEqual(i18n.t('chart.sunburst.hidden', { n: 5 }), '5 small parts not drawn'); i18n.setLang('fr');
+    // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
+    const mainU = fsU.readFileSync(pathU.join(rootU, 'js', 'main.js'), 'utf8');
+    const chartsU = fsU.readFileSync(pathU.join(rootU, 'js', 'charts.js'), 'utf8');
+    const indexU = fsU.readFileSync(pathU.join(rootU, 'index.html'), 'utf8');
+    assert.ok(/<option value="sunburst" data-i18n="tileForm\.type\.sunburst"/.test(indexU) && /id="tile-drill-label"/.test(indexU), 'type et libellé des anneaux dans le formulaire');
+    assert.ok(/'sunburst', 'funnel'/.test(mainU) && /'type-sunburst':/.test(mainU), 'carte de type et icône');
+    assert.ok(/function supportsLevels\(type\) \{ return supportsDrillDown\(type\) \|\| type === 'sunburst'; \}/.test(mainU), 'la liste d\'anneaux est celle du drill-down, mais sans drill-down');
+    assert.ok(/isSunburst && aggFn !== 'sum' && aggFn !== 'count'\) fail\('tile-agg', 'tileForm\.error\.sunburstAdditive'\)/.test(mainU) && /isSunburst && drillDimensions\.length > GristBI\.data\.SUNBURST_MAX_LEVELS - 1\) fail\(/.test(mainU), 'readTileForm refuse une moyenne et plus de 4 anneaux');
+    assert.ok(/tileTypeSelect\.value === 'sunburst' \? GristBI\.data\.SUNBURST_MAX_LEVELS - 1/.test(mainU) && /drillCrossFilterField\.hidden = noDrill \|\| tileTypeSelect\.value === 'sunburst'/.test(mainU), '« + Niveau » plafonné, case du filtre croisé masquée (un clic filtre toujours)');
+    assert.ok(/if \(tile\.type === 'sunburst'\) \{\s*\n\s*bumpSeq\(tile\.id\);\s*\n\s*instance\.hideLoading\(\);\s*\n\s*renderSunburst\(/.test(chartsU), 'aiguillé depuis renderChart');
+    assert.ok(/!levels\.length \|\| tile\.type === 'sunburst'/.test(chartsU), 'pas de « cliquer pour détailler » : un soleil filtre');
+    const rs = chartsU.slice(chartsU.indexOf('function renderSunburst'), chartsU.indexOf('async function renderMeasureChart'));
+    assert.ok(/nodeClick: false/.test(rs) && /focus: 'none'/.test(rs), 'un clic ne zoome pas, le survol n\'estompe rien (on le prendrait pour un filtre)');
+    assert.ok(/escapeHtml\(v\)/.test(rs) && !/innerHTML/.test(rs), 'les noms de parts sont échappés dans l\'infobulle, jamais d\'innerHTML');
+    assert.ok(/selected \? 1 : 0\.3/.test(rs) && /sunburstNodeSelected\(filters, tree\.levels, n\.path\)/.test(rs) && /heatTextColor\(selected \? fill : mix\(fill, 0\.7\)\)/.test(rs), 'parts non retenues estompées par les filtres de leurs anneaux');
+    assert.ok(/inst && inst\.__sunburstLevels/.test(chartsU) && /sunburstFilterToggles\(liveState\.activeFilters, columns, path, currentTile\.id\)\.forEach\(\(c\) => GristBI\.store\.toggleFilter\(c\.column, c\.value, currentTile\.id\)\)/.test(chartsU), 'un clic lit l\'état vivant et pose les filtres de chaque anneau, un par un');
+    assert.ok(/chartTheme\(\)\.muted/.test(rs) && !/Intl\.NumberFormat|toFixed/.test(chartsU), 'message vide thémé, aucun format de nombre en dur dans charts.js');
+    console.log('OK soleil — arbre, plafonds, tri, filtres de chaque anneau, store, export, défauts, conseils, i18n, câblage');
   }
 
   // Export Excel avec ExcelJS 4.4.0 (consigne GFS 017, 18/11/2026) : le VRAI paquet vendorisé, exécuté sous Node

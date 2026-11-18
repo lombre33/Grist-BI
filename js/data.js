@@ -166,7 +166,8 @@
   // mois calculé, pas une catégorie), jamais deux lignes. Pur : le rendu (js/charts.js) ne fait que le tracer.
   const REF_LINE_KINDS = ['average', 'value'];
   function supportsRefLine(tile) {
-    return !!tile && ((tile.type === 'bar' && (!tile.measureMode || tile.measureMode === 'brut')) || tile.type === 'line');
+    // Petits multiples : une ligne de repère est une valeur lue contre UN axe ; chaque panneau a le sien, le repère n'y est pas tracé.
+    return !!tile && !isSmallMultiplesTile(tile) && ((tile.type === 'bar' && (!tile.measureMode || tile.measureMode === 'brut')) || tile.type === 'line');
   }
   // Nombre fini représenté par `v` (nombre ou chaîne numérique), sinon null — une cellule vide n'est jamais 0.
   function finiteOrNull(v) {
@@ -441,7 +442,7 @@
   // Entonnoir : `sort: 'none'` côté ECharts (js/charts.js), c'est ce tri-ci qui décide de l'ordre des
   // étapes — « Ordre des données » reste donc possible pour un parcours dont les étapes sont déjà
   // rangées dans la table (Visite, Inscription, Achat).
-  const SORTABLE_TILE_TYPES = ['bar', 'line', 'pie', 'funnel', 'combo'];
+  const SORTABLE_TILE_TYPES = ['bar', 'line', 'pie', 'funnel', 'combo', 'sunburst'];
 
   function isSortableTile(tile) {
     if (!tile || SORTABLE_TILE_TYPES.indexOf(tile.type) === -1) return false;
@@ -957,7 +958,7 @@
   }
   // Types dont les couleurs viennent de la palette. Hors liste : la cascade (vert = hausse, rouge =
   // baisse : un sens, pas une identité), le KPI et le tableau croisé (aucune couleur de série).
-  const PALETTE_TILE_TYPES = ['bar', 'line', 'pie', 'funnel', 'treemap', 'scatter', 'radar', 'gauge', 'wordcloud', 'combo', 'histogram', 'heatmap', 'box', 'sankey', 'calendar', 'gantt'];
+  const PALETTE_TILE_TYPES = ['bar', 'line', 'pie', 'funnel', 'treemap', 'scatter', 'radar', 'gauge', 'wordcloud', 'combo', 'histogram', 'heatmap', 'box', 'sankey', 'calendar', 'gantt', 'sunburst'];
   function supportsPalette(tile) {
     if (!tile) return false;
     // Tableau croisé : une palette n'a de sens que si ses cellules sont colorées (`pivotHeat`).
@@ -1040,7 +1041,7 @@
   // Types qui AFFICHENT une valeur numérique (donc concernés par `tile.numberFormat`, voir js/format.js) :
   // tout type de tuile nouveau qui montre un nombre s'ajoute ici, pour que le champ « Format des nombres »
   // du panneau apparaisse. Le nuage de mots n'y est que pour la valeur de son infobulle ; la table plate l'applique à chacune de ses colonnes numériques (`format.cellNumber`).
-  const NUMBER_FORMAT_TILE_TYPES = ['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo', 'histogram', 'heatmap', 'box', 'sankey', 'calendar'];
+  const NUMBER_FORMAT_TILE_TYPES = ['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo', 'histogram', 'heatmap', 'box', 'sankey', 'calendar', 'sunburst'];
   function supportsNumberFormat(tile) {
     return !!tile && NUMBER_FORMAT_TILE_TYPES.indexOf(tile.type) !== -1;
   }
@@ -1049,7 +1050,7 @@
   // Séries, et pour les barres ou l'AIRE (courbe + `areaFill`) : une courbe sans remplissage empilée
   // serait une courbe cumulée — un autre graphique, que personne ne lit comme tel.
   function isStackedTile(tile) {
-    if (!tile || !tile.stacked || !isSeriesTile(tile)) return false;
+    if (!tile || !tile.stacked || !isSeriesTile(tile) || isSmallMultiplesTile(tile)) return false; // petits multiples : une série par panneau, rien à empiler
     return tile.type === 'bar' || (tile.type === 'line' && !!tile.areaFill);
   }
 
@@ -1080,6 +1081,222 @@
   }
   // Étiquettes de valeur (`tile.valueLabels`) : barres (hors mode mesure temporelle) et courbe, comme la ligne de repère.
   function supportsValueLabels(tile) { return supportsRefLine(tile); }
+
+  // --- Soleil (`type: 'sunburst'`) -------------------------------------------------------------------------------------------------
+  // Une répartition HIÉRARCHIQUE en anneaux concentriques : l'anneau central est `tile.dimension`, les suivants sont les niveaux de la liste
+  // « drill-down » de la tuile (`tile.drillDimensions`, la même liste que pour un camembert, mais ici tous les niveaux se voient à la fois :
+  // pas de drill-down, un clic filtre). Une part d'un anneau est une valeur de sa colonne DANS la part de l'anneau d'en dessous. L'angle d'une
+  // part est une quantité qui s'ADDITIONNE (somme ou comptage) : un anneau n'a pas de sens pour une moyenne, un minimum ou un maximum (la valeur
+  // d'une part ne serait pas la somme de ses sous-parts) ; le formulaire les refuse, et `sunburstTree` les lit comme une somme si une ancienne
+  // configuration les porte (conseil `advice.sunburst.notAdditive`).
+  const SUNBURST_MAX_LEVELS = 4; // au-delà, les anneaux du dehors sont des fils illisibles dans une tuile
+  const SUNBURST_MAX_CHILDREN = 15; // parts dessinées par part parente : les plus grandes ; le reste est compté (`hidden`) et laisse un vide honnête
+
+  // Colonnes des anneaux, du centre vers l'extérieur : la dimension puis les niveaux, sans doublon (une colonne qui revient ne ferait que
+  // répéter son anneau) ni valeur vide, au plus SUNBURST_MAX_LEVELS.
+  function sunburstLevels(tile) {
+    const out = [];
+    if (!tile) return out;
+    for (const c of [tile.dimension].concat(tileDrillLevels(tile))) {
+      if (typeof c === 'string' && c && out.indexOf(c) === -1) out.push(c);
+    }
+    return out.slice(0, SUNBURST_MAX_LEVELS);
+  }
+
+  // Arbre des parts : `sunburstTree(lignes, colonnes, mesure, agrégat, tri?, maxEnfants?)` ->
+  //   { roots, levels, depth, nodes, total, ignored, dropped, hidden, negative, paths }
+  // - `roots` : `[{ name, column, path, value, children }]`, `path` = les valeurs de la racine jusqu'à cette part (de quoi poser les filtres d'un
+  //   clic) et `value` = la TAILLE dessinée = la part propre de la part (lignes qui s'y arrêtent, jamais négative) + la taille de ses enfants ;
+  //   avec des valeurs toutes positives c'est exactement le total de la part. Une part ne dépasse jamais ses enfants : l'angle d'un parent vaut
+  //   toujours la somme des angles de ses enfants plus sa part propre (le vide d'un parent plus grand que ses enfants est donc honnête).
+  // - une ligne sans valeur au 1er anneau est ignorée (`ignored`) ; sans valeur à un anneau plus profond, elle s'arrête à l'anneau d'avant
+  //   (sa valeur reste dans la part parente, qui garde un vide face aux sous-parts manquantes) ;
+  // - une part de taille nulle (valeurs négatives ou absentes) n'est pas dessinée (`dropped`, `negative` compte les parts à total négatif) ;
+  // - au plus `maxEnfants` parts (les plus grandes) par part parente, le reste dans `hidden` ; ordre : celui d'apparition, ou `tri` (`sortGroups`) ;
+  // - `paths` : une entrée par part où des lignes s'arrêtent, `{ path, value }` avec la valeur PROPRE (somme ou comptage, négatifs compris) :
+  //   leur somme est le total des lignes retenues, pour l'export (rien n'est compté deux fois, rien n'est plafonné).
+  // Agrégat : `count` (ou aucune mesure) compte les lignes ; tout autre agrégat est lu comme une somme. Cellules de mesure vides/textuelles
+  // = 0 ; `BigInt` et chaînes numériques acceptés. Valeur du niveau en `String()` (DuckDB et les cellules numériques rendent des types variés).
+  function sunburstTree(rows, levels, measureColumn, aggFn, sortMode, maxChildren) {
+    const cols = [];
+    for (const c of levels || []) if (typeof c === 'string' && c && cols.indexOf(c) === -1) cols.push(c);
+    cols.splice(SUNBURST_MAX_LEVELS);
+    const cap = Number.isInteger(maxChildren) && maxChildren > 0 ? maxChildren : SUNBURST_MAX_CHILDREN;
+    const counting = aggFn === 'count' || !measureColumn;
+    const empty = (v) => v == null || v === '';
+    const top = { kids: new Map() };
+    let ignored = 0;
+    for (const row of rows || []) {
+      if (!cols.length || empty(row[cols[0]])) { ignored++; continue; }
+      let node = top;
+      let path = [];
+      for (let d = 0; d < cols.length; d++) {
+        const cell = row[cols[d]];
+        if (empty(cell)) break;
+        const name = String(cell);
+        let child = node.kids.get(name);
+        if (!child) { child = { name, column: cols[d], path: path.concat([name]), own: 0, ownCount: 0, kids: new Map() }; node.kids.set(name, child); }
+        node = child;
+        path = child.path;
+      }
+      node.ownCount += 1;
+      node.own += counting ? 1 : (finiteOrNull(row[measureColumn]) || 0);
+    }
+    let dropped = 0;
+    let hidden = 0;
+    let negative = 0;
+    let nodes = 0;
+    let depth = 0;
+    const paths = [];
+    // Passe 1 : taille de chaque part (ses enfants d'abord) et liste d'export, dans l'ordre d'apparition.
+    const measure = (node) => {
+      if (node.ownCount > 0) paths.push({ path: node.path, value: node.own });
+      let total = node.own;
+      let size = Math.max(node.own, 0);
+      node.children = [];
+      node.kids.forEach((kid) => {
+        const k = measure(kid);
+        total += k.total;
+        if (k.size > 0) { size += k.size; node.children.push(kid); } else dropped++;
+      });
+      node.total = total;
+      node.size = size;
+      if (total < 0 || node.own < 0) negative++;
+      return node;
+    };
+    top.children = [];
+    top.kids.forEach((kid) => { const k = measure(kid); if (k.size > 0) top.children.push(kid); else dropped++; });
+    // Passe 2 : les plus grandes parts d'abord retenues (à taille égale, les premières), puis rangées dans l'ordre voulu ; une part nulle n'existe pas.
+    const shape = (list, level) => {
+      let kept = list;
+      if (list.length > cap) {
+        const keep = new Set(list.map((n, i) => ({ i, v: n.size })).sort((a, b) => (b.v - a.v) || (a.i - b.i)).slice(0, cap).map((x) => x.i));
+        kept = list.filter((n, i) => keep.has(i));
+        hidden += list.length - kept.length;
+      }
+      const ordered = sortMode ? sortGroups(kept.map((n) => ({ dimension: n.name, value: n.size, node: n })), sortMode).map((g) => g.node) : kept;
+      return ordered.map((n) => {
+        nodes++;
+        if (level > depth) depth = level;
+        return { name: n.name, column: n.column, path: n.path, value: n.size, children: shape(n.children, level + 1) };
+      });
+    };
+    const roots = shape(top.children, 1);
+    return { roots, levels: cols, depth, nodes, total: roots.reduce((a, r) => a + r.value, 0), ignored, dropped, hidden, negative, paths };
+  }
+
+  // Filtres à poser pour un clic sur la part `values` (les valeurs de la racine jusqu'à elle, `columns` = les colonnes de TOUS les anneaux) :
+  // `[{ column, value }]`, à passer UN PAR UN à `toggleFilter` (qui pose, remplace ou retire). Deux appels aveugles lèveraient le filtre déjà posé
+  // d'un anneau commun au 2e clic dans la même branche (comme `cellFilterToggles`, piège n°31). Règles : pose la valeur de chaque anneau jusqu'à
+  // la part (sauf celui qui l'a déjà), retire les filtres de cette tuile sur les anneaux PLUS PROFONDS (on remonte d'un niveau) ; si l'état est
+  // déjà exactement celui-là, retire tout (2e clic). Les filtres posés par une AUTRE tuile ne sont jamais retirés par un clic ici.
+  function sunburstFilterToggles(activeFilters, columns, values, tileId) {
+    const filters = Array.isArray(activeFilters) ? activeFilters : [];
+    const cols = columns || [];
+    const vals = (values || []).map((v) => String(v));
+    const eq = (f) => f.type == null || f.type === 'eq';
+    const current = (col) => filters.find((f) => f.column === col);
+    const wanted = vals.map((value, i) => ({ column: cols[i], value })).filter((w) => w.column);
+    const already = (w) => { const f = current(w.column); return !!f && eq(f) && sameValue(f.value, w.value); };
+    const deeper = cols.slice(wanted.length).map((col) => current(col)).filter((f) => f && f.sourceTileId === tileId);
+    if (wanted.length && wanted.every(already) && !deeper.length) return wanted;
+    const out = wanted.filter((w) => !already(w));
+    deeper.forEach((f) => out.push({ column: f.column, value: f.value }));
+    return out;
+  }
+
+  // Une part est-elle retenue par les filtres posés sur les colonnes de ses anneaux (la sienne et celles de ses parents) ? Un filtre sur un anneau
+  // plus profond ne concerne pas ses parents (ils contiennent la part retenue) : `path` ne couvre que les anneaux jusqu'à la part.
+  function sunburstNodeSelected(activeFilters, columns, path) {
+    for (let i = 0; i < (path || []).length; i++) {
+      const f = (activeFilters || []).find((x) => x.column === (columns || [])[i]);
+      if (f && !filterSelects(f, path[i])) return false;
+    }
+    return true;
+  }
+
+  // --- Petits multiples (`tile.smallMultiples`, barres ou courbe avec une colonne Séries) -----------------------------------------
+  // Au lieu de SUPERPOSER les séries (une couleur chacune sur un même graphique), un petit graphique par valeur de la colonne Séries, tous
+  // sur la MÊME échelle (sans quoi un petit panneau ressemblerait à un grand) et sur les mêmes catégories. Les calculs sont ceux des séries
+  // multiples (`computeSeriesGroups`/`assembleSeries`) : seul l'affichage change. Ni empilé, ni barres horizontales, ni ligne de repère,
+  // ni étiquettes de valeur : un panneau est trop petit pour les porter (le formulaire les masque, le rendu les ignore).
+  const SMALL_MULTIPLES_MAX = 12;
+  function isSmallMultiplesTile(tile) { return !!tile && tile.smallMultiples === true && isSeriesTile(tile); }
+
+  // Panneaux : une entrée par série (`[{name, values}]`, résultat d'`assembleSeries`), au plus `max` (SMALL_MULTIPLES_MAX par défaut) ;
+  // `hidden` compte les suivantes, jamais perdues sans le dire.
+  function smallMultiplesPanels(series, max) {
+    const cap = Number.isInteger(max) && max > 0 ? max : SMALL_MULTIPLES_MAX;
+    const list = Array.isArray(series) ? series : [];
+    return { panels: list.slice(0, cap), hidden: Math.max(0, list.length - cap) };
+  }
+
+  // Grille de panneaux dans une zone de `width` x `height` pixels : `{ cols, rows, plotW, plotH, xs, ys, titleH }` où `xs[c]` est le bord
+  // gauche de la colonne c et `ys[r]` le HAUT DE LA ZONE DE TRACÉ de la ligne r (le titre du panneau est au-dessus, sur `titleH`). `left` et
+  // `bottom` réservent la place des graduations (axe des valeurs à gauche, des catégories sous la dernière ligne). Le nombre de colonnes est
+  // celui qui donne la plus grande zone de tracé d'un rapport 1,6:1 (une grille de 4 panneaux dans une tuile de 270 x 180 px = 2 x 2 ; 12
+  // panneaux = 4 x 3) ; à égalité, le moins de cases vides. Zone absente ou nulle : une grille carrée.
+  function smallMultiplesGrid(count, width, height, opts) {
+    const o = Object.assign({ left: 40, bottom: 20, right: 8, titleH: 16, gapX: 8, gapY: 10 }, opts);
+    const n = Math.max(1, Math.floor(count) || 1);
+    const build = (cols) => {
+      const rows = Math.ceil(n / cols);
+      const plotW = Math.max(1, (width - o.left - o.right - (cols - 1) * o.gapX) / cols);
+      const plotH = Math.max(1, (height - o.bottom - rows * o.titleH - (rows - 1) * o.gapY) / rows);
+      const xs = []; for (let c = 0; c < cols; c++) xs.push(o.left + c * (plotW + o.gapX));
+      const ys = []; for (let r = 0; r < rows; r++) ys.push(r * (o.titleH + plotH + o.gapY) + o.titleH);
+      return { cols, rows, plotW, plotH, xs, ys, titleH: o.titleH, empty: cols * rows - n };
+    };
+    let best = null;
+    if (!(width > 0) || !(height > 0)) {
+      const c = Math.ceil(Math.sqrt(n));
+      best = build(c);
+    } else {
+      for (let cols = 1; cols <= n; cols++) {
+        const g = build(cols);
+        const score = Math.min(g.plotW / 1.6, g.plotH);
+        if (!best || score > best.score + 1e-9 || (Math.abs(score - best.score) <= 1e-9 && g.empty < best.empty)) best = Object.assign(g, { score });
+      }
+    }
+    delete best.score; delete best.empty;
+    return best;
+  }
+
+  // Échelle COMMUNE de tous les panneaux : de 0 (ou du plus bas négatif) au plus haut, bornes arrondies sur un pas rond (1, 2, 2,5 ou 5 x 10^n ;
+  // le 2,5 seulement s'il tombe sur un entier) avec 2 à `maxIntervals` intervalles (4 par défaut). Parmi les pas possibles, celui qui
+  // laisse l'échelle la plus SERRÉE (un maximum de 6 021 s'arrête à 7 500, pas à 10 000 : la plus haute barre remplit les quatre cinquièmes
+  // du panneau), à égalité le plus grand pas (moins de traits). Valeurs vides, texte et booléens ignorés ; rien de fini : 0 à 1.
+  function smallMultiplesRange(panels, maxIntervals) {
+    const cap = Number.isInteger(maxIntervals) && maxIntervals >= 1 ? maxIntervals : 4;
+    let lo = 0;
+    let hi = 0;
+    for (const panel of panels || []) {
+      for (const v of (panel && panel.values) || []) {
+        const n = finiteOrNull(typeof v === 'bigint' ? Number(v) : v);
+        if (n === null) continue;
+        if (n < lo) lo = n;
+        if (n > hi) hi = n;
+      }
+    }
+    if (hi === lo) return { min: 0, max: 1, step: 0.5 };
+    const span = hi - lo;
+    const e0 = Math.floor(Math.log10(span / cap));
+    let best = null;
+    for (let e = e0 - 1; e <= e0 + 1; e++) {
+      for (const m of [1, 2, 2.5, 5, 10]) {
+        const step = roundTo(m * Math.pow(10, e), 10);
+        if (m === 2.5 && !Number.isInteger(step)) continue;
+        const a = Math.floor(lo / step + 1e-9);
+        const b = Math.ceil(hi / step - 1e-9);
+        const intervals = b - a;
+        if (intervals < Math.min(2, cap) || intervals > cap) continue; // au moins deux intervalles : une échelle « 0 et 100 » seule ne se lit pas
+        const extent = intervals * step;
+        if (!best || extent < best.extent - 1e-9 || (Math.abs(extent - best.extent) <= 1e-9 && step > best.step)) best = { extent, step, a, b };
+      }
+    }
+    if (!best) { const step = niceStep(span / cap); return { min: roundTo(Math.floor(lo / step + 1e-9) * step, 10), max: roundTo(Math.ceil(hi / step - 1e-9) * step, 10), step }; }
+    return { min: roundTo(best.a * best.step, 10), max: roundTo(best.b * best.step, 10), step: best.step };
+  }
 
   // Lignes de `rows` rangées par valeur de `seriesColumn` : `[{ key, name, rows }]`. `name` est le
   // libellé affiché (la valeur en texte, ou `emptyLabel` pour une cellule vide).
@@ -1549,6 +1766,18 @@
       const sk = sankeyFlows(rows, tile.dimension, tile.columnDimension, tile.measure, tile.aggFn);
       return { name: title, header: [tile.dimension, tile.columnDimension, tile.measure], rows: sk.pairs.map((f) => [f.source, f.target, f.value]) };
     }
+    // Soleil : une ligne par part où des lignes s'arrêtent, les colonnes des anneaux (vides au-delà de l'anneau atteint) puis la valeur PROPRE
+    // de la part — leur somme est le total, rien n'est compté deux fois (un parent et ses enfants ne figurent pas tous avec leur total) ;
+    // toutes les parts, y compris celles que le dessin écarte (plafond par parent, tailles nulles).
+    if (tile.type === 'sunburst') {
+      const levels = sunburstLevels(tile);
+      const tree = sunburstTree(rows, levels, tile.measure, tile.aggFn);
+      return {
+        name: title,
+        header: levels.concat([tile.measure]),
+        rows: tree.paths.map((e) => levels.map((_, i) => (i < e.path.length ? e.path[i] : '')).concat([e.value]))
+      };
+    }
     // Séries multiples (barres/courbe/aire avec `seriesColumn`) : une colonne par série, dans le même
     // ordre de catégories que le rendu ; une cellule vide (pas 0) là où la série n'a aucune ligne.
     if (isSeriesTile(tile)) {
@@ -1778,7 +2007,7 @@
     tableToRows, epochSecondsToIsoDate, applyFilters, matchesFilter, sameValue, parseDateValue,
     relativeDateRange, RELATIVE_DATE_PRESETS, groupByAggregate, aggregateSingle, wordFrequency, pivotTable,
     distinctColumnValues, computeTrend, trendFromGroups, periodLabel, measureSeriesForTile,
-    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, isBubbleTile, isColorSplitTile, bubblePoints, bubbleDiameters, calendarDays, isoDayShift, CALENDAR_MAX_DAYS, ganttTasks, ganttTicks, ganttLayout, GANTT_MAX_ROWS, GANTT_MAX_TICKS, comboModeOf, paretoSeries, comboSeries, niceStep, histogramBins, histogramFilter, histogramBinIsActive, HISTOGRAM_MAX_BINS, boxStatsByGroup, quantileSorted, BOX_MAX_OUTLIERS, BOX_MIN_RELIABLE, BOX_MAX_GROUPS, sankeyFlows, topFlows, SANKEY_MAX_NODES, SANKEY_MAX_LINKS, filterSelects, LINE_SHAPES, lineShapeOf, supportsValueLabels, isStackedPercentTile, shareOfTotal, stackShares, REF_LINE_KINDS, supportsRefLine, refLineKind, refLineValue, cellFilterToggles, HEAT_RAMPS, heatStops, heatColor, heatTextColor, heatRange, heatCellColors, isStackedTile, splitBySeries, assembleSeries, PALETTES, PALETTE_KEYS, paletteColors, supportsPalette, supportsNumberFormat, NUMBER_FORMAT_TILE_TYPES, escapeHtml,
+    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, isBubbleTile, isColorSplitTile, bubblePoints, bubbleDiameters, calendarDays, isoDayShift, CALENDAR_MAX_DAYS, ganttTasks, ganttTicks, ganttLayout, GANTT_MAX_ROWS, GANTT_MAX_TICKS, sunburstLevels, sunburstTree, sunburstFilterToggles, sunburstNodeSelected, SUNBURST_MAX_LEVELS, SUNBURST_MAX_CHILDREN, isSmallMultiplesTile, smallMultiplesPanels, smallMultiplesGrid, smallMultiplesRange, SMALL_MULTIPLES_MAX, comboModeOf, paretoSeries, comboSeries, niceStep, histogramBins, histogramFilter, histogramBinIsActive, HISTOGRAM_MAX_BINS, boxStatsByGroup, quantileSorted, BOX_MAX_OUTLIERS, BOX_MIN_RELIABLE, BOX_MAX_GROUPS, sankeyFlows, topFlows, SANKEY_MAX_NODES, SANKEY_MAX_LINKS, filterSelects, LINE_SHAPES, lineShapeOf, supportsValueLabels, isStackedPercentTile, shareOfTotal, stackShares, REF_LINE_KINDS, supportsRefLine, refLineKind, refLineValue, cellFilterToggles, HEAT_RAMPS, heatStops, heatColor, heatTextColor, heatRange, heatCellColors, isStackedTile, splitBySeries, assembleSeries, PALETTES, PALETTE_KEYS, paletteColors, supportsPalette, supportsNumberFormat, NUMBER_FORMAT_TILE_TYPES, escapeHtml,
     tileDrillLevels, currentDimension, rowsForTile, tileExportSheet, tileExportKind, renderTextHtml, plainTextOf, TEXT_TILE_MAX,
     DEFAULT_GOOD_PCT, DEFAULT_WARN_PCT, targetProgress, progressRows, sparklineValues, sparklineGeometry,
     TABLE_TILE_MAX_ROWS, TABLE_EXPORT_MAX_ROWS, tableColumnsOf, cellText, compareCells, sortRowsBy, moveInOrder, nextSortDir, tableSheet,

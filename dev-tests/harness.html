@@ -518,6 +518,7 @@
         <option value="combo" data-i18n="tileForm.type.combo">Barres + courbe</option>
         <option value="pie" data-i18n="tileForm.type.pie">Camembert</option>
         <option value="treemap" data-i18n="tileForm.type.treemap">Treemap</option>
+        <option value="sunburst" data-i18n="tileForm.type.sunburst">Soleil (anneaux hiérarchiques)</option>
         <option value="funnel" data-i18n="tileForm.type.funnel">Entonnoir</option>
         <option value="sankey" data-i18n="tileForm.type.sankey">Flux (Sankey)</option>
         <option value="calendar" data-i18n="tileForm.type.calendar">Calendrier (activité par jour)</option>
@@ -695,7 +696,7 @@
           <summary data-i18n="tilePanel.advanced">Options avancées</summary>
           <div class="tile-advanced-body">
             <div class="field" id="tile-drill-field">
-              <label for="tile-drill-dimension-1" data-i18n="tileForm.drill.label">Drill-down</label>
+              <label for="tile-drill-dimension-1" id="tile-drill-label" data-i18n="tileForm.drill.label">Drill-down</label>
               <div id="tile-drill-levels" class="drill-levels"></div>
               <button type="button" id="tile-drill-add-level" class="btn-secondary btn-tiny" data-i18n="tileForm.drill.addLevel" hidden>+ Niveau</button>
             </div>
@@ -849,6 +850,12 @@
               <label for="tile-stack-percent">
                 <input type="checkbox" id="tile-stack-percent" />
                 <span data-i18n="tileForm.stackPercent.label">En 100 % : la part de chaque série dans la catégorie</span>
+              </label>
+            </div>
+            <div class="field field-checkbox" id="tile-small-multiples-field" hidden>
+              <label for="tile-small-multiples">
+                <input type="checkbox" id="tile-small-multiples" />
+                <span data-i18n="tileForm.smallMultiples.label">Un petit graphique par série (même échelle pour tous)</span>
               </label>
             </div>
             <div class="field" id="tile-line-shape-field" hidden>
