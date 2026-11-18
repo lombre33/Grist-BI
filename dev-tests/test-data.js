@@ -2063,6 +2063,11 @@ const SAMPLE_TIME_SERIES = [
   assert.ok(/applyMode\(\);\s*fitPageTabs\(\);/.test(main), 'le changement de mode (boutons en plus en Édition) réajuste la barre');
   assert.ok(/window\.addEventListener\('resize', fitPageTabs\)/.test(main) && /new ResizeObserver\(\(\) => requestAnimationFrame\(fitPageTabs\)\)\.observe\(pageTabsEl\)/.test(main), 'redimensionnement : tout de suite, et en filet différé d\'une image');
   assert.ok(/GristBI\.appbar\.fitTabsLevel\(tabsClipped/.test(main), 'main.js délègue le choix du palier à js/appbar.js');
+  // Bug réel n°52 : `scrollIntoView` (appelé sur l'onglet actif à chaque redimensionnement) fait aussi défiler la PAGE ; la barre étant collante,
+  // une capture pleine page emportait le document de 232 px. L'ajustement des onglets ne fait défiler que la liste d'onglets.
+  const fitBody = main.slice(main.indexOf('function fitPageTabs()'), main.indexOf('// L\'onglet actif doit rester visible dans une liste qui défile'));
+  assert.ok(fitBody.length > 100 && !/scrollIntoView/.test(fitBody), 'fitPageTabs ne fait jamais défiler la page');
+  assert.ok(/function revealActiveTab\(\) \{[\s\S]*?pageTabsEl\.scrollLeft [-+]= /.test(main) && /updateTabsOverflow\(\);\s*revealActiveTab\(\);/.test(main), 'l\'onglet actif est ramené dans la vue par le défilement de la liste seulement');
   assert.ok(/\.appbar\.bar-names-hidden \.bar-view-name/.test(css) && /\.appbar\.bar-labels-hidden \.bar-label \{ display: none; \}/.test(css) && /\.appbar\.bar-labels-hidden \.bar-btn-mode \.bar-label \{ display: inline; \}/.test(css), 'classes de palier dans la feuille (le libellé du mode reste)');
   console.log('OK appbar — fitTabsLevel (paliers nom de vue puis libellés, gardés seulement s\'ils servent, 2 x 41 largeurs), câblage');
 }
