@@ -13,6 +13,20 @@
   } = GristBI.data;
   const { t } = GristBI.i18n;
 
+  // Format des nombres : un formateur PAR TUILE (`tile.numberFormat`, défaut Automatique), pour la colonne dont
+  // vient la valeur — voir js/format.js. `format` = valeur complète (KPI, infobulle, tableau croisé), `axis` =
+  // libellé d'axe compact, `percent` = variation/part en %. La langue est relue à chaque rendu (un changement
+  // de langue relance render(), js/main.js).
+  function fmtFor(tile, columnId) {
+    return GristBI.format.forTile(tile, columnId, GristBI.i18n.getLang());
+  }
+  // Tuile VIVANTE par id : un écouteur posé une fois (nuage de mots) ne doit pas figer l'objet `tile` de
+  // sa création (CLAUDE.md §7 n°18).
+  function liveTile(tileId) {
+    const live = GristBI.store.getState().tiles.find((tl) => tl.id === tileId);
+    return live || null;
+  }
+
   const chartInstances = new Map();
   // Numéro de rendu en cours par tuile, PARTAGÉ par tous les chemins de rendu asynchrones
   // (renderKpi/renderGauge/renderChart/renderPivot/renderMeasureChart, voir computeGroupBy et
@@ -142,7 +156,8 @@
 
     const valueEl = container.querySelector(`[data-tile-id="${tile.id}"] .tile-kpi-value`);
     if (!valueEl) return;
-    valueEl.textContent = formatNumber(value);
+    const kpiFmt = fmtFor(tile, tile.measure);
+    valueEl.textContent = kpiFmt.format(value);
 
     const trendEl = container.querySelector(`[data-tile-id="${tile.id}"] .tile-kpi-trend`);
     if (!trendEl) return;
@@ -153,7 +168,7 @@
     const isUp = trend.deltaPct >= 0;
     trendEl.hidden = false;
     trendEl.className = `tile-kpi-trend ${isUp ? 'trend-up' : 'trend-down'}`;
-    trendEl.textContent = `${isUp ? '▲' : '▼'} ${Math.abs(trend.deltaPct).toFixed(1)}% vs ${trend.previousKey}`;
+    trendEl.textContent = `${isUp ? '▲' : '▼'} ${kpiFmt.percent(Math.abs(trend.deltaPct))} vs ${trend.previousKey}`;
   }
 
   // Une jauge est sémantiquement proche d'une carte KPI (une seule valeur agrégée, pas de
@@ -185,6 +200,7 @@
     // laisserait le masque de chargement bloqué indéfiniment sur un graphique pourtant à jour.
     // hideLoading() est documenté comme sans effet si aucun masque n'est affiché.
     instance.hideLoading();
+    const gaugeFmt = fmtFor(tile, tile.measure);
     const min = Number.isFinite(tile.gaugeMin) ? tile.gaugeMin : 0;
     const max = Number.isFinite(tile.gaugeMax) ? tile.gaugeMax : Math.max(value * 1.5, 1);
     instance.setOption({
@@ -201,10 +217,10 @@
         axisLine: { lineStyle: { width: 12 } },
         axisTick: { show: false },
         splitLine: { length: 12 },
-        axisLabel: { distance: 14, fontSize: 10, formatter: formatCompactNumber },
+        axisLabel: { distance: 14, fontSize: 10, formatter: gaugeFmt.axis },
         pointer: { show: true },
         title: { show: false },
-        detail: { valueAnimation: true, formatter: (v) => formatNumber(v), fontSize: 18, offsetCenter: [0, '70%'] },
+        detail: { valueAnimation: true, formatter: (v) => gaugeFmt.format(v), fontSize: 18, offsetCenter: [0, '70%'] },
         data: [{ value }]
       }]
     }, true);
@@ -441,7 +457,8 @@
 
     canvas.addEventListener('mousemove', (evt) => {
       const hit = hitAt(evt);
-      canvas.title = hit ? `${hit.text} (${formatNumber(hit.value)})` : '';
+      const live = liveTile(tileId);
+      canvas.title = hit ? `${hit.text} (${fmtFor(live || {}, live && live.measure).format(hit.value)})` : '';
       canvas.style.cursor = hit && !isSplit ? 'pointer' : 'default';
     });
     canvas.addEventListener('click', (evt) => {
@@ -548,7 +565,8 @@
     }
     const rowFilter = state.activeFilters.find((f) => f.column === tile.dimension);
     const colFilter = state.activeFilters.find((f) => f.column === tile.columnDimension);
-    const fmt = (v) => (v == null ? '–' : formatNumber(v));
+    const pivotFmt = fmtFor(tile, tile.measure);
+    const fmt = (v) => (v == null ? '–' : pivotFmt.format(v));
 
     const headCells = pivot.colKeys.map((ck) => {
       const active = colFilter && sameValue(colFilter.value, ck);
@@ -641,6 +659,12 @@
 
     const dimension = currentDimension(tile, drillPath);
     const instance = getOrCreateChartInstance(tile.id, el);
+    // Formateur de la mesure (axe Y, infobulles, étiquettes) ; nuage de points : l'axe X porte `measure`,
+    // l'axe Y `measureY`, chacun avec le format de SA colonne.
+    const f = fmtFor(tile, tile.measure);
+    const fY = tile.type === 'scatter' ? fmtFor(tile, tile.measureY) : f;
+    // Valeur d'infobulle : une valeur absente (combinaison sans donnée) s'affiche « – », jamais vide.
+    const tipValue = (v) => (f.format(v) || '–');
 
     // Radar "compétences en colonnes" (tile.radarAxisMode === 'columns', voir ROADMAP.md : demande
     // du forum Grist, un radar à partir de plusieurs colonnes numériques plutôt que d'une seule
@@ -714,10 +738,10 @@
         const lines = list.map((p) => {
           const v = Number(p.value);
           if (Number.isFinite(v)) total += v;
-          return `${p.marker}${escapeHtml(String(p.seriesName))} : ${Number.isFinite(v) ? formatNumber(v) : '–'}`;
+          return `${p.marker}${escapeHtml(String(p.seriesName))} : ${Number.isFinite(v) ? f.format(v) : '–'}`;
         });
         const head = escapeHtml(String(list[0].axisValueLabel != null ? list[0].axisValueLabel : list[0].name));
-        return `${head}<br/>${lines.join('<br/>')}<br/><b>${escapeHtml(t('chart.stacked.total'))} : ${formatNumber(total)}</b>`;
+        return `${head}<br/>${lines.join('<br/>')}<br/><b>${escapeHtml(t('chart.stacked.total'))} : ${f.format(total)}</b>`;
       }
     };
 
@@ -729,12 +753,12 @@
       // [intérieur, extérieur] ouvre le trou central) — drill-down/cross-filter inchangés, un clic
       // renvoie toujours `params.name`. `tile.showPct` : étiquette « nom » puis « x,x % » sur DEUX
       // lignes (une seule ligne « nom : x,x % » était tronquée avec des points de suspension dans une
-      // tuile de ~270 px, le pourcentage — la seule raison d'être de l'option — disparaissait), même
-      // format français que formatNumber (texte canvas d'ECharts, jamais interprété comme du HTML,
-      // voir GFS-ETAT.md consigne 005).
+      // tuile de ~270 px, le pourcentage — la seule raison d'être de l'option — disparaissait), au
+      // format de la langue (`f.percent`, js/format.js ; texte canvas d'ECharts, jamais interprété comme du
+      // HTML, voir GFS-ETAT.md consigne 005).
       option = {
         color: palette,
-        tooltip: { trigger: 'item' },
+        tooltip: { trigger: 'item', valueFormatter: tipValue },
         series: [{
           type: 'pie',
           radius: tile.donut ? ['40%', '65%'] : '65%',
@@ -743,7 +767,7 @@
           labelLine: { length: 15, length2: 15 },
           ...(tile.showPct ? {
             percentPrecision: 1,
-            label: { formatter: (p) => `${p.name}\n${formatPercent(p.percent)}` }
+            label: { formatter: (p) => `${p.name}\n${f.percent(p.percent)}` }
           } : {}),
           data: groups.map((d) => ({ name: d.dimension, value: d.value, itemStyle: dim(d.dimension) }))
         }]
@@ -751,7 +775,7 @@
     } else if (tile.type === 'treemap') {
       option = {
         color: palette,
-        tooltip: { trigger: 'item' },
+        tooltip: { trigger: 'item', valueFormatter: tipValue },
         series: [{
           type: 'treemap',
           roam: false,
@@ -783,8 +807,8 @@
           trigger: 'item',
           formatter: (p) => {
             const pct = firstValue > 0 && Number.isFinite(p.value)
-              ? `<br/>${escapeHtml(t('chart.funnel.ofFirst', { pct: formatPercent((p.value / firstValue) * 100) }))}` : '';
-            return `${escapeHtml(String(p.name))}<br/>${formatNumber(p.value)}${pct}`;
+              ? `<br/>${escapeHtml(t('chart.funnel.ofFirst', { pct: f.percent((p.value / firstValue) * 100) }))}` : '';
+            return `${escapeHtml(String(p.name))}<br/>${f.format(p.value)}${pct}`;
           }
         },
         series: [{
@@ -794,7 +818,7 @@
           width: '55%',
           minSize: '8%',
           gap: 2,
-          label: { show: true, position: 'right', formatter: (p) => `${p.name} · ${formatCompactNumber(p.value)}` },
+          label: { show: true, position: 'right', formatter: (p) => `${p.name} · ${f.axis(p.value)}` },
           labelLine: { show: true, length: 12 },
           data: groups.map((d) => ({ name: d.dimension, value: d.value, itemStyle: dim(d.dimension) }))
         }]
@@ -812,11 +836,11 @@
         tooltip: {
           trigger: 'item',
           formatter: (params) => `${escapeHtml(String(params.name))}<br/>`
-            + `${escapeHtml(tile.measure)} : ${formatNumber(params.value[0])}<br/>`
-            + `${escapeHtml(tile.measureY)} : ${formatNumber(params.value[1])}`
+            + `${escapeHtml(tile.measure)} : ${f.format(params.value[0])}<br/>`
+            + `${escapeHtml(tile.measureY)} : ${fY.format(params.value[1])}`
         },
-        xAxis: { type: 'value', axisLabel: { formatter: formatCompactNumber } },
-        yAxis: { type: 'value', axisLabel: { formatter: formatCompactNumber } },
+        xAxis: { type: 'value', axisLabel: { formatter: f.axis } },
+        yAxis: { type: 'value', axisLabel: { formatter: fY.axis } },
         series: [{
           type: 'scatter',
           symbolSize: 14,
@@ -847,9 +871,22 @@
         color: palette,
         grid: { ...numericGrid, top: 40 },
         legend: { top: 0, data: [t('chart.waterfall.increase'), t('chart.waterfall.decrease')] },
-        tooltip: { trigger: 'axis' },
+        // Une seule ligne par catégorie : sa variation (signée) sous la bonne légende. L'infobulle par défaut
+        // listait aussi l'autre série à 0 (« Baisse 0 » sur une hausse) et la valeur brute non formatée.
+        tooltip: {
+          trigger: 'axis',
+          formatter: (params) => {
+            const list = Array.isArray(params) ? params : [params];
+            const idx = list.length ? list[0].dataIndex : -1;
+            if (idx < 0 || !agg[idx]) return '';
+            const v = agg[idx].value;
+            const name = t(v < 0 ? 'chart.waterfall.decrease' : 'chart.waterfall.increase');
+            const hit = list.find((p) => p.seriesName === name);
+            return `${escapeHtml(String(agg[idx].dimension))}<br/>${hit ? hit.marker : ''}${escapeHtml(name)} : ${tipValue(v)}`;
+          }
+        },
         xAxis: { type: 'category', data: agg.map((d) => d.dimension) },
-        yAxis: { type: 'value', axisLabel: { formatter: formatCompactNumber } },
+        yAxis: { type: 'value', axisLabel: { formatter: f.axis } },
         series: [
           {
             name: t('chart.waterfall.base'),
@@ -924,6 +961,8 @@
       // qui normaliserait chaque axe à 100% et rendrait toute comparaison de hauteur trompeuse, ni
       // un max par série, qui rendrait la comparaison élève/moyenne elle-même trompeuse) ; `min`
       // partagé aussi, pour les mesures pouvant être négatives.
+      // Mode « colonnes » : chaque axe est une colonne, donc SON format ; mode dimension : celui de la mesure.
+      const axisFmts = axisNames.map((n) => (isRadarColumns ? fmtFor(tile, n) : f));
       const allValues = series.reduce((acc, s) => acc.concat(s.value), []);
       const maxVal = Math.max(0, ...allValues);
       const minVal = Math.min(0, ...allValues);
@@ -936,7 +975,7 @@
           formatter: (p) => {
             const values = Array.isArray(p.value) ? p.value : [];
             return `<b>${escapeHtml(String(p.name == null ? '' : p.name))}</b><br/>`
-              + axisNames.map((n, i) => `${escapeHtml(String(n))} : ${formatNumber(values[i])}`).join('<br/>');
+              + axisNames.map((n, i) => `${escapeHtml(String(n))} : ${axisFmts[i].format(values[i]) || '–'}`).join('<br/>');
           }
         },
         legend: series.length > 1 ? { top: 0, data: series.map((s) => s.name) } : undefined,
@@ -966,9 +1005,9 @@
         color: palette,
         grid: seriesGrid,
         legend: seriesLegend,
-        tooltip: stacked ? stackedTooltip : { trigger: 'axis' },
+        tooltip: stacked ? stackedTooltip : { trigger: 'axis', valueFormatter: tipValue },
         xAxis: { type: 'category', data: lineCategories },
-        yAxis: { type: 'value', axisLabel: { formatter: formatCompactNumber } },
+        yAxis: { type: 'value', axisLabel: { formatter: f.axis } },
         series: lineSeries.map((sr) => ({
           type: 'line',
           name: sr.name,
@@ -991,12 +1030,12 @@
       const barSeries = multi
         ? multi.series.map((sr) => ({ name: sr.name, values: sr.values }))
         : [{ name: undefined, values: groups.map((d) => d.value) }];
-      const valueAxis = { type: 'value', axisLabel: { formatter: formatCompactNumber } };
+      const valueAxis = { type: 'value', axisLabel: { formatter: f.axis } };
       option = {
         color: palette,
         grid: seriesGrid,
         legend: seriesLegend,
-        tooltip: stacked ? stackedTooltip : { trigger: 'axis' },
+        tooltip: stacked ? stackedTooltip : { trigger: 'axis', valueFormatter: tipValue },
         ...(tile.horizontal
           ? {
             xAxis: valueAxis,
@@ -1058,13 +1097,14 @@
 
     const { categories, series } = measureSeriesForTile(tile.measureMode, timeSeries);
     const palette = paletteColors(tile.palette);
+    const mf = fmtFor(tile, tile.measure);
     const option = {
       color: palette,
       grid: { ...numericGrid, top: series.length > 1 ? 40 : numericGrid.top },
       legend: series.length > 1 ? { top: 0 } : undefined,
-      tooltip: { trigger: 'axis' },
+      tooltip: { trigger: 'axis', valueFormatter: (v) => (mf.format(v) || '–') },
       xAxis: { type: 'category', data: categories },
-      yAxis: { type: 'value', axisLabel: { formatter: formatCompactNumber } },
+      yAxis: { type: 'value', axisLabel: { formatter: mf.axis } },
       series: series.map((s) => ({ type: 'bar', name: s.label, data: s.data }))
     };
     confineTooltip(option);
@@ -1105,26 +1145,6 @@
   // d'Antoine du 18/11/2026). Appliqué à toutes les options juste avant `setOption`.
   function confineTooltip(option) {
     if (option && option.tooltip) option.tooltip = Object.assign({ confine: true }, option.tooltip);
-  }
-
-  function formatNumber(n) {
-    return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(n);
-  }
-
-  // « 12,5 % » : un décimal maximum (ECharts donne déjà `percent` arrondi à `percentPrecision`),
-  // espace avant le % comme l'usage français — même langue figée que formatNumber ci-dessus.
-  function formatPercent(n) {
-    return `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 }).format(n)} %`;
-  }
-
-  // Format compact ("2,7 M", "150 k") pour les libellés d'AXE seulement (pas les cartes KPI ni les
-  // info-bulles, qui gardent la précision exacte). [BUG RÉEL trouvé en capturant la première version
-  // de cette passe de design] sur le jeu de test de charge, les valeurs à 7 chiffres (~2 700 000)
-  // dépassaient la largeur d'axe disponible dans une tuile ; ECharts repliait le libellé sur 2
-  // lignes et la partie haute sortait du cadre visible, n'affichant plus que "000" empilés.
-  const compactNumberFormatter = new Intl.NumberFormat('fr-FR', { notation: 'compact', maximumFractionDigits: 1 });
-  function formatCompactNumber(n) {
-    return compactNumberFormatter.format(n);
   }
 
   function resizeAll() { chartInstances.forEach((inst) => !inst.isDisposed() && inst.resize()); }
