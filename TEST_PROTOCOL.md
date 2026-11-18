@@ -853,6 +853,18 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 - [x] `<iframe sandbox="allow-scripts">` : parcours au clic, aucune erreur ni boîte de dialogue 🌐
 - [ ] Rendu avec de vrais types Grist (ChoiceList, Reference, Attachments) ⬜ **[NON TESTABLE ICI]**
 
+### `js/data.js` + `js/charts.js` + panneau — KPI avec objectif et courbe, tuile Progression (18/11/2026 ; Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`)
+
+- [x] Niveaux : seuil lui-même atteint, 59,9 -> rouge, dépassement (104 %) avec barre plafonnée, valeur négative -> barre vide, seuils réglables ✅
+- [x] Objectif nul / négatif / absent / valeur vide -> rien (jamais de division par zéro) ; `58/100*100` sans bruit de flottant ; `BigInt` ✅
+- [x] Lignes de Progression : objectif commun, colonne agrégée par catégorie, catégorie sans objectif sans barre ✅
+- [x] Courbe : années triées, texte dans l'ordre des données, nulls ignorés, moins de 2 points -> rien, série plate au milieu, tracé exact ✅
+- [x] Exports : Progression et KPI avec objectif en tables (Objectif, % de l'objectif), KPI sans objectif inchangée ✅
+- [x] Formulaire : champs d'objectif sur KPI et Progression seulement, case courbe visible seulement avec une dimension de tendance, objectif <= 0 refusé, objectif obligatoire pour la Progression, seuil orange >= vert refusé, seuils par défaut non écrits 🌐
+- [x] Rendu : 80 % orange / 100 % vert, texte « 80 % de l'objectif » + « objectif 11 688 », courbe à 2 tracés + point final, clic et clavier = filtre croisé, re-clic le retire, anglais 🌐
+- [x] 6 000 lignes (DuckDB, `BigInt`) dans un cadre isolé : valeur 60 000, 600 % partout, aucune erreur 🌐 (le serveur de test doit envoyer les en-têtes CORS : un module ES chargé depuis une origine `null` est refusé sans eux)
+- [ ] Rendu dans un vrai Grist / un vrai GFS ⬜ **[NON TESTABLE ICI]**
+
 ### CSS — classe de bug à systématiquement re-vérifier
 
 - [x] `.field[hidden]` masque réellement l'élément (pas seulement `display:flex` de `.field` qui gagne à spécificité égale) [BUG RÉEL, trouvé 2 fois sur des champs différents] ✅ (règle en place)
