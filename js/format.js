@@ -323,23 +323,126 @@
   // Jauge en demi-cercle dans une zone de w x h pixels : l'arc en haut, les deux bornes juste sous ses extrémités,
   // la valeur sous le moyeu de l'aiguille — chaque élément dans SA bande, donc rien ne se chevauche, quelle que soit la
   // taille de la tuile (avant : 270° d'arc, 5 graduations DANS l'arc, aiguille par-dessus, valeur qui débordait).
+  //
+  // `ticks` (facultatif) = les graduations intermédiaires, À L'EXTÉRIEUR de l'arc (un petit trait puis le libellé) :
+  // `[{ frac, w10 }]`, `frac` = position entre 0 et 1 sur l'échelle, `w10` = largeur du libellé à 10 px. Elles
+  // prennent leur place AVANT que l'arc ne soit dimensionné : le plus grand rayon pour lequel le libellé le plus haut
+  // reste dans la zone en haut et le plus déporté reste dans la zone sur les côtés (recherche par dichotomie : les deux
+  // conditions ne font que se durcir quand le rayon grandit). `overflow` = même au rayon minimum ça ne tient pas ; à
+  // l'appelant de renoncer aux graduations plutôt que de les laisser sortir de la tuile.
   function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
-  function gaugeLayout(w, h) {
+  function gaugeLayout(w, h, ticks) {
     const PAD = 6;
     const fMax = clamp(0.17 * h, 14, 56);
     const below = 14 + 1.25 * fMax; // place sous l'axe : valeur (+ bornes, à côté)
-    const r = Math.max(30, Math.min(w / 2 - 12, h - PAD - below));
+    const rMax = Math.max(30, Math.min(w / 2 - 12, h - PAD - below));
+    const list = Array.isArray(ticks) ? ticks : [];
+    // Taille du trait, écart au libellé et place que prennent les libellés en haut et sur les côtés pour un rayon r.
+    const outer = (r) => {
+      const font = clamp(r * 0.1, 10, 13);
+      const len = clamp(r * 0.05, 4, 8);
+      const gap = 3;
+      const off = 2 + len + gap; // du bord de l'arc au point d'ancrage du libellé
+      const R = r + off;
+      let top = 0;
+      let side = 0;
+      for (const t of list) {
+        const a = Math.PI * (1 - t.frac);
+        const c = Math.abs(Math.cos(a));
+        const sn = Math.sin(a);
+        const tw = t.w10 * font / 10;
+        top = Math.max(top, R * sn + (sn > 0.6 ? 1.25 : 0.65) * font - r);
+        side = Math.max(side, R * c + (c > 0.35 ? tw : tw / 2) - r);
+      }
+      return { top: Math.max(0, top), side: Math.max(0, side), font, len, gap, off };
+    };
+    const fits = (r) => { const o = outer(r); return r + o.top <= h - PAD - below && r + o.side <= w / 2 - 12; };
+    let r = rMax;
+    let overflow = false;
+    if (list.length && !fits(rMax)) {
+      if (!fits(30)) {
+        r = 30;
+        overflow = true;
+      } else {
+        let lo = 30;
+        let hi = rMax;
+        for (let i = 0; i < 24; i++) {
+          const mid = (lo + hi) / 2;
+          if (fits(mid)) lo = mid; else hi = mid;
+        }
+        r = lo;
+      }
+    }
+    const o = outer(r);
     return {
       cx: w / 2,
-      cy: PAD + r,
+      cy: PAD + (list.length ? o.top : 0) + r,
       r,
       ringW: clamp(r * 0.13, 8, 26),
       labelFont: clamp(r * 0.11, 10, 16),
       valueMaxFont: clamp(r * 0.27, 14, 56),
       valueMinFont: 11,
       valueMaxWidth: 1.4 * r,
-      below
+      below,
+      tick: { font: o.font, len: o.len, gap: o.gap, off: o.off },
+      overflow
     };
+  }
+
+  // Graduations intermédiaires d'une jauge de `min` à `max` : des multiples d'un pas « rond » (1, 2, 2,5, 5 x 10^k),
+  // au plus `maxCount`, jamais à moins de 8 % d'une extrémité (le libellé de la borne est juste en dessous, et l'arc
+  // y est presque vertical). Le plus petit pas qui respecte `maxCount` : le plus de repères lisibles possible, des
+  // valeurs qu'on lit (« 1 M, 2 M, 3 M ») plutôt que des quarts de l'échelle (« 825,5 k, 1,65 M »).
+  const GAUGE_TICK_EDGE = 0.08;
+  function gaugeTicks(min, max, maxCount) {
+    const lo = toNumber(min);
+    const hi = toNumber(max);
+    const cap = Math.floor(maxCount);
+    if (lo == null || hi == null || !(hi > lo) || !(cap >= 1)) return [];
+    const range = hi - lo;
+    const inside = (step) => {
+      const out = [];
+      for (let k = Math.ceil(lo / step - 1e-9); k * step <= hi + step * 1e-9; k++) {
+        const v = Number((k * step).toPrecision(12));
+        const f = (v - lo) / range;
+        if (f > GAUGE_TICK_EDGE && f < 1 - GAUGE_TICK_EDGE) out.push(v === 0 ? 0 : v);
+        if (out.length > cap + 40) break; // pas bien trop fin : inutile de continuer à compter
+      }
+      return out;
+    };
+    let base = Math.pow(10, Math.floor(Math.log10(range / 20)));
+    for (let i = 0; i < 40; i++, base *= 10) {
+      for (const m of [1, 2, 2.5, 5]) {
+        const found = inside(m * base);
+        if (found.length <= cap) return found;
+      }
+    }
+    return [];
+  }
+
+  // Où dessiner la graduation de position `frac` (0 à 1) d'une jauge de géométrie `L` (celle de gaugeLayout) : le trait
+  // (x1,y1 -> x2,y2, juste au-delà de l'arc) puis le point d'ancrage du libellé et son alignement — vers l'extérieur :
+  // à droite d'un repère de droite, à gauche d'un repère de gauche, au-dessus d'un repère du haut.
+  function gaugeTickPlacement(L, frac) {
+    const a = Math.PI * (1 - frac);
+    const c = Math.cos(a);
+    const sn = Math.sin(a);
+    const r1 = L.r + 2;
+    const r2 = r1 + L.tick.len;
+    const rl = L.r + L.tick.off;
+    return {
+      x1: L.cx + r1 * c, y1: L.cy - r1 * sn,
+      x2: L.cx + r2 * c, y2: L.cy - r2 * sn,
+      x: L.cx + rl * c, y: L.cy - rl * sn,
+      align: c > 0.35 ? 'left' : c < -0.35 ? 'right' : 'center',
+      valign: sn > 0.6 ? 'bottom' : 'middle'
+    };
+  }
+
+  // Nombre maximal de graduations pour un arc de rayon r (en pixels) : aucune sous 46 px (un arc minuscule n'a de
+  // place que pour ses bornes), de plus en plus quand l'arc grandit, 5 au plus.
+  function gaugeTickBudget(r) {
+    return r >= 130 ? 5 : r >= 90 ? 4 : r >= 60 ? 3 : r >= 46 ? 1 : 0;
   }
 
   // Plus grande taille de police (entre `minFont` et `maxFont`) qui tient en `maxWidth` pixels ; `measure(texte, taille)`
@@ -352,7 +455,7 @@
   }
 
   return {
-    niceCeil, gaugeLayout, fitFont, cellNumber,
+    niceCeil, gaugeLayout, gaugeTicks, gaugeTickBudget, gaugeTickPlacement, fitFont, cellNumber,
     MODES, MAX_CUSTOM_DECIMALS, localeForLang, normalizeSpec, parseWidgetOptions, parseDocSettings,
     styleFromColumn, resolveStyle, makeFormatter, forTile, setColumnInfo, getColumnInfo, getDocSettings, columnModeState
   };
