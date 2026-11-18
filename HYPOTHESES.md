@@ -3450,6 +3450,19 @@ Dernier lot de l'audit : tout ce qui, hors des nombres eux-mêmes, rendait une t
 - **Testé** : Node (bloc « radarNameRoom » : 7 tailles de zone, avec et sans légende, 3 à 12 axes, place bornée, le nom posé à côté de son sommet reste dans la tuile, l'ancien cas de 330 x 190) ;
   Playwright contre le vrai `index.html` + `grist-stub.js` : radar « CA par produit » en Console et en Standard (nom entier visible), radar d'orientation avec légende. **Pas testé dans un vrai Grist.**
 
+### Vitrine GFS refaite avec les styles et les dispositions (18/11/2026)
+
+- **Demande d'Antoine** : « refaire des screen pour le message du forum et les captures GFS en utilisant les styles différents ». Les trois images de `vitrine/` (remplacées une première fois le 18/11 pour la PR #53) montraient
+  encore l'interface d'AVANT la refonte (barre de menus, panneau « Ajouter », styles, dispositions) : la « Limite » notée en tête de ce journal est donc levée. Mêmes noms (`1.webp`, `2.webp`, `3.webp`), mêmes 960 x 600,
+  49 976 / 52 954 / 54 370 octets (WebP qualité 92 à 96, méthode 6), données du jeu d'exemple anonymisé (aucun nom de personne ; les commentaires sont de groupes). Prises depuis `main` à `29b7cbd` (styles #113, Soleil #112
+  et noms d'axe du radar #114 compris).
+- **Choix** : 1 = « Verre dépoli » + disposition « Planche » (vue d'ensemble : chiffres, jauge, barres, aire empilée) ; 2 = « Éditorial » en grille, clic sur « Nord » puis 2025 (filtre croisé : puces de filtre, barres non retenues grisées, drill-down
+  de l'année vers le trimestre) ; 3 = « Console » (toujours sombre, page « Analyse avancée »). L'éditorial et la console ont été préférés au verre et au fluide pour le filtre croisé : en pastel, une barre à 0,3 d'opacité se distingue à peine de
+  ses voisines. La tuile « Aire empilée » est retirée de la scène 2 (une aire filtrée sur une seule année n'a qu'un point) ; c'est un réglage de la capture, pas un défaut à corriger.
+- **Retouches de cadrage** : 960 px de large (la barre perd ses libellés, mais on ne la voit pas : la capture démarre sous elle), image coupée à la tuile, jamais mise à l'échelle ; la scène 2 démarre juste sous la barre pour ne pas montrer le bas de ses boutons.
+- **Réserve inchangée** : le vrai `index.html` + le faux Grist du dépôt, PAS un vrai Grist ; l'interface est celle qu'on verrait, le comportement de `grist.docApi` n'est pas prouvé. Les scripts de prise de vue ne sont pas committés (même règle que toute la suite
+  Playwright) ; ils sont dans le dossier partagé du projet (`forum/captures-scripts/`). Il reste à GFS de recopier `vitrine/` chez lui (voir `GFS-ETAT.md`).
+
 ### Jauge : graduations à l'extérieur de l'arc (18/11/2026)
 
 Point de départ : sur la capture « après » du lot 2 de l'audit de lisibilité, Antoine remarque que la jauge « semble perdre les graduations intermédiaires » et propose de les rajouter, « peut-être à l'extérieur ».

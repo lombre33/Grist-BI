@@ -333,6 +333,13 @@ Mis à jour le 2026-11-18 (consignes 019 à 022 : « Nuage de mots » branchée 
   la question sort de « Questions pour GFS ». (7) **018 à 021 « faites »** : notées. Mon `graphique/` et la carte « une seule copie d'ECharts » attendent le porteur : rien à faire de mon côté d'ici là.
 
 ## Changements qui touchent GFS
+- 2026-11-18 · `05fd5eb` · **Vitrine refaite : les trois captures de `vitrine/` sont remplacées** (même dossier, mêmes noms `1.webp`, `2.webp`, `3.webp`, même taille 960 × 600, de 49 976 à 54 370 octets, donc sous les 60 Ko ;
+  `vitrine.json` : légendes 1 et 3 changées, la 2 reste vraie, description inchangée, toujours ≤ 280 / ≤ 60 signes fr/en). Les anciennes montraient l'interface d'avant la refonte ; les nouvelles montrent l'interface actuelle de `main`
+  et varient les styles d'affichage et les dispositions de page (Antoine l'a demandé : « utiliser les styles différents ») : **1** = style « Verre dépoli » en disposition « Planche » (indicateurs avec tendance et objectif, jauge, barres, aire empilée) ;
+  **2** = style « Éditorial » en grille, un clic sur « Nord » puis sur 2025 (les puces de filtre, les autres barres grisées, le drill-down de l'année vers le trimestre) ; **3** = style « Console » (toujours sombre : courbes, pile, cascade, radar, tableau croisé, cumuls).
+  **À faire côté GFS** : recopier `vitrine/` dans `prototype/vitrine/bi/` (les trois images + `vitrine.json`). Rien d'autre ne change : aucune bibliothèque, aucune adresse, aucune politique, aucun changement de table ni de format de `BI_Dashboard_Config`.
+  SHA-256 des fichiers à recopier : `1.webp` `3f25d229922a9544b96a3ea7c3f12465d0258129490d2ccacce5b40e0690b181`, `2.webp` `b4a0db09d5e56587b7143a44f35910b14b1fe5857d1b409a5910e6f6d70de5b4`, `3.webp` `d0c6a9c48696e3519b6ce372789f87282f181e6286af65a653efe966b373219c`.
+  **Même réserve que la fois d'avant** : prises avec le vrai `index.html` et le faux Grist du dépôt (`dev-tests/grist-stub.js`), PAS dans un vrai Grist ; données d'exemple, aucun nom de personne.
 - 2026-11-18 · `c97b614` · **« Mots-clés des PDF » branchée (consigne 019, suite).** Aucune bibliothèque ajoutée, aucune adresse, aucune entrée d'`importmap`, aucune politique de sécurité : pdf.js arrive par `GfsLink.library('pdfjs')`
   comme d3-cloud pour `nuage-de-mots`. Nouveau côté app : 4 fichiers (`js/publications.js`, `js/keywords.js` refait, `js/pdf-text.js`, `js/keywords-panel.js`), des `<script>` et une fenêtre dans `index.html`, des textes
   `keywords.*`. **Ce qui touche GFS** : (1) dans GFS, lire le PDF d'une cellule demande `getAccessToken` (lecture seule) ; sans `permissions.jeton` l'app dit « GFS_REFUSE : getAccessToken demande la capacité jeton » AVANT d'écrire quoi que ce
