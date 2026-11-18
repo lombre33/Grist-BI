@@ -2564,6 +2564,60 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     « Libellé » règle le cas, mais rien ne le propose encore automatiquement (piste pour le futur assistant
     de choix de graphique).
 
+- **Conseil de visualisation et suggestions de tuiles — module `js/advice.js` (18/11/2026, PR 2a de
+  l'onboarding)** : suite de la comparaison avec l'assistant de la DRANE (recommandation R4 de
+  `etudes/comparaison-assistant-dataviz-drane-2026-11-18.md`) et demande d'Antoine « un chantier sur
+  l'onboarding et le conseil à la data viz ». Cette PR ne livre QUE le module de décision, pur et sans
+  interface ; l'écran d'accueil et l'étape « Choisir » (PR 2b) viennent ensuite, après la refonte de la
+  barre d'outils du fil UI/UX (pas de conflit sur `index.html`/`js/main.js`).
+  - **Contrat** (convenu avec le fil UI/UX) : AUCUN texte en dur — chaque suggestion ou conseil renvoie des
+    clés i18n et leurs variables. `suggestTiles(rows, columns, {limit = 3, t})` → liste classée de
+    `{ type, dimension, measure, aggFn, tileData, score, titleKey, titleVars, reasonKey, reasonVars }`
+    (`tileData` est prêt pour `store.addTile` avec un `id`). `defaultsForType(type, rows, columns)` → champs
+    du formulaire à préremplir (ou `null`). `adviceForTile(tile, rows)` → `{ key, vars, level }` ou `null`
+    (`level` = `'warn'` : graphique trompeur ou illisible ; `'tip'` : se lit mieux autrement).
+    `adviceForType(type, rows, columns)` → toujours un objet : l'avertissement du type avec ses valeurs par
+    défaut, sinon pourquoi les données ne s'y prêtent pas (`advice.fit.*`), sinon la ligne « quand
+    l'utiliser » (`advice.use.*`, `level: 'info'`). Seule exception au « zéro texte » : `tileData.title`,
+    chaîne persistée dans la configuration, résolue via `opts.t` (repli neutre fait de noms de colonnes sans
+    `t`).
+  - **Heuristiques** — rôle de chaque colonne déduit des VALEURS (vote sur 200 cellules, jamais la seule
+    première valeur), le nom n'étant qu'un indice supplémentaire : date, `<date>.Annee/.Trimestre/.Mois`
+    (colonnes dérivées de `withDateHierarchies`), catégorie (2 à 30 valeurs), mesure, identifiant (entiers
+    consécutifs uniques, ou texte quasi unique au-delà de 30 valeurs), texte libre, constante. Une colonne
+    d'entiers entre 1800 et 2200 est une ANNÉE (axe, jamais une mesure à additionner) ; un petit entier
+    répété (note de 1 à 5) ou un numéro dense (jour du mois) reste utilisable comme axe mais n'est jamais la
+    mesure vedette. Suggestions variées : à score proche, un type, une dimension ou une mesure déjà retenus
+    pèsent contre le candidat suivant (3 « barres par région » n'apprennent rien de plus qu'une). Sans
+    colonne numérique : comptage de lignes. Colonnes dont le nom évoque une note, un taux ou un âge : agrégat
+    « Moyenne » plutôt que « Somme » (indice de nom fr/en, la personne garde la main).
+  - **Seuils de lisibilité** : camembert > 7 parts ou valeur négative ; radar > 8 axes ; barres verticales
+    > 12 catégories, ou libellés de plus de 14 caractères avec au moins 4 catégories ; courbe sur un axe
+    sans ordre naturel, avec moins de 3 points, ou triée par valeur ; jauge dont la valeur actuelle sort de
+    l'échelle ; colonne vide à plus de 50 %. Évalués sur TOUTES les lignes, sans tenir compte des filtres
+    croisés (un conseil qui apparaîtrait à chaque clic sur une autre tuile ne serait pas un conseil sur le
+    graphique).
+  - **Piège évité** : des noms de mois (« Avril » < « Janvier ») ne se rangent PAS par tri de libellé. Le
+    conseil « triez par libellé » (et le `sortMode: 'label'` posé d'office sur une courbe suggérée) ne
+    s'applique donc qu'à des nombres, années, dates ISO et trimestres (`sortableByLabel`) ; des mois en
+    texte gardent l'ordre des données et ne déclenchent jamais « cette courbe n'a pas d'ordre naturel ».
+  - **Vérifié** : `node dev-tests/test-data.js` (rôles de colonnes, 3 types différents sur le banc de
+    47 040 lignes, anneau écarté avec une valeur négative, comptage sans colonne numérique, radar « notes
+    en colonnes » sans jamais mêler un chiffre d'affaires, dates en désordre → courbe triée, chaque
+    suggestion s'ajoute au store et s'agrège sur les vraies données, un test par avertissement ET par
+    absence d'avertissement, aucun conseil sur les tuiles de démonstration, entrées gelées jamais mutées,
+    49 clés `advice.*` toutes définies, toutes utilisées, mêmes variables en fr et en anglais, aucune
+    `{variable}` orpheline une fois traduites) et, contre le VRAI `index.html` servi en HTTP local avec
+    `dev-tests/grist-stub.js` : `GristBI.advice` chargé, 3 suggestions cohérentes (courbe `Date.Annee` avec
+    drill-down Trimestre/Mois/jour, KPI avec tendance). Durée : ~25 ms de profilage pour 47 040 lignes
+    (limité aux 20 000 premières lignes par colonne).
+  - **Non vérifié / limites** : jamais essayé sur un VRAI document Grist (vraies colonnes `Date` renvoyées
+    en secondes — la conversion en `AAAA-MM-JJ` précède ce module, voir CLAUDE.md §7 piège n°16 — vraies
+    colonnes `Reference`, tables de milliers de colonnes) ; les seuils (7 parts, 8 axes, 14 caractères) sont
+    des conventions de la littérature de visualisation, pas mesurées sur les utilisateurs de ce widget ; les
+    indices de nom (note/taux/âge, id) ne connaissent que le français et l'anglais ; une colonne numérique
+    qui est en réalité un code (code postal sans zéro initial) sera prise pour une mesure.
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée
