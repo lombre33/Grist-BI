@@ -12,7 +12,7 @@
  * clic ailleurs, quand le focus sort (Tab), quand on en ouvre un autre. Placé en `position: fixed`
  * sous son bouton, rabattu dans le cadre du widget (le panneau de Grist peut ne faire que 700 × 400).
  *
- * UMD comme js/data.js : les fonctions pures (`placePopover`, `tabKeyTarget`, `menuKeyTarget`) se
+ * UMD comme js/data.js : les fonctions pures (`placePopover`, `tabKeyTarget`, `menuKeyTarget`, `fitTabsLevel`) se
  * testent sous Node (dev-tests/test-data.js) ; le câblage DOM n'a lieu que dans un navigateur.
  */
 (function (root, factory) {
@@ -54,6 +54,26 @@
       case 'End': return count - 1;
       default: return null;
     }
+  }
+
+  // Paliers d'allègement de la barre pour que les onglets de page (la navigation) ne soient pas rognés — essayés dans l'ordre, à partir de
+  // la barre complète (palier 0) : 1 = sans le nom de la vue suivie dans le bouton Vues (seulement s'il est affiché : `hasViewName`),
+  // 2 = sans les libellés des boutons. Un palier n'est GARDÉ que s'il sert : le palier 2 est abandonné (retour au palier précédent) si les
+  // onglets sont encore rognés (beaucoup de pages : les boutons gardent leur texte et les onglets défilent). `clipped()` mesure la barre
+  // telle qu'elle est (DOM), `setLevel(n)` pose les classes ; la fonction rend le palier final. Pure : le DOM n'est jamais touché ici.
+  function fitTabsLevel(clipped, setLevel, hasViewName) {
+    setLevel(0);
+    if (!clipped()) return 0;
+    let level = 0;
+    if (hasViewName) {
+      level = 1;
+      setLevel(1);
+      if (!clipped()) return 1;
+    }
+    setLevel(2);
+    if (!clipped()) return 2;
+    setLevel(level);
+    return level;
   }
 
   // Même chose pour un menu vertical : ↑ ↓, Début/Fin. Depuis « aucun élément actif » (`index` -1),
@@ -181,5 +201,5 @@
 
   if (doc) init();
 
-  return { placePopover, tabKeyTarget, menuKeyTarget, init, onOpen, closePopovers: () => closePopovers(false), isOpen: () => !!openState };
+  return { placePopover, tabKeyTarget, menuKeyTarget, fitTabsLevel, init, onOpen, closePopovers: () => closePopovers(false), isOpen: () => !!openState };
 });
