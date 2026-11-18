@@ -8,7 +8,7 @@
   const GristBI = global.GristBI || (global.GristBI = {});
   const {
     groupByAggregate, sameValue, aggregateSingle, pivotTable, trendFromGroups, targetProgress, progressRows, sparklineValues, sparklineGeometry, measureSeriesForTile,
-    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, comboSeries, comboModeOf, histogramBins, histogramFilter, histogramBinIsActive, boxStatsByGroup, sankeyFlows, topFlows, SANKEY_MAX_LINKS, isBubbleTile, bubblePoints, bubbleDiameters, filterSelects, lineShapeOf, isStackedPercentTile, stackShares, supportsValueLabels, refLineKind, refLineValue, cellFilterToggles, heatStops, heatRange, heatCellColors, heatTextColor, isStackedTile, splitBySeries, assembleSeries, paletteColors, PALETTES, escapeHtml,
+    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, comboSeries, comboModeOf, histogramBins, histogramFilter, histogramBinIsActive, boxStatsByGroup, sankeyFlows, topFlows, SANKEY_MAX_LINKS, isBubbleTile, bubblePoints, bubbleDiameters, calendarDays, ganttTasks, ganttLayout, filterSelects, lineShapeOf, isStackedPercentTile, stackShares, supportsValueLabels, refLineKind, refLineValue, cellFilterToggles, heatStops, heatRange, heatCellColors, heatTextColor, isStackedTile, splitBySeries, assembleSeries, paletteColors, PALETTES, escapeHtml,
     tileDrillLevels, currentDimension, rowsForTile, wordFrequency
   } = GristBI.data;
   const { t } = GristBI.i18n;
@@ -144,6 +144,8 @@
       renderTable(tile, rows, container);
     } else if (tile.type === 'progress') {
       renderProgress(tile, rows, state, container);
+    } else if (tile.type === 'gantt') {
+      renderGantt(tile, rows, state, container);
     } else if (tile.type === 'bar' && tile.measureMode && tile.measureMode !== 'brut') {
       renderMeasureChart(tile, rows, container);
     } else {
@@ -370,6 +372,107 @@
     }
   }
 
+  // Gantt / planning (type 'gantt') : une ligne par tâche, une barre de sa date de début à sa date de fin sur un axe du temps commun
+  // (js/data.js:ganttTasks/ganttLayout). HTML/CSS maison dans `.tile-chart` (comme la Progression : aucune instance ECharts, donc
+  // rien à disposer ni à redimensionner ; l'axe est en pourcentages de la largeur, il suit tout seul l'agrandissement d'une tuile).
+  // Un clic sur une tâche filtre les autres tuiles sur son libellé, un clic sur une pastille de la légende sur son statut (re-clic =
+  // retire) ; les lignes non retenues par un filtre sur la colonne de libellé ou de statut s'estompent. La couleur ne porte jamais
+  // seule l'information : la légende nomme chaque statut et l'infobulle de la ligne le répète. Reconstruit seulement si le HTML change
+  // (le défilement survit aux render()) ; l'état « aujourd'hui » se relit à chaque rendu.
+  function renderGantt(tile, rows, state, container) {
+    bumpSeq(tile.id); // invalide un calcul asynchrone encore en vol pour cette tuile (changement de type)
+    const el = container.querySelector(`[data-tile-id="${tile.id}"] .tile-chart`);
+    if (!el) return;
+    const lang = GristBI.i18n.getLang();
+    // Nombre de graduations : ~54 px par libellé sur la part de la largeur qui revient à l'axe (72 % de la tuile) ; chaque libellé est de plus
+    // rogné à sa case (CSS), jamais posé sur celui d'à côté. L'agrandissement d'une tuile relance render(), donc le calcul.
+    const axisPx = (el.clientWidth || 300) * 0.72;
+    const layout = ganttLayout(ganttTasks(rows, tile.dimension, tile.startColumn, tile.endColumn, tile.seriesColumn), Date.now(), Math.max(2, Math.floor(axisPx / 54)));
+    const monthNames = t('chart.calendar.monthNames').split(',');
+    const shortDate = (iso) => {
+      try { return new Date(Date.parse(iso + 'T00:00:00Z')).toLocaleDateString(lang, { timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric' }); } catch (e) { return iso; }
+    };
+    const pctOf = (x) => Math.round(x * 10000) / 100;
+    let html;
+    if (!layout.bars.length) {
+      html = `<p class="pivot-empty">${escapeHtml(t('chart.gantt.empty'))}</p>`;
+    } else {
+      const colors = paletteColors(tile.palette);
+      const colorOf = (status) => colors[Math.max(0, layout.statuses.indexOf(status)) % colors.length];
+      const labelFilter = state.activeFilters.find((af) => af.column === tile.dimension);
+      const statusFilter = tile.seriesColumn ? state.activeFilters.find((af) => af.column === tile.seriesColumn) : null;
+      // L'année s'écrit une fois, dans le coin de l'axe (au-dessus de la colonne des libellés) ; une graduation de janvier la répète
+      // seulement quand la période en couvre plusieurs.
+      const y0 = layout.min.slice(0, 4);
+      const y1 = layout.max.slice(0, 4);
+      const multiYear = y0 !== y1;
+      const yearText = multiYear ? `${y0}–${y1}` : y0;
+      const ticksHtml = layout.ticks.map((tk, i) => {
+        const cell = pctOf((i + 1 < layout.ticks.length ? layout.ticks[i + 1].pct : 1) - tk.pct); // largeur de sa case : jusqu'à la graduation suivante
+        const m = monthNames[tk.month] || '';
+        let text;
+        if (tk.kind === 'month') text = m + (multiYear && tk.month === 0 ? ' ' + tk.year : '');
+        else if (tk.kind === 'week') text = `${tk.day} ${m}`;
+        else text = (i === 0 || tk.day === 1) ? `${tk.day} ${m}` : String(tk.day);
+        return `<span class="gantt-tick" style="left:${pctOf(tk.pct)}%;width:${cell}%">${escapeHtml(text)}</span>`;
+      }).join('');
+      const linesHtml = layout.ticks.filter((tk) => tk.pct > 0).map((tk) => `<span class="gantt-line" style="left:${pctOf(tk.pct)}%"></span>`).join('');
+      const rowsHtml = layout.bars.map((b) => {
+        const label = b.label === '' ? '–' : b.label;
+        const hasStatus = tile.seriesColumn && b.status !== undefined;
+        const dimmed = (labelFilter && b.label !== '' && !filterSelects(labelFilter, b.label)) || (statusFilter && hasStatus && b.status !== '' && !filterSelects(statusFilter, b.status));
+        const active = !dimmed && ((labelFilter && b.label !== '' && filterSelects(labelFilter, b.label)) || (statusFilter && hasStatus && b.status !== '' && filterSelects(statusFilter, b.status)));
+        const days = Math.round((Date.parse(b.end + 'T00:00:00Z') - Date.parse(b.start + 'T00:00:00Z')) / 86400000) + 1;
+        const title = t('chart.gantt.row', { label, start: shortDate(b.start), end: shortDate(b.end), days: String(days) })
+          + (hasStatus ? ` · ${b.status === '' ? t('chart.series.empty') : b.status}` : '');
+        const clickable = b.label !== '';
+        return `<div class="gantt-row${active ? ' gantt-active' : ''}${dimmed ? ' gantt-dimmed' : ''}"${clickable ? ` role="button" tabindex="0" data-value="${escapeHtml(b.label)}"` : ''} title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">`
+          + `<span class="gantt-label">${escapeHtml(label)}</span>`
+          + `<span class="gantt-track"><span class="gantt-bar" style="left:${pctOf(b.left)}%;width:${pctOf(b.width)}%;background:${colorOf(b.status)}"></span></span></div>`;
+      }).join('');
+      const todayHtml = layout.today === null ? '' : `<span class="gantt-today" style="--t:${Math.round(layout.today * 10000) / 10000}" title="${escapeHtml(t('chart.gantt.today'))}"></span>`;
+      const chips = tile.seriesColumn ? layout.statuses.map((st) => {
+        const on = statusFilter && st !== '' && filterSelects(statusFilter, st);
+        const off = statusFilter && st !== '' && !filterSelects(statusFilter, st);
+        return `<button type="button" class="gantt-chip${on ? ' gantt-chip-on' : ''}${off ? ' gantt-chip-off' : ''}"${st === '' ? ' disabled' : ` data-status="${escapeHtml(st)}"`}>`
+          + `<span class="gantt-chip-swatch" style="background:${colorOf(st)}"></span>${escapeHtml(st === '' ? t('chart.series.empty') : st)}</button>`;
+      }).join('') : '';
+      const today = layout.today === null ? '' : `<span class="gantt-chip-today"><span class="gantt-today-swatch"></span>${escapeHtml(t('chart.gantt.today'))}</span>`;
+      const notes = [];
+      if (layout.hidden > 0) notes.push(t('chart.gantt.hidden', { shown: String(layout.tasks.length), total: String(layout.total), hidden: String(layout.hidden) }));
+      if (layout.ignored > 0) notes.push(t('chart.gantt.ignored', { n: String(layout.ignored) }));
+      html = `<div class="gantt"><div class="gantt-axis"><span class="gantt-year">${escapeHtml(yearText)}</span><div class="gantt-ticks">${ticksHtml}</div></div>`
+        + `<div class="gantt-body"><div class="gantt-lines">${linesHtml}</div>${rowsHtml}${todayHtml}</div>`
+        + (notes.length ? `<p class="gantt-note">${escapeHtml(notes.join(' '))}</p>` : '')
+        + (chips || today ? `<div class="gantt-foot">${chips}${today}</div>` : '')
+        + '</div>';
+    }
+    if (el.dataset.html !== html) {
+      const scroll = el.scrollTop;
+      el.innerHTML = html;
+      el.dataset.html = html;
+      el.scrollTop = scroll;
+    }
+    if (el.dataset.bound !== '1') {
+      el.dataset.bound = '1';
+      const pick = (target) => {
+        const live = liveTile(tile.id);
+        if (!live || !target.closest) return;
+        const chip = target.closest('.gantt-chip');
+        if (chip && el.contains(chip) && chip.dataset.status !== undefined && live.seriesColumn) { GristBI.store.toggleFilter(live.seriesColumn, chip.dataset.status, live.id); return; }
+        const row = target.closest('.gantt-row');
+        if (row && el.contains(row) && row.dataset.value !== undefined) GristBI.store.toggleFilter(live.dimension, row.dataset.value, live.id);
+      };
+      el.addEventListener('click', (e) => pick(e.target));
+      el.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        if (!(e.target.classList && e.target.classList.contains('gantt-row'))) return;
+        e.preventDefault();
+        pick(e.target);
+      });
+    }
+  }
+
   // Une jauge est sémantiquement proche d'une carte KPI (une seule valeur agrégée, pas de
   // dimension) : réutilise aggregateSingle telle quelle. Rendue via ECharts (contrairement à la
   // carte KPI, en texte pur) pour l'aiguille/le cadran, donc utilise .tile-chart comme bar/pie.
@@ -578,6 +681,13 @@
       if (names && names[rank] !== undefined) GristBI.store.toggleFilter(currentTile.dimension, names[rank], currentTile.id);
       return;
     }
+    // Calendrier : une case = UN jour ; le clic pose un filtre d'égalité sur la colonne de dates (le jour au format ISO, celui des
+    // cellules). Le jour vient de la donnée de la case (`params.value[0]`), jamais d'un rang ou d'un libellé. Pas de drill-down.
+    if (currentTile.type === 'calendar') {
+      const day = params && Array.isArray(params.value) ? params.value[0] : null;
+      if (typeof day === 'string' && day) GristBI.store.toggleFilter(currentTile.dimension, day, currentTile.id);
+      return;
+    }
     // Carte de chaleur : une case = UNE ligne ET UNE colonne du tableau croisé, le clic pose les deux filtres (comme une cellule du
     // tableau croisé). Les valeurs des deux axes viennent du dernier rendu (`instance.__grid`), retrouvées par rang : jamais
     // `params.name`, qui ne donne que l'abscisse. Pas de drill-down (comme le tableau croisé).
@@ -654,32 +764,13 @@
   // (getOrCreateWordCloudCanvas) et fait sa propre détection de clic/survol (hitTestWordCloud) —
   // bien plus de code que les autres types de tuile, qui délèguent tout cela à ECharts.
   //
-  // Chargement paresseux via import() dynamique d'un spécificateur NU ("d3-cloud"), résolu par
-  // l'`importmap` d'index.html (voir js/vendor/apache-arrow, flatbuffers, tslib pour le même
-  // mécanisme) — absent de cet importmap tant que GFS n'a pas ajouté la bibliothèque (voir
-  // GFS-ETAT.md "Demandes à GFS", protocole du 03/11/2026 : plus aucune lib chargée en dur par
-  // l'app elle-même). Sans entrée dans l'importmap, le navigateur rejette IMMÉDIATEMENT cet
-  // import() (spécificateur non résolu) — aucune requête réseau, donc rien à voir avec le piège
-  // silencieux `typeof echarts === 'undefined'` (CLAUDE.md §7 n°4) : ici l'échec est explicite
-  // (promesse rejetée), juste intercepté pour afficher le même message qu'avant plutôt que de
-  // laisser une exception non gérée remonter jusqu'au rendu de la tuile.
-  let _d3CloudPromise = null;
-  function loadD3Cloud() {
-    if (!_d3CloudPromise) {
-      _d3CloudPromise = import('d3-cloud').catch((e) => {
-        console.warn('[GristBI] d3-cloud indisponible (bibliothèque pas encore fournie par GFS)', e);
-        return null;
-      });
-    }
-    return _d3CloudPromise;
-  }
-
-  // La bibliothèque est-elle déclarée dans l'`importmap` d'index.html ? Réponse immédiate, sans rien charger : sert à ne pas proposer
-  // le type « Nuage de mots » dans « Ajouter une visualisation » tant que GFS n'a pas fourni d3-cloud (une tuile qui n'afficherait
-  // que « indisponible » n'a pas sa place dans une version publiée). Une tuile Nuage de mots déjà enregistrée garde son message.
-  function isWordCloudAvailable() {
-    const el = typeof document !== 'undefined' ? document.querySelector('script[type="importmap"]') : null;
-    return Boolean(el && GristBI.data.importMapHas(el.textContent, 'd3-cloud'));
+  // d3-cloud vient de GFS (consigne 019, 18/11/2026) : l'extension « Nuage de mots » (`nuage-de-mots`) que la personne ajoute dans
+  // « Apps et extensions ». Ce dépôt n'en garde ni copie, ni import map, ni adresse : js/extensions.js lit `GfsLink.library('d3-cloud')`,
+  // charge `src` par `<script type="module" integrity>` et rend la classe `CloudLayout` (`GfsPaquets['d3-cloud'].modules['d3-cloud'].default`).
+  // Rend `null` sans l'extension (seule, ou pas encore ajoutée) : la tuile écrit alors son message, jamais une exception. Le résultat
+  // « absente » n'est pas gardé : l'extension peut être ajoutée pendant que l'app est ouverte (js/main.js repeint alors les tuiles).
+  async function loadD3Cloud() {
+    return GristBI.extensions ? GristBI.extensions.load('nuage-de-mots') : null;
   }
 
   // Même plage que l'ancien `sizeRange: [14, 48]` d'echarts-wordcloud.
@@ -722,7 +813,7 @@
       const word = layout.place(sprite);
       if (!word) return; // n'a pas pu être placé dans l'espace disponible (trop de mots/trop
         // grands pour cette tuile) : nuage incomplet plutôt qu'une erreur JS, même esprit que le
-        // message "chart.wordCloudUnavailable" plus bas
+        // messages "chart.wordCloudNeedsExtension"/"chart.wordCloudNeedsGfs" plus bas
       const style = dim(d.dimension);
       measureCtx.font = `${word.size}px ${WORD_CLOUD_FONT}`;
       placed.push({
@@ -888,7 +979,8 @@
     const mod = await loadD3Cloud();
     if (isStale(tile.id, seq) || instance.isDisposed()) return; // périmé pendant le chargement de la lib
     if (!mod) {
-      instance.showUnavailable(t('chart.wordCloudUnavailable'));
+      const hosted = GristBI.extensions && GristBI.extensions.stateOf('nuage-de-mots') === 'inactive';
+      instance.showUnavailable(t(hosted ? 'chart.wordCloudNeedsExtension' : 'chart.wordCloudNeedsGfs'));
       return;
     }
     const CloudLayout = mod.default || mod.CloudLayout;
@@ -1052,6 +1144,12 @@
       bumpSeq(tile.id);
       instance.hideLoading();
       renderSankey(tile, rows, state, instance);
+      return;
+    }
+    if (tile.type === 'calendar') {
+      bumpSeq(tile.id);
+      instance.hideLoading();
+      renderCalendar(tile, rows, state, instance);
       return;
     }
     if (tile.type === 'heatmap') {
@@ -1874,6 +1972,79 @@
     instance.setOption(option, true);
   }
 
+  // Calendrier (type 'calendar') : une case par jour (js/data.js:calendarDays : valeur agrégée du jour, au plus CALENDAR_MAX_DAYS
+  // jours, le reste est compté), semaines en colonnes et jours de la semaine en lignes (lundi en haut), mois en en-tête. Même rampe de
+  // couleur que la carte de chaleur (`heatStops`, légende `visualMap` continue) ; un jour sans valeur n'a PAS de case colorée (une
+  // trame neutre : « aucune ligne » ne se lit pas « la valeur la plus basse »). Jours non retenus par un filtre sur la colonne de
+  // dates : atténués (`filterSelects`). Le clic (handleTileClick) lit le jour dans la donnée de la case.
+  function renderCalendar(tile, rows, state, instance) {
+    const cal = calendarDays(rows, tile.dimension, tile.measure, tile.aggFn);
+    if (!cal.days.length) {
+      // Aucun jour exploitable (colonne qui n'est pas une date, filtre sans ligne) : un message au centre, pas un cadre vide.
+      instance.setOption({ title: { text: t('chart.calendar.empty'), left: 'center', top: 'middle', textStyle: { fontSize: 12, fontWeight: 'normal', color: chartTheme().muted } }, series: [] }, true); // pas de composant `calendar` sans plage : ECharts lèverait une exception
+      return;
+    }
+    const f = fmtFor(tile, tile.measure);
+    const th = chartTheme();
+    const stops = heatStops(tile.palette);
+    const lang = GristBI.i18n.getLang();
+    const dayFilter = state.activeFilters.find((af) => af.column === tile.dimension);
+    let min = Infinity;
+    let max = -Infinity;
+    cal.days.forEach((d) => { if (d.value < min) min = d.value; if (d.value > max) max = d.value; });
+    // Toutes les valeurs égales : l'échelle de la légende s'ouvre autour d'elles (couleur du milieu).
+    const lo = min === max ? min - 1 : min;
+    const hi = min === max ? max + 1 : max;
+    // Plage affichée : du 1er du mois du premier jour au dernier du mois du dernier jour (des mois entiers, jamais coupés au milieu).
+    const first = cal.from.slice(0, 8) + '01';
+    const lastYear = Number(cal.to.slice(0, 4));
+    const lastMonth = Number(cal.to.slice(5, 7));
+    const end = new Date(Date.UTC(lastYear, lastMonth, 0)).toISOString().slice(0, 10);
+    const names = (key) => t(key).split(',');
+    const width = instance.getWidth() || 330;
+    const longDate = (iso) => {
+      const ms = Date.parse(iso + 'T00:00:00Z');
+      try { return new Date(ms).toLocaleDateString(lang, { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }); } catch (e) { return iso; }
+    };
+    const option = {
+      tooltip: {
+        trigger: 'item',
+        // Texte HTML : le jour est une date ISO validée, la valeur est formatée par js/format.js ; rien de saisi n'y entre.
+        formatter: (p) => {
+          const v = p && p.value;
+          if (!Array.isArray(v)) return '';
+          return `${escapeHtml(longDate(String(v[0])))}<br/>${escapeHtml(f.format(v[1]) || '–')}`;
+        }
+      },
+      visualMap: {
+        type: 'continuous', min: lo, max: hi, calculable: false, orient: 'horizontal', left: 'center', bottom: 2,
+        itemWidth: 8, itemHeight: Math.max(60, Math.min(170, Math.round(width * 0.5))),
+        text: [f.axis(max), f.axis(min)], textGap: 6,
+        inRange: { color: stops }, textStyle: { fontSize: 10 }
+      },
+      calendar: {
+        top: 28, left: 26, right: 8, bottom: 40,
+        cellSize: ['auto', 'auto'],
+        range: [first, end],
+        orient: 'horizontal',
+        splitLine: { show: false },
+        itemStyle: { color: th.track, borderWidth: 2, borderColor: th.surface },
+        yearLabel: { show: false },
+        dayLabel: { firstDay: 1, nameMap: names('chart.calendar.dayNames'), color: th.muted, fontSize: 10, margin: 6 },
+        monthLabel: { nameMap: names('chart.calendar.monthNames'), color: th.muted, fontSize: 10, margin: 6 }
+      },
+      series: [{
+        type: 'heatmap',
+        coordinateSystem: 'calendar',
+        data: cal.days.map((d) => ({ value: [d.date, d.value], itemStyle: (!dayFilter || filterSelects(dayFilter, d.date)) ? undefined : { opacity: 0.3 } })),
+        emphasis: { itemStyle: { borderColor: th.text, borderWidth: 1 } },
+        progressive: 0
+      }]
+    };
+    finalizeOption(option, instance);
+    instance.setOption(option, true);
+  }
+
   // Flux (type 'sankey') : source = `tile.dimension` (nœuds à gauche, colorés par la palette, les liens prennent leur couleur), cible =
   // `tile.columnDimension` (nœuds à droite, gris neutre : ce sont les liens qui racontent d'où vient le flux). Calcul : js/data.js:
   // sankeyFlows (une passe, groupement par paire) ; seuls les SANKEY_MAX_LINKS plus gros flux sont dessinés (la tuile le dit). Les
@@ -2179,5 +2350,5 @@
   // via convertToPixel) - ne pas s'appuyer dessus pour de la logique applicative.
   function getInstance(tileId) { return chartInstances.get(tileId) || null; }
 
-  GristBI.charts = { renderTile, resizeAll, disposeTile, getInstance, isWordCloudAvailable };
+  GristBI.charts = { renderTile, resizeAll, disposeTile, getInstance };
 })(window);

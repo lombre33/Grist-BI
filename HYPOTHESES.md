@@ -2421,13 +2421,59 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     traité la demande (voir GFS-ETAT.md, section "Demandes à GFS"). Fonctions pures de jointure
     (`joinTextItems`/`joinPages`) testées sous Node ; le reste (chargement réel d'un PDF) a besoin
     d'un vrai PDF.js, donc d'un navigateur — même limite que le moteur SQL de `duckdb-engine.js`.
-  - **Non fait à ce stade** : le branchement Grist lui-même (colonne mots-clés manuels + auto via
-    `ensureColumnsUpToDate`, UI de déclenchement à l'ajout d'un document, lecture de la pièce
-    jointe via `grist.docApi.getAccessToken`) et le plan de rattrapage des publications déjà
-    existantes (backlog) — question posée à Antoine, réponse pas encore reçue au moment de ce
-    commit. Voir ROADMAP.md.
-  - **Non testable depuis ce sandbox** : le round-trip réel PDF.js une fois GFS la fournie (CDN
-    réel, taille du fichier worker, timing sur un PDF de plusieurs centaines de pages).
+  - **Mise à jour du 18/11/2026 — branché (consigne GFS 019, fil « Recherche sémantique sur publications »)**.
+    Antoine a confirmé : 100 000 publications et plus, des PDF déposés dans une colonne pièce jointe de Grist, aucun
+    backlog (« Pas de publication pour le moment »), zéro back-end, mots-clés saisis à la main ET automatiques.
+    Ce qui existe : menu Données > « Mots-clés des publications » (mode Édition, `js/keywords-panel.js`).
+    - **Le choix du déclenchement** : un geste de la personne, jamais à l'ajout d'une ligne. Le widget n'a pas de
+      moyen d'écouter « un document vient d'être déposé » quand il est fermé (pas de back-end, pas de `onRecords`),
+      et il n'écrit rien dans la table de la personne sans l'avoir dit : la fenêtre choisit la source (le PDF joint, ou
+      une colonne de texte : titre, résumé), la colonne qui reçoit les mots-clés (existante, ou nouvelle
+      `Mots_cles_auto` créée APRÈS une fenêtre de confirmation qui dit le nombre de lignes et la colonne), une colonne
+      facultative de mots saisis à la main (jamais répétés dans l'automatique), le nombre de mots et la langue. Une
+      cellule déjà remplie n'est jamais touchée ; relancer le travail ne fait donc que compléter (les nouvelles lignes).
+    - **L'algorithme** (`js/keywords.js:extractKeywords`, zéro dépendance, `Intl.Segmenter`) : RAKE ne suffit pas pour
+      un texte long (il classe d'abord les phrases candidates les plus longues, « méthode proposée consiste à… » devient
+      un mot-clé). Il reste (`rakeKeywords`, utile à un titre ou un résumé court) mais l'extraction principale
+      classe des unités de 1 à 3 mots par **récurrence** : une expression qui revient (`activité physique`,
+      `perovskite solar cells`) passe devant une expression rare, un mot seul demande deux occurrences (sauf sur un
+      texte très court), les composés à trait d'union restent un seul mot (`mots-clés`), l'élision française
+      (`l'apprentissage`) et le possessif anglais (`model's`) sont retirés, une ligne vide coupe une expression, une
+      unité contenue dans une unité retenue de fréquence comparable n'est pas répétée. Les ex-aequo suivent l'ordre
+      de première apparition (jamais l'ordre alphabétique, piège n°14). Mesuré à la main sur des textes français et
+      anglais réalistes (articles de santé publique, d'énergie, de linguistique) : les expressions retenues sont celles
+      qu'un lecteur retiendrait ; ce n'est PAS une mesure sur un vrai corpus de chercheurs, et un texte dont les mots
+      importants ne reviennent jamais donnera peu de mots-clés (voulu : mieux vaut peu que du bruit).
+    - **La lecture du PDF** (`js/pdf-text.js:readPdf`) : pdf.js vient de GFS (extension `mots-cles-pdf`, voir
+      GFS-ETAT.md), jamais d'une balise ni d'un CDN de ce dépôt. Page par page, en rendant la main entre deux pages
+      (pdf.js tourne dans la page, pas dans un vrai `Worker`, dans le cadre isolé de GFS) : au plus 88 ms de gel mesurés
+      sur cinq PDF en page directe (le cadre isolé a été essayé, mais son gel n'a pas été mesuré cette fois). Plafonds : 80 pages et 400 000 signes par PDF, trois
+      pièces jointes par ligne, 80 Mo par fichier ; un fichier qui n'est pas un PDF (image) est ignoré, un PDF scanné
+      (aucun texte) est compté « sans texte lisible », jamais un mot-clé inventé.
+    - **L'écriture** : par lots de 20 lignes (un seul `applyUserActions`, une action `UpdateRecord` par ligne) ; une
+      erreur sur une ligne (PDF corrompu, pièce jointe introuvable) est comptée et listée, le travail continue ; un
+      refus d'écriture arrête tout ; « Arrêter » écrit ce qui est déjà prêt puis s'arrête.
+    - **Essais** : Node (`dev-tests/test-data.js` : plan des lignes, `keywordsForTask`, `runJob`, `readPdf`, pont Grist
+      avec un faux `fetch`, qualité de l'extraction, câblage de la fenêtre) ; navigateur avec **le vrai fichier
+      `pdfjs.js` de GFS et de vrais PDF** (page directe ET `<iframe sandbox="allow-scripts">`), un faux GFS
+      (`hosted`, `library`, `onExtensions`, `install`) qui ajoute puis retire l'extension pendant que la fenêtre est
+      ouverte (l'option PDF se dégrise, puis se regrise, sans rouvrir) ; l'app seule (grisée, « Comment l'avoir »,
+      colonne de texte qui marche) ; GFS sans `jeton` (refus clair AVANT toute écriture, aucune colonne créée) ; anglais.
+    - **Non vérifié, à relever dans un vrai Grist** (le faux `window.grist` de `dev-tests/` ne le prouve pas) :
+      (1) la forme exacte de la réponse de `getAccessToken({ readOnly: true })` (`baseUrl`, `token`, `ttlMsecs`) ;
+      (2) l'adresse de téléchargement `${baseUrl}/attachments/<id>/download?auth=<jeton>` et son comportement CORS depuis
+      le cadre du widget ; (3) la valeur que `AddColumn` rend (`retValues[0].colId`) — le code retombe sur le nom demandé
+      si elle manque, mais Grist peut avoir renommé la colonne ; (4) le comportement sur de VRAIS PDF de chercheurs
+      (colonnes multiples, en-têtes et pieds de page répétés qui peuvent gonfler un mot récurrent, formules, PDF
+      protégés) ; (5) le temps pour 100 000 lignes (lecture séquentielle, un PDF après l'autre : à mesurer, la fenêtre
+      permet d'arrêter et de reprendre, les lignes faites ne sont pas refaites) ; (6) **dans GFS** : le courtier refuse
+      `getAccessToken` sans la capacité `jeton` et l'écriture dans la table de la personne sans un motif `ecrit` —
+      deux demandes dans GFS-ETAT.md, la lecture d'un PDF ne marchera dans GFS qu'après leur déclaration.
+    - **Limites connues** : une ligne dont le PDF est un scan (ou ne se lit pas) est réessayée à chaque lancement (pas de
+      mémoire « déjà essayé » : ajouterait une colonne ou un état à tenir, à décider avec Antoine si les scans
+      sont nombreux) ; le français et l'anglais seulement (la langue se devine, ou se choisit) ; aucune recherche n'est
+      encore faite SUR ces mots-clés (la colonne est filtrable comme toute colonne ; un champ de recherche plein texte
+      sur l'index est la suite logique, avec DuckDB-WASM déjà vendorisé).
 
 - **Ambiance de GFS (04/11/2026, consigne GFS 004)** — GFS (Grist Factory Suite, l'hébergeur commun
   en préparation pour plusieurs apps Grist d'Antoine, voir `lombre33/grist-widget-GFS`) propose cinq
@@ -3284,6 +3330,8 @@ Dernier lot de l'audit : tout ce qui, hors des nombres eux-mêmes, rendait une t
 
 ### Correctifs avant l'alpha — « Nuage de mots » plus proposé sans d3-cloud (18/11/2026)
 
+> **Remplacé le 18/11/2026 par la consigne GFS 019 (section suivante) :** la carte n'est plus retirée mais GRISÉE, et d3-cloud ne vient plus de l'importmap mais de GFS. `importMapHas` et `isWordCloudAvailable` n'existent plus.
+
 - **Pourquoi** : la carte « Nuage de mots » de « Ajouter une visualisation » créait une tuile qui n'affichait que « indisponible pour le moment » (d3-cloud attend GFS,
   GFS-ETAT.md). Pour l'alpha standalone, on ne propose pas un type qui ne marche pas.
 - **Comment** : `GristBI.charts.isWordCloudAvailable()` lit l'`importmap` d'index.html (`GristBI.data.importMapHas`, pure) : sans entrée `d3-cloud`, le navigateur
@@ -3294,6 +3342,33 @@ Dernier lot de l'audit : tout ce qui, hors des nombres eux-mêmes, rendait une t
   mots à l'accueil (`suggestTiles`). Un appel direct à `GristBI.openTilePanel({ type: 'wordcloud' })` n'est pas bloqué.
 - **Testé** : Node (`importMapHas` : présent/absent/illisible, câblage lu dans la source, importmap réel d'index.html) ; Playwright contre le vrai `index.html` +
   `grist-stub.js` : 15 cartes sans d3-cloud, 16 avec une entrée d'importmap ajoutée à la volée, carte conservée en modifiant une tuile Nuage de mots. **Pas testé dans un vrai Grist.**
+
+### Extensions de GFS — « Nuage de mots » grisé et branché sur d3-cloud de GFS (consigne 019, 18/11/2026)
+
+- **Ce que GFS a fait** (consigne 019) : `d3-cloud` (2.0.0, ESM seul) est dans sa liste en forme `module`, servi par GFS seul ; deux extensions de Grist-BI sont déclarées dans son manifeste, `nuage-de-mots` et
+  `mots-cles-pdf` (pdf.js, la même copie que Publipostage+). L'app les reçoit par `GfsLink.library(id)` = `{ src, integrite, forme: 'module' }` ou `null`, charge `src` par `<script type="module" integrity
+  crossorigin="anonymous">` et lit `GfsPaquets['d3-cloud'].modules['d3-cloud'].default` (la classe `CloudLayout`). Plus d'`import('d3-cloud')`, plus d'entrée d'importmap (il n'y en avait pas).
+- **Ce qui est fait ici** : `js/extensions.js` (UMD, chargé entre `data.js` et `charts.js`) : `stateFor`/`stateOf` (`standalone` = app seule, `inactive` = dans GFS sans l'extension, `active`), `moduleFrom`,
+  `load(id)` (null sans l'extension, même si son fichier est déjà en mémoire : une extension RETIRÉE en cours de route se grise comme au démarrage suivant), `requestInstall(id)` (`GfsLink.install` quand
+  hébergée, `'standalone'` sinon : l'appelant montre la fenêtre du grisé), `attach(promesse du lien)` et `onChange` (réveillé quand GFS a répondu ET à chaque événement `extensions`, jamais en app seule).
+  `js/charts.js:loadD3Cloud` = `GristBI.extensions.load('nuage-de-mots')`. `js/main.js` : la carte « Nuage de mots » reste dans « Ajouter une visualisation », **grisée** (`aria-disabled`,
+  `.type-card-locked`, trait en tirets, jamais d'opacité) avec « Pas encore : extension « Nuage de mots » à ajouter » (dans GFS) ou « Pas encore : disponible dans Grist Factory Suite » (seule) ;
+  un clic ne choisit pas le type : dans GFS il appelle `GfsLink.install('nuage-de-mots')` (la fenêtre « Apps et extensions » s'ouvre sur sa ligne), seule il ouvre la fenêtre du grisé du guide (section 5,
+  `ext.standalone.*`). Un changement d'état repeint toutes les tuiles et refait les cartes. Une tuile enregistrée sans l'extension écrit `chart.wordCloudNeedsExtension` / `chart.wordCloudNeedsGfs`.
+  `importMapHas` (js/data.js) et `isWordCloudAvailable` (js/charts.js) sont supprimés.
+- **Vérifié l'API 2.x** : `placeWordCloud` utilise `new CloudLayout().size([w, h]).overflow(false)`, `layout.getSprite(texte, { size, font, padding, rotate })` et `layout.place(sprite)`, les mots du plus grand au
+  plus petit : exactement la suite que la consigne décrit (jamais l'ancienne `cloud().words().on('end').start()`). Joué cette fois avec le VRAI paquet (voir « Testé »).
+- **Testé** : Node (`dev-tests/test-data.js`, bloc « Extensions de GFS ») : états (seule, hébergée sans, avec, source sans empreinte, extension inconnue), `moduleFrom`, `load` avec un faux `document` (balise
+  `type=module`, `src`, `integrity`, `crossOrigin='anonymous'`, pas de deuxième balise, rien chargé sans extension), événement `extensions`, retrait, `requestInstall` (install appelé, annulation sans exception,
+  seule -> `'standalone'`), câblage lu dans les sources (aucune carte retirée, importmap sans bibliothèque d'extension, aucune adresse en dur). Playwright : le vrai `index.html` dans un
+  `<iframe sandbox="allow-scripts">` servi par un FAUX GFS parent qui parle le vrai kit 0.24.0 (contexte avec `extensions`/`bibliotheques`, appel `installer`, événement `extensions`), avec le **VRAI d3-cloud 2.0.0**
+  (tarball npm, intégrité sha512 comparée à celle du registre) assemblé en fichier de forme `module` comme la consigne le décrit : app seule (carte grisée, fenêtre du grisé), dans GFS sans l'extension (carte grisée,
+  appel `installer { extension: 'nuage-de-mots' }`, tuile enregistrée = message), l'extension ajoutée SANS rechargement (carte dégrisée, tuile repeinte : 68 000 px encrés), retirée (message de retour),
+  extension déjà active au contexte (nuage de 250 x 162 px dessiné). Aucune erreur de console, aucune politique de contenu touchée.
+- **Pas vérifié** : le fichier `d3-cloud` de GFS lui-même (fixture à moi, assemblée d'après la description de la consigne ; les octets, l'empreinte et l'adresse réels sont ceux de GFS), la fenêtre « Apps et extensions »
+  de GFS, un vrai Grist. **Le texte de la fenêtre du grisé** est celui du guide (section 5, « proposition ») moins l'adresse de GFS : le guide ne donne pas d'adresse définitive et dit lui-même que les mots exacts du
+  panneau de Grist restent à relever dans un vrai Grist (question posée à GFS dans `GFS-ETAT.md`). **`mots-cles-pdf` n'est PAS branché** : `js/pdf-text.js`/`js/keywords.js` ne sont chargés par aucune page ; c'est
+  le fil « Recherche sémantique sur publications » qui les branche (il reçoit pdf.js par `GristBI.extensions.load('mots-cles-pdf')` ; pdf.js tourne DANS la page : lire les pages une à une, en rendant la main).
 
 ### Tuiles usuelles des outils BI — lot 2, histogramme (18/11/2026)
 
@@ -3577,6 +3652,49 @@ Constat (en testant le style global des tuiles) : sur une courbe ou des barres v
   injection par un nom de valeur) ; **clic réel de souris sur une bulle libre** = filtre, autres bulles à 0,3, 2e clic = filtre retiré ; agrandissement = bulle maximale plus grosse ; filtre d'une autre tuile = tailles
   recalculées ; feuille Excel ; taille négative = bulle absente + conseil ; nuage de points simple inchangé ; nuage de points -> barres -> bulles sans reliquat ; aucune erreur console). **Pas testé dans un vrai Grist ni un
   vrai GFS.**
+
+### Tuiles usuelles des outils BI — lot 3, calendrier (18/11/2026)
+
+- **Ce qui est livré** (PR 11 du plan, §5.6 de `etudes/tuiles-usuelles-dashboard-2026-11-18.md`) : un type `calendar` (« Calendrier (activité par jour) »). Une colonne de DATES + une mesure et son agrégat ; une case par
+  jour, semaines en colonnes, lundi en haut, mois en en-tête, même rampe de couleur que la carte de chaleur avec sa légende. Comptage = nombre de lignes par jour (« activité »), Somme = un montant par jour. Clic sur un
+  jour = filtre d'égalité sur la colonne de dates (la tuile reste entière, les autres jours s'estompent, 2e clic = filtre retiré). Pas de drill-down.
+- **Choix** : fenêtre d'UN an (les 366 derniers jours depuis le dernier jour qui a une valeur) : au-delà, les cases deviendraient des points de 3 px ; les jours plus anciens sont comptés (« n plus anciens restent dans
+  l'export »), jamais perdus. Un jour sans ligne garde la trame neutre : « aucune ligne » n'est pas « la valeur la plus basse ». Composant `calendar` d'ECharts (et pas une grille HTML) : même thème, infobulle et
+  légende que la carte de chaleur, rien à réécrire. Calcul en JS pur à tout volume (une passe, un agrégat par jour). Le formulaire refuse une colonne qui n'est pas de dates (format AAAA-MM-JJ, celui de toutes les
+  colonnes Date du widget).
+- **Pas fait, à décider** : plusieurs années côte à côte (une bande par année), choix du premier jour de la semaine, case carrée (les cases s'étirent avec la tuile), plage réglable, regroupement par semaine ou par
+  mois, clic-glisser pour filtrer une période (aujourd'hui un jour à la fois ; le filtre « plage de dates » du menu Filtre existe), jours fériés.
+- **Conseils** : colonne sans date valide, moins d'une semaine de données, plus d'un an (la dernière année seulement). Jamais proposé à l'écran d'accueil.
+- **Testé** : Node (bloc « calendrier » : décalage de jours, agrégation par jour pour les 5 agrégats, tri, dates invalides ignorées, fenêtre d'un an et plafonds, trou != 0, store, export, défauts, conseils, i18n
+  dont 7 jours et 12 mois par langue, câblage dont l'absence de composant `calendar` dans l'état vide) ; Playwright contre le vrai `index.html` + `grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`,
+  400 et 6 000 lignes, clair et sombre (formulaire : libellé « Colonne de dates », champs masqués, colonne non date refusée, préremplissage ; option ECharts = calcul pur, plage de mois entiers ; **pixel** de la case du
+  maximum = dernier arrêt de la rampe, **pixel** d'un jour sans ligne = hors rampe ; infobulle survolée ; **clic réel de souris** sur un jour = filtre, autres jours à 0,3, tuile entière, 2e clic = filtre retiré, clic sur
+  un jour sans ligne = rien ; filtre d'une autre tuile = jours recalculés ; agrandissement = cases plus larges ; feuille Excel ; 500 jours = 366 dessinés + 500 exportés + conseil ; aucune date = message ; calendrier ->
+  barres -> calendrier ; valeurs toutes égales ; aucune erreur console). **Pas testé dans un vrai Grist ni un vrai GFS.**
+
+### Tuiles usuelles des outils BI — lot 3, Gantt (18/11/2026)
+
+- **Ce qui est livré** (PR 12 du plan, §5.7 de `etudes/tuiles-usuelles-dashboard-2026-11-18.md`) : un type `gantt` (« Gantt (planning de tâches) »). Trois colonnes : le libellé de la tâche (`dimension`),
+  son début et sa fin (`startColumn`, `endColumn`, deux colonnes de DATES au format ISO), et une colonne de couleur facultative (`seriesColumn`, un statut). Une ligne de la table = une tâche = une barre, triée par
+  date de début ; ni mesure ni agrégat, ni format de nombre. Axe du temps commun en pourcentages de la largeur (mois, lundis ou jours selon la durée, au plus 8 graduations, moins dans une tuile étroite), année dans le
+  coin de l'axe, repère rouge « aujourd'hui » quand il tombe dans la période. Clic sur une tâche = filtre d'égalité sur son libellé, clic sur une pastille de la légende = filtre sur le statut (la tuile reste entière, le
+  reste s'estompe, 2e clic = retiré ; Entrée et Espace aussi). Pas de drill-down, pas de tri.
+- **Choix** : HTML/CSS dans `.tile-chart` (comme la Progression) plutôt qu'ECharts : texte sélectionnable, libellés à gauche toujours lisibles, défilement natif d'une longue liste, aucune instance à disposer ; les
+  barres sont posées en `left`/`width` en % de l'axe, donc elles suivent l'agrandissement d'une tuile sans calcul. Une ligne dont le début ou la fin n'est pas une date valide, ou dont la fin précède le début, n'a PAS de
+  barre (une tâche « en cours » sans date de fin ne se dessine pas : on n'invente pas sa durée) : elle est comptée dans une note sous la liste. Une tâche d'un jour occupe une case de jour entière (fin incluse). 200 tâches
+  dessinées au plus (« 200 premières tâches sur 6 012 »), les statuts et leurs couleurs étant calculés sur TOUTES les tâches valides (une couleur ne change pas quand le plafond coupe) ; l'export Excel (et PDF/PPTX, en tableau
+  natif) garde toutes les tâches. La légende est collante en bas de la tuile (elle reste visible quand la liste défile) ; chaque graduation est rognée à sa case, jamais posée sur sa voisine. La couleur ne porte jamais seule
+  l'information : la légende nomme chaque statut et l'infobulle de la ligne le répète.
+- **Pas fait, à décider** : dépendances entre tâches (flèches), jalons (losanges), regroupement par projet / ressource (lignes de titre), glisser une barre pour changer une date (le widget n'écrit jamais dans la table de
+  travail), zoom sur une période, avancement (% réalisé) dans la barre, week-ends grisés, plusieurs barres par ligne.
+- **Conseils** : aucune barre dessinable (« début » et « fin » sans dates valides), plus de statuts que de couleurs dans la palette, lignes écartées, plus de 200 tâches. Défauts : les deux premières vraies colonnes de dates, la
+  1re étant celle qui précède l'autre sur la majorité des lignes (jugé sur les valeurs), libellé = colonne d'identifiants, couleur = petite catégorie. Jamais proposé à l'écran d'accueil.
+- **Testé** : Node (bloc « gantt » : tri stable, lignes écartées de 5 sortes, statuts dans l'ordre de la table, plafond, axe (mois, lundis, jours, budget, graduation de début), géométrie d'une tâche d'un jour,
+  aujourd'hui dans/hors de l'axe, store, export, défauts à colonnes inversées, conseils, i18n avec pluriels, câblage dont l'échappement de chaque chaîne saisie) ; Playwright contre le vrai `index.html` + `grist-stub.js`,
+  page directe ET `<iframe sandbox="allow-scripts">`, 14 et 6 014 lignes, clair et sombre (formulaire, validation, géométrie des barres mesurée au pixel contre le calcul pur, couleurs, graduations sans recouvrement,
+  légende visible, **clic réel de souris** sur une tâche et sur une pastille, clavier, filtre d'une autre tuile, repère « aujourd'hui », agrandissement, export, plafond, injection de balisage dans un libellé et un statut,
+  aucune tâche, gantt -> barres -> gantt, édition). Le style global (glass, console…) a été regardé sur capture : en verre, l'axe et la légende collants gardent un fond opaque (une bande pâle sur la carte translucide).
+  **Pas testé dans un vrai Grist ni un vrai GFS.**
 
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 

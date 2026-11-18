@@ -243,6 +243,35 @@
     'tileForm.type.radar': { fr: 'Radar', en: 'Radar' },
     'tileForm.type.wordcloud': { fr: 'Nuage de mots', en: 'Word cloud' },
     'tileForm.dimension.label': { fr: 'Dimension', en: 'Dimension' },
+    'tileForm.dimension.labelDate': { fr: 'Colonne de dates (une case = un jour)', en: 'Date column (one cell = one day)' },
+    'tileForm.error.calendarNotDate': { fr: 'Cette colonne ne contient pas de dates (format AAAA-MM-JJ) : choisissez une colonne Date.', en: 'This column has no dates (YYYY-MM-DD format): choose a Date column.' },
+    'chart.calendar.empty': { fr: 'Aucun jour avec une valeur : choisissez une colonne de dates.', en: 'No day with a value: choose a date column.' },
+    'chart.calendar.dayNames': { fr: 'D,L,M,M,J,V,S', en: 'S,M,T,W,T,F,S' },
+    'chart.calendar.monthNames': { fr: 'janv.,févr.,mars,avr.,mai,juin,juil.,août,sept.,oct.,nov.,déc.', en: 'Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec' },
+    'tileForm.type.gantt': { fr: 'Gantt (planning de tâches)', en: 'Gantt (task schedule)' },
+    'tileForm.dimension.labelTask': { fr: 'Tâche (libellé de la ligne)', en: 'Task (row label)' },
+    'tileForm.startColumn.label': { fr: 'Début (colonne de dates)', en: 'Start (date column)' },
+    'tileForm.endColumn.label': { fr: 'Fin (colonne de dates)', en: 'End (date column)' },
+    'tileForm.series.labelStatus': { fr: 'Couleur (statut, facultatif)', en: 'Colour (status, optional)' },
+    'tileForm.error.ganttStartRequired': { fr: 'Choisissez la colonne de début des tâches.', en: 'Choose the tasks’ start column.' },
+    'tileForm.error.ganttEndRequired': { fr: 'Choisissez la colonne de fin des tâches.', en: 'Choose the tasks’ end column.' },
+    'tileTitle.gantt': { fr: 'Planning ({dimension})', en: 'Schedule ({dimension})' },
+    'chart.gantt.empty': { fr: 'Aucune tâche à dessiner : choisissez une colonne de début et une colonne de fin (dates).', en: 'No task to draw: choose a start and an end date column.' },
+    'chart.gantt.row': { fr: '{label} : du {start} au {end} ({days} {days|jour|jours})', en: '{label}: {start} to {end} ({days} {days|day|days})' },
+    'chart.gantt.today': { fr: 'Aujourd’hui', en: 'Today' },
+    'chart.gantt.hidden': { fr: '{shown} premières tâches sur {total} ({hidden} de plus restent dans l’export).', en: 'First {shown} of {total} tasks ({hidden} more stay in the export).' },
+    'chart.gantt.ignored': { fr: '{n} {n|ligne ignorée|lignes ignorées} (début ou fin absent, ou fin avant le début).', en: '{n} {n|row|rows} skipped (missing start or end, or end before start).' },
+    'advice.use.gantt': { fr: 'Voir quand chaque tâche commence et finit, et ce qui se chevauche : une barre par tâche sur une frise du temps.', en: 'See when each task starts and ends, and what overlaps: one bar per task on a timeline.' },
+    'advice.fit.noTwoDates': { fr: 'Il faut deux colonnes de dates (début et fin) : un Gantt n’aurait aucune barre à dessiner.', en: 'This needs two date columns (start and end): a Gantt would have no bar to draw.' },
+    'advice.gantt.noTask': { fr: 'Aucune ligne n’a de dates valides dans « {start} » et « {end} » (format AAAA-MM-JJ, fin après le début) : aucune barre ne peut être dessinée.', en: 'No row has valid dates in “{start}” and “{end}” (YYYY-MM-DD format, end after start): no bar can be drawn.' },
+    'advice.gantt.manyStatuses': { fr: '{n} statuts pour {max} couleurs : certains partagent la même couleur. Regroupez les statuts ou filtrez.', en: '{n} statuses for {max} colours: some share a colour. Group the statuses or filter.' },
+    'advice.gantt.ignored': { fr: '{n} {n|ligne n’est pas dessinée|lignes ne sont pas dessinées} (début ou fin absent, ou fin avant le début) ; elles restent hors de l’export.', en: '{n} {n|row is|rows are} not drawn (missing start or end, or end before start); they stay out of the export.' },
+    'advice.gantt.truncated': { fr: 'Seules les {max} premières tâches sont dessinées ({hidden} de plus restent dans l’export). Filtrez une période ou un statut pour voir le reste.', en: 'Only the first {max} tasks are drawn ({hidden} more stay in the export). Filter a period or a status to see the rest.' },
+    'advice.use.calendar': { fr: 'Voir quels jours sont chargés ou creux : une case par jour, la couleur suit la valeur.', en: 'See which days are busy or quiet: one cell per day, colour follows the value.' },
+    'advice.fit.noDate': { fr: 'Aucune colonne de dates dans ce tableau : un calendrier n’aurait aucune case à dessiner.', en: 'No date column in this table: a calendar would have no cell to draw.' },
+    'advice.calendar.notDate': { fr: 'La colonne « {dimension} » ne contient aucune date valide (format AAAA-MM-JJ) : aucune case ne peut être dessinée.', en: 'The “{dimension}” column has no valid date (YYYY-MM-DD format): no cell can be drawn.' },
+    'advice.calendar.fewDays': { fr: 'Seulement {n} jours avec une valeur : un calendrier a besoin d’au moins une semaine pour dire quelque chose.', en: 'Only {n} days with a value: a calendar needs at least a week to say anything.' },
+    'advice.calendar.truncated': { fr: 'Seuls les {days} derniers jours sont dessinés ({hidden} plus anciens restent dans l’export). Filtrez une période pour voir le reste.', en: 'Only the last {days} days are drawn ({hidden} older ones stay in the export). Filter a period to see the rest.' },
     'tileForm.dimension.labelRows': { fr: 'Dimension (lignes)', en: 'Dimension (rows)' },
     'tileForm.columnDimension.label': { fr: 'Dimension (colonnes)', en: 'Dimension (columns)' },
     'tileForm.dimension.labelSource': { fr: 'Source (départ du flux)', en: 'Source (where the flow starts)' },
@@ -348,6 +377,77 @@
       fr: 'Affichage des {shown} premières lignes sur {total}. Exportez en Excel pour tout voir.',
       en: 'Showing the first {shown} rows out of {total}. Export to Excel to see everything.'
     },
+
+    // --- Mots-clés des publications (menu Données > « Mots-clés des publications », js/main.js,
+    // logique pure js/publications.js ; consigne GFS 019, extension « Mots-clés des PDF ») ---
+    'keywords.open': { fr: 'Mots-clés des publications…', en: 'Publication keywords…' },
+    'keywords.title': { fr: 'Mots-clés des publications', en: 'Publication keywords' },
+    'keywords.intro': {
+      fr: 'Remplit une colonne de mots-clés à partir du texte de chaque publication, lu dans votre navigateur : rien n’est envoyé ailleurs. Une cellule déjà remplie n’est jamais modifiée.',
+      en: 'Fills a keywords column from the text of each publication, read in your browser: nothing is sent elsewhere. A cell that already has a value is never changed.'
+    },
+    'keywords.source.legend': { fr: 'D’où vient le texte ?', en: 'Where does the text come from?' },
+    'keywords.source.pdf': { fr: 'Le PDF joint à la ligne', en: 'The PDF attached to the row' },
+    'keywords.source.text': { fr: 'Une colonne de texte (titre, résumé…)', en: 'A text column (title, abstract…)' },
+    'keywords.source.pdfColumn': { fr: 'Colonne des pièces jointes', en: 'Attachments column' },
+    'keywords.source.textColumn': { fr: 'Colonne de texte', en: 'Text column' },
+    'keywords.target.label': { fr: 'Colonne des mots-clés automatiques', en: 'Automatic keywords column' },
+    'keywords.target.new': { fr: 'Nouvelle colonne « {name} »', en: 'New column “{name}”' },
+    'keywords.manual.label': { fr: 'Mots-clés saisis à la main (facultatif)', en: 'Keywords typed by hand (optional)' },
+    'keywords.manual.none': { fr: 'Aucune colonne', en: 'No column' },
+    'keywords.manual.hint': { fr: 'Ces mots ne sont pas répétés dans la colonne automatique.', en: 'These words are not repeated in the automatic column.' },
+    'keywords.max.label': { fr: 'Mots-clés par publication', en: 'Keywords per publication' },
+    'keywords.lang.label': { fr: 'Langue du texte', en: 'Text language' },
+    'keywords.lang.auto': { fr: 'Automatique', en: 'Automatic' },
+    'keywords.lang.fr': { fr: 'Français', en: 'French' },
+    'keywords.lang.en': { fr: 'Anglais', en: 'English' },
+    'keywords.plan': {
+      fr: '{todo} {todo|ligne|lignes} à compléter sur {total}.',
+      en: '{todo} {todo|row|rows} to fill out of {total}.'
+    },
+    'keywords.plan.filled': { fr: '{n} déjà {n|remplie|remplies}', en: '{n} already filled' },
+    'keywords.plan.noSource': { fr: '{n} sans texte à lire', en: '{n} with no text to read' },
+    'keywords.plan.none': {
+      fr: 'Rien à compléter : chaque ligne a déjà ses mots-clés, ou n’a pas de texte à lire.',
+      en: 'Nothing to fill: every row already has its keywords, or has no text to read.'
+    },
+    'keywords.noColumns.pdf': { fr: 'Cette table n’a aucune colonne de pièces jointes.', en: 'This table has no attachments column.' },
+    'keywords.noColumns.text': { fr: 'Cette table n’a aucune colonne de texte.', en: 'This table has no text column.' },
+    'keywords.noTable': { fr: 'Connectez d’abord une table de travail (menu Données).', en: 'Connect a working table first (Data menu).' },
+    'keywords.start': { fr: 'Extraire les mots-clés', en: 'Extract keywords' },
+    'keywords.stop': { fr: 'Arrêter', en: 'Stop' },
+    'keywords.confirm.title': { fr: 'Écrire dans votre table ?', en: 'Write to your table?' },
+    'keywords.confirm.message': {
+      fr: 'Les mots-clés de {todo} {todo|ligne|lignes} vont être écrits dans la colonne « {column} » de la table « {table} ». Les cellules déjà remplies ne sont pas touchées.',
+      en: 'The keywords of {todo} {todo|row|rows} will be written to the “{column}” column of the “{table}” table. Cells that already have a value are not touched.'
+    },
+    'keywords.confirm.newColumn': { fr: ' La colonne sera créée.', en: ' The column will be created.' },
+    'keywords.confirm.ok': { fr: 'Écrire', en: 'Write' },
+    'keywords.progress': { fr: 'Ligne {n} sur {total}…', en: 'Row {n} of {total}…' },
+    'keywords.done.written': { fr: '{n} {n|ligne complétée|lignes complétées}.', en: '{n} {n|row|rows} filled.' },
+    'keywords.done.noText': { fr: '{n} sans texte lisible (un PDF scanné n’a pas de texte).', en: '{n} with no readable text (a scanned PDF has no text).' },
+    'keywords.done.noPdf': { fr: '{n} sans PDF parmi les pièces jointes.', en: '{n} with no PDF among the attachments.' },
+    'keywords.done.noKeywords': { fr: '{n} sans mot-clé trouvé.', en: '{n} with no keyword found.' },
+    'keywords.done.errors': { fr: '{n} {n|ligne en erreur|lignes en erreur} (ex. : {sample}).', en: '{n} {n|row|rows} failed (e.g. {sample}).' },
+    'keywords.done.cancelled': { fr: 'Arrêté : ce qui était déjà fait est enregistré.', en: 'Stopped: what was already done is saved.' },
+    'keywords.error.write': { fr: 'Grist a refusé l’écriture : {message}', en: 'Grist refused the write: {message}' },
+    'keywords.error.token': {
+      fr: 'Les pièces jointes ne sont pas lisibles ici : {message}',
+      en: 'Attachments cannot be read here: {message}'
+    },
+    'keywords.error.pdfjsMissing': {
+      fr: 'L’extension « Mots-clés des PDF » n’est plus ajoutée, ou son fichier a été refusé par le navigateur.',
+      en: 'The “PDF keywords” extension is no longer added, or the browser refused its file.'
+    },
+    'keywords.error.pdfjs': { fr: 'PDF.js n’a pas pu être chargé : {message}', en: 'PDF.js could not be loaded: {message}' },
+    'keywords.error.column': { fr: 'La colonne « {name} » n’a pas pu être créée : {message}', en: 'The “{name}” column could not be created: {message}' },
+    'keywords.sample': { fr: 'Ligne {id} : {words}', en: 'Row {id}: {words}' },
+    'keywords.needsGfs.note': {
+      fr: 'Demande l’extension « Mots-clés des PDF » de Grist Factory Suite.',
+      en: 'Needs the “PDF keywords” extension of Grist Factory Suite.'
+    },
+    'keywords.needsGfs.add': { fr: 'Ajouter l’extension', en: 'Add the extension' },
+    'keywords.needsGfs.how': { fr: 'Comment l’avoir', en: 'How to get it' },
 
     // --- Commentaires collaboratifs (panneau ouvert depuis une tuile) ---
     'comments.modal.title': { fr: 'Commentaires', en: 'Comments' },
@@ -535,6 +635,17 @@
     'dialog.cancel': { fr: 'Annuler', en: 'Cancel' },
     'dialog.close': { fr: 'Fermer', en: 'Close' },
     'dialog.notice.title': { fr: 'Information', en: 'Notice' },
+
+    // --- Extensions de GFS (js/extensions.js, consigne 019) : une fonction d'extension est grisée, jamais masquée ---
+    'ext.name.nuage-de-mots': { fr: 'Nuage de mots', en: 'Word cloud' },
+    'ext.name.mots-cles-pdf': { fr: 'Mots-clés des PDF', en: 'PDF keywords' },
+    'ext.pending.hosted': { fr: 'Pas encore : extension « {extension} » à ajouter', en: 'Not yet: add the “{extension}” extension' },
+    'ext.pending.standalone': { fr: 'Pas encore : disponible dans Grist Factory Suite', en: 'Not yet: available in Grist Factory Suite' },
+    'ext.standalone.title': { fr: 'Cette fonction demande Grist Factory Suite', en: 'This feature needs Grist Factory Suite' },
+    'ext.standalone.body': {
+      fr: '« {feature} » fait partie de l’extension « {extension} », disponible quand Grist BI tourne dans Grist Factory Suite. Pour l’ajouter sans rien perdre : dans le panneau de droite de Grist, remplacez l’adresse du widget par celle de Grist Factory Suite. Ne passez pas par la galerie des widgets : elle effacerait les réglages de cette vue. Vos rapports et vos réglages restent tels quels, et vous pourrez revenir à l’adresse de Grist BI à tout moment.',
+      en: '“{feature}” is part of the “{extension}” extension, available when Grist BI runs inside Grist Factory Suite. To add it without losing anything: in Grist’s right panel, replace the widget’s address with the Grist Factory Suite address. Do not use the widget gallery: it would erase this view’s settings. Your reports and settings stay as they are, and you can switch back to the Grist BI address at any time.'
+    },
     'dialog.error.title': { fr: 'Une erreur est survenue', en: 'Something went wrong' },
     'pages.new.title': { fr: 'Nouvelle page', en: 'New page' },
     'pages.new.confirm': { fr: 'Créer la page', en: 'Create page' },
@@ -560,6 +671,7 @@
     'tileTitle.histogram': { fr: 'Répartition de {measure}', en: 'Distribution of {measure}' },
     'tileTitle.box': { fr: 'Répartition de {measure} par {dimension}', en: 'Distribution of {measure} by {dimension}' },
     'tileTitle.bubble': { fr: '{measure} et {measureY} par {dimension}, taille : {measureSize}', en: '{measure} and {measureY} by {dimension}, size: {measureSize}' },
+    'tileTitle.calendar': { fr: '{measure} par jour ({dimension})', en: '{measure} per day ({dimension})' },
     'tileTitle.sankey': { fr: '{measure} : {dimension} → {columnDimension}', en: '{measure}: {dimension} → {columnDimension}' },
     'tileTitle.heatmap': { fr: '{measure} par {dimension} × {columnDimension}', en: '{measure} by {dimension} × {columnDimension}' },
     'tileTitle.table': { fr: 'Table : {columns}', en: 'Table: {columns}' },
@@ -682,7 +794,8 @@
 
     // --- Graphiques (js/charts.js) ---
     'chart.unavailable': { fr: 'ECharts indisponible — voir le bandeau en haut de page.', en: 'ECharts unavailable — see the banner at the top of the page.' },
-    'chart.wordCloudUnavailable': { fr: 'Nuage de mots indisponible pour le moment (extension en attente d’ajout).', en: 'Word cloud unavailable for now (extension pending approval).' },
+    'chart.wordCloudNeedsExtension': { fr: 'Nuage de mots : l’extension « Nuage de mots » n’est pas encore ajoutée (Apps et extensions, dans Grist Factory Suite).', en: 'Word cloud: the “Word cloud” extension is not added yet (Apps and extensions, in Grist Factory Suite).' },
+    'chart.wordCloudNeedsGfs': { fr: 'Nuage de mots : fonction de l’extension « Nuage de mots », disponible quand Grist BI tourne dans Grist Factory Suite.', en: 'Word cloud: a feature of the “Word cloud” extension, available when Grist BI runs inside Grist Factory Suite.' },
     'chart.measureFailed': { fr: 'Échec du calcul de la mesure — voir la console (F12).', en: 'Measure calculation failed — see the console (F12).' },
     'chart.computing': { fr: 'Calcul…', en: 'Computing…' },
     'chart.pivot.total': { fr: 'Total', en: 'Total' },
@@ -743,6 +856,7 @@
     'tileForm.error.refValueRequired': { fr: 'Saisissez la valeur de la ligne de repère.', en: 'Enter the value of the reference line.' },
     'tileForm.type.heatmap': { fr: 'Carte de chaleur', en: 'Heatmap' },
     'tileForm.type.box': { fr: 'Boîte à moustaches', en: 'Box plot' },
+    'tileForm.type.calendar': { fr: 'Calendrier (activité par jour)', en: 'Calendar (activity per day)' },
     'tileForm.type.sankey': { fr: 'Flux (Sankey)', en: 'Flow (Sankey)' },
     'tileForm.pivotHeat.label': { fr: 'Colorer les cellules selon leur valeur', en: 'Colour the cells by their value' },
     'tileForm.palette.heatHint': { fr: 'Un dégradé d’une seule teinte : clair = petite valeur, foncé = grande. « Standard » et « Okabe-Ito » donnent le bleu.', en: 'A single-hue ramp: light = small value, dark = large. “Standard” and “Okabe-Ito” give blue.' },

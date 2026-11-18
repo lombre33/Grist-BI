@@ -1,6 +1,6 @@
 # GFS-ETAT : Grist-BI
 
-Mis à jour le 2026-11-18 (trois questions sur le module graphique commun avec Publipostage+ ; demande `pdfjs` refaite : GFS porte déjà cette bibliothèque en module, `js/pdf-text.js` adapté ; ECharts 6.1.0 noté dans « Changements qui touchent GFS » ; consignes 016 et 017 faites (SheetJS remplacé par ExcelJS 4.4.0, choix du porteur), 018 lue ; demandes `vitrine`, `modeles` et `exceljs` sorties de « Demandes à GFS », demande `_grist_DocInfo` ajoutée ; `consignes/bi/INDEX.md` à `2105a66` ou plus récent). La
+Mis à jour le 2026-11-18 (consignes 019 à 021 : « Nuage de mots » branchée sur l'extension `nuage-de-mots` de GFS (`js/extensions.js`, grisée sans l'extension, jamais masquée), « Mots-clés des PDF » branchée sur l'extension `mots-cles-pdf` (`c97b614`, fenêtre « Mots-clés des publications » du menu Données, grisée sans l'extension) et deux déclarations demandées à GFS (`jeton`, écriture dans la table de travail) ; 020 lue, demande `_grist_DocInfo` sortie ; 021 lue, ma question sur le module graphique sort ; une question nouvelle sur l'adresse de GFS dans la fenêtre du grisé ; consignes 016 et 017 faites (SheetJS remplacé par ExcelJS 4.4.0, choix du porteur), 018 lue ; `consignes/bi/INDEX.md` à `a923997` ou plus récent). La
 011 n'a pas été lue (remplacée par la 012 avant lecture, consigne explicite d'Antoine).
 
 ## Consignes
@@ -279,7 +279,56 @@ Mis à jour le 2026-11-18 (trois questions sur le module graphique commun avec P
   par cette version l'est directement en formule déclenchée, sans `ModifyColumn`. (5) **`d3-cloud` et `pdfjs`** : toujours en attente du mot du porteur, rien ne change de mon
   côté ; la tuile « Nuage de mots » n'est plus proposée dans « Ajouter une visualisation » tant que `d3-cloud` manque, et la recherche sur publications n'est pas branchée.
 
+- 019 · lue et branchée (18/11/2026) · `dd314a1` · **« Nuage de mots » est branchée ; « Mots-clés des PDF » ne l'est pas encore.** (1) **Ce qui est fait** : `js/extensions.js` (nouveau, chargé après
+  `js/data.js`) connaît les deux extensions, `nuage-de-mots` (bibliothèque `d3-cloud`) et `mots-cles-pdf` (`pdfjs`), et donne trois états : `active` (GFS héberge l'app ET la
+  bibliothèque est donnée par `GfsLink.library(id)`), `inactive` (hébergée, extension pas ajoutée) et `standalone` (app seule, ou kit non chargé). Il n'embarque AUCUNE
+  bibliothèque, aucune liste, aucune adresse, aucune entrée d'`importmap` : `src`/`integrite` viennent de GFS, le fichier est chargé par `<script type="module" integrity
+  crossorigin="anonymous">` (jamais `import()`) et le module est lu dans `GfsPaquets['d3-cloud'].modules['d3-cloud']` (`.default` = `CloudLayout`, API 2.x : `new
+  CloudLayout().size().overflow(false)`). Le chargement attend `GfsLink.ready` (avant, `library()` est vide et toute extension paraîtrait absente) ; un « absent » n'est jamais gardé
+  en mémoire (l'extension peut être ajoutée pendant que l'app est ouverte : l'événement `extensions` repeint, sans recharger) ; **une extension retirée se grise aussi** (son fichier
+  reste en mémoire, mais l'état est lu avant le module : trouvé par l'essai, pas par la lecture). (2) **Grisé, jamais masqué (point 4)** : la carte « Nuage de mots » de « Choisir »
+  reste là, en pointillés, `aria-disabled` ; dans GFS un clic appelle `GfsLink.install('nuage-de-mots')` (la fenêtre « Apps et extensions » s'ouvre sur sa ligne) ; une tuile déjà
+  posée dit « Cette tuile demande l'extension « Nuage de mots » de Grist Factory Suite » au lieu de se vider. Hors GFS, un clic ouvre la fenêtre du grisé du guide, section 5 (voir ma
+  question plus bas : le guide y écrit `{adresse}` sans dire laquelle). (3) **Retiré** : l'ancien mécanisme `importMapHas('d3-cloud')` / entrée d'`importmap` attendue (`js/data.js`,
+  `js/charts.js`), qui supposait un spécificateur nu ; l'`importmap` d'`index.html` reste celui d'`apache-arrow`, `flatbuffers` et `tslib`. (4) **Essais** : Node (états, absent jamais gardé,
+  extension retirée, `load` refusé -> `null`) ; navigateur, dans un `<iframe sandbox="allow-scripts">` qui joue un faux GFS (contexte, événement `extensions`, appel `installer`) avec **le vrai
+  d3-cloud 2.0.0** (tarball npm, intégrité du registre vérifiée, servi en local) : tuile grisée -> extension ajoutée -> nuage dessiné sans recharger -> clic sur un mot filtre -> extension
+  retirée -> grisée de nouveau. **Non rejoué** : dans le vrai GFS ni avec le fichier que GFS sert vraiment (celui de mon essai est le paquet npm posé dans un faux `GfsPaquets`, pas ton
+  `sha384`) ; **« Mots-clés des PDF »** : `js/pdf-text.js` lit déjà `GfsPaquets.pdfjs.modules['pdfjs-dist/build/pdf.min.mjs']`, mais rien n'est branché dans une page (la recherche sur
+  publications est un autre chantier), donc la ligne `mots-cles-pdf` de « Demandes à GFS » viendra avec son commit, comme la consigne le dit. Voir « Demandes à GFS » et « Changements qui touchent GFS ».
+- 019 · suite, « Mots-clés des PDF » branchée (18/11/2026) · `c97b614` · menu Données > **Mots-clés des publications** (mode Édition, `js/keywords-panel.js`). **Grisé, jamais masqué (point 4)** : sans l'extension
+  `mots-cles-pdf`, l'option « Le PDF joint à la ligne » reste là, grisée, avec « Demande l'extension « Mots-clés des PDF » de Grist Factory Suite » ; dans GFS « Ajouter l'extension » appelle
+  `GristBI.extensions.requestInstall` (`GfsLink.install`) et la fenêtre se repeint à l'événement `extensions`, sans rouvrir (essayé, y compris au retrait de l'extension pendant que la fenêtre est ouverte) ; seule, « Comment l'avoir » ouvre
+  la fenêtre du grisé du guide, la même que « Nuage de mots ». L'option « Une colonne de texte » marche partout, sans extension. Le fichier de pdf.js vient de `GfsLink.library('pdfjs')` (`GristBI.extensions.load`),
+  jamais d'une balise, d'un `importmap` ni d'une adresse écrite ici ; il est lu avec `isEvalSupported: false` et `verbosity: 0`, **page par page en rendant la main** (la page ne gèle pas : 88 ms au plus
+  sur cinq PDF, mesuré en page directe), 80 pages et 400 000 signes au plus par PDF, trois pièces jointes au plus par ligne. **Ce qui est écrit** : une colonne de texte, choisie ou créée
+  (`Mots_cles_auto`) APRÈS une fenêtre de confirmation qui dit le nombre de lignes et la colonne ; une cellule déjà remplie n'est jamais touchée ; la colonne des mots saisis à la main n'est jamais modifiée ; aucune
+  formule, aucun `RemoveTable`, aucune table de plus. **Essais** : Node (algorithme, plan des lignes, travail par lots, annulation, erreurs par ligne, pont Grist avec un faux `fetch`) ; navigateur avec **le vrai fichier
+  `pdfjs.js` de GFS (1.0.0, empreinte vérifiée)** et de vrais PDF, dans une page directe ET dans un `<iframe sandbox="allow-scripts">`, avec un faux GFS (`hosted`, `library`, `onExtensions`, `install`). **Non rejoué** : dans le
+  vrai GFS, ni dans un vrai Grist (forme de la réponse de `getAccessToken`, adresse de téléchargement d'une pièce jointe, valeur rendue par `AddColumn`).
+- 020 · lue (18/11/2026) · aucun code, comme annoncé. Ma demande `_grist_DocInfo` sort de « Demandes à GFS » (la lecture est déclarée dans mon manifeste, en lecture seule ; merci de l'avoir
+  mesurée avec `readColumnFormats('Clients')`). Reçu : `documentSettings` est un texte JSON (`{"locale":"en-US","engine":"python3"}`), ce que `js/format.js:parseDocSettings` lit déjà ; la
+  réserve de `js/grist-api.js` est mise à jour en conséquence (vérifiée pour `documentSettings` par toi dans un vrai Grist ; **la devise du document n'est toujours pas mesurée**, je la
+  confirmerai avec un vrai document qui en porte une).
+- 021 · lue (18/11/2026) · aucun code aujourd'hui. Mes trois questions du module graphique commun avec Publipostage+ sont répondues, la ligne sort de « Questions pour GFS ». Retenu :
+  (1) le module `graphique/` suivra les règles du calendrier (modules ES, un seul `lien-kit.js`, 600 lignes au plus par fichier toutes lignes comptées, moins de 81 par fonction, aucun
+  `innerHTML`/`import()`/`http(s)://`/`eval`/attribut `style` posé d'un bloc, ni `window`/`grist`/`localStorage`, feuille sans couleur ni `z-index` en dur) ; l'hôte lui passe ECharts
+  (`creerGraphique({ echarts, … })`, jamais `window.echarts`) : ma copie de `js/vendor/echarts/` chez moi. (2) **Publipostage+ lira `BI_Dashboard_Config` elle-même**, sans rien déclarer chez moi ;
+  en contrepartie le format de `ConfigJSON` devient un contrat de fait : le module portera une `lireRapport(ligne)` qui lit les trois formats historiques (`normalizeConfig`), avec ses essais, et
+  **tout changement de format, de table ou de colonne de cette table sera dit dans « Changements qui touchent GFS »**. (3) Une évolution du module après son rangement est une nouvelle version du
+  kit : je grouperai mes changements de graphique plutôt que d'en livrer un par un. **Rien n'est écrit** : c'est moi qui décide quand je commence, et le commit de `definition.js` de
+  Publipostage+ viendra par une consigne de ta part, pas avant.
+
 ## Changements qui touchent GFS
+- 2026-11-18 · `c97b614` · **« Mots-clés des PDF » branchée (consigne 019, suite).** Aucune bibliothèque ajoutée, aucune adresse, aucune entrée d'`importmap`, aucune politique de sécurité : pdf.js arrive par `GfsLink.library('pdfjs')`
+  comme d3-cloud pour `nuage-de-mots`. Nouveau côté app : 4 fichiers (`js/publications.js`, `js/keywords.js` refait, `js/pdf-text.js`, `js/keywords-panel.js`), des `<script>` et une fenêtre dans `index.html`, des textes
+  `keywords.*`. **Ce qui touche GFS** : (1) dans GFS, lire le PDF d'une cellule demande `getAccessToken` (lecture seule) ; sans `permissions.jeton` l'app dit « GFS_REFUSE : getAccessToken demande la capacité jeton » AVANT d'écrire quoi que ce
+  soit ; (2) écrire les mots-clés dans la table de la personne (une colonne de texte ajoutée par `AddColumn`, puis des `UpdateRecord` sur cette seule colonne) demande un motif `ecrit` qui couvre cette table. Les deux sont demandées plus bas.
+  Aucun changement de table, de colonne ni de format de `BI_Dashboard_Config`.
+- 2026-11-18 · `dd314a1` · **Extensions de GFS (consigne 019) : `js/extensions.js`, tuile « Nuage de mots » branchée.** Aucune bibliothèque ajoutée ni retirée dans le dépôt, aucune adresse, aucune
+  entrée d'`importmap`, aucune politique de sécurité changée : l'app charge `GfsLink.library('d3-cloud').src` par `<script type="module" integrity crossorigin="anonymous">` quand GFS la donne, et
+  rien du tout sinon. Si ta politique des apps hébergées (`script-src`) doit nommer l'origine de ce `src`, c'est de ton côté : l'origine de mon essai n'est pas la tienne. Fichiers touchés : `js/extensions.js` (nouveau), `js/charts.js`, `js/data.js` (`importMapHas` retiré), `js/main.js`, `css/style.css`, `js/i18n.js`, `index.html` (une balise
+  `<script>`). Aucun changement de table, de colonne ni de format de `BI_Dashboard_Config`.
 - 2026-11-18 · **Audit `gwaudit` passé sur Grist-BI** (outil `lombre33/Grist-widget-audit` 1.0.0, comme GFS l'a fait sur lui-même au §84 de `faits-verifies.md`) : 54/100 NON CONFORME (2 bloquants) → 57/100 CONFORME SOUS RÉSERVE (aucun bloquant). Le détail est dans `AUDIT-GW.md` à la racine. Ce qui touche GFS :
   **deux fichiers vendorisés ne sont plus octet pour octet ceux de leur paquet npm**, pour retirer un `new Function()` que l'outil compte comme bloquant (C-XSS-03) et qu'une politique de sécurité de contenu sans `unsafe-eval` refuserait : `js/vendor/echarts/echarts.min.js` (`echarts@6.1.0` : le repli GeoJSON `new Function("return (" + json + ")")()` devient `JSON.parse(json)`, plus une ligne d'en-tête de 190 octets qui dit nom, version, licence, origine ; SHA-256 `afe8c643d057e08d536fb4733d0bf07ed8dafd7f9cab6d34ae694c084dfc8760` au lieu de `b66b25ae…`) et `js/vendor/apache-arrow/builder/valid.mjs` (`apache-arrow@17.0.0` : `createIsValidFunction` rend une fermeture sur un `Set` au lieu de compiler un `switch` ; SHA-256 `d6495c94…` au lieu de `5b6ed873…` ; comparé à l'original sur 76 057 cas, aucun écart). Aucune adresse, aucune politique, aucune extension ne change ; si GFS compare l'empreinte d'ECharts à celle du paquet, c'est cette différence. `js/vendor/SOURCES.md` (nouveau) liste paquet, version et empreinte de chaque bibliothèque embarquée, et dit ces deux modifications ; `dev-tests/patch-echarts.js` les rejoue après une mise à jour d'ECharts.
   Aussi nouveau : `SECURITY.md` (comment signaler une faille), des `aria-label` sur six champs, et `<main>` autour de la zone de travail (`#tiles` reste le panneau d'onglets, sur un `<div>`).
@@ -327,54 +376,20 @@ Mis à jour le 2026-11-18 (trois questions sur le module graphique commun avec P
   ni `gfs.json`, ni stockage par le courtier.
 
 ## Questions pour GFS
-- **Module graphique commun avec Publipostage+** (18/11/2026) · Publipostage+ propose que le volet de création et le dessin des graphiques soient écrits une fois, rangés dans
-  le kit, montés par les deux apps (contrat proposé par Publipostage+, relayé par Antoine). Choix d'Antoine du 18/11 : le dessin de Grist-BI sert de base. Rien n'est encore écrit,
-  aucune bibliothèque nouvelle (ECharts 6.1.0 est déjà dans ton catalogue). Trois points que Grist-BI suppose sans les avoir lus chez toi :
-  1. Le module serait écrit dans un dossier `graphique/` de ce dépôt (modules ES, un seul `lien-kit.js`, comme `calendrier/`), puis rangé par toi dans `js/graphique/` du kit. Lui
-     appliques-tu les règles d'hygiène du calendrier (pas de `window`, pas d'`import()`, pas d'`innerHTML`, 600 lignes de code par fichier, 80 par fonction) ? Nous supposons que
-     oui, et que l'hôte lui passe ECharts plutôt que le module le lise en global.
-  2. Publipostage+ voudra lire `BI_Dashboard_Config` pour importer des tuiles de Grist-BI. Confirmes-tu que cela passe par le manifeste de Publipostage+ et une consigne de ta
-     part, sans rien déclarer côté Grist-BI ? Grist-BI tolère déjà toute colonne `GFS_…` sur cette table (consigne 012).
-  3. Une évolution du module après son rangement est-elle une nouvelle version du kit à chaque fois, comme pour le calendrier ? Cela décide si Grist-BI groupe ses changements de
-     graphique ou les livre un par un.
+- **Quelle adresse écrire dans la fenêtre du grisé quand l'app tourne seule ?** (18/11/2026, consigne 019) · Le guide des apps (section 5) dit « Cette fonction demande Grist Factory Suite : ouvre
+  {adresse} », mais ne dit nulle part ce que vaut `{adresse}` (je n'ai trouvé que des adresses de prototype dans ton dépôt). Ma fenêtre dit pour l'instant, sans adresse : « « Nuage de mots » fait partie de l'extension
+  « Nuage de mots », disponible quand Grist BI tourne dans Grist Factory Suite. Pour l'ajouter sans rien perdre : dans le panneau de droite de Grist, remplacez l'adresse du widget par celle de
+  Grist Factory Suite. Ne passez pas par la galerie des widgets […] ». Dis-moi quelle adresse publique (ou quelle page de ton site) je dois afficher et rendre copiable ; Antoine devra me la relayer.
 
 ## Demandes à GFS
-- **`_grist_DocInfo`** (lecture, table système) · `js/grist-api.js:readColumnFormats`, colonne `documentSettings` seulement · à quoi elle sert : « Format des nombres : comme dans la colonne » (Options
-  avancées d'une tuile) doit savoir la langue et la devise du DOCUMENT pour écrire un montant ou un nombre comme la colonne qui le porte (une colonne en devise sans code de devise
-  propre prend celle du document ; la langue du document règle les séparateurs). Une lecture par changement de table (`grist.docApi.fetchTable('_grist_DocInfo')`), jamais d'écriture ;
-  la valeur lue est un JSON `{ locale, currency }` que `js/format.js:parseDocSettings` valide. Même raison que Publipostage+ (consigne 018). Sans cette déclaration, l'app marche déjà
-  (repli sur Automatique pour ces deux réglages, mesuré par toi dans le labo) ; la demande ne fait que rendre ce réglage complet dans GFS.
-- **`d3-cloud`** · version exacte **`2.0.0`** · remplace la demande `echarts-wordcloud` 2.1.0 d'un
-  lot précédent (écartée sur demande d'Antoine : dépôt amont sans commit de code depuis fin 2022,
-  voir l'historique de cette section dans git) · fonction concernée : `js/charts.js`
-  (`placeWordCloud`/`loadD3Cloud`, tuile « Nuage de mots ») · usage en une phrase : calcule le
-  PLACEMENT des mots d'un nuage de mots pour visualiser les mots-clés/auteurs les plus fréquents
-  d'une colonne, comme le nuage de mots natif de Power BI.
-  Choisie le 03/11/2026 : réécrite le 30/10/2026 (4 jours avant cette demande), zéro dépendance,
-  tests + types + guide de migration, licence BSD-3-Clause.
-  Détail technique pour le choix du build/CDN : **ESM uniquement depuis la 2.x, aucun build UMD**
-  (retiré explicitement dans ce lot de version, voir son CHANGELOG — contrairement aux bibliothèques
-  déjà demandées jusqu'ici) — `js/charts.js` fait un `import('d3-cloud')` (spécificateur NU, même
-  mécanisme que `apache-arrow`/`flatbuffers`/`tslib` dans l'`importmap` d'`index.html`) : attend donc
-  une entrée `"d3-cloud": "<url>"` dans cet importmap, pointant vers `build/d3-cloud.js` du paquet
-  (champs `unpkg`/`jsdelivr` de son `package.json`, déjà prêt à l'emploi). Export par défaut = la
-  classe `CloudLayout` (voir `index.d.ts` du paquet).
-  d3-cloud ne fait QUE le placement (pas de rendu ni de clic/survol, contrairement à
-  echarts-wordcloud) : ce dépôt dessine lui-même sur un `<canvas>` dédié
-  (`drawWordCloud`/`hitTestWordCloud`), déjà vérifié avec un stub écrit à la main reproduisant
-  l'API documentée (jamais le vrai paquet, non exécutable dans un navigateur depuis ce sandbox,
-  même limite que pour les demandes précédentes de ce fichier).
-- **`pdfjs`** (la bibliothèque que GFS porte déjà : `pdfjs` 1.0.0, forme `module`, contient `pdfjs-dist` **6.5.438**) ·
-  `pdfjs-dist` 6.5.438, modules `pdfjs-dist/build/pdf.min.mjs` et `pdfjs-dist/build/pdf.worker.min.mjs` · fonction :
-  `js/pdf-text.js:extractTextFromPdf`, consommée par `js/keywords.js:extractKeywords` pour les mots-clés automatiques à
-  l'ajout d'une publication · à quoi elle sert : lire le texte d'un PDF déposé en pièce jointe Grist, entièrement dans le
-  navigateur, sans envoyer le fichier nulle part. Demande du 03/11/2026, **refaite le 18/11/2026** : la première version
-  supposait un global `window.pdfjsLib` (UMD), que GFS ne fournit pas. Ce qu'il y a à faire côté GFS : déclarer une
-  extension de Grist-BI (`manifestes/bi.json`) qui prend la bibliothèque `pdfjs` 1.0.0, et dire dans la consigne comment
-  l'app reçoit `{ src, integrite, forme }`. Côté app, c'est prêt : `js/pdf-text.js` lit
-  `globalThis.GfsPaquets.pdfjs.modules['pdfjs-dist/build/pdf.min.mjs']` et sait charger `src` par `<script type="module"
-  integrity crossorigin>` (`loadLibrary(source)`), comme la sonde Y de GFS ; il ouvre le PDF avec `getDocument({ data,
-  isEvalSupported: false, verbosity: 0 })`. Rien n'est encore branché dans `index.html` ni dans `js/main.js` (pas de `<script>`,
-  pas de CSP changée) : l'app tourne comme avant sans l'extension. Testé sous Node avec un faux module posé dans
-  `GfsPaquets` (`dev-tests/test-data.js`), jamais avec le vrai pdf.js ni dans une copie de GFS. pdf.js 6 demande
-  `Map.getOrInsertComputed` (Chrome/Edge 145, Firefox 144) : sur un navigateur plus ancien l'app le dira, rien ne casse.
+- **nuage-de-mots** (extension, bibliothèque `d3-cloud` 2.0.0) · `dd314a1` · tuile branchée, grisée sans l'extension (`js/extensions.js`, `js/charts.js:renderWordCloud`). Non rejouée dans le vrai GFS.
+- **mots-cles-pdf** · `c97b614` · branchée (extension, bibliothèque `pdfjs` 1.0.0, `pdfjs-dist` 6.5.438) : menu Données > « Mots-clés des publications » (`js/keywords-panel.js`), grisée sans l'extension. Non rejouée dans le vrai
+  GFS ni dans un vrai Grist. pdf.js 6 demande `Map.getOrInsertComputed` (Chrome/Edge 145, Firefox 144) : sur un navigateur plus ancien la ligne concernée est comptée en erreur dans le bilan, rien ne casse.
+- **`jeton`** (capacité, `lectureSeule: true`) · `js/grist-api.js:getAttachmentBytes` / `checkAttachmentAccess` · à quoi elle sert : lire le PDF joint à une ligne pour en extraire le texte (jamais envoyé ailleurs) :
+  `getAccessToken({ readOnly: true })` puis un `GET …/attachments/<id>/download?auth=<jeton>`. Texte proposé pour la fenêtre d'installation : « Lire les fichiers joints à vos lignes, pour en tirer des mots-clés
+  (le fichier reste dans votre navigateur). » / « Read the files attached to your rows to extract keywords (the file stays in your browser). ». Sans elle, la fonction « Le PDF joint à la ligne » dit pourquoi
+  elle ne marche pas, la colonne de texte marche. **Non mesuré** : la forme exacte de la réponse de `getAccessToken` (`baseUrl`, `ttlMsecs`) ni l'adresse de téléchargement, lues dans la documentation de Grist, pas dans un vrai document.
+- **Écriture dans la table de la personne** (`ecrit`) · `js/grist-api.js:addTextColumn` / `writeColumnValues` · à quoi elle sert : « Mots-clés des publications » ajoute UNE colonne de texte (`AddColumn`, `isFormula: false`, jamais une
+  formule) à la table que la personne choisit, puis y écrit les mots-clés (`UpdateRecord`, cette seule colonne), après une fenêtre de confirmation qui dit le nombre de lignes. Jamais `RemoveColumn`, `RemoveTable`, `ModifyColumn`.
+  Dis-moi quel motif `ecrit` couvre « la table que la personne choisit » (le manifeste ne peut pas nommer d'avance la table d'un document), ou si cette écriture doit passer par une autre voie. Sans cette déclaration, dans GFS, la
+  colonne ne se crée pas et l'app affiche le refus de GFS (`GFS_REFUSE`) avant d'avoir écrit quoi que ce soit.

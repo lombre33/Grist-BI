@@ -806,7 +806,8 @@
   // `realDateColumnIds` (tables système lisibles avec l'accès `full`) ; le JSON n'est PAS interprété ici
   // (`GristBI.format.parseWidgetOptions` s'en charge, testé sous Node). Repli sur `{columns: {}, docSettings:
   // null}` en cas d'échec : le format de chaque tuile retombe alors sur Automatique, jamais d'erreur.
-  // La forme exacte de ces deux tables n'a PAS été vérifiée sur un vrai document Grist depuis cette session.
+  // `documentSettings` est un texte JSON (`{"locale":"en-US","engine":"python3"}`), vérifié par GFS dans un vrai Grist (consigne 020, 18/11/2026) ; la forme exacte
+  // de `widgetOptions` de `_grist_Tables_column` et la devise du document n'ont PAS été mesurées sur un vrai document Grist depuis cette session.
   async function readColumnFormats(tableId) {
     const empty = { columns: {}, docSettings: null };
     try {
@@ -876,9 +877,98 @@
     return actualTableId;
   }
 
+  // ---------------------------------------------------------------------------------------------
+  // Mots-clés des publications (fenêtre « Mots-clés des publications », js/main.js ; logique pure dans
+  // js/publications.js). Trois gestes sur la table de TRAVAIL de la personne, tous déclenchés par un
+  // clic explicite dans cette fenêtre, jamais au démarrage :
+  //  - lire une pièce jointe (`getAccessToken` en LECTURE SEULE + `GET .../attachments/<id>/download`,
+  //    la seule façon pour un widget d'obtenir les octets d'une pièce jointe) ;
+  //  - ajouter une colonne de texte vide (`AddColumn`, après confirmation de la personne) ;
+  //  - écrire les mots-clés d'une ligne (`UpdateRecord`, jamais sur une cellule déjà remplie : c'est
+  //    `GristBI.publications.planRows` qui choisit les lignes).
+  // Dans GFS, `getAccessToken` n'est ouvert à une app que si son manifeste déclare la capacité `jeton`
+  // (contrats 3.4, point 1) ; Grist-BI l'a demandée (GFS-ETAT.md, « Demandes à GFS »). Sans elle,
+  // `checkAttachmentAccess` rend `{ ok: false }` et la fenêtre le dit avant de lancer quoi que ce soit.
+  // La forme exacte de la réponse de `getAccessToken` (`{ token, baseUrl, ttlMsecs }`) et l'adresse de
+  // téléchargement d'une pièce jointe sont écrites d'après la documentation de Grist : rien de tout
+  // cela n'a encore été rejoué contre un vrai document (voir HYPOTHESES.md).
+  // ---------------------------------------------------------------------------------------------
+  const ATTACHMENT_MAX_BYTES = 80 * 1024 * 1024; // une publication plus lourde est laissée de côté, avec son erreur
+  let _attachmentAuth = null; // { token, baseUrl, expiresAt }
+
+  async function attachmentAuth(force) {
+    const now = Date.now();
+    if (!force && _attachmentAuth && _attachmentAuth.expiresAt - 30000 > now) return _attachmentAuth;
+    const access = await grist.docApi.getAccessToken({ readOnly: true });
+    if (!access || !access.token || !access.baseUrl) throw new Error('Grist n\'a pas donné de jeton de lecture.');
+    const ttl = Number(access.ttlMsecs) > 0 ? Number(access.ttlMsecs) : 60000;
+    _attachmentAuth = { token: access.token, baseUrl: String(access.baseUrl).replace(/\/+$/, ''), expiresAt: now + ttl };
+    return _attachmentAuth;
+  }
+
+  // Vérifie, AVANT de lancer un travail sur des centaines de lignes, qu'un jeton de lecture est donné.
+  async function checkAttachmentAccess() {
+    try {
+      await attachmentAuth(true);
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, message: (e && e.message) || String(e) };
+    }
+  }
+
+  // Octets d'une pièce jointe (ArrayBuffer). Un 401/403 (jeton expiré entre-temps) est retenté une
+  // fois avec un jeton neuf ; toute autre réponse en erreur lève avec son code HTTP.
+  async function getAttachmentBytes(attachmentId, options) {
+    const maxBytes = (options && options.maxBytes) || ATTACHMENT_MAX_BYTES;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const auth = await attachmentAuth(attempt > 0);
+      const url = `${auth.baseUrl}/attachments/${encodeURIComponent(attachmentId)}/download?auth=${encodeURIComponent(auth.token)}`;
+      const res = await fetch(url);
+      if (res.status === 401 || res.status === 403) {
+        if (attempt === 0) continue;
+      }
+      if (!res.ok) {
+        const err = new Error(`Pièce jointe ${attachmentId} : réponse ${res.status} de Grist.`);
+        err.code = 'ATTACHMENT_HTTP';
+        throw err;
+      }
+      const declared = Number(res.headers && res.headers.get && res.headers.get('content-length'));
+      if (declared && declared > maxBytes) {
+        const err = new Error(`Pièce jointe ${attachmentId} : ${Math.round(declared / 1048576)} Mo, au-delà de la limite de ${Math.round(maxBytes / 1048576)} Mo.`);
+        err.code = 'ATTACHMENT_TOO_LARGE';
+        throw err;
+      }
+      return res.arrayBuffer();
+    }
+    throw new Error(`Pièce jointe ${attachmentId} : accès refusé par Grist.`);
+  }
+
+  // La table de travail telle que Grist la rend (format colonnaire, sans conversion de dates) : sert à
+  // choisir les lignes à compléter, pas à l'affichage.
+  async function fetchRawTable(tableId) {
+    return grist.docApi.fetchTable(tableId);
+  }
+
+  // Ajoute à `tableId` une colonne de texte vide et rend son identifiant RÉEL (Grist peut en changer
+  // quand il est déjà pris : on lit la réponse, comme pour `AddTable` plus haut, sinon on garde le nom
+  // demandé). Pas de formule : une colonne de données, comme le reste de ce projet (CLAUDE.md §8).
+  async function addTextColumn(tableId, colId) {
+    const result = await grist.docApi.applyUserActions([['AddColumn', tableId, colId, { type: 'Text', isFormula: false }]]);
+    const rv = result && result.retValues && result.retValues[0];
+    return (rv && rv.colId) || colId;
+  }
+
+  // Écrit une valeur de texte dans `colId` pour chaque ligne de `entries` (`[{ id, value }]`), en UN
+  // appel — `UpdateRecord`, verbe déjà utilisé par ce widget partout ailleurs.
+  async function writeColumnValues(tableId, colId, entries) {
+    if (!entries || !entries.length) return;
+    await grist.docApi.applyUserActions(entries.map((e) => ['UpdateRecord', tableId, e.id, { [colId]: e.value }]));
+  }
+
   GristBI.api = {
     init, loadConfig, saveConfig, loadConfigById, blankConfig,
     listAvailableTables, loadTable, loadOrCreateComments, addComment, refColumnsForTable,
-    getCurrentUserEmail, createTableFromRows, readColumnFormats
+    getCurrentUserEmail, createTableFromRows, readColumnFormats,
+    checkAttachmentAccess, getAttachmentBytes, fetchRawTable, addTextColumn, writeColumnValues
   };
 })(window);

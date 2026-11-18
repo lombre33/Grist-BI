@@ -873,7 +873,12 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 - [x] Barres de 6 catégories à libellés longs : six libellés tronqués (« Tab… », « Cla… »), plus un seul libellé coupé à gauche ; 24 catégories : un libellé sur k ; barres horizontales : graduations « 0, 300 k, 600 k, 900 k, 1,2 M » (« 200 k400 k600 k » collés avant) 🌐
 - [x] Entonnoir : nom tronqué + valeur sur la 2e ligne, plus de libellé coupé à droite ; radar à noms de 44 caractères : noms tronqués, aucun coupé par le bord de la tuile 🌐
 - [x] Nuage de mots sans d3-cloud : le message « indisponible » est lisible au centre de la tuile ✅🌐
-- [x] Nuage de mots sans d3-cloud : aucune carte « Nuage de mots » dans « Ajouter une visualisation » (15 cartes) ; avec une entrée `d3-cloud` dans l'importmap, la carte revient (16) ; en modifiant une tuile Nuage de mots enregistrée, « Changer de type » la montre ; `importMapHas` rend `false` sur un JSON illisible, vide ou sans `imports` ✅🌐
+- [x] Nuage de mots sans d3-cloud : aucune carte « Nuage de mots » dans « Ajouter une visualisation » (15 cartes) ; avec une entrée `d3-cloud` dans l'importmap, la carte revient (16) ; en modifiant une tuile Nuage de mots enregistrée, « Changer de type » la montre ; `importMapHas` rend `false` sur un JSON illisible, vide ou sans `imports` ✅🌐 — **remplacé le 18/11/2026 par les lignes « Extensions de GFS » ci-dessous (la carte est grisée, plus retirée)**
+- [x] Extensions de GFS : `js/extensions.js` — état seule / hébergée sans l'extension / avec elle, source sans empreinte ou extension inconnue = jamais « active » ✅
+- [x] Extensions de GFS : `load` n'ajoute AUCUNE balise sans l'extension ; avec elle, une seule `<script type="module" integrity crossorigin="anonymous">` ; extension retirée en cours de route = null même fichier déjà chargé ✅
+- [x] Extensions de GFS : `requestInstall` appelle `GfsLink.install` (annulation sans exception), seule rend `standalone` ✅
+- [x] « Nuage de mots » grisé dans l'app seule : carte `aria-disabled`, « Pas encore : disponible dans Grist Factory Suite », clic = fenêtre du grisé, l'étape « Choisir » reste ; aucun autre type grisé 🌐
+- [x] « Nuage de mots » dans un faux GFS (`<iframe sandbox="allow-scripts">`, kit 0.24.0, vrai d3-cloud 2.0.0) : grisé « extension à ajouter », clic = appel `installer`, extension ajoutée sans rechargement -> carte dégrisée + tuile enregistrée repeinte, retrait -> message de retour 🌐
 - [x] Rendu repris au changement de thème : `emulateMedia({colorScheme: 'dark'})` puis jeton `--surface` posé par le CSSOM -> quadrillage, fond d'infobulle et texte changent ; réécrire `--chrome-h` ne relance AUCUN rendu (compteur de `setOption`) 🌐
 - [x] Avertissement radar « colonnes » : Quantité 19 / Marge 0,2 / Montant 65 000 -> `advice.radar.mixedScales` (colonnes citées) ; compétences sur 20, un seul axe, colonne vide : rien ✅
 - [x] Le vrai `index.html` charge sans erreur ; 6 000 lignes (DuckDB, `BigInt`) : KPI, infobulle et axe inchangés 🌐
@@ -1029,6 +1034,52 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 - [x] 6 000 lignes (DuckDB), page directe ET cadre isolé : mêmes vérifications 🌐
 - [ ] Rendu dans un vrai Grist / un vrai GFS ⬜ **[NON TESTABLE ICI]** ; thème sombre non rejoué pour cette tuile ⬜
 - **Piège de test** : les grosses bulles se chevauchent ; viser le centre d'une bulle recouverte par une autre clique sur la voisine. Choisir une bulle dont le centre est libre.
+
+### `js/data.js` + `js/charts.js` + panneau — calendrier (18/11/2026 ; Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`, 400 et 6 000 lignes, clair et sombre)
+
+- [x] `isoDayShift` : fins de mois, année bissextile, décalage nul, entrée invalide ✅
+- [x] `calendarDays` : valeur par jour pour les 5 agrégats (+ inconnu = somme), jours triés, plusieurs lignes le même jour, dates invalides / nulles / nombres ignorées et comptées, aucune date = aucun jour, entrées vides ✅
+- [x] Fenêtre d'un an : 366 jours dessinés, `hidden`/`total` exacts, plafond réglé / invalide / `Infinity` ; un trou n'est pas un jour à 0 ✅
+- [x] Store : clic = filtre d'égalité du jour, tuile source entière, autres tuiles filtrées, même jour = retiré, suppression de la tuile = filtre levé ✅
+- [x] Export Excel : un jour par ligne, tous les jours (au-delà de l'année aussi), filtre d'une autre tuile appliqué, aucune ligne = en-têtes seuls ; `tileExportKind` = `image` ✅
+- [x] Types : palette et format oui ; tri, séries, repère, étiquettes non ✅ ; défauts (vraie colonne de dates, Somme ou Comptage), `noDate`, conseils `notDate` / `fewDays` / `truncated`, jamais à l'accueil, i18n fr/en (7 jours, 12 mois) ✅
+- [x] Formulaire : libellé « Colonne de dates », colonne de regroupement / drill-down / tri / séries masqués, colonne qui n'est pas de dates refusée avec son message, préremplissage, tuile enregistrée sans drill-down 🌐
+- [x] Rendu : série `heatmap` en `calendar` = calcul pur, plage = mois entiers, lundi en premier, légende = min / max ; **pixel de la case du maximum = dernier arrêt de la rampe, pixel d'un jour sans ligne hors rampe** 🌐 ; thème sombre 🌐
+- [x] Infobulle survolée (« mercredi 9 avril 2025 » + valeur) ; **clic réel de souris** sur un jour = filtre, autres jours à 0,3, tuile source entière, 2e clic = retiré, clic sur un jour sans ligne = aucun filtre 🌐
+- [x] Filtre d'une autre tuile : jours recalculés ; agrandissement = cases plus larges ; 500 jours = 366 dessinés + 500 exportés + conseil ; aucune date valide = message (sans exception ECharts) ; calendrier -> barres -> calendrier ; valeurs toutes égales ; aucune erreur console 🌐
+- [x] 6 000 lignes, page directe ET cadre isolé : mêmes vérifications 🌐
+- [ ] Rendu dans un vrai Grist / un vrai GFS ⬜ **[NON TESTABLE ICI]**
+- **Piège de test** : un `setOption` avec `calendar` mais sans `range` lève dans ECharts ; l'état vide ne doit pas écrire de composant `calendar`.
+
+### `js/keywords.js` + `js/pdf-text.js` + `js/publications.js` + `js/keywords-panel.js` + `js/grist-api.js` — mots-clés des publications (18/11/2026 ; Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`, vrai `pdfjs.js` de GFS, vrais PDF)
+
+- [x] `extractKeywords` : textes français et anglais réalistes (les expressions qui reviennent passent devant les rares), composé à trait d'union gardé, élision et possessif retirés, ligne vide = coupure, unité contenue non répétée, ex-aequo par ordre d'apparition (jamais alphabétique), texte vide / sans mot utile = aucun mot-clé ; `rakeKeywords` garde son comportement (découpage des phrases trop longues) ✅
+- [x] `publications` : `attachmentIds` (`['L', 1, 2]`, liste nue, nombre seul, texte JSON, doublons, non-entiers), `columnChoices` (source PDF = colonnes de pièces jointes, source texte, sortie = colonnes de texte, mots saisis = texte / choix), `freshColumnName` (casse ignorée, `_2`…), `planRows` (cellule de sortie remplie jamais touchée, ligne sans source écartée, trois pièces jointes au plus) ✅
+- [x] `keywordsForTask` : PDF lu, image ignorée (pas un PDF), PDF scanné = `noText`, mots saisis à la main exclus, aucun mot utile = `noKeywords` ✅ ; `runJob` : lots, erreur par ligne sans arrêt, refus d'écriture = arrêt, annulation écrit ce qui est prêt, source texte ✅
+- [x] `pdfText.readPdf` : page par page, plafonds de pages et de signes, annulation, document libéré à la fin ET en cas d'erreur, `isPdfBytes` ✅
+- [x] `grist-api` (faux `grist` et `fetch` dans un `vm`) : jeton en lecture seule mis en cache, adresse de téléchargement, 404, trop lourde, jeton expiré (une reprise), `addTextColumn` (jamais de formule, colId réellement rendu), `writeColumnValues` (un `UpdateRecord` par ligne, un seul `applyUserActions`), refus clair sans `jeton` ✅
+- [x] Câblage : chaque id cherché par le panneau existe dans `index.html`, ordre des scripts (`extensions.js` avant le panneau), aucun `<form>` dans la fenêtre (piège n°20), aucune boîte native, textes fr/en, bouton réservé à l'Édition, aucune bibliothèque PDF dans la page, le panneau ne parle pas directement à GFS ✅
+- [x] **Grisé, jamais masqué** : app seule (option PDF grisée, « Comment l'avoir » ouvre la fenêtre du grisé, la colonne de texte marche sans extension) ; hébergé sans l'extension (« Ajouter l'extension » appelle l'installation, la fenêtre se dégrise SANS rouvrir quand l'extension arrive, se regrise quand elle est retirée) 🌐
+- [x] Travail réel avec le vrai pdf.js de GFS : trois lignes remplies, un scan « sans texte lisible », une ligne « sans PDF », mots saisis à la main inchangés, plus long gel de la page 88 ms, relecture de la table de travail (le tableau de bord voit la colonne) 🌐 ; **page directe ET cadre isolé** 🌐
+- [x] GFS sans la capacité `jeton` : refus clair AVANT toute écriture, aucune colonne créée 🌐 ; anglais 🌐
+- [ ] Un vrai Grist (réponse de `getAccessToken`, adresse de téléchargement d'une pièce jointe, `AddColumn`), un vrai GFS (capacités `jeton` et `ecrit` déclarées), de vrais PDF de chercheurs, 100 000 lignes ⬜ **[NON TESTABLE ICI]**
+- **Piège de test** : le faux GFS doit rendre un `integrite` égal au `sha384` du vrai fichier (le navigateur refuse sinon le `<script type="module">`) ; la fenêtre ne se repeint qu'à l'événement `extensions` (`GristBI.extensions.onChange`), jamais en relisant le lien.
+
+### `js/data.js` + `js/charts.js` + panneau — Gantt (18/11/2026 ; Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`, 14 et 6 014 lignes, clair et sombre)
+
+- [x] `ganttTasks` : tri par début (stable à début égal), fin avant début / fin absente / date illisible / nombre / date non ISO écartées et comptées, tâche d'un jour valide, libellé et statut vides, statuts dans l'ordre de la table et sur TOUTES les tâches valides, plafond (réglé, invalide, `Infinity`), `min`/`max`, entrées vides ✅
+- [x] `ganttTicks` : mois / lundis / jours selon la durée, au plus 8, budget réglé (invalide = défaut), graduation de début seulement si la 1re est loin du bord, croissantes dans [0, 1) ✅ ; `ganttLayout` : `left`/`width` en fraction de l'axe, tâche d'un jour = une case, aujourd'hui dans l'axe (milieu de la case) / hors axe / NaN / jours limites ✅
+- [x] Store : clic = filtre d'égalité du libellé, tuile source entière, autres tuiles filtrées, même valeur = retiré, suppression de la tuile = filtre levé ✅
+- [x] Export Excel : une ligne par tâche dessinable, TOUTES (au-delà du plafond), triées, colonne de couleur seulement si choisie, filtre d'une autre tuile appliqué, aucune ligne = en-têtes seuls ; `tileExportKind` = `table` ✅
+- [x] Types : palette oui, format de nombre non ; tri, séries de barres, repère, étiquettes non ✅ ; défauts (colonnes de dates dans l'ordre inverse de la table, libellé, statut), `noTwoDates`, conseils `noTask` / `manyStatuses` / `ignored` / `truncated`, jamais à l'accueil, i18n fr/en avec pluriels ✅
+- [x] Câblage lu dans les sources : carte / option / icône, pas de drill-down, deux champs de colonne comboboxes, validation début et fin, ni mesure exigée ni écrite, dispatch, **chaque chaîne saisie échappée** (libellé, statut, infobulle), couleurs en ligne = palette seulement ✅
+- [x] Formulaire : libellés, champs masqués (mesure, agrégat, drill-down, tri, 2e dimension), préremplissage, fin vide / colonne non date refusées avec leur message, tuile enregistrée sans mesure ni agrégat, édition qui recharge début / fin / statut 🌐
+- [x] Rendu : lignes dans l'ordre du calcul pur, **géométrie des barres mesurée contre `ganttLayout`** (gauche, largeur), couleur par statut = palette, pastilles = statuts de la table, note des lignes écartées, graduations sans recouvrement, légende visible dans la tuile, année dans le coin de l'axe 🌐 ; thème sombre (axe collant = fond de la tuile) 🌐
+- [x] **Clic réel de souris** sur une tâche = filtre (autres lignes estompées, tuile entière, 2e clic = retiré), Entrée sur une ligne focalisée, clic sur une pastille = filtre du statut (autres pastilles estompées) 🌐 ; filtre d'une autre tuile = seules les tâches retenues 🌐
+- [x] Repère « aujourd'hui » à la position du calcul pur ; agrandissement = lignes plus hautes ; 260 tâches = 200 lignes + note + conseil + 260 exportées ; libellé et statut hostiles (`<img onerror>`) = texte, jamais du balisage, clic = filtre du texte exact ; aucune tâche = message + conseil ; gantt -> barres -> gantt (plus de balisage Gantt sur des barres) ; aucune erreur console 🌐
+- [x] 6 014 lignes (au-delà du plafond), page directe ET cadre isolé : mêmes vérifications 🌐
+- [ ] Rendu dans un vrai Grist / un vrai GFS ⬜ **[NON TESTABLE ICI]**
+- **Piège de test** : les comboboxes du formulaire n'offrent que les colonnes du harnais au moment du chargement (Region, Produit, Mois, Quantite, Montant) : un essai qui remplace les lignes par d'autres noms de colonnes ne peut pas les choisir en tapant (le mode strict les refuse). Réutiliser ces noms, `Mois` et `Quantite` portant des dates ISO.
 
 ### CSS — classe de bug à systématiquement re-vérifier
 
