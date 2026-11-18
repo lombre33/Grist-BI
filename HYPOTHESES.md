@@ -3404,6 +3404,22 @@ Point de départ : la limite notée à la fin du lot « graduations de la jauge 
   objectif hors de la plage des données = axe élargi et ligne dans le cadre ; barres horizontales, courbe, pile, repère négatif, objectif invalide, camembert sans ligne ; moyenne qui suit un filtre croisé).
   **Pas testé dans un vrai Grist ni un vrai GFS.**
 
+### Tuiles usuelles des outils BI — lot 2, étiquettes de valeur, courbe lissée, 100 % empilé (18/11/2026)
+
+- **Trois options d'affichage** (PR 7b du plan, §4.7), dans « Options avancées », sans nouveau type de tuile :
+  - **Écrire les valeurs sur le graphique** (`tile.valueLabels`, barres hors mode mesure et courbe/aire) : au-dessus de la barre ou du point, à droite d'une barre horizontale, dans le segment d'une
+    pile (texte noir ou blanc selon la couleur de la série) ; compactes (`1,5 k`), les étiquettes qui se recouvrent sont masquées (pas de nombre illisible), une valeur absente ou nulle d'une pile n'écrit rien.
+  - **Tracé de la courbe** (`tile.lineShape`, courbe/aire) : droit (défaut), lissé (`smooth: 0.35`, volontairement discret) ou en escalier centré (`step: 'middle'` : chaque valeur couvre sa catégorie).
+  - **En 100 %** (`tile.stackPercent`, barres ou aire empilées avec une colonne Séries) : chaque catégorie ramenée à ses parts, axe 0-100 %, infobulle « Série : 25 % (1 000) » + total brut.
+- **Choix à confirmer** : le lissage peut dessiner des valeurs qui n'existent pas (passer sous zéro) — pas de conseil automatique pour l'instant ; l'escalier est « centré » (autres choix : avant/après) ;
+  la ligne de repère est **désactivée en 100 %** (l'axe est en parts) ; des valeurs négatives dans une pile 100 % donnent le conseil `advice.stackedPercent.negative`, pas de correction automatique.
+- **Pas fait, à décider** : étiquettes sur le combo, l'histogramme, la cascade ; position d'étiquette au choix ; étiquettes en % ET en valeur ; zoom sur une période (curseur sous la courbe — l'étude demande de
+  le tester avec le filtre croisé avant de le promettre : laissé de côté volontairement) ; une option « Pile » à 100 % pour les barres horizontales a le même rendu (axe X en %), à regarder dans un vrai GFS.
+- **Testé** : Node (bloc « options d'affichage » : tracé, types, `isStackedPercentTile`, `shareOfTotal`/`stackShares` — colonnes à 100, absents, négatifs, `BigInt`, longueurs inégales —, export inchangé, conseil,
+  i18n, câblage) ; Playwright contre le vrai `index.html` + `grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`, 120 et 6 000 lignes (formulaire : champs visibles selon les cases, repère
+  masqué en 100 %, édition qui relit les trois options, décocher « Empiler » efface le 100 % ; pile à 100 sur chaque catégorie, valeurs brutes gardées, infobulle, aire 100 %, camembert et forme inconnue sans effet).
+  **Pas testé dans un vrai Grist ni un vrai GFS.**
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée
