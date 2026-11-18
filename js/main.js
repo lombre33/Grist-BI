@@ -128,6 +128,7 @@
     'type-combo': '<path d="M3 13V9M7 13V6M11 13V8"/><path d="M2 14h12"/><path d="M2.5 6l4-2.5L10.5 5l3-2.7"/>',
     'type-pie': '<circle cx="8" cy="8" r="5.5"/><path d="M8 8V2.5M8 8l4.7 2.9"/>',
     'type-treemap': '<rect x="2" y="2.5" width="12" height="11" rx="1"/><path d="M8.5 2.5v11M8.5 8H14"/>',
+    'type-sunburst': '<circle cx="8" cy="8" r="2"/><circle cx="8" cy="8" r="5.5"/><path d="M8 2.5V6M8 10v3.5M2.5 8H6M10 8h3.5"/>',
     'type-funnel': '<path d="M2 3h12l-3.5 4.5v4.5L5.5 14V7.5L2 3Z"/>',
     'type-text': '<path d="M2.5 4h11M2.5 8h11M2.5 12h6.5"/>',
     'type-progress': '<rect x="2" y="3" width="12" height="2.4" rx="1.2"/><rect x="2" y="6.8" width="8" height="2.4" rx="1.2"/><rect x="2" y="10.6" width="5" height="2.4" rx="1.2"/>',
@@ -236,6 +237,7 @@
   const radarCompareAverageField = document.getElementById('tile-radar-compare-average-field');
   const radarCompareAverageCheckbox = document.getElementById('tile-radar-compare-average');
   const drillField = document.getElementById('tile-drill-field');
+  const drillLabel = document.getElementById('tile-drill-label');
   const drillLevelsContainer = document.getElementById('tile-drill-levels');
   const addDrillLevelBtn = document.getElementById('tile-drill-add-level');
   const drillCrossFilterField = document.getElementById('tile-drill-crossfilter-field');
@@ -792,6 +794,7 @@
     else if (p.isHistogram) { key = 'tileTitle.histogram'; vars = { measure: p.measure }; }
     else if (p.isGantt) { key = 'tileTitle.gantt'; vars = { dimension: p.dimension }; }
     else if (p.isCalendar) { key = 'tileTitle.calendar'; vars = { measure: p.measure, dimension: p.dimension }; }
+    else if (p.isSunburst) { key = 'tileTitle.sunburst'; vars = { measure: p.measure, levels: [p.dimension].concat(p.drillDimensions || []).join(' › ') }; }
     else if (p.isSankey) { key = 'tileTitle.sankey'; vars = { measure: p.measure, dimension: p.dimension, columnDimension: p.columnDimension }; }
     else if (p.isBox) { key = 'tileTitle.box'; vars = { measure: p.measure, dimension: p.dimension }; }
     else if (p.isCombo && p.comboPareto) { key = 'tileTitle.pareto'; vars = { measure: p.measure, dimension: p.dimension }; }
@@ -847,7 +850,9 @@
   // générique l'ignore explicitement (voir le garde dans getOrCreateChartInstance). Masquer le
   // formulaire de configuration du drill-down pour ce type plutôt que de laisser l'utilisateur
   // configurer des niveaux qui ne se déclencheront jamais au clic.
-  function supportsDrillDown(type) { return !typeHasNoDimension(type) && type !== 'pivot' && type !== 'heatmap' && type !== 'radar' && type !== 'progress' && type !== 'box' && type !== 'sankey' && type !== 'calendar' && type !== 'gantt'; }
+  function supportsDrillDown(type) { return !typeHasNoDimension(type) && type !== 'pivot' && type !== 'heatmap' && type !== 'radar' && type !== 'progress' && type !== 'box' && type !== 'sankey' && type !== 'calendar' && type !== 'gantt' && type !== 'sunburst'; }
+  // Niveaux de la liste « drill-down » : ceux d'un type qui détaille au clic, et les anneaux d'un soleil (qui les montre tous à la fois, sans drill-down).
+  function supportsLevels(type) { return supportsDrillDown(type) || type === 'sunburst'; }
 
   // Drill-down à N niveaux : un combobox par niveau, créé dynamiquement ("+ Niveau") plutôt que des
   // champs figés dans le HTML — data.js/state.js/charts.js gèrent déjà un tableau drillDimensions
@@ -890,10 +895,10 @@
   // séquentielle, comme l'ancien niveau 2 qui n'apparaissait qu'une fois le niveau 1 choisi) et que
   // le plafond n'est pas atteint ; recalcule aussi la visibilité de la case cross-filter.
   function updateDrillLevelsUI() {
-    const noDrill = formHasNoDimension() || !supportsDrillDown(tileTypeSelect.value);
+    const noDrill = formHasNoDimension() || !supportsLevels(tileTypeSelect.value);
     const lastSelect = drillLevelSelects[drillLevelSelects.length - 1];
-    addDrillLevelBtn.hidden = noDrill || !lastSelect || !lastSelect.value || drillLevelSelects.length >= MAX_DRILL_LEVELS;
-    drillCrossFilterField.hidden = noDrill || !drillLevelSelects[0] || !drillLevelSelects[0].value;
+    addDrillLevelBtn.hidden = noDrill || !lastSelect || !lastSelect.value || drillLevelSelects.length >= (tileTypeSelect.value === 'sunburst' ? GristBI.data.SUNBURST_MAX_LEVELS - 1 : MAX_DRILL_LEVELS);
+    drillCrossFilterField.hidden = noDrill || tileTypeSelect.value === 'sunburst' || !drillLevelSelects[0] || !drillLevelSelects[0].value;
   }
 
   addDrillLevelBtn.addEventListener('click', () => {
@@ -2017,7 +2022,7 @@
     // une 2e mesure (axe Y). Le pivot et le radar ajoutent une 2e dimension/un axe par valeur mais
     // n'ont pas de drill-down (voir supportsDrillDown).
     dimensionField.hidden = formHasNoDimension();
-    dimensionLabel.textContent = t(isSankey ? 'tileForm.dimension.labelSource' : (isGrid ? 'tileForm.dimension.labelRows' : (type === 'calendar' ? 'tileForm.dimension.labelDate' : (isGantt ? 'tileForm.dimension.labelTask' : 'tileForm.dimension.label'))));
+    dimensionLabel.textContent = t(type === 'sunburst' ? 'tileForm.dimension.labelRing' : isSankey ? 'tileForm.dimension.labelSource' : (isGrid ? 'tileForm.dimension.labelRows' : (type === 'calendar' ? 'tileForm.dimension.labelDate' : (isGantt ? 'tileForm.dimension.labelTask' : 'tileForm.dimension.label'))));
     columnDimensionLabel.textContent = t(isSankey ? 'tileForm.columnDimension.labelTarget' : 'tileForm.columnDimension.label');
     columnDimensionField.hidden = !isGrid;
     startColumnField.hidden = !isGantt;
@@ -2050,7 +2055,9 @@
     radarCompareAverageField.hidden = !isRadar;
     // Nuage de mots "découpage de cellule" : pas de drill-down non plus (voir isWordCloudSplitMode
     // et js/charts.js, clic neutralisé pour ce mode précisément).
-    drillField.hidden = formHasNoDimension() || !supportsDrillDown(type) || isWordCloudSplit;
+    drillField.hidden = formHasNoDimension() || !supportsLevels(type) || isWordCloudSplit;
+    // Soleil : la liste sert d'anneaux (tous visibles), pas de drill-down ; elle s'arrête à SUNBURST_MAX_LEVELS - 1 anneaux après le central.
+    drillLabel.textContent = t(type === 'sunburst' ? 'tileForm.drill.labelRings' : 'tileForm.drill.label');
     trendField.hidden = !isKpi;
     gaugeMinField.hidden = !isGauge;
     gaugeMaxField.hidden = !isGauge;
@@ -2302,6 +2309,7 @@
     const isPivot = type === 'pivot';
     const isHeatmap = type === 'heatmap';
     const isSankey = type === 'sankey';
+    const isSunburst = type === 'sunburst';
     const isGrid = isPivot || isHeatmap || isSankey; // deux dimensions (lignes + colonnes, ou source + cible), obligatoires et différentes
     const isRadarColumns = isRadarColumnsMode();
     const isWordCloudSplit = isWordCloudSplitMode();
@@ -2377,7 +2385,10 @@
       gaugeMax = parseFloat(gaugeMaxInput.value);
       if (!Number.isFinite(gaugeMin) || !Number.isFinite(gaugeMax) || gaugeMax <= gaugeMin) fail('tile-gauge-max', 'tileForm.alert.gaugeMinMax');
     }
-    const drillDimensions = (supportsDrillDown(type) && !isWordCloudSplit) ? drillLevelSelects.map((s) => s.value).filter(Boolean) : [];
+    const drillDimensions = (supportsLevels(type) && !isWordCloudSplit) ? drillLevelSelects.map((s) => s.value).filter(Boolean) : [];
+    // Soleil : l'angle d'une part est une quantité qui s'additionne ; une moyenne, un minimum ou un maximum n'aurait pas pour valeur la somme de ses sous-parts.
+    if (isSunburst && aggFn !== 'sum' && aggFn !== 'count') fail('tile-agg', 'tileForm.error.sunburstAdditive');
+    if (isSunburst && drillDimensions.length > GristBI.data.SUNBURST_MAX_LEVELS - 1) fail('tile-drill-dimension-1', 'tileForm.error.sunburstTooManyRings');
     // Garde-fou : une même colonne ne peut pas apparaître deux fois dans le chemin de drill (ni
     // reprendre la dimension racine) — un cas non gardé auparavant, repéré en généralisant à N
     // niveaux (voir ROADMAP.md, cluster "Hiérarchies & drill-down").
@@ -2389,7 +2400,7 @@
     // voir i18n.js:tileTitle) pour que l'en-tête de tuile suive la langue de l'interface au lieu de
     // rester figé dans celle de sa création.
     const auto = autoTileTitle({
-      isText, isTable, isProgress, isCombo, comboPareto, isHistogram, isBox, isSankey, isGantt, isCalendar: type === 'calendar', isBubble: isScatter && !!measureSizeSelect.value, measureSize: measureSizeSelect.value, measureY: measureYSelect.value, tableColumns, isPivot, isHeatmap, isRadarColumns, isWordCloudSplit, hasDimension, measureMode,
+      isText, isTable, isProgress, isCombo, comboPareto, isHistogram, isBox, isSankey, isSunburst, drillDimensions, isGantt, isCalendar: type === 'calendar', isBubble: isScatter && !!measureSizeSelect.value, measureSize: measureSizeSelect.value, measureY: measureYSelect.value, tableColumns, isPivot, isHeatmap, isRadarColumns, isWordCloudSplit, hasDimension, measureMode,
       measure, dimension, columnDimension, aggFn, radarAxes, seriesColumn
     });
     const customTitle = tileTitleInput.value.trim();
@@ -2545,7 +2556,7 @@
   // repliées, aperçu en direct, conseil en direct). Le panneau est en flux normal (voir css/style.css) :
   // il ne recouvre jamais la barre. Toute la lecture du formulaire passe par readTileForm() ci-dessus.
   // =============================================================================================
-  const TYPE_CARDS = ['bar', 'histogram', 'box', 'line', 'combo', 'pie', 'treemap', 'funnel', 'sankey', 'calendar', 'gantt', 'scatter', 'waterfall', 'radar', 'wordcloud', 'kpi', 'gauge', 'progress', 'pivot', 'heatmap', 'table', 'text'];
+  const TYPE_CARDS = ['bar', 'histogram', 'box', 'line', 'combo', 'pie', 'treemap', 'sunburst', 'funnel', 'sankey', 'calendar', 'gantt', 'scatter', 'waterfall', 'radar', 'wordcloud', 'kpi', 'gauge', 'progress', 'pivot', 'heatmap', 'table', 'text'];
   const PREVIEW_TILE_ID = '__preview__';
   // Types de tuile portés par une extension de GFS (js/extensions.js:EXTENSIONS).
   const TYPE_EXTENSION = { wordcloud: 'nuage-de-mots' };

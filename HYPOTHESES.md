@@ -3718,6 +3718,32 @@ Constat (en testant le style global des tuiles) : sur une courbe ou des barres v
 - **Constat visuel** : avec 12 panneaux dans une tuile de 224 px, les barres sont fines mais lisibles et l'échelle commune montre aussitôt quelles séries dominent ; dans un panneau étroit ECharts n'écrit qu'un nom
   de catégorie sur deux et tronque les autres (« Ch… » pour Charlie), et sous 24 px par nom ils sont retirés (l'infobulle les donne). Rendu dans un vrai Grist / GFS : non testé ici.
 
+### Tuiles usuelles des outils BI — lot 3, soleil (18/11/2026)
+
+- **Ce qui est livré** (PR 14 du plan, §5.3 de `etudes/tuiles-usuelles-dashboard-2026-11-18.md`) : un nouveau type « Soleil (anneaux hiérarchiques) » (`type: 'sunburst'`). L'anneau central est `tile.dimension`, les anneaux suivants sont la
+  liste « Anneaux suivants » (`tile.drillDimensions`, la même liste de niveaux que pour un camembert, mais ici TOUS se dessinent à la fois et il n'y a PAS de drill-down). Une part d'un anneau est une valeur de sa colonne DANS la part
+  de l'anneau d'en dessous ; son angle est la somme (ou le comptage) de ses lignes. Un clic sur une part pose le filtre de CHAQUE anneau jusqu'à elle (un seul filtre par colonne, comme ailleurs) ; remonter (clic sur un anneau plus
+  intérieur de la même branche) retire les anneaux plus profonds, un 2e clic sur la même part retire tout ; les parts hors sélection s'estompent. Tri (valeur ou nom, dans chaque anneau), palette et format de nombre comme les
+  autres tuiles. Jamais proposé à l'écran d'accueil.
+- **Choix** : (1) Somme ou Comptage SEULEMENT (une moyenne ne se répartit pas en sous-parts : le formulaire la refuse, un ancien réglage est lu comme une somme et le conseil le dit) ; (2) au plus 4 anneaux (centre + 3) et 15 parts par part
+  parente (les plus grandes), au-delà les petites parts sont comptées (note + conseil) et leur place reste un VIDE dans l'anneau (le parent garde sa vraie taille : un parent rétréci aux seuls enfants dessinés mentirait) ; (3) une
+  ligne sans valeur au 1er anneau est ignorée, sans valeur plus profond elle s'arrête à l'anneau d'avant (sa valeur reste dans la part parente) ; (4) une part de taille nulle ou négative n'a pas d'angle : non dessinée, signalée,
+  mais gardée dans l'export Excel (une ligne par part où des lignes s'arrêtent, la somme des lignes de l'export est celle des lignes retenues) ; (5) la couleur d'une racine vient de la palette, ses descendants s'éclaircissent
+  vers la couleur de la carte ; (6) le survol n'estompe rien (`emphasis.focus: 'none'` : l'estompage par défaut d'ECharts ressemblait à un filtre) ; (7) pas de fil d'Ariane « cliquer pour détailler » ; (8) « + Niveau » du formulaire
+  s'arrête à 3 anneaux supplémentaires et la case « filtre croisé » du drill-down est masquée.
+- **Valeurs par défaut** : deux catégories de 2 à 15 valeurs, de préférence une VRAIE hiérarchie jugée sur les valeurs (chaque valeur de la colonne du dehors n'apparaît que sous une valeur de la colonne du centre), sinon les deux
+  premières ; Somme (Comptage sans mesure).
+- **Pas fait, à décider** : zoom sur une part (clic = recentrer l'arbre sur elle, comme `nodeClick: 'rootToNode'` d'ECharts) — écarté, un clic filtre déjà ; part « Autres » regroupant les petites parts écartées ; anneaux au-delà
+  de 4 ; clic sur le centre pour tout retirer.
+- **Conseils** : moyenne/min/max (avertissement), valeurs négatives (avertissement), plus de 4 anneaux (avertissement), plus de parts centrales que de couleurs (conseil), petites parts écartées (conseil).
+- **Testé** : Node (bloc « soleil » : niveaux, arbre — valeurs, ignorées, écartées, négatives, somme de l'export —, comptage, BigInt et chaînes numériques, plafond et tri, filtres de chaque anneau dont l'enchaînement de clics sur le
+  vrai store, part retenue, types, export, défauts, conseils, i18n fr/en et pluriels, câblage) ; Playwright contre le vrai `index.html` + `grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`, 20 et 6 020 lignes,
+  clair et sombre (formulaire : anneaux et libellés, moyenne refusée, colonne en double refusée, enregistrement — le plafond de « + Niveau » n'est lu que dans les sources ; option = calcul pur à tous les anneaux ; **clics réels de souris** sur une part de chaque anneau : filtres posés,
+  remontée, 2e clic, voisin de la même branche, estompage ; infobulle ; agrandissement = anneaux plus grands ; tri ; comptage ; conseils ; changement de type et retour ; édition ; 20 produits sous une région = 15 + note +
+  conseil ; noms hostiles `<img onerror>` sans HTML injecté ; les quatre styles globaux ; export).
+- **Constat visuel** : dans une tuile de 224 px le soleil est petit (~65 px de rayon à trois anneaux, en sombre comme en clair) : les noms ne tiennent que sur les grandes parts et l'infobulle donne le reste ; agrandir la tuile suffit (rayon x3).
+  Avec beaucoup de petites parts sous une même part (20 produits), les noms se tassent (« Nor… ») : c'est l'avertissement « plus de 15 » qui le dit. Rendu dans un vrai Grist / GFS : non testé ici.
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée
