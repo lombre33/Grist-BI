@@ -443,6 +443,7 @@
         <option value="funnel" data-i18n="tileForm.type.funnel">Entonnoir</option>
         <option value="sankey" data-i18n="tileForm.type.sankey">Flux (Sankey)</option>
         <option value="calendar" data-i18n="tileForm.type.calendar">Calendrier (activité par jour)</option>
+        <option value="gantt" data-i18n="tileForm.type.gantt">Gantt (planning de tâches)</option>
         <option value="scatter" data-i18n="tileForm.type.scatter">Nuage de points</option>
         <option value="waterfall" data-i18n="tileForm.type.waterfall">Cascade (waterfall)</option>
         <option value="radar" data-i18n="tileForm.type.radar">Radar</option>
@@ -488,6 +489,20 @@
         <label for="tile-column-dimension" data-i18n="tileForm.columnDimension.label">Dimension (colonnes)</label>
         <div class="combobox">
           <input type="text" id="tile-column-dimension" class="combobox-input" />
+          <ul class="combobox-list" hidden></ul>
+        </div>
+      </div>
+      <div class="field" id="tile-start-column-field" hidden>
+        <label for="tile-start-column" data-i18n="tileForm.startColumn.label">Début (colonne de dates)</label>
+        <div class="combobox">
+          <input type="text" id="tile-start-column" class="combobox-input" />
+          <ul class="combobox-list" hidden></ul>
+        </div>
+      </div>
+      <div class="field" id="tile-end-column-field" hidden>
+        <label for="tile-end-column" data-i18n="tileForm.endColumn.label">Fin (colonne de dates)</label>
+        <div class="combobox">
+          <input type="text" id="tile-end-column" class="combobox-input" />
           <ul class="combobox-list" hidden></ul>
         </div>
       </div>

@@ -74,6 +74,7 @@
     box: 'advice.use.box',
     sankey: 'advice.use.sankey',
     calendar: 'advice.use.calendar',
+    gantt: 'advice.use.gantt',
     pie: 'advice.use.pie',
     treemap: 'advice.use.treemap',
     funnel: 'advice.use.funnel',
@@ -732,6 +733,34 @@
         out.dimension = best.id;
         break;
       }
+      case 'gantt': {
+        // Deux vraies colonnes de DATES (début, fin) : la 1re est celle qui précède l'autre sur la majorité des lignes (jugé sur les VALEURS,
+        // jamais sur le nom). Libellé = une colonne texte à une valeur (presque) par ligne, sinon la catégorie la plus variée ; couleur =
+        // une petite catégorie (2 à 8 valeurs) différente du libellé. Ni mesure ni agrégat : une barre est une tâche, pas un total.
+        const dates = ctx.profiles.filter((p) => p.role === 'time');
+        if (dates.length < 2) return null;
+        let [startCol, endCol] = dates;
+        let earlier = 0;
+        let later = 0;
+        for (const r of rows.slice(0, SCAN_LIMIT)) {
+          const a = r[startCol.id];
+          const b = r[endCol.id];
+          if (isEmpty(a) || isEmpty(b)) continue;
+          if (String(a) < String(b)) earlier++; else if (String(a) > String(b)) later++;
+        }
+        if (later > earlier) [startCol, endCol] = [endCol, startCol];
+        out.startColumn = startCol.id;
+        out.endColumn = endCol.id;
+        const texts = ctx.profiles.filter((p) => p.kind === 'text' && p.role !== 'constant' && p.role !== 'time');
+        const taskLike = texts.filter((p) => p.role === 'identifier' || p.role === 'highCardinality');
+        const label = taskLike[0] || [...texts].sort((a, b) => b.distinct - a.distinct)[0];
+        out.dimension = label ? label.id : dimensionFallback;
+        const status = ctx.categories.find((d) => d.kind === 'text' && d.id !== out.dimension && d.distinct >= 2 && d.distinct <= 8);
+        if (status) out.seriesColumn = status.id;
+        delete out.measure;
+        delete out.aggFn;
+        break;
+      }
       case 'combo': {
         // Barres = la mesure principale ; courbe = une AUTRE vraie mesure s'il y en a une. Sinon (une seule
         // mesure) un Pareto, qui n'en demande pas d'autre : barres triées + part cumulée.
@@ -888,6 +917,15 @@
       if (cal.total < 7) return warn('advice.calendar.fewDays', { n: cal.total });
       if (cal.hidden > 0) return tip('advice.calendar.truncated', { days: data.CALENDAR_MAX_DAYS, hidden: cal.hidden });
     }
+    if (type === 'gantt' && tile.dimension && tile.startColumn && tile.endColumn) {
+      // Une barre demande un début ET une fin valides, la fin ne précédant pas le début ; au-delà de quelques centaines de lignes la tuile
+      // n'en dessine que les premières ; au-delà de la longueur de la palette, deux statuts partagent une couleur.
+      const gt = data.ganttTasks(rows, tile.dimension, tile.startColumn, tile.endColumn, tile.seriesColumn);
+      if (!gt.total) return warn('advice.gantt.noTask', { start: tile.startColumn, end: tile.endColumn });
+      if (gt.statuses.length > data.paletteColors(tile.palette).length) return warn('advice.gantt.manyStatuses', { n: gt.statuses.length, max: data.paletteColors(tile.palette).length });
+      if (gt.ignored > 0) return tip('advice.gantt.ignored', { n: gt.ignored });
+      if (gt.hidden > 0) return tip('advice.gantt.truncated', { max: data.GANTT_MAX_ROWS, hidden: gt.hidden });
+    }
     if (type === 'sankey' && tile.dimension && tile.columnDimension && tile.measure) {
       // Un flux s'additionne ; au-delà d'une quinzaine de nœuds ce n'est plus qu'un écheveau ; un flux nul ou négatif n'a pas d'épaisseur.
       if (tile.aggFn === 'avg' || tile.aggFn === 'min' || tile.aggFn === 'max') return warn('advice.sankey.notAdditive');
@@ -1010,6 +1048,8 @@
         return ctx.time ? null : 'advice.fit.noTime';
       case 'calendar':
         return ctx.profiles.some((p) => p.role === 'time') ? null : 'advice.fit.noDate';
+      case 'gantt':
+        return ctx.profiles.filter((p) => p.role === 'time').length >= 2 ? null : 'advice.fit.noTwoDates';
       case 'kpi':
       case 'gauge':
       case 'histogram':

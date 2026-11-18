@@ -3578,6 +3578,30 @@ Constat (en testant le style global des tuiles) : sur une courbe ou des barres v
   un jour sans ligne = rien ; filtre d'une autre tuile = jours recalculés ; agrandissement = cases plus larges ; feuille Excel ; 500 jours = 366 dessinés + 500 exportés + conseil ; aucune date = message ; calendrier ->
   barres -> calendrier ; valeurs toutes égales ; aucune erreur console). **Pas testé dans un vrai Grist ni un vrai GFS.**
 
+### Tuiles usuelles des outils BI — lot 3, Gantt (18/11/2026)
+
+- **Ce qui est livré** (PR 12 du plan, §5.7 de `etudes/tuiles-usuelles-dashboard-2026-11-18.md`) : un type `gantt` (« Gantt (planning de tâches) »). Trois colonnes : le libellé de la tâche (`dimension`),
+  son début et sa fin (`startColumn`, `endColumn`, deux colonnes de DATES au format ISO), et une colonne de couleur facultative (`seriesColumn`, un statut). Une ligne de la table = une tâche = une barre, triée par
+  date de début ; ni mesure ni agrégat, ni format de nombre. Axe du temps commun en pourcentages de la largeur (mois, lundis ou jours selon la durée, au plus 8 graduations, moins dans une tuile étroite), année dans le
+  coin de l'axe, repère rouge « aujourd'hui » quand il tombe dans la période. Clic sur une tâche = filtre d'égalité sur son libellé, clic sur une pastille de la légende = filtre sur le statut (la tuile reste entière, le
+  reste s'estompe, 2e clic = retiré ; Entrée et Espace aussi). Pas de drill-down, pas de tri.
+- **Choix** : HTML/CSS dans `.tile-chart` (comme la Progression) plutôt qu'ECharts : texte sélectionnable, libellés à gauche toujours lisibles, défilement natif d'une longue liste, aucune instance à disposer ; les
+  barres sont posées en `left`/`width` en % de l'axe, donc elles suivent l'agrandissement d'une tuile sans calcul. Une ligne dont le début ou la fin n'est pas une date valide, ou dont la fin précède le début, n'a PAS de
+  barre (une tâche « en cours » sans date de fin ne se dessine pas : on n'invente pas sa durée) : elle est comptée dans une note sous la liste. Une tâche d'un jour occupe une case de jour entière (fin incluse). 200 tâches
+  dessinées au plus (« 200 premières tâches sur 6 012 »), les statuts et leurs couleurs étant calculés sur TOUTES les tâches valides (une couleur ne change pas quand le plafond coupe) ; l'export Excel (et PDF/PPTX, en tableau
+  natif) garde toutes les tâches. La légende est collante en bas de la tuile (elle reste visible quand la liste défile) ; chaque graduation est rognée à sa case, jamais posée sur sa voisine. La couleur ne porte jamais seule
+  l'information : la légende nomme chaque statut et l'infobulle de la ligne le répète.
+- **Pas fait, à décider** : dépendances entre tâches (flèches), jalons (losanges), regroupement par projet / ressource (lignes de titre), glisser une barre pour changer une date (le widget n'écrit jamais dans la table de
+  travail), zoom sur une période, avancement (% réalisé) dans la barre, week-ends grisés, plusieurs barres par ligne.
+- **Conseils** : aucune barre dessinable (« début » et « fin » sans dates valides), plus de statuts que de couleurs dans la palette, lignes écartées, plus de 200 tâches. Défauts : les deux premières vraies colonnes de dates, la
+  1re étant celle qui précède l'autre sur la majorité des lignes (jugé sur les valeurs), libellé = colonne d'identifiants, couleur = petite catégorie. Jamais proposé à l'écran d'accueil.
+- **Testé** : Node (bloc « gantt » : tri stable, lignes écartées de 5 sortes, statuts dans l'ordre de la table, plafond, axe (mois, lundis, jours, budget, graduation de début), géométrie d'une tâche d'un jour,
+  aujourd'hui dans/hors de l'axe, store, export, défauts à colonnes inversées, conseils, i18n avec pluriels, câblage dont l'échappement de chaque chaîne saisie) ; Playwright contre le vrai `index.html` + `grist-stub.js`,
+  page directe ET `<iframe sandbox="allow-scripts">`, 14 et 6 014 lignes, clair et sombre (formulaire, validation, géométrie des barres mesurée au pixel contre le calcul pur, couleurs, graduations sans recouvrement,
+  légende visible, **clic réel de souris** sur une tâche et sur une pastille, clavier, filtre d'une autre tuile, repère « aujourd'hui », agrandissement, export, plafond, injection de balisage dans un libellé et un statut,
+  aucune tâche, gantt -> barres -> gantt, édition). Le style global (glass, console…) a été regardé sur capture : en verre, l'axe et la légende collants gardent un fond opaque (une bande pâle sur la carte translucide).
+  **Pas testé dans un vrai Grist ni un vrai GFS.**
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée

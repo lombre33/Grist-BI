@@ -4939,7 +4939,7 @@ const SAMPLE_TIME_SERIES = [
     const indexB = fsB.readFileSync(pathB.join(rootB, 'index.html'), 'utf8');
     assert.ok(/const TYPE_CARDS = \[[^\]]*'box'/.test(mainB) && /<option value="box"/.test(indexB) && /'type-box':/.test(mainB), 'carte, option et icône du type');
     assert.ok(/type !== 'box' && /.test(mainB), 'pas de drill-down (valeurs brutes, pas de niveau suivant)');
-    assert.ok(/if \(isBox\) tileData\.aggFn = undefined;/.test(mainB) && /isHistogram \|\| isBox;/.test(mainB), 'ni agrégat écrit ni champ Agrégat affiché');
+    assert.ok(/if \(isBox\) tileData\.aggFn = undefined;/.test(mainB) && /isHistogram \|\| isBox \|\| isGantt;/.test(mainB), 'ni agrégat écrit ni champ Agrégat affiché');
     assert.ok(/currentTile\.type === 'box'/.test(chartsB) && /params\.seriesType === 'scatter' && Array\.isArray\(params\.value\) \? params\.value\[0\]/.test(chartsB), 'le clic retrouve le groupe par son rang (boîte : dataIndex, aberrante : value[0])');
     assert.ok(/toggleFilter\(currentTile\.dimension, names\[rank\], currentTile\.id\)/.test(chartsB), 'filtre d\'égalité sur le groupe, tuile source = la boîte');
     assert.ok(/escapeHtml\(g\.name\)/.test(chartsB), 'le nom du groupe (donnée saisie) est échappé dans l\'infobulle');
@@ -5030,7 +5030,7 @@ const SAMPLE_TIME_SERIES = [
     const chartsK = fsK.readFileSync(pathK.join(rootK, 'js', 'charts.js'), 'utf8');
     const indexK = fsK.readFileSync(pathK.join(rootK, 'index.html'), 'utf8');
     assert.ok(/const TYPE_CARDS = \[[^\]]*'sankey'/.test(mainK) && /<option value="sankey"/.test(indexK) && /'type-sankey':/.test(mainK), 'carte, option et icône du type');
-    assert.ok(/type !== 'sankey' && type !== 'calendar'; \}/.test(mainK), 'pas de drill-down (flux, calendrier)');
+    assert.ok(/type !== 'sankey' && type !== 'calendar'( && type !== 'gantt')?; \}/.test(mainK), 'pas de drill-down (flux, calendrier)');
     assert.ok(/isGrid = isPivot \|\| isHeatmap \|\| isSankey/.test(mainK) && /sankeyDimsDiffer/.test(mainK) && /sankeyTargetRequired/.test(mainK), 'deux colonnes obligatoires et différentes, messages propres au flux');
     assert.ok(/currentTile\.type === 'sankey'/.test(chartsK) && /params\.dataType === 'edge'/.test(chartsK) && /toggleCellFilters\(currentTile, from\.value, to\.value\)/.test(chartsK) && /toggleFilter\(node\.column, node\.value, currentTile\.id\)/.test(chartsK), 'nœud = filtre de sa colonne, lien = source ET cible');
     assert.ok(/instance\.__refit = \(\) => \{\s*const p = place\(\);/.test(chartsK), 'les marges de libellés suivent le redimensionnement');
@@ -5108,7 +5108,7 @@ const SAMPLE_TIME_SERIES = [
     const indexB = fsB.readFileSync(pathB.join(rootB, 'index.html'), 'utf8');
     assert.ok(/id="tile-measure-size"/.test(indexB) && /id="tile-agg-size"/.test(indexB) && /id="tile-series-label"/.test(indexB), 'champs de taille et libellé de la couleur');
     assert.ok(/measureSizeSelect, trendDimensionSelect/.test(mainB), 'la colonne de taille est un combobox strict');
-    assert.ok(/\|\| type === 'line' \|\| isScatter\) \? seriesSelect\.value : ''/.test(mainB), 'la colonne Séries est lue pour un nuage de points (couleur)');
+    assert.ok(/\|\| type === 'line' \|\| isScatter( \|\| isGantt)?\) \? seriesSelect\.value : ''/.test(mainB), 'la colonne Séries est lue pour un nuage de points (couleur)');
     assert.ok(/tileData\.measureSize = \(isScatter && measureSizeSelect\.value\)/.test(mainB) && /tileData\.aggFnSize = \(isScatter && measureSizeSelect\.value && aggSizeSelect\.value !== aggFn\)/.test(mainB), 'taille écrite seulement pour un nuage de points ; son agrégat seulement s\'il diffère');
     assert.ok(/p\.isBubble\) \{ key = 'tileTitle\.bubble'/.test(mainB), 'titre automatique des bulles');
     assert.ok(/computeScatterSplit\(rows, dimension, tile\)/.test(chartsB) && /bubbleDiameters\(allSizes, diameterMax\)/.test(chartsB) && /if \(bubble\) instance\.__refit = /.test(chartsB), 'une couleur = un calcul par couleur ; diamètres en pixels qui suivent le redimensionnement');
@@ -5207,6 +5207,134 @@ const SAMPLE_TIME_SERIES = [
     assert.ok(!/calendar: \{/.test(emptyCal) && !/visualMap/.test(emptyCal), 'aucun composant `calendar` sans plage (ECharts lèverait une exception)');
     assert.ok(!/Intl\.NumberFormat|toFixed/.test(chartsC), 'aucun format de nombre en dur dans charts.js');
     console.log('OK calendrier — valeur par jour, jours sans ligne, fenêtre d\'un an, clic = filtre du jour, export, défauts, conseils, i18n, câblage');
+  }
+
+  // Gantt (type 'gantt', 18/11/2026, lot 3 de l'étude des tuiles usuelles, §5.7) : une barre par tâche de sa date de début à sa date de fin,
+  // lignes sans dates valides écartées (et comptées), tri par début, plafond, axe du temps, aujourd'hui, export, défauts, conseils, i18n, câblage.
+  {
+    const fsG = require('fs');
+    const pathG = require('path');
+    const rootG = pathG.join(__dirname, '..');
+    const rowsG = [
+      { T: 'c', S: '2025-11-02', E: '2025-12-15', St: 'A faire' }, { T: 'b', S: '2025-10-10', E: '2025-10-20', St: 'En cours' }, { T: 'a', S: '2025-09-01', E: '2025-09-30', St: 'Fait' },
+      { T: 'inversée', S: '2025-11-05', E: '2025-11-01', St: 'Fait' }, { T: 'sans fin', S: '2025-11-05', E: null, St: 'Fait' }, { T: 'mauvaise', S: 'bientôt', E: '2025-11-30', St: 'Fait' },
+      { T: 'nombre', S: 45000, E: 45010, St: 'Fait' }, { T: 'texte', S: '2025-1-5', E: '2025-01-09', St: 'Fait' }
+    ];
+    const g = data.ganttTasks(rowsG, 'T', 'S', 'E', 'St');
+    assert.deepStrictEqual(g.tasks.map((x) => x.label), ['a', 'b', 'c'], 'triées par début, quel que soit l\'ordre de la table');
+    assert.deepStrictEqual(g.statuses, ['A faire', 'En cours', 'Fait'], 'statuts dans l\'ordre de la TABLE (les couleurs ne bougent pas avec le tri)');
+    assert.deepStrictEqual([g.ignored, g.hidden, g.total, g.min, g.max], [5, 0, 3, '2025-09-01', '2025-12-15'], 'fin avant début, fin absente, date illisible, nombre, date non ISO : écartées et comptées');
+    assert.deepStrictEqual(g.tasks[0], { label: 'a', start: '2025-09-01', end: '2025-09-30', status: 'Fait' });
+    assert.strictEqual(data.ganttTasks(rowsG, 'T', 'S', 'E').tasks[0].status, undefined, 'sans colonne de couleur : pas de statut'); assert.deepStrictEqual(data.ganttTasks(rowsG, 'T', 'S', 'E').statuses, []);
+    // Une tâche d'un seul jour (début = fin) est valide ; un libellé vide reste une ligne ; un statut vide est la valeur '' ; une ligne sans libellé du tout aussi.
+    const one = data.ganttTasks([{ T: null, S: '2025-03-01', E: '2025-03-01', St: null }, { S: '2025-03-02', E: '2025-03-03' }], 'T', 'S', 'E', 'St');
+    assert.deepStrictEqual(one.tasks.map((x) => [x.label, x.status]), [['', ''], ['', '']]); assert.deepStrictEqual(one.statuses, ['']);
+    // Ordre stable : à début égal, l'ordre de la table.
+    assert.deepStrictEqual(data.ganttTasks([{ T: 'z', S: '2025-01-01', E: '2025-01-02' }, { T: 'y', S: '2025-01-01', E: '2025-01-09' }, { T: 'x', S: '2024-12-31', E: '2025-01-02' }], 'T', 'S', 'E').tasks.map((x) => x.label), ['x', 'z', 'y']);
+    // Plafond : les premières tâches (par début), le reste est compté ; les statuts et les bornes suivent les tâches AFFICHÉES / valides.
+    const many = []; for (let i = 0; i < 260; i++) many.push({ T: 'n' + i, S: data.isoDayShift('2025-01-01', i), E: data.isoDayShift('2025-01-01', i + 2), St: i === 259 ? 'dernier' : 'x' });
+    const gm = data.ganttTasks(many, 'T', 'S', 'E', 'St');
+    assert.deepStrictEqual([gm.tasks.length, gm.hidden, gm.total, gm.max], [200, 60, 260, data.isoDayShift('2025-01-01', 201)]); assert.strictEqual(data.GANTT_MAX_ROWS, 200);
+    assert.deepStrictEqual(gm.statuses, ['x', 'dernier'], 'les statuts viennent de TOUTES les tâches valides : une couleur ne change pas quand le plafond coupe');
+    assert.strictEqual(data.ganttTasks(many, 'T', 'S', 'E', 'St', Infinity).tasks.length, 260); assert.strictEqual(data.ganttTasks(many, 'T', 'S', 'E', 'St', 5).tasks.length, 5); assert.strictEqual(data.ganttTasks(many, 'T', 'S', 'E', 'St', 'x').tasks.length, 200, 'plafond invalide : défaut');
+    assert.deepStrictEqual(data.ganttTasks([], 'T', 'S', 'E', 'St'), { tasks: [], statuses: [], ignored: 0, hidden: 0, total: 0, min: null, max: null }); assert.deepStrictEqual(data.ganttTasks(undefined, 'T', 'S', 'E').tasks, []);
+    // Une fin qui précède le début d'UNE autre tâche ne compte pas pour max : max = la dernière fin, pas la dernière tâche.
+    assert.strictEqual(data.ganttTasks([{ T: 'a', S: '2025-01-01', E: '2025-06-30' }, { T: 'b', S: '2025-02-01', E: '2025-02-05' }], 'T', 'S', 'E').max, '2025-06-30');
+    // Axe : mois au-delà de 60 jours (jamais plus de 8, un sur deux/trois au besoin), lundis de 11 à 60 jours, chaque jour jusqu'à 10 ; pct croissants dans [0, 1).
+    const day = (iso) => Date.parse(iso + 'T00:00:00Z');
+    const tm = data.ganttTicks(day('2025-01-15'), day('2025-08-20'));
+    assert.ok(tm.every((tk) => tk.kind === 'month') && tm.every((tk, i) => i === 0 || tk.pct > tm[i - 1].pct) && tm.every((tk) => tk.pct >= 0 && tk.pct < 1), 'mois, croissants, dans l\'axe');
+    assert.ok(tm.length <= data.GANTT_MAX_TICKS, 'au plus ' + data.GANTT_MAX_TICKS + ' graduations'); assert.deepStrictEqual([tm[0].year, tm[0].month, tm[0].day], [2025, 1, 1], 'le 1er mois commence à 8 % de l\'axe : pas de graduation de plus au bord');
+    assert.ok(tm.every((tk) => tk.day === 1), 'les graduations de mois tombent le 1er');
+    const tj = data.ganttTicks(day('2025-01-15'), day('2025-03-20'));
+    assert.deepStrictEqual([tj[0].year, tj[0].month, tj[0].day, tj[0].pct, tj[1].month, tj[1].day], [2025, 0, 15, 0, 1, 1], 'le 1er mois commence loin du bord : une graduation au début nomme le mois de départ');
+    const t2 = data.ganttTicks(day('2025-01-01'), day('2025-01-30'));
+    assert.ok(t2.every((tk) => tk.kind === 'week') && t2.every((tk) => new Date(Date.UTC(tk.year, tk.month, tk.day)).getUTCDay() === 1), 'semaines : des lundis');
+    const t3 = data.ganttTicks(day('2025-01-01'), day('2025-01-08')); assert.ok(t3.every((tk) => tk.kind === 'day') && t3.length === 8, 'chaque jour d\'une période courte');
+    assert.ok(data.ganttTicks(day('2020-01-01'), day('2025-12-31')).length <= data.GANTT_MAX_TICKS, 'six ans : toujours au plus 8 graduations');
+    assert.ok(data.ganttTicks(day('2025-01-01'), day('2025-12-31'), 3).length <= 4 && data.ganttTicks(day('2025-01-01'), day('2025-12-31'), 3).length >= 2, 'budget réglé par la largeur (3, +1 pour le début)');
+    assert.deepStrictEqual(data.ganttTicks(day('2025-01-01'), day('2025-12-31'), 0).length, data.ganttTicks(day('2025-01-01'), day('2025-12-31')).length, 'budget invalide : défaut');
+    assert.strictEqual(data.ganttTicks(day('2025-03-01'), day('2025-03-01')).length, 1, 'une période d\'un jour : une graduation');
+    // Géométrie : une tâche occupe ses cases de jour entières (fin incluse) ; aujourd'hui = milieu de sa case, ou null hors de l'axe.
+    const lay = data.ganttLayout(data.ganttTasks([{ T: 'a', S: '2025-03-01', E: '2025-03-10' }, { T: 'b', S: '2025-03-10', E: '2025-03-10' }], 'T', 'S', 'E'), Date.parse('2025-03-05T10:00:00Z'));
+    assert.deepStrictEqual(lay.bars.map((x) => [x.label, x.left, x.width]), [['a', 0, 1], ['b', 0.9, 0.1]], 'axe de 10 jours : « a » le remplit, « b » (un jour) en prend un dixième');
+    assert.ok(Math.abs(lay.today - 0.45) < 1e-9, 'le 5 mars occupe la 5e case : milieu à 45 %');
+    assert.strictEqual(data.ganttLayout(data.ganttTasks(rowsG, 'T', 'S', 'E'), Date.parse('2030-01-01T00:00:00Z')).today, null, 'aujourd\'hui hors de l\'axe : pas de repère');
+    assert.strictEqual(data.ganttLayout(data.ganttTasks(rowsG, 'T', 'S', 'E'), NaN).today, null); assert.strictEqual(data.ganttLayout(data.ganttTasks(rowsG, 'T', 'S', 'E'), undefined).today, null);
+    assert.strictEqual(data.ganttLayout(data.ganttTasks([{ T: 'a', S: '2025-03-01', E: '2025-03-10' }], 'T', 'S', 'E'), Date.parse('2025-03-01T00:00:00Z')).today > 0, true, 'le 1er jour : dans l\'axe');
+    assert.strictEqual(data.ganttLayout(data.ganttTasks([{ T: 'a', S: '2025-03-01', E: '2025-03-10' }], 'T', 'S', 'E'), Date.parse('2025-03-10T23:59:59Z')).today < 1, true, 'le dernier jour : dans l\'axe');
+    assert.deepStrictEqual(data.ganttLayout(data.ganttTasks([], 'T', 'S', 'E'), Date.now()).bars, []); assert.strictEqual(data.ganttLayout(data.ganttTasks([], 'T', 'S', 'E'), Date.now()).today, null);
+    // Store : un clic pose un filtre d'égalité sur le libellé ; la tuile reste entière, les autres sont filtrées ; même valeur = retiré.
+    {
+      const st = state.createStore();
+      st.setRows(rowsG.slice(0, 3));
+      st.addTile({ id: 'gt', type: 'gantt', dimension: 'T', startColumn: 'S', endColumn: 'E', seriesColumn: 'St', title: 'G' });
+      st.addTile({ id: 'br', type: 'bar', dimension: 'St', measure: 'T', aggFn: 'count', title: 'B' });
+      st.toggleFilter('T', 'b', 'gt');
+      assert.strictEqual(data.rowsForTile(st.getState().tiles[0], st.getState()).length, 3, 'le Gantt reste affiché en entier');
+      assert.strictEqual(data.rowsForTile(st.getState().tiles[1], st.getState()).length, 1, 'les autres tuiles ne gardent que la tâche choisie');
+      st.toggleFilter('T', 'b', 'gt'); assert.deepStrictEqual(st.getState().activeFilters, [], 'même tâche : filtre retiré');
+      st.toggleFilter('St', 'Fait', 'gt'); st.removeTile('gt'); assert.deepStrictEqual(st.getState().activeFilters, [], 'supprimer la tuile lève son filtre');
+    }
+    // Export : une ligne par tâche dessinable, TOUTES (au-delà du plafond aussi), triées ; la colonne de couleur seulement si choisie ; filtres des autres tuiles appliqués.
+    const stG = { rows: many, activeFilters: [], advancedFilters: [], drillIns: {}, comments: [], pages: [] };
+    const gTile = { id: 'gt', type: 'gantt', title: 'Planning', dimension: 'T', startColumn: 'S', endColumn: 'E', seriesColumn: 'St' };
+    const sheetG = data.tileExportSheet(gTile, stG);
+    assert.deepStrictEqual(sheetG.header, ['T', 'S', 'E', 'St']); assert.strictEqual(sheetG.rows.length, 260); assert.deepStrictEqual(sheetG.rows[0], ['n0', '2025-01-01', '2025-01-03', 'x']);
+    const sheetG2 = data.tileExportSheet(Object.assign({}, gTile, { seriesColumn: undefined }), stG); assert.deepStrictEqual(sheetG2.header, ['T', 'S', 'E']); assert.deepStrictEqual(sheetG2.rows[1], ['n1', '2025-01-02', '2025-01-04']);
+    assert.strictEqual(data.tileExportSheet(gTile, Object.assign({}, stG, { rows: [] })).rows.length, 0, 'aucune ligne : en-têtes seuls'); assert.strictEqual(data.tileExportKind(gTile), 'table', 'PDF/PPTX : un tableau natif (pas d\'instance ECharts)');
+    assert.strictEqual(data.tileExportSheet(gTile, Object.assign({}, stG, { rows: rowsG, activeFilters: [{ column: 'St', value: 'Fait', sourceTileId: 'autre' }] })).rows.length, 1, 'filtre d\'une autre tuile : seule « a » reste (les autres lignes « Fait » n\'ont pas de dates valides)');
+    // Types : palette oui, format de nombre non (aucun nombre) ; ni tri, ni séries de barres, ni repère, ni étiquettes de valeur.
+    assert.strictEqual(data.supportsPalette({ type: 'gantt' }), true); assert.strictEqual(data.supportsNumberFormat({ type: 'gantt' }), false, 'un Gantt n\'affiche aucun nombre');
+    assert.strictEqual(data.isSortableTile({ type: 'gantt' }), false); assert.strictEqual(data.isSeriesTile({ type: 'gantt', seriesColumn: 'x' }), false, 'la couleur n\'est pas une série de barres');
+    assert.strictEqual(data.supportsRefLine({ type: 'gantt' }), false); assert.strictEqual(data.supportsValueLabels({ type: 'gantt' }), false);
+    // Défauts : deux vraies colonnes de dates, la 1re = celle qui précède l'autre sur la majorité des lignes (jugé sur les VALEURS) ; libellé = une colonne d'identifiants ; couleur = petite catégorie.
+    const projet = [];
+    for (let i = 0; i < 24; i++) projet.push({ Tâche: 'Tâche ' + i, Fin: data.isoDayShift('2025-02-10', i * 3 + 5), Debut: data.isoDayShift('2025-02-10', i * 3), Statut: ['Fait', 'En cours', 'A faire'][i % 3], Charge: 2 + (i % 4) });
+    const dg = advice.defaultsForType('gantt', projet, ['Tâche', 'Fin', 'Debut', 'Statut', 'Charge']);
+    assert.deepStrictEqual([dg.startColumn, dg.endColumn, dg.dimension, dg.seriesColumn], ['Debut', 'Fin', 'Tâche', 'Statut'], 'colonnes dans l\'ordre INVERSE de la table : le début est trouvé par les valeurs');
+    assert.ok(!('measure' in dg) && !('aggFn' in dg), 'ni mesure ni agrégat');
+    const dg2 = advice.defaultsForType('gantt', projet.map((r) => ({ Tâche: r.Tâche, Debut: r.Debut, Fin: r.Fin })), ['Tâche', 'Debut', 'Fin']); assert.strictEqual(dg2.seriesColumn, undefined, 'aucune petite catégorie : pas de couleur'); assert.deepStrictEqual([dg2.startColumn, dg2.endColumn], ['Debut', 'Fin']);
+    assert.strictEqual(advice.defaultsForType('gantt', projet.map((r) => ({ Tâche: r.Tâche, Debut: r.Debut })), ['Tâche', 'Debut']), null, 'une seule colonne de dates : rien à préremplir');
+    assert.strictEqual(advice.adviceForType('gantt', projet.map((r) => ({ Tâche: r.Tâche, Debut: r.Debut })), ['Tâche', 'Debut']).key, 'advice.fit.noTwoDates');
+    assert.strictEqual(advice.adviceForType('gantt', projet, ['Tâche', 'Fin', 'Debut', 'Statut', 'Charge']).key, 'advice.use.gantt'); assert.strictEqual(advice.TILE_TYPES.includes('gantt'), false, 'jamais proposé à l\'accueil');
+    // Conseils : aucune barre dessinable, plus de statuts que de couleurs, lignes écartées, plafond ; rien pour un planning sain ; colonnes absentes sans exception.
+    const tg = { type: 'gantt', dimension: 'Tâche', startColumn: 'Debut', endColumn: 'Fin', seriesColumn: 'Statut' };
+    assert.strictEqual(advice.adviceForTile(tg, projet), null);
+    assert.deepStrictEqual(advice.adviceForTile(Object.assign({}, tg, { startColumn: 'Statut' }), projet), { key: 'advice.gantt.noTask', vars: { start: 'Statut', end: 'Fin' }, level: 'warn' });
+    assert.deepStrictEqual(advice.adviceForTile(tg, projet.concat([{ Tâche: 'X', Debut: '2025-05-01', Fin: '2025-04-01', Statut: 'Fait' }, { Tâche: 'Y', Debut: null, Fin: null, Statut: 'Fait' }])), { key: 'advice.gantt.ignored', vars: { n: 2 }, level: 'tip' });
+    const nine = projet.map((r, i) => Object.assign({}, r, { Statut: 'S' + (i % 9) })); assert.deepStrictEqual(advice.adviceForTile(tg, nine), { key: 'advice.gantt.manyStatuses', vars: { n: 9, max: data.paletteColors(undefined).length }, level: 'warn' });
+    assert.strictEqual(advice.adviceForTile(Object.assign({}, tg, { palette: 'okabe' }), nine).key, data.paletteColors('okabe').length >= 9 ? 'advice.gantt.ignored' : 'advice.gantt.manyStatuses', 'le seuil suit la longueur de la palette choisie');
+    assert.deepStrictEqual(advice.adviceForTile(Object.assign({}, tg, { seriesColumn: undefined }), many.map((r) => ({ Tâche: r.T, Debut: r.S, Fin: r.E }))), { key: 'advice.gantt.truncated', vars: { max: 200, hidden: 60 }, level: 'tip' });
+    assert.doesNotThrow(() => advice.adviceForTile({ type: 'gantt', dimension: 'Absente', startColumn: 'Autre', endColumn: 'Encore' }, projet)); assert.strictEqual(advice.adviceForTile({ type: 'gantt', dimension: 'Tâche' }, projet), null, 'sans début/fin : pas de conseil');
+    // i18n : textes dans les deux langues, pluriels du libellé de ligne et des lignes écartées.
+    ['tileForm.type.gantt', 'tileForm.dimension.labelTask', 'tileForm.startColumn.label', 'tileForm.endColumn.label', 'tileForm.series.labelStatus', 'tileForm.error.ganttStartRequired', 'tileForm.error.ganttEndRequired', 'tileTitle.gantt',
+      'chart.gantt.empty', 'chart.gantt.row', 'chart.gantt.today', 'chart.gantt.hidden', 'chart.gantt.ignored', 'advice.use.gantt', 'advice.fit.noTwoDates', 'advice.gantt.noTask', 'advice.gantt.manyStatuses', 'advice.gantt.ignored', 'advice.gantt.truncated']
+      .forEach((k) => assert.ok(i18n.STRINGS[k] && i18n.STRINGS[k].fr && i18n.STRINGS[k].en, 'traduction fr/en : ' + k));
+    i18n.setLang('fr'); assert.strictEqual(i18n.t('chart.gantt.row', { label: 'A', start: '1 mars 2025', end: '1 mars 2025', days: '1' }), 'A : du 1 mars 2025 au 1 mars 2025 (1 jour)'); assert.ok(/\(12 jours\)/.test(i18n.t('chart.gantt.row', { label: 'A', start: 'a', end: 'b', days: '12' })));
+    assert.ok(/^1 ligne ignorée/.test(i18n.t('chart.gantt.ignored', { n: '1' })) && /^3 lignes ignorées/.test(i18n.t('chart.gantt.ignored', { n: '3' })));
+    i18n.setLang('en'); assert.strictEqual(i18n.t('chart.gantt.row', { label: 'A', start: 'x', end: 'y', days: '1' }), 'A: x to y (1 day)'); assert.ok(/\(5 days\)/.test(i18n.t('chart.gantt.row', { label: 'A', start: 'x', end: 'y', days: '5' }))); assert.strictEqual(i18n.t('tileTitle.gantt', { dimension: 'Tâche' }), 'Schedule (Tâche)'); i18n.setLang('fr');
+    assert.strictEqual(i18n.t('tileTitle.gantt', { dimension: 'Tâche' }), 'Planning (Tâche)');
+    // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
+    const mainG = fsG.readFileSync(pathG.join(rootG, 'js', 'main.js'), 'utf8');
+    const chartsG = fsG.readFileSync(pathG.join(rootG, 'js', 'charts.js'), 'utf8');
+    const indexG = fsG.readFileSync(pathG.join(rootG, 'index.html'), 'utf8');
+    const cssG = fsG.readFileSync(pathG.join(rootG, 'css', 'style.css'), 'utf8');
+    assert.ok(/const TYPE_CARDS = \[[^\]]*'gantt'/.test(mainG) && /<option value="gantt"/.test(indexG) && /'type-gantt':/.test(mainG), 'carte, option et icône du type');
+    assert.ok(/type !== 'calendar' && type !== 'gantt'; \}/.test(mainG), 'pas de drill-down');
+    assert.ok(/id="tile-start-column"/.test(indexG) && /id="tile-end-column"/.test(indexG) && /startColumnSelect, endColumnSelect,/.test(mainG), 'deux champs de colonne branchés comme comboboxes');
+    assert.ok(/inferColumnKind\(startColumnSelect\.value\) !== 'date'\) fail\('tile-start-column', 'tileForm\.error\.calendarNotDate'\)/.test(mainG) && /inferColumnKind\(endColumnSelect\.value\) !== 'date'\) fail\('tile-end-column', 'tileForm\.error\.calendarNotDate'\)/.test(mainG), 'début et fin doivent être de vraies dates');
+    assert.ok(/!isText && !isTable && !isGantt && !measure\) fail\('tile-measure'/.test(mainG) && /tileData\.measure = undefined; tileData\.aggFn = undefined; \}\s*\n\s*tileData\.startColumn/.test(mainG), 'aucune mesure exigée ni écrite');
+    assert.ok(/tile\.type === 'gantt'\) \{\s*renderGantt\(tile, rows, state, container\);/.test(chartsG), 'dispatch de renderTile');
+    const rg = chartsG.slice(chartsG.indexOf('function renderGantt'), chartsG.indexOf('async function renderGauge'));
+    assert.ok(/data-value="\$\{escapeHtml\(b\.label\)\}"/.test(rg) && /escapeHtml\(label\)/.test(rg) && /data-status="\$\{escapeHtml\(st\)\}"/.test(rg) && /title="\$\{escapeHtml\(title\)\}"/.test(rg), 'libellé, statut et infobulle (saisis dans les données) sont échappés');
+    assert.ok(/background:\$\{colorOf\(/.test(rg) && /paletteColors\(tile\.palette\)/.test(rg) && !/style="[^"]*\$\{(?:b\.status|st\b|label)/.test(rg), 'les couleurs en ligne viennent de la palette, jamais d\'une donnée');
+    assert.ok(/toggleFilter\(live\.seriesColumn, chip\.dataset\.status, live\.id\)/.test(rg) && /toggleFilter\(live\.dimension, row\.dataset\.value, live\.id\)/.test(rg), 'clic = filtre du libellé ou du statut, sur la tuile VIVANTE');
+    assert.ok(/e\.key !== 'Enter' && e\.key !== ' '/.test(rg), 'clavier : Entrée et Espace');
+    assert.ok(/<\/p>`\s*:\s*''\)|gantt-note/.test(rg) && /gantt-foot/.test(rg) && /\.gantt-foot \{ position: sticky; bottom: 0;/.test(cssG), 'légende collante en bas de la tuile');
+    assert.ok(/\.gantt-tick \{[^}]*overflow: hidden; text-overflow: ellipsis/.test(cssG), 'chaque graduation est rognée à sa case : jamais posée sur la voisine');
+    assert.ok(!/Intl\.NumberFormat|toFixed/.test(chartsG), 'aucun format de nombre en dur dans charts.js');
+    console.log('OK gantt — barres début/fin, lignes sans dates écartées, tri, plafond, axe du temps, aujourd\'hui, store (libellé, statut), export, défauts, conseils, i18n, câblage');
   }
 
   // Export Excel avec ExcelJS 4.4.0 (consigne GFS 017, 18/11/2026) : le VRAI paquet vendorisé, exécuté sous Node

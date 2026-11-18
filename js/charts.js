@@ -8,7 +8,7 @@
   const GristBI = global.GristBI || (global.GristBI = {});
   const {
     groupByAggregate, sameValue, aggregateSingle, pivotTable, trendFromGroups, targetProgress, progressRows, sparklineValues, sparklineGeometry, measureSeriesForTile,
-    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, comboSeries, comboModeOf, histogramBins, histogramFilter, histogramBinIsActive, boxStatsByGroup, sankeyFlows, topFlows, SANKEY_MAX_LINKS, isBubbleTile, bubblePoints, bubbleDiameters, calendarDays, filterSelects, lineShapeOf, isStackedPercentTile, stackShares, supportsValueLabels, refLineKind, refLineValue, cellFilterToggles, heatStops, heatRange, heatCellColors, heatTextColor, isStackedTile, splitBySeries, assembleSeries, paletteColors, PALETTES, escapeHtml,
+    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, comboSeries, comboModeOf, histogramBins, histogramFilter, histogramBinIsActive, boxStatsByGroup, sankeyFlows, topFlows, SANKEY_MAX_LINKS, isBubbleTile, bubblePoints, bubbleDiameters, calendarDays, ganttTasks, ganttLayout, filterSelects, lineShapeOf, isStackedPercentTile, stackShares, supportsValueLabels, refLineKind, refLineValue, cellFilterToggles, heatStops, heatRange, heatCellColors, heatTextColor, isStackedTile, splitBySeries, assembleSeries, paletteColors, PALETTES, escapeHtml,
     tileDrillLevels, currentDimension, rowsForTile, wordFrequency
   } = GristBI.data;
   const { t } = GristBI.i18n;
@@ -144,6 +144,8 @@
       renderTable(tile, rows, container);
     } else if (tile.type === 'progress') {
       renderProgress(tile, rows, state, container);
+    } else if (tile.type === 'gantt') {
+      renderGantt(tile, rows, state, container);
     } else if (tile.type === 'bar' && tile.measureMode && tile.measureMode !== 'brut') {
       renderMeasureChart(tile, rows, container);
     } else {
@@ -364,6 +366,107 @@
       el.addEventListener('keydown', (e) => {
         if (e.key !== 'Enter' && e.key !== ' ') return;
         if (!(e.target.classList && e.target.classList.contains('prog-row'))) return;
+        e.preventDefault();
+        pick(e.target);
+      });
+    }
+  }
+
+  // Gantt / planning (type 'gantt') : une ligne par tâche, une barre de sa date de début à sa date de fin sur un axe du temps commun
+  // (js/data.js:ganttTasks/ganttLayout). HTML/CSS maison dans `.tile-chart` (comme la Progression : aucune instance ECharts, donc
+  // rien à disposer ni à redimensionner ; l'axe est en pourcentages de la largeur, il suit tout seul l'agrandissement d'une tuile).
+  // Un clic sur une tâche filtre les autres tuiles sur son libellé, un clic sur une pastille de la légende sur son statut (re-clic =
+  // retire) ; les lignes non retenues par un filtre sur la colonne de libellé ou de statut s'estompent. La couleur ne porte jamais
+  // seule l'information : la légende nomme chaque statut et l'infobulle de la ligne le répète. Reconstruit seulement si le HTML change
+  // (le défilement survit aux render()) ; l'état « aujourd'hui » se relit à chaque rendu.
+  function renderGantt(tile, rows, state, container) {
+    bumpSeq(tile.id); // invalide un calcul asynchrone encore en vol pour cette tuile (changement de type)
+    const el = container.querySelector(`[data-tile-id="${tile.id}"] .tile-chart`);
+    if (!el) return;
+    const lang = GristBI.i18n.getLang();
+    // Nombre de graduations : ~54 px par libellé sur la part de la largeur qui revient à l'axe (72 % de la tuile) ; chaque libellé est de plus
+    // rogné à sa case (CSS), jamais posé sur celui d'à côté. L'agrandissement d'une tuile relance render(), donc le calcul.
+    const axisPx = (el.clientWidth || 300) * 0.72;
+    const layout = ganttLayout(ganttTasks(rows, tile.dimension, tile.startColumn, tile.endColumn, tile.seriesColumn), Date.now(), Math.max(2, Math.floor(axisPx / 54)));
+    const monthNames = t('chart.calendar.monthNames').split(',');
+    const shortDate = (iso) => {
+      try { return new Date(Date.parse(iso + 'T00:00:00Z')).toLocaleDateString(lang, { timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric' }); } catch (e) { return iso; }
+    };
+    const pctOf = (x) => Math.round(x * 10000) / 100;
+    let html;
+    if (!layout.bars.length) {
+      html = `<p class="pivot-empty">${escapeHtml(t('chart.gantt.empty'))}</p>`;
+    } else {
+      const colors = paletteColors(tile.palette);
+      const colorOf = (status) => colors[Math.max(0, layout.statuses.indexOf(status)) % colors.length];
+      const labelFilter = state.activeFilters.find((af) => af.column === tile.dimension);
+      const statusFilter = tile.seriesColumn ? state.activeFilters.find((af) => af.column === tile.seriesColumn) : null;
+      // L'année s'écrit une fois, dans le coin de l'axe (au-dessus de la colonne des libellés) ; une graduation de janvier la répète
+      // seulement quand la période en couvre plusieurs.
+      const y0 = layout.min.slice(0, 4);
+      const y1 = layout.max.slice(0, 4);
+      const multiYear = y0 !== y1;
+      const yearText = multiYear ? `${y0}–${y1}` : y0;
+      const ticksHtml = layout.ticks.map((tk, i) => {
+        const cell = pctOf((i + 1 < layout.ticks.length ? layout.ticks[i + 1].pct : 1) - tk.pct); // largeur de sa case : jusqu'à la graduation suivante
+        const m = monthNames[tk.month] || '';
+        let text;
+        if (tk.kind === 'month') text = m + (multiYear && tk.month === 0 ? ' ' + tk.year : '');
+        else if (tk.kind === 'week') text = `${tk.day} ${m}`;
+        else text = (i === 0 || tk.day === 1) ? `${tk.day} ${m}` : String(tk.day);
+        return `<span class="gantt-tick" style="left:${pctOf(tk.pct)}%;width:${cell}%">${escapeHtml(text)}</span>`;
+      }).join('');
+      const linesHtml = layout.ticks.filter((tk) => tk.pct > 0).map((tk) => `<span class="gantt-line" style="left:${pctOf(tk.pct)}%"></span>`).join('');
+      const rowsHtml = layout.bars.map((b) => {
+        const label = b.label === '' ? '–' : b.label;
+        const hasStatus = tile.seriesColumn && b.status !== undefined;
+        const dimmed = (labelFilter && b.label !== '' && !filterSelects(labelFilter, b.label)) || (statusFilter && hasStatus && b.status !== '' && !filterSelects(statusFilter, b.status));
+        const active = !dimmed && ((labelFilter && b.label !== '' && filterSelects(labelFilter, b.label)) || (statusFilter && hasStatus && b.status !== '' && filterSelects(statusFilter, b.status)));
+        const days = Math.round((Date.parse(b.end + 'T00:00:00Z') - Date.parse(b.start + 'T00:00:00Z')) / 86400000) + 1;
+        const title = t('chart.gantt.row', { label, start: shortDate(b.start), end: shortDate(b.end), days: String(days) })
+          + (hasStatus ? ` · ${b.status === '' ? t('chart.series.empty') : b.status}` : '');
+        const clickable = b.label !== '';
+        return `<div class="gantt-row${active ? ' gantt-active' : ''}${dimmed ? ' gantt-dimmed' : ''}"${clickable ? ` role="button" tabindex="0" data-value="${escapeHtml(b.label)}"` : ''} title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">`
+          + `<span class="gantt-label">${escapeHtml(label)}</span>`
+          + `<span class="gantt-track"><span class="gantt-bar" style="left:${pctOf(b.left)}%;width:${pctOf(b.width)}%;background:${colorOf(b.status)}"></span></span></div>`;
+      }).join('');
+      const todayHtml = layout.today === null ? '' : `<span class="gantt-today" style="--t:${Math.round(layout.today * 10000) / 10000}" title="${escapeHtml(t('chart.gantt.today'))}"></span>`;
+      const chips = tile.seriesColumn ? layout.statuses.map((st) => {
+        const on = statusFilter && st !== '' && filterSelects(statusFilter, st);
+        const off = statusFilter && st !== '' && !filterSelects(statusFilter, st);
+        return `<button type="button" class="gantt-chip${on ? ' gantt-chip-on' : ''}${off ? ' gantt-chip-off' : ''}"${st === '' ? ' disabled' : ` data-status="${escapeHtml(st)}"`}>`
+          + `<span class="gantt-chip-swatch" style="background:${colorOf(st)}"></span>${escapeHtml(st === '' ? t('chart.series.empty') : st)}</button>`;
+      }).join('') : '';
+      const today = layout.today === null ? '' : `<span class="gantt-chip-today"><span class="gantt-today-swatch"></span>${escapeHtml(t('chart.gantt.today'))}</span>`;
+      const notes = [];
+      if (layout.hidden > 0) notes.push(t('chart.gantt.hidden', { shown: String(layout.tasks.length), total: String(layout.total), hidden: String(layout.hidden) }));
+      if (layout.ignored > 0) notes.push(t('chart.gantt.ignored', { n: String(layout.ignored) }));
+      html = `<div class="gantt"><div class="gantt-axis"><span class="gantt-year">${escapeHtml(yearText)}</span><div class="gantt-ticks">${ticksHtml}</div></div>`
+        + `<div class="gantt-body"><div class="gantt-lines">${linesHtml}</div>${rowsHtml}${todayHtml}</div>`
+        + (notes.length ? `<p class="gantt-note">${escapeHtml(notes.join(' '))}</p>` : '')
+        + (chips || today ? `<div class="gantt-foot">${chips}${today}</div>` : '')
+        + '</div>';
+    }
+    if (el.dataset.html !== html) {
+      const scroll = el.scrollTop;
+      el.innerHTML = html;
+      el.dataset.html = html;
+      el.scrollTop = scroll;
+    }
+    if (el.dataset.bound !== '1') {
+      el.dataset.bound = '1';
+      const pick = (target) => {
+        const live = liveTile(tile.id);
+        if (!live || !target.closest) return;
+        const chip = target.closest('.gantt-chip');
+        if (chip && el.contains(chip) && chip.dataset.status !== undefined && live.seriesColumn) { GristBI.store.toggleFilter(live.seriesColumn, chip.dataset.status, live.id); return; }
+        const row = target.closest('.gantt-row');
+        if (row && el.contains(row) && row.dataset.value !== undefined) GristBI.store.toggleFilter(live.dimension, row.dataset.value, live.id);
+      };
+      el.addEventListener('click', (e) => pick(e.target));
+      el.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        if (!(e.target.classList && e.target.classList.contains('gantt-row'))) return;
         e.preventDefault();
         pick(e.target);
       });
