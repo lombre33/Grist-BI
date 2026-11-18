@@ -2483,7 +2483,30 @@ const SAMPLE_TIME_SERIES = [
   {
     assert.strictEqual(pdfText.isAvailable(), false);
     await assert.rejects(pdfText.extractTextFromPdf(new ArrayBuffer(0)), (e) => e.code === 'PDFJS_NOT_AVAILABLE');
+    await assert.rejects(pdfText.loadLibrary(null), (e) => e.code === 'PDFJS_NOT_AVAILABLE');
     console.log('OK pdfText.extractTextFromPdf (rejette clairement sans PDF.js)');
+  }
+
+  // pdfText : la forme que GFS fournit (`GfsPaquets.pdfjs.modules['pdfjs-dist/build/pdf.min.mjs']`,
+  // relevée dans le dépôt de GFS le 18/11/2026) — un faux module qui rend deux pages, vérifié sur le
+  // texte joint (pages séparées par un saut de ligne) et sur les options passées à getDocument.
+  {
+    let opened = null;
+    const page = (strs) => ({ getTextContent: async () => ({ items: strs.map((str) => ({ str })) }) });
+    globalThis.GfsPaquets = { pdfjs: { version: '1.0.0', modules: { 'pdfjs-dist/build/pdf.min.mjs': {
+      getDocument: (options) => { opened = options; return { promise: Promise.resolve({ numPages: 2, getPage: async (n) => page(n === 1 ? ['Analyse', 'sémantique'] : ['des', 'publications']) }) }; },
+    } } } };
+    try {
+      assert.strictEqual(pdfText.isAvailable(), true);
+      assert.strictEqual(await pdfText.extractTextFromPdf(new ArrayBuffer(4)), 'Analyse sémantique\ndes publications');
+      assert.ok(opened.data instanceof Uint8Array && opened.data.length === 4);
+      assert.strictEqual(opened.isEvalSupported, false);
+      assert.strictEqual(await pdfText.loadLibrary(null), globalThis.GfsPaquets.pdfjs.modules['pdfjs-dist/build/pdf.min.mjs']);
+    } finally {
+      delete globalThis.GfsPaquets;
+    }
+    assert.strictEqual(pdfText.isAvailable(), false);
+    console.log('OK pdfText avec GfsPaquets.pdfjs (module de GFS : pages jointes, isEvalSupported=false)');
   }
 
   // extractVisuals + suggestTiles : waterfallChart — même forme que "bar" (1 dimension + 1 mesure,
