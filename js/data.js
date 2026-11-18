@@ -755,6 +755,34 @@
     return tile.type === 'bar' || (tile.type === 'line' && !!tile.areaFill);
   }
 
+  // 100 % empilé (`tile.stackPercent`, en plus de `stacked`) : chaque catégorie ramenée à ses parts (en %), pour comparer la COMPOSITION
+  // plutôt que la hauteur. Une catégorie dont le total n'est pas positif n'a aucune part (`null`, jamais un 0 % trompeur) ; une cellule
+  // absente reste `null`. Des valeurs négatives dans une pile n'ont pas de part lisible : le conseil (js/advice.js) le dit.
+  function isStackedPercentTile(tile) { return isStackedTile(tile) && !!tile.stackPercent; }
+  // Parts en % de `values` (une catégorie, une valeur par série).
+  function shareOfTotal(values) {
+    const nums = (values || []).map((v) => finiteOrNull(typeof v === 'bigint' ? Number(v) : v));
+    const total = nums.reduce((a, v) => a + (v === null ? 0 : v), 0);
+    return nums.map((v) => ((v === null || !(total > 0)) ? null : (v / total) * 100));
+  }
+  // Même chose pour tout le graphique : `seriesValues[s][c]` -> `parts[s][c]` (chaque colonne `c` somme à 100 quand elle a un total positif).
+  function stackShares(seriesValues) {
+    const list = seriesValues || [];
+    const nCat = list.reduce((m, v) => Math.max(m, (v || []).length), 0);
+    const out = list.map(() => new Array(nCat).fill(null));
+    for (let c = 0; c < nCat; c++) shareOfTotal(list.map((v) => (v || [])[c])).forEach((x, s) => { out[s][c] = x; });
+    return out;
+  }
+
+  // Tracé de la courbe (`tile.lineShape`) : droit (absent), lissé ou en escalier. Courbe/aire seulement. Un lissage dessine des valeurs
+  // qui n'existent pas entre deux points (il peut passer sous zéro) : à réserver aux tendances ; l'escalier dit « valable jusqu'au suivant ».
+  const LINE_SHAPES = ['smooth', 'step'];
+  function lineShapeOf(tile) {
+    return tile && tile.type === 'line' && LINE_SHAPES.indexOf(tile.lineShape) !== -1 ? tile.lineShape : '';
+  }
+  // Étiquettes de valeur (`tile.valueLabels`) : barres (hors mode mesure temporelle) et courbe, comme la ligne de repère.
+  function supportsValueLabels(tile) { return supportsRefLine(tile); }
+
   // Lignes de `rows` rangées par valeur de `seriesColumn` : `[{ key, name, rows }]`. `name` est le
   // libellé affiché (la valeur en texte, ou `emptyLabel` pour une cellule vide).
   function splitBySeries(rows, seriesColumn, emptyLabel) {
@@ -1421,7 +1449,7 @@
     importMapHas, tableToRows, epochSecondsToIsoDate, applyFilters, matchesFilter, sameValue, parseDateValue,
     relativeDateRange, RELATIVE_DATE_PRESETS, groupByAggregate, aggregateSingle, wordFrequency, pivotTable,
     distinctColumnValues, computeTrend, trendFromGroups, periodLabel, measureSeriesForTile,
-    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, comboModeOf, paretoSeries, comboSeries, niceStep, histogramBins, histogramFilter, histogramBinIsActive, HISTOGRAM_MAX_BINS, filterSelects, REF_LINE_KINDS, supportsRefLine, refLineKind, refLineValue, cellFilterToggles, HEAT_RAMPS, heatStops, heatColor, heatTextColor, heatRange, heatCellColors, isStackedTile, splitBySeries, assembleSeries, PALETTES, PALETTE_KEYS, paletteColors, supportsPalette, supportsNumberFormat, NUMBER_FORMAT_TILE_TYPES, escapeHtml,
+    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, comboModeOf, paretoSeries, comboSeries, niceStep, histogramBins, histogramFilter, histogramBinIsActive, HISTOGRAM_MAX_BINS, filterSelects, LINE_SHAPES, lineShapeOf, supportsValueLabels, isStackedPercentTile, shareOfTotal, stackShares, REF_LINE_KINDS, supportsRefLine, refLineKind, refLineValue, cellFilterToggles, HEAT_RAMPS, heatStops, heatColor, heatTextColor, heatRange, heatCellColors, isStackedTile, splitBySeries, assembleSeries, PALETTES, PALETTE_KEYS, paletteColors, supportsPalette, supportsNumberFormat, NUMBER_FORMAT_TILE_TYPES, escapeHtml,
     tileDrillLevels, currentDimension, rowsForTile, tileExportSheet, tileExportKind, renderTextHtml, plainTextOf, TEXT_TILE_MAX,
     DEFAULT_GOOD_PCT, DEFAULT_WARN_PCT, targetProgress, progressRows, sparklineValues, sparklineGeometry,
     TABLE_TILE_MAX_ROWS, TABLE_EXPORT_MAX_ROWS, tableColumnsOf, cellText, compareCells, sortRowsBy, moveInOrder, nextSortDir, tableSheet,

@@ -945,6 +945,17 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 - [x] Rendu : objectif 9 000 dans une tuile de barres (ligne dans le cadre) ; **objectif hors plage = axe élargi** ; barres horizontales (trait vertical, libellé en haut) ; courbe ; pile ; repère négatif ; objectif invalide et camembert sans ligne ; moyenne qui change après un filtre croisé 🌐
 - [ ] Rendu dans un vrai Grist / un vrai GFS ⬜ **[NON TESTABLE ICI]**
 
+### `js/data.js` + `js/charts.js` + panneau — étiquettes de valeur, courbe lissée, 100 % empilé (18/11/2026 ; Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`)
+
+- [x] `lineShapeOf` : `smooth`/`step` seulement pour une courbe ; `straight`, `constructor`, `__proto__`, nombre, `null` -> droit ✅
+- [x] `supportsValueLabels` = barres hors mode mesure + courbe ; `isStackedPercentTile` : pile barres/aire seulement, ignoré sans « Empiler », sans Séries, en mode mesure ✅
+- [x] `shareOfTotal`/`stackShares` : somme 100 (flottants compris), absent reste absent, total nul ou négatif -> aucune part, `BigInt`, texte numérique, longueurs inégales, vide/`undefined` ✅
+- [x] Export Excel identique avec ou sans les trois options ✅ ; conseil `stackedPercent.negative` (et `stacked.notAdditive` qui prime) ✅
+- [x] Formulaire : « En 100 % » seulement une fois « Empiler » coché, tracé de la courbe seulement pour une courbe, étiquettes pour barres et courbe, **ligne de repère masquée en 100 %**, édition qui relit les trois options, décocher « Empiler » efface le 100 % 🌐
+- [x] Rendu : pile à 100 sur chaque catégorie, axe 0-100, valeurs brutes dans `data.raw`, infobulle « 25 % (1 000) » + total, aire 100 %, étiquettes dans les segments / au-dessus / à droite, lissé, escalier, camembert et forme inconnue sans effet 🌐
+- [x] 6 000 lignes (DuckDB) dans un cadre isolé : mêmes réglages, aucune erreur 🌐
+- [ ] Rendu dans un vrai Grist / un vrai GFS ⬜ **[NON TESTABLE ICI]**
+
 ### CSS — classe de bug à systématiquement re-vérifier
 
 - [x] `.field[hidden]` masque réellement l'élément (pas seulement `display:flex` de `.field` qui gagne à spécificité égale) [BUG RÉEL, trouvé 2 fois sur des champs différents] ✅ (règle en place)

@@ -8,7 +8,7 @@
   const GristBI = global.GristBI || (global.GristBI = {});
   const {
     groupByAggregate, sameValue, aggregateSingle, pivotTable, trendFromGroups, targetProgress, progressRows, sparklineValues, sparklineGeometry, measureSeriesForTile,
-    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, comboSeries, comboModeOf, histogramBins, histogramFilter, histogramBinIsActive, filterSelects, refLineKind, refLineValue, cellFilterToggles, heatStops, heatRange, heatCellColors, heatTextColor, isStackedTile, splitBySeries, assembleSeries, paletteColors, PALETTES, escapeHtml,
+    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, comboSeries, comboModeOf, histogramBins, histogramFilter, histogramBinIsActive, filterSelects, lineShapeOf, isStackedPercentTile, stackShares, supportsValueLabels, refLineKind, refLineValue, cellFilterToggles, heatStops, heatRange, heatCellColors, heatTextColor, isStackedTile, splitBySeries, assembleSeries, paletteColors, PALETTES, escapeHtml,
     tileDrillLevels, currentDimension, rowsForTile, wordFrequency
   } = GristBI.data;
   const { t } = GristBI.i18n;
@@ -1092,6 +1092,49 @@
 
     // Palette choisie sur la tuile (`tile.palette`, js/data.js:PALETTES) ; `standard` sans choix.
     const palette = paletteColors(tile.palette);
+    // 100 % empilé : chaque catégorie ramenée à ses parts, la valeur brute gardée (`raw`) pour l'infobulle. La pile somme à 100, l'axe va de
+    // 0 à 100 et ses graduations s'écrivent en %.
+    const stackPct = stacked && isStackedPercentTile(tile);
+    const pctTooltip = {
+      trigger: 'axis',
+      formatter: (params) => {
+        const list = Array.isArray(params) ? params : [params];
+        if (!list.length) return '';
+        let total = 0;
+        const lines = list.map((p) => {
+          const raw = p.data && p.data.raw;
+          if (Number.isFinite(Number(raw))) total += Number(raw);
+          return `${p.marker}${escapeHtml(String(p.seriesName))} : ${f.percent(Number(p.value))}${raw != null ? ` (${f.format(raw) || '–'})` : ''}`;
+        });
+        const head = escapeHtml(String(list[0].axisValueLabel != null ? list[0].axisValueLabel : list[0].name));
+        return `${head}<br/>${lines.join('<br/>')}<br/><b>${escapeHtml(t('chart.stacked.total'))} : ${f.format(total)}</b>`;
+      }
+    };
+    const valueAxisPct = { type: 'value', min: 0, max: 100, axisLabel: { formatter: (v) => f.percent(v) } };
+    // Étiquettes de valeur (`tile.valueLabels`, barres et courbe) : au-dessus de la barre ou du point (à droite d'une barre horizontale),
+    // DANS le segment d'une pile avec le texte noir ou blanc qui contraste avec sa couleur ; compactes (`f.axis`) ou en % en 100 % empilé ;
+    // une valeur absente ou nulle d'une pile n'écrit rien, et celles qui se recouvrent sont masquées (`labelLayout.hideOverlap`).
+    const labelsOn = !!tile.valueLabels && supportsValueLabels(tile);
+    const thLabel = chartTheme();
+    const seriesLabelOptions = (index) => {
+      if (!labelsOn) return {};
+      const color = palette[index % palette.length];
+      return {
+        label: {
+          show: true,
+          position: stacked ? 'inside' : (tile.type === 'bar' && tile.horizontal ? 'right' : 'top'),
+          color: stacked ? heatTextColor(color) : thLabel.text,
+          fontSize: 10,
+          formatter: (p) => {
+            const raw = p.value;
+            const v = Number(raw);
+            if (raw == null || !Number.isFinite(v) || (stacked && v === 0)) return '';
+            return stackPct ? f.percent(v) : (f.axis(v) || '');
+          }
+        },
+        labelLayout: { hideOverlap: true }
+      };
+    };
     let option;
     if (tile.type === 'pie') {
       // `tile.donut` : même série `pie` qu'un camembert plein, seul le rayon change (un tableau
@@ -1418,24 +1461,30 @@
       const lineSeries = multi
         ? multi.series.map((sr) => ({ name: sr.name, values: sr.values }))
         : [{ name: undefined, values: groups.map((d) => d.value) }];
+      const lineShares = stackPct ? stackShares(lineSeries.map((sr) => sr.values)) : null;
       option = {
         color: palette,
         grid: seriesGrid,
         legend: seriesLegend,
-        tooltip: stacked ? stackedTooltip : { trigger: 'axis', valueFormatter: tipValue },
+        tooltip: stackPct ? pctTooltip : (stacked ? stackedTooltip : { trigger: 'axis', valueFormatter: tipValue }),
         xAxis: { type: 'category', data: lineCategories },
-        yAxis: { type: 'value', axisLabel: { formatter: f.axis } },
-        series: lineSeries.map((sr) => ({
+        yAxis: stackPct ? valueAxisPct : { type: 'value', axisLabel: { formatter: f.axis } },
+        series: lineSeries.map((sr, si) => ({
           type: 'line',
           name: sr.name,
           symbolSize: 8,
+          // Tracé : lissé (courbe de Bézier adoucie, jamais l'arrondi maximal) ou en escalier centré sur chaque catégorie.
+          ...(lineShapeOf(tile) === 'smooth' ? { smooth: 0.35 } : (lineShapeOf(tile) === 'step' ? { step: 'middle' } : {})),
+          ...seriesLabelOptions(si),
           // Aire empilée : bandes plus opaques (à 0,25 deux bandes voisines se confondent) ; aire
           // non empilée : les séries se recouvrent, donc très transparentes.
           ...(tile.areaFill ? { areaStyle: { opacity: stacked ? 0.65 : 0.25 } } : {}),
           ...(stacked ? { stack: 'total' } : {}),
           // Une combinaison absente vaut 0 dans une pile : ECharts empile sur la valeur de la série du
           // dessous, et un `null` y rompt la bande de TOUTES les séries au-dessus.
-          data: sr.values.map((v, i) => ({ value: (stacked && v == null) ? 0 : v, itemStyle: dim(lineCategories[i]) }))
+          data: sr.values.map((v, i) => (stackPct
+            ? { value: lineShares[si][i] == null ? 0 : lineShares[si][i], raw: v, itemStyle: dim(lineCategories[i]) }
+            : { value: (stacked && v == null) ? 0 : v, itemStyle: dim(lineCategories[i]) }))
         }))
       };
     } else {
@@ -1447,12 +1496,13 @@
       const barSeries = multi
         ? multi.series.map((sr) => ({ name: sr.name, values: sr.values }))
         : [{ name: undefined, values: groups.map((d) => d.value) }];
-      const valueAxis = { type: 'value', axisLabel: { formatter: f.axis } };
+      const valueAxis = stackPct ? valueAxisPct : { type: 'value', axisLabel: { formatter: f.axis } };
+      const barShares = stackPct ? stackShares(barSeries.map((sr) => sr.values)) : null;
       option = {
         color: palette,
         grid: seriesGrid,
         legend: seriesLegend,
-        tooltip: stacked ? stackedTooltip : { trigger: 'axis', valueFormatter: tipValue },
+        tooltip: stackPct ? pctTooltip : (stacked ? stackedTooltip : { trigger: 'axis', valueFormatter: tipValue }),
         ...(tile.horizontal
           ? {
             xAxis: valueAxis,
@@ -1462,16 +1512,20 @@
             xAxis: { type: 'category', data: categoryLabels },
             yAxis: valueAxis
           }),
-        series: barSeries.map((sr) => ({
+        series: barSeries.map((sr, si) => ({
           type: 'bar',
           name: sr.name,
           ...(stacked ? { stack: 'total' } : {}),
-          data: sr.values.map((v, i) => ({ value: v, itemStyle: dim(categoryLabels[i]) }))
+          ...seriesLabelOptions(si),
+          data: sr.values.map((v, i) => (stackPct
+            ? { value: barShares[si][i] == null ? 0 : barShares[si][i], raw: v, itemStyle: dim(categoryLabels[i]) }
+            : { value: v, itemStyle: dim(categoryLabels[i]) }))
         }))
       };
     }
     // Ligne de repère (`tile.refLine`, barres et courbe) : moyenne des valeurs affichées ou objectif saisi.
-    if (option.series && option.series.length && (tile.type === 'bar' || tile.type === 'line')) {
+    // Pas en 100 % empilé : l'axe y est en parts, un objectif ou une moyenne en valeur brute n'y est pas comparable.
+    if (!stackPct && option.series && option.series.length && (tile.type === 'bar' || tile.type === 'line')) {
       const ref = refLineValue(tile, groups.map((g) => g.value));
       if (ref !== null) addRefLine(option, tile, ref, f);
     }

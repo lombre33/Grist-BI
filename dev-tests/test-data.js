@@ -4525,6 +4525,75 @@ const SAMPLE_TIME_SERIES = [
     console.log('OK ligne de repère — types, genre tracé, objectif invalide, moyenne (vides, BigInt), store, export inchangé, i18n, câblage');
   }
 
+  // Options d'affichage : étiquettes de valeur, tracé de la courbe (lissé / escalier), 100 % empilé.
+  {
+    const fsD = require('fs');
+    const pathD = require('path');
+    const rootD = pathD.join(__dirname, '..');
+    // Tracé de la courbe : courbe/aire seulement, clé inconnue ou piégée -> droit.
+    assert.deepStrictEqual(data.LINE_SHAPES, ['smooth', 'step']);
+    assert.strictEqual(data.lineShapeOf({ type: 'line', lineShape: 'smooth' }), 'smooth');
+    assert.strictEqual(data.lineShapeOf({ type: 'line', lineShape: 'step' }), 'step');
+    for (const lineShape of [undefined, '', 'straight', 'constructor', '__proto__', 1, null]) assert.strictEqual(data.lineShapeOf({ type: 'line', lineShape }), '', String(lineShape));
+    for (const type of ['bar', 'pie', 'combo', 'kpi']) assert.strictEqual(data.lineShapeOf({ type, lineShape: 'smooth' }), '', type);
+    assert.strictEqual(data.lineShapeOf(null), '');
+    // Étiquettes de valeur : mêmes types que la ligne de repère (barres hors mode mesure, courbe).
+    for (const tile of [{ type: 'bar' }, { type: 'bar', measureMode: 'brut' }, { type: 'line' }]) assert.strictEqual(data.supportsValueLabels(tile), true, JSON.stringify(tile));
+    for (const tile of [{ type: 'bar', measureMode: 'yoy' }, { type: 'pie' }, { type: 'combo' }, { type: 'histogram' }, { type: 'heatmap' }, null]) assert.strictEqual(data.supportsValueLabels(tile), false, JSON.stringify(tile));
+    // 100 % empilé : seulement une pile (colonne Séries + empilé), barres ou aire.
+    const pile = { type: 'bar', dimension: 'R', measure: 'M', aggFn: 'sum', seriesColumn: 'P', stacked: true, stackPercent: true };
+    assert.strictEqual(data.isStackedPercentTile(pile), true);
+    assert.strictEqual(data.isStackedPercentTile(Object.assign({}, pile, { type: 'line', areaFill: true })), true);
+    assert.strictEqual(data.isStackedPercentTile(Object.assign({}, pile, { type: 'line' })), false, 'une courbe sans aire n\'est pas une pile');
+    assert.strictEqual(data.isStackedPercentTile(Object.assign({}, pile, { stacked: false })), false, '100 % sans « Empiler » : ignoré');
+    assert.strictEqual(data.isStackedPercentTile(Object.assign({}, pile, { seriesColumn: '' })), false);
+    assert.strictEqual(data.isStackedPercentTile(Object.assign({}, pile, { stackPercent: false })), false);
+    assert.strictEqual(data.isStackedPercentTile(Object.assign({}, pile, { measureMode: 'ytd' })), false);
+    assert.strictEqual(data.isStackedPercentTile(null), false);
+    // Parts : somme 100, cellule absente reste absente, total non positif -> aucune part, BigInt, texte numérique.
+    assert.deepStrictEqual(data.shareOfTotal([1, 3]), [25, 75]);
+    assert.deepStrictEqual(data.shareOfTotal([5, null, 5]), [50, null, 50]);
+    assert.deepStrictEqual(data.shareOfTotal([7]), [100]);
+    assert.deepStrictEqual(data.shareOfTotal([0, 0]), [null, null], 'total nul : pas de 0 % trompeur');
+    assert.deepStrictEqual(data.shareOfTotal([-5, 2]), [null, null], 'total négatif : aucune part');
+    assert.deepStrictEqual(data.shareOfTotal([1n, 3n]), [25, 75]);
+    assert.deepStrictEqual(data.shareOfTotal(['1', 3, '', true]), [25, 75, null, null]);
+    assert.deepStrictEqual(data.shareOfTotal([]), []); assert.deepStrictEqual(data.shareOfTotal(undefined), []);
+    assert.deepStrictEqual(data.shareOfTotal([-10, 30]), [-50, 150], 'négatifs dans une pile positive : part sans sens, le conseil le signale');
+    const total = data.shareOfTotal([0.1, 0.2, 0.7]).reduce((a, b) => a + b, 0);
+    assert.ok(Math.abs(total - 100) < 1e-9, 'somme à 100 (flottants)');
+    // Tout le graphique : chaque colonne somme à 100, séries de longueurs inégales, vide.
+    const sh = data.stackShares([[10, 0, null], [30, 0, 5], [60, 0, 5]]);
+    assert.deepStrictEqual(sh, [[10, null, null], [30, null, 50], [60, null, 50]]);
+    for (const c of [0, 2]) assert.ok(Math.abs(sh.reduce((a, srs) => a + (srs[c] || 0), 0) - 100) < 1e-9, 'colonne ' + c);
+    assert.deepStrictEqual(data.stackShares([[1, 1], [1]]), [[50, 100], [50, null]]);
+    assert.deepStrictEqual(data.stackShares([]), []); assert.deepStrictEqual(data.stackShares(undefined), []);
+    // Export Excel : les trois options n'y changent rien (valeurs brutes, comme avant).
+    const dRows = [{ R: 'A', P: 'x', M: 10 }, { R: 'A', P: 'y', M: 30 }, { R: 'B', P: 'x', M: 20 }];
+    const dState = { rows: dRows, activeFilters: [], advancedFilters: [], drillIns: {}, comments: [], pages: [] };
+    const plainSheet = data.tileExportSheet(Object.assign({ id: 'p', title: 'T' }, pile, { stackPercent: undefined }), dState);
+    assert.deepStrictEqual(data.tileExportSheet(Object.assign({ id: 'p', title: 'T' }, pile, { valueLabels: true }), dState), plainSheet, '100 % et étiquettes : même feuille');
+    assert.deepStrictEqual(data.tileExportSheet({ id: 'l', title: 'L', type: 'line', dimension: 'R', measure: 'M', aggFn: 'sum', lineShape: 'smooth' }, dState), data.tileExportSheet({ id: 'l', title: 'L', type: 'line', dimension: 'R', measure: 'M', aggFn: 'sum' }, dState));
+    // Conseil : des valeurs négatives en 100 % ; rien sans négatif, rien si ce n'est pas du 100 %.
+    const negRows = [{ R: 'A', P: 'x', M: 10 }, { R: 'A', P: 'y', M: -3 }, { R: 'B', P: 'x', M: 5 }];
+    assert.strictEqual(advice.adviceForTile(pile, negRows).key, 'advice.stackedPercent.negative');
+    assert.strictEqual(advice.adviceForTile(pile, dRows), null);
+    assert.strictEqual(advice.adviceForTile(Object.assign({}, pile, { stackPercent: false }), negRows), null, 'pile ordinaire : pas ce conseil');
+    assert.strictEqual(advice.adviceForTile(Object.assign({}, pile, { aggFn: 'avg' }), dRows).key, 'advice.stacked.notAdditive', 'le conseil existant prime');
+    ['tileForm.stackPercent.label', 'tileForm.lineShape.label', 'tileForm.lineShape.straight', 'tileForm.lineShape.smooth', 'tileForm.lineShape.step', 'tileForm.valueLabels.label', 'advice.stackedPercent.negative']
+      .forEach((k) => assert.ok(i18n.STRINGS[k] && i18n.STRINGS[k].fr && i18n.STRINGS[k].en, 'traduction fr/en : ' + k));
+    // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
+    const mainD = fsD.readFileSync(pathD.join(rootD, 'js', 'main.js'), 'utf8');
+    const chartsD = fsD.readFileSync(pathD.join(rootD, 'js', 'charts.js'), 'utf8');
+    const indexD = fsD.readFileSync(pathD.join(rootD, 'index.html'), 'utf8');
+    for (const id of ['tile-stack-percent', 'tile-line-shape', 'tile-value-labels']) assert.ok(new RegExp(`id="${id}"`).test(indexD) && new RegExp(`<label for="${id}"`).test(indexD), 'champ étiqueté : ' + id);
+    assert.ok(/stackPercentCheckbox\.addEventListener\('change', updateFormFieldsForType\)/.test(mainD) && /stackedCheckbox\.addEventListener\('change', updateFormFieldsForType\)/.test(mainD), 'cocher/décocher recalcule les champs visibles');
+    assert.ok(/tileData\.stackPercent = \(tileData\.stacked && stackPercentCheckbox\.checked\)/.test(mainD), 'le 100 % ne s\'écrit que sur une pile');
+    assert.ok(/stackShares\(/.test(chartsD) && /labelLayout: \{ hideOverlap: true \}/.test(chartsD) && /step: 'middle'/.test(chartsD) && /if \(!stackPct && option\.series/.test(chartsD), 'pas de ligne de repère brute sur un axe en %');
+    assert.ok(!/Intl\.NumberFormat|toFixed/.test(chartsD), 'aucun format de nombre en dur dans charts.js');
+    console.log('OK options d\'affichage — tracé de la courbe, étiquettes, 100 % empilé (parts, colonnes, négatifs), export inchangé, conseil, i18n, câblage');
+  }
+
   // Export Excel avec ExcelJS 4.4.0 (consigne GFS 017, 18/11/2026) : le VRAI paquet vendorisé, exécuté sous Node
   // (js/export.js se charge sous Node : mise en forme des cellules et construction du classeur, sans DOM). Ce que ces
   // essais ne voient pas : le chargement paresseux dans un navigateur et le déclenchement du téléchargement.
