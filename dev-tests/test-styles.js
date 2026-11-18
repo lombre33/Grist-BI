@@ -24,7 +24,7 @@
 'use strict';
 const assert = require('assert');
 const path = require('path');
-const { read, readCharts, plain, parseCssRules, loadApiWithFakeConfigTable } = require('./lib/helpers.js');
+const { read, readMain, readCharts, plain, parseCssRules, loadApiWithFakeConfigTable } = require('./lib/helpers.js');
 const styles = require('../js/styles.js');
 const i18n = require('../js/i18n.js');
 const data = require('../js/data.js');
@@ -581,7 +581,7 @@ const ALL = ['standard'].concat(NEW_STYLES);
     assert.ok(rule(':root[data-dash-uniform] .tiles-focus-grid'), 'uni : la zone des tuiles agrandies aussi');
     assert.strictEqual(rule(':root[data-dash-uniform]').decls['--dash-tile-surface'], 'var(--bg)');
     assert.ok(readCharts().includes("cssVar('--dash-tile-surface', '') || cssVar('--surface'"), 'chartTheme lit le fond réel de la tuile (uni)');
-    assert.ok(read('js', 'main.js').includes("'--dash-tile-surface'"), 'watchChartTheme suit ce jeton');
+    assert.ok(readMain().includes("'--dash-tile-surface'"), 'watchChartTheme suit ce jeton');
     // Aucune option ne fixe de hauteur : piège n°8.
     for (const r of dashRules.filter((x) => x.selector.includes('data-dash-uniform'))) assert.strictEqual(r.decls.height, undefined, r.selector);
   }
@@ -821,7 +821,7 @@ const ALL = ['standard'].concat(NEW_STYLES);
       assert.ok(html.includes('id="settings-style-options"'), `${file} : conteneur des cartes de style`);
       assert.ok(/<div class="settings-section" id="settings-style-section">/.test(html) && !/id="settings-style-section"[^>]*edit-only/.test(html), `${file} : section visible en Lecture comme en Édition (même menu Réglages)`);
     }
-    const main = read('js', 'main.js');
+    const main = readMain();
     assert.ok(main.includes('GristBI.styles.apply(state.dashStyle)'), 'render() pose le style avant de dessiner les tuiles');
     assert.ok(main.includes('store.setDashStyle(saved.style)'), 'le chargement d\'un rapport pose son style');
     assert.ok(/scheduleSave\(state\.pages, state\.currentPageId, state\.bookmarks, state\.blend, state\.dashStyle, state\.dashStyleOptions\)/.test(main), 'un changement de style ou d\'option planifie la sauvegarde');

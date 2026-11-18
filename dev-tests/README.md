@@ -28,7 +28,7 @@ vrai (empreintes SHA-256 des bibliothèques embarquées).
 
 `test-layouts.js` et `test-styles.js` en tirent ce qu'ils recopiaient à l'identique : lecture d'un fichier du dépôt (`read`), lecteur de
 règles CSS (`parseCssRules`) et le vrai `js/grist-api.js` branché sur un faux `grist` qui tient `BI_Dashboard_Config` en mémoire
-(`loadApiWithFakeConfigTable`). `readCharts()` lit les cinq fichiers du rendu des tuiles (`js/charts-core.js`, `charts-cards.js`, `charts-cloud.js`, `charts-extra.js`, `charts.js`) bout à bout : `test-data.js` et `test-styles.js` s'en servent pour tout contrôle fait sur le texte du rendu. Un nouvel essai qui a besoin de l'un d'eux l'importe d'ici plutôt que de le recopier (l'audit `gwaudit`
+(`loadApiWithFakeConfigTable`). `readCharts()` lit les cinq fichiers du rendu des tuiles (`js/charts-core.js`, `charts-cards.js`, `charts-cloud.js`, `charts-extra.js`, `charts.js`) bout à bout : `test-data.js` et `test-styles.js` s'en servent pour tout contrôle fait sur le texte du rendu. `readMain()` fait de même pour les neuf fichiers de `js/main*.js` (`main-core.js` … `main-session.js`, puis `main.js`) : `test-data.js`, `test-styles.js` et `test-layouts.js` s'en servent pour tout contrôle fait sur le texte du démarrage de l'interface. Un nouvel essai qui a besoin de l'un d'eux l'importe d'ici plutôt que de le recopier (l'audit `gwaudit`
 compte les blocs dupliqués, A-DUP-01).
 
 ## Style global des tuiles (Node, aucune dépendance)

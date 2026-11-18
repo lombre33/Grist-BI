@@ -33,6 +33,7 @@ Le Chromium lancé sans bac à sable exécute le widget audité : à ne faire qu
 | Lot 3 (revue des `innerHTML`, id de tuile assaini) | 57 | CONFORME SOUS RÉSERVE (aucun bloquant) | 18 | 94 | 2 | 100 | 93 | 85 |
 | Avant le lot 4 (`b8b7d4d`, après les types de tuile ajoutés depuis) | 53 | CONFORME SOUS RÉSERVE (aucun bloquant) | 6 | 85 | 1 | 100 | 93 | 85 |
 | Lot 4 (qualité du code : marqueurs, doublons, noms, `data.js` coupé, `6e59a0f`) | 54 | CONFORME SOUS RÉSERVE (aucun bloquant) | 11 | 88 | 1 | 100 | 93 | 85 |
+| Lot 4 bis (`data.js`, `charts.js` et `main.js` coupés en fichiers de moins de 600 lignes de code, `58db90c` + découpage de `main.js`) | 56 | CONFORME SOUS RÉSERVE (aucun bloquant) | 19 | 88 | 1 | 100 | 93 | 85 |
 
 Les lignes ne se comparent pas toutes entre elles : entre le lot 3 et le lot 4, des dizaines de fonctions et trois fichiers de plus de
 600 lignes sont arrivés avec les nouveaux types de tuile et l'export Excel refait, ce qui a ramené A de 18 à 6 et B de 94 à 85 *avant*
@@ -90,8 +91,15 @@ Le lot 3 ne change aucune note : il corrige un vrai défaut que l'outil ne sait 
   Quatre essais de `dev-tests/test-data.js` lisent le texte des sources avec des expressions régulières : ils suivent les nouveaux noms.
   Comparé à `main` dans Chromium (22 types de tuile, 6 000 lignes pour passer par DuckDB, page directe et `<iframe sandbox="allow-scripts">`) :
   0 pixel de différence, aucune erreur de console.
-- **A-TAILLE-01** (partiel) : `js/data.js` (1 343 lignes de code) est coupé en `js/data.js` (897) et `js/data-tiles.js` (492), qui porte les calculs
-  purs des types de tuile récents. Même API (`GristBI.data.*`), même vérification (0 pixel de différence, deux cadres). `js/data.js` ne dépasse plus le seuil majeur de 1 200 lignes.
+- **A-TAILLE-01** (partiel) : les trois fichiers de plus de 1 200 lignes de code sont coupés, un à la fois, avec la même vérification à chaque fois
+  (essais Node, puis Chromium : 22 types de tuile, 6 000 lignes pour passer par DuckDB, page directe et `<iframe sandbox="allow-scripts">`, comparaison de pixels avec `main`, clics réels) :
+  `js/data.js` (1 343 lignes de code) devient `js/data.js` (897) + `js/data-tiles.js` (492) ; `js/charts.js` (1 957) devient `charts-core.js`, `charts-cards.js`,
+  `charts-cloud.js`, `charts-extra.js` et `charts.js` ; `js/main.js` (2 752) devient `main-core.js`, `main-fields.js`, `main-form.js`, `main-panel.js`,
+  `main-filters.js`, `main-dialogs.js`, `main-render.js`, `main-session.js` et `main.js` (le point d'entrée). Aucun fichier ne dépasse plus 600 lignes de code, sauf `js/advice.js`,
+  `js/data.js` et `js/i18n.js` (seuil mineur). Même API (`GristBI.*`), mêmes noms de fonction ; les fichiers d'un même ensemble partagent un objet interne
+  (`GristBI.chartParts`, `GristBI.mainParts`) : voir `CLAUDE.md` §2 pour les règles de ce partage (raccourcis à liaison tardive, `let` partagés rangés dans `parts.S`).
+  Comparé à `main` : 0 pixel de différence sur les 22 types de tuile (page directe et cadre isolé), mêmes résultats aux clics réels (filtre croisé, histogramme,
+  agrandissement, suppression) et au parcours d'interface complet (ajout/modification de tuile, filtres, vues, Réglages, langue, changement de table), aucune erreur de console.
 
 ## Voulu, ou hors de portée de ce dépôt
 
@@ -137,12 +145,9 @@ liste du combobox).
 
 ## Reste à faire
 
-- **A-TAILLE-01** (5 fichiers) : `js/main.js` 2 752 lignes de code et `js/charts.js` 1 957 (seuil majeur 1 200), puis `js/advice.js` 979,
-  `js/data.js` 897 et `js/i18n.js` 883 (seuil mineur 600). Découper `main.js` et `charts.js` est le seul chantier qui rapporte vraiment
-  (environ +16 points sur l'axe A) ; il touche le démarrage et le rendu de tous les types de tuile. Décision d'Antoine attendue (carte du 18/11/2026) : à faire
-  par un fichier à la fois, avec la même vérification que `data.js` (essais Node + Chromium, page directe et cadre isolé, comparaison de pixels avec `main`).
-  Le schéma qui a servi pour `data.js` : `api.extend(factory)` et un `tileCore` qui donne à la suite les fonctions communes (voir `CLAUDE.md` §2, ligne `js/data-tiles.js`).
-- **A-FONC-01 / A-FONC-02 / A-FONC-03** : 39 fonctions longues, 50 trop ramifiées, une imbrication de profondeur 6 (`captureTileImages`). Les plus lourdes sont `readTileForm`
+- **A-TAILLE-01** (3 fichiers, seuil mineur) : `js/advice.js` 979 lignes de code, `js/data.js` 897 et `js/i18n.js` 883. Plus aucun fichier au-dessus du seuil majeur
+  (1 200). Le découpage de `advice.js` suivrait le même schéma que `data.js` ; `i18n.js` est surtout un dictionnaire, ce qui est une donnée plutôt qu'un code à couper.
+- **A-FONC-01 / A-FONC-02 / A-FONC-03** : 46 fonctions longues, 50 trop ramifiées, une imbrication de profondeur 6 (`captureTileImages`). Les plus lourdes sont `readTileForm`
   (135 chemins), `adviceForTile` (103), `defaultsForType` (82), `renderChart` (73) : ce sont les fonctions que chaque nouveau type de tuile modifie. Ces deux règles sont
   déjà au plafond de leur pénalité (30 points chacune) : il faut les faire disparaître *toutes* pour gagner, pas en réduire le nombre. Une table de correspondance par type
   remplace les cascades de `if` ; à faire quand plus aucun fil n'ajoute de type de tuile. Les « fonctions anonymes de 900 lignes » sont l'enveloppe

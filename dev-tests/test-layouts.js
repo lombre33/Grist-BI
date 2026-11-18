@@ -20,7 +20,7 @@
 'use strict';
 const assert = require('assert');
 const path = require('path');
-const { read, plain, parseCssRules, loadApiWithFakeConfigTable } = require('./lib/helpers.js');
+const { read, readMain, plain, parseCssRules, loadApiWithFakeConfigTable } = require('./lib/helpers.js');
 const layouts = require('../js/layouts.js');
 const styles = require('../js/styles.js');
 const i18n = require('../js/i18n.js');
@@ -637,7 +637,7 @@ const mk = (types) => types.map((type, i) => ({ id: `${type}${i}`, type }));
 
   // --- 9. Câblage ---------------------------------------------------------------------------------------------------------
   {
-    const main = read('js', 'main.js');
+    const main = readMain();
     for (const [file, prefix] of [['index.html', ''], [path.join('dev-tests', 'harness.html'), '../']]) {
       const html = read(file);
       assert.ok(html.includes(`<link rel="stylesheet" href="${prefix}css/layouts.css"`), `${file} : feuille des agencements`);
