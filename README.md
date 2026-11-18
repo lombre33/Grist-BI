@@ -133,8 +133,10 @@ réellement (voir HYPOTHESES.md).
   les lignes déjà là avec de vraies valeurs calculées côté JS — jamais une nouvelle table à recréer
   (voir HYPOTHESES.md pour l'historique de ce correctif, antérieur à ce retrait).
 - **Style des tuiles** (Réglages, en Édition) : un réglage du tableau de bord, enregistré avec lui, qui change d'un coup l'apparence de TOUTES les
-  cartes et de leurs graphiques — Standard (le rendu d'origine, par défaut), Grist Factory, Fluide/moderne, Classique dense, Éditorial. Clair et sombre,
-  palettes de tuile, formats de nombres et exports inchangés ; une ambiance GFS garde la main sur les couleurs de l'interface.
+  cartes et de leurs graphiques — Standard (le rendu d'origine, par défaut), Fluide/moderne, Éditorial, Console (toujours sombre, façon console de
+  supervision) et Verre dépoli (fond dégradé, cartes translucides, barres en dégradé). Deux options valent pour TOUS les styles, Standard compris :
+  « Tuiles sans bordure apparente » et « Tableau de bord uni » (une seule surface : les tuiles prennent le fond de la page et se touchent). Clair et
+  sombre, palettes de tuile, formats de nombres et exports inchangés ; une ambiance GFS garde la main sur les couleurs de l'interface.
 - **Identité Grist Factory** : logo discret dans le bandeau du haut (juste à droite de « Réglages »)
   et panneau « Crédits » (Auteur / Site / Licence / Bio) accessible depuis ce même bouton — cadrage
   repris de [Publipostage+](https://github.com/lombre33/publipostagegrist), même éditeur pour tous

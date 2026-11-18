@@ -260,6 +260,25 @@
         <h4 id="settings-style-title" data-i18n="style.title">Style des tuiles</h4>
         <p class="settings-hint" data-i18n="style.hint">Change l'apparence de toutes les tuiles de ce tableau de bord. Enregistré avec lui.</p>
         <div id="settings-style-options" class="style-options" role="radiogroup" aria-labelledby="settings-style-title"></div>
+        <!-- Options valables pour TOUS les styles (Standard compris) : posées par js/styles.js:applyOptions, enregistrées avec le style
+             (champ `styleOptions` de BI_Dashboard_Config). -->
+        <div class="style-extra" role="group" aria-labelledby="settings-style-extra-title">
+          <p class="style-extra-title" id="settings-style-extra-title" data-i18n="style.options.title">Options (tous les styles)</p>
+          <label class="style-check" for="settings-opt-hideBorders">
+            <input type="checkbox" id="settings-opt-hideBorders">
+            <span class="style-check-text">
+              <span class="style-check-name" data-i18n="style.option.hideBorders">Tuiles sans bordure apparente</span>
+              <span class="style-option-desc" data-i18n="style.option.hideBorders.desc">Plus de trait de contour : les tuiles se distinguent par leur fond et leur ombre.</span>
+            </span>
+          </label>
+          <label class="style-check" for="settings-opt-uniform">
+            <input type="checkbox" id="settings-opt-uniform">
+            <span class="style-check-text">
+              <span class="style-check-name" data-i18n="style.option.uniform">Tableau de bord uni</span>
+              <span class="style-option-desc" data-i18n="style.option.uniform.desc">Une seule surface : les tuiles prennent le fond de la page, se touchent, sans ombre ni coins arrondis.</span>
+            </span>
+          </label>
+        </div>
       </div>
       <div class="settings-section">
         <h4 data-i18n="settings.credits.title">Crédits</h4>

@@ -505,7 +505,9 @@
       text: cssVar('--text', '#0b0b0b'),
       secondary: cssVar('--text-secondary', '#52514e'),
       muted: cssVar('--text-muted', '#6b6a64'),
-      surface: cssVar('--surface', '#fcfcfb'),
+      // `--dash-tile-surface` : le fond réel d'une tuile quand le tableau de bord est « uni » (css/dash-styles.css : celui de la page,
+      // pas celui d'une carte) ; absent sinon, et c'est `--surface`.
+      surface: cssVar('--dash-tile-surface', '') || cssVar('--surface', '#fcfcfb'),
       line: cssVar('--border-strong', '#e1e0d9'), // cadre de l'infobulle
       grid: cssVar('--border', 'rgba(11, 11, 11, 0.10)'), // quadrillage, discret sur fond clair comme sombre
       track: 'rgba(128, 128, 128, 0.22)', // visible sur fond clair comme sombre

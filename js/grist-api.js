@@ -270,13 +270,22 @@
   // n'en a pas configuré une pour cette table.
   // `style` (style global des tuiles, js/styles.js) suit la même convention : absent de tous les formats d'avant ce réglage, donc
   // `'standard'` tant que la personne n'en a pas choisi un. Un texte d'une autre forme qu'un id est ignoré (Standard).
-  function singlePageConfig(tiles, bookmarks, blend, style) {
+  // `styleOptions` (options valables pour tous les styles : tuiles sans bordure, tableau de bord uni) : même convention, `{}` tant
+  // qu'aucune n'est cochée ; seule une valeur `true` est retenue.
+  function singlePageConfig(tiles, bookmarks, blend, style, styleOptions) {
     const pageId = (GristBI.state && GristBI.state.DEFAULT_PAGE_ID) || 'page_default';
-    return { pages: [{ id: pageId, name: 'Page 1', tiles: tiles || [] }], currentPageId: pageId, bookmarks: bookmarks || [], blend: blend || null, style: normalizeStyleValue(style) };
+    return { pages: [{ id: pageId, name: 'Page 1', tiles: tiles || [] }], currentPageId: pageId, bookmarks: bookmarks || [], blend: blend || null, style: normalizeStyleValue(style), styleOptions: normalizeStyleOptions(styleOptions) };
   }
 
   function normalizeStyleValue(style) {
     return (typeof style === 'string' && /^[a-z][a-z0-9-]{0,31}$/.test(style)) ? style : 'standard';
+  }
+
+  const STYLE_OPTION_KEYS = ['hideBorders', 'uniform']; // les mêmes que js/styles.js:OPTION_KEYS (un test Node le vérifie)
+  function normalizeStyleOptions(raw) {
+    const out = {};
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) STYLE_OPTION_KEYS.forEach((k) => { if (Object.prototype.hasOwnProperty.call(raw, k) && raw[k] === true) out[k] = true; });
+    return out;
   }
 
   function normalizeConfig(raw) {
@@ -284,9 +293,9 @@
     if (raw && typeof raw === 'object') {
       if (Array.isArray(raw.pages) && raw.pages.length) {
         const currentPageId = raw.pages.some((p) => p.id === raw.currentPageId) ? raw.currentPageId : raw.pages[0].id;
-        return { pages: raw.pages, currentPageId, bookmarks: raw.bookmarks || [], blend: raw.blend || null, style: normalizeStyleValue(raw.style) };
+        return { pages: raw.pages, currentPageId, bookmarks: raw.bookmarks || [], blend: raw.blend || null, style: normalizeStyleValue(raw.style), styleOptions: normalizeStyleOptions(raw.styleOptions) };
       }
-      return singlePageConfig(raw.tiles, raw.bookmarks, raw.blend, raw.style);
+      return singlePageConfig(raw.tiles, raw.bookmarks, raw.blend, raw.style, raw.styleOptions);
     }
     return singlePageConfig([], [], null);
   }
@@ -323,12 +332,16 @@
   // `authorLabel` (adresse détectée, ou "Nom <adresse>", voir main.js:currentReportAuthorLabel) est
   // omis de la ligne quand ni l'un ni l'autre n'est connu, plutôt que d'y écrire une chaîne vide.
   // `style` (style global des tuiles, js/styles.js) n'est écrit que s'il n'est pas le Standard : une configuration sans choix de
-  // style reste octet pour octet celle d'avant ce réglage.
-  async function saveConfig(tableId, pages, currentPageId, bookmarks, blend, reportId, authorLabel, style) {
+  // style reste octet pour octet celle d'avant ce réglage. Même règle pour `styleOptions` (options valables pour tous les styles) :
+  // le champ n'existe que si au moins une option est cochée, et ne contient que celles-là.
+  async function saveConfig(tableId, pages, currentPageId, bookmarks, blend, reportId, authorLabel, style, styleOptions) {
     if (!tableId) return;
     await ensureConfigTableExists();
     const styleValue = normalizeStyleValue(style);
-    const json = JSON.stringify(Object.assign({ pages, currentPageId, bookmarks: bookmarks || [], blend: blend || null }, styleValue !== 'standard' ? { style: styleValue } : {}));
+    const optionsValue = normalizeStyleOptions(styleOptions);
+    const json = JSON.stringify(Object.assign({ pages, currentPageId, bookmarks: bookmarks || [], blend: blend || null },
+      styleValue !== 'standard' ? { style: styleValue } : {},
+      Object.keys(optionsValue).length ? { styleOptions: optionsValue } : {}));
     const fields = { ConfigJSON: json, DateModif: Math.floor(Date.now() / 1000) };
     if (authorLabel) fields.ModifiePar = authorLabel;
 
