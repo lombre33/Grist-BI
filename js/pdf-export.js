@@ -1,5 +1,5 @@
 /*
- * Export du dashboard en PDF vectoriel via pdfmake. À la différence d'ECharts/SheetJS/DuckDB-WASM
+ * Export du dashboard en PDF vectoriel via pdfmake. À la différence d'ECharts/ExcelJS/DuckDB-WASM
  * (vendorisés dans js/vendor/), pdfmake est chargé DEPUIS UN CDN EXTERNE — décision explicite
  * d'Antoine le 2026-09-29 (voir CLAUDE.md/ROADMAP.md), qui déroge à la règle habituelle de ce dépôt.
  * Même bibliothèque et même CDN que le widget frère publipostageGrist (js/pdf-export.js de ce

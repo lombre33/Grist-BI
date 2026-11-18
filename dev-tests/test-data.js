@@ -3478,6 +3478,149 @@ const SAMPLE_TIME_SERIES = [
       console.log('OK tuile Texte — échappement total (liste fermée de balises), repères # ## - **, plafond, exports sans feuille Excel, conseil et i18n');
     }
   }
+
+  // Export Excel avec ExcelJS 4.4.0 (consigne GFS 017, 18/11/2026) : le VRAI paquet vendorisé, exécuté sous Node
+  // (js/export.js se charge sous Node : mise en forme des cellules et construction du classeur, sans DOM). Ce que ces
+  // essais ne voient pas : le chargement paresseux dans un navigateur et le déclenchement du téléchargement.
+  {
+    const nodeFs = require('fs');
+    const nodePath = require('path');
+    const nodeCrypto = require('crypto');
+    const repoRoot = nodePath.join(__dirname, '..');
+    const exportJs = require('../js/export.js');
+    const vendored = nodePath.join(repoRoot, 'js', 'vendor', 'exceljs', 'exceljs.min.js');
+
+    // Le fichier est CELUI de la liste de GFS (même empreinte SHA-384 que son catalogue, 4.4.0) ; SheetJS a disparu.
+    const sri = 'sha384-' + nodeCrypto.createHash('sha384').update(nodeFs.readFileSync(vendored)).digest('base64');
+    assert.strictEqual(sri, 'sha384-Pqp51FUN2/qzfxZxBCtF0stpc9ONI6MYZpVqmo8m20SoaQCzf+arZvACkLkirlPz');
+    assert.ok(nodeFs.existsSync(nodePath.join(repoRoot, 'js', 'vendor', 'exceljs', 'LICENSE')), 'licence à côté du fichier');
+    assert.ok(!nodeFs.existsSync(nodePath.join(repoRoot, 'js', 'vendor', 'xlsx')), 'SheetJS retiré du dépôt');
+    const exportSrc = nodeFs.readFileSync(nodePath.join(repoRoot, 'js', 'export.js'), 'utf8');
+    const indexSrcX = nodeFs.readFileSync(nodePath.join(repoRoot, 'index.html'), 'utf8');
+    assert.ok(!/XLSX\./.test(exportSrc) && !/<script[^>]+xlsx/i.test(indexSrcX), 'plus aucun appel à SheetJS');
+    assert.ok(!/<script[^>]+exceljs/i.test(indexSrcX), 'ExcelJS n\'est jamais une balise statique (chargé au premier export, consigne 013)');
+
+    // cellValue : nombre / texte / booléen / date / vide / erreur / grands entiers / objets
+    const cv = exportJs.cellValue;
+    assert.strictEqual(cv(12.5), 12.5);
+    assert.strictEqual(cv(0), 0);
+    assert.strictEqual(cv(''), '');
+    assert.strictEqual(cv(null), null);
+    assert.strictEqual(cv(undefined), null);
+    assert.strictEqual(cv(true), true);
+    assert.deepStrictEqual(cv(NaN), { error: '#NUM!' });
+    assert.deepStrictEqual(cv(Infinity), { error: '#DIV/0!' });
+    assert.deepStrictEqual(cv(-Infinity), { error: '#DIV/0!' });
+    assert.strictEqual(cv(5n), 5);
+    assert.strictEqual(cv(12345678901234567890n), '12345678901234567890'); // au-delà de 2^53 : du texte, pas un arrondi silencieux
+    assert.strictEqual(cv(['L', 'a']), 'L,a'); // jamais l'objet : ExcelJS le lirait comme une formule/un lien
+    assert.strictEqual(cv({ formula: 'SUM(A1)' }), '[object Object]');
+    assert.strictEqual(cv(new Date('invalide')), null);
+    assert.strictEqual(cv('x'.repeat(40000)).length, 32767);
+
+    // Un classeur complet : écriture puis relecture par ExcelJS lui-même, et inspection du XML réel.
+    const ExcelJSLib = require('../js/vendor/exceljs/exceljs.min.js');
+    const zlibForXlsx = require('zlib');
+    const sheetsForXlsx = [
+      { name: 'Montant par Région', header: ['Région', 'Montant'], rows: [
+        ['Nord', 1234.5], ['Sud', 0], ['=SUM(A1)', 5], ['+cmd|x', -1], ['@x', null], ['', undefined],
+        ['nan', NaN], ['gros', 12345678901234567890n], ['petit', 5n], ['oui', true],
+        ['date', new Date(Date.UTC(2026, 10, 18, 9, 30))], ['liste', ['L', 'a']], ['accentué é ç', 'a\nb'] ] },
+      { name: 'Vide', header: ['A', 'B'], rows: [] }
+    ];
+    const wbX = exportJs.buildWorkbook(ExcelJSLib, sheetsForXlsx);
+    assert.strictEqual(wbX.creator, 'Grist BI');
+    const buf = Buffer.from(await wbX.xlsx.writeBuffer());
+    assert.strictEqual(buf.slice(0, 2).toString('latin1'), 'PK', 'un classeur .xlsx est une archive zip');
+    const back = new ExcelJSLib.Workbook();
+    await back.xlsx.load(buf);
+    assert.deepStrictEqual(back.worksheets.map((w) => w.name), ['Montant par Région', 'Vide']);
+    const first = back.getWorksheet('Montant par Région');
+    assert.strictEqual(first.rowCount, 14); // en-tête + 13 lignes
+    assert.deepStrictEqual(first.getRow(1).values.slice(1), ['Région', 'Montant']);
+    assert.strictEqual(first.getCell('B2').value, 1234.5);
+    assert.strictEqual(first.getCell('B3').value, 0);
+    assert.strictEqual(first.getCell('B3').type, ExcelJSLib.ValueType.Number);
+    assert.strictEqual(first.getCell('A4').value, '=SUM(A1)');
+    assert.strictEqual(first.getCell('A4').type, ExcelJSLib.ValueType.String, 'un texte qui commence par = reste du texte');
+    assert.strictEqual(first.getCell('A5').value, '+cmd|x');
+    assert.strictEqual(first.getCell('A6').value, '@x');
+    assert.strictEqual(first.getCell('B6').value, null);
+    assert.deepStrictEqual(first.getCell('B8').value, { error: '#NUM!' });
+    assert.strictEqual(first.getCell('B9').value, '12345678901234567890');
+    assert.strictEqual(first.getCell('B10').value, 5);
+    assert.strictEqual(first.getCell('B11').value, true);
+    assert.strictEqual(first.getCell('B12').value.toISOString(), '2026-11-18T09:30:00.000Z');
+    assert.strictEqual(first.getCell('B13').value, 'L,a');
+    assert.strictEqual(first.getCell('A14').value, 'accentué é ç');
+    assert.strictEqual(back.getWorksheet('Vide').rowCount, 1); // une feuille vide garde son en-tête
+    // XML réel : aucune formule dans aucune feuille, du texte en chaînes partagées, jamais « NaN » en clair.
+    const xmlFiles = (() => {
+      // Lecteur de zip minimal par le répertoire central (tailles exactes, même quand les entrées sont en flux).
+      let eocd = buf.length - 22;
+      while (eocd >= 0 && buf.readUInt32LE(eocd) !== 0x06054b50) eocd--;
+      assert.ok(eocd >= 0, 'fin d\'archive zip trouvée');
+      const count = buf.readUInt16LE(eocd + 10);
+      let o = buf.readUInt32LE(eocd + 16);
+      const out = {};
+      for (let i = 0; i < count; i++) {
+        assert.strictEqual(buf.readUInt32LE(o), 0x02014b50);
+        const method = buf.readUInt16LE(o + 10);
+        const csize = buf.readUInt32LE(o + 20);
+        const nlen = buf.readUInt16LE(o + 28);
+        const xlen = buf.readUInt16LE(o + 30);
+        const clen = buf.readUInt16LE(o + 32);
+        const local = buf.readUInt32LE(o + 42);
+        const name = buf.slice(o + 46, o + 46 + nlen).toString('utf8');
+        const start = local + 30 + buf.readUInt16LE(local + 26) + buf.readUInt16LE(local + 28);
+        const raw = buf.slice(start, start + csize);
+        if (!name.endsWith('/')) out[name] = (method === 8 ? zlibForXlsx.inflateRawSync(raw) : raw).toString('utf8');
+        o += 46 + nlen + xlen + clen;
+      }
+      return out;
+    })();
+    const sheetXml = xmlFiles['xl/worksheets/sheet1.xml'];
+    assert.ok(sheetXml, 'feuille 1 lisible dans le zip');
+    assert.ok(!/<f[ >]/.test(sheetXml), 'aucune formule écrite, même pour un texte qui commence par = + - @');
+    assert.ok(!/NaN|Infinity/.test(sheetXml), 'aucun nombre non fini écrit en clair');
+    assert.ok(/t="e"><v>#NUM!<\/v>/.test(sheetXml), 'NaN = cellule d\'erreur');
+    assert.ok(xmlFiles['xl/sharedStrings.xml'].includes('=SUM(A1)'), 'le texte est une chaîne partagée');
+
+    // Les noms de feuille que fabrique sanitizeSheetName ne font JAMAIS lever ExcelJS (il est plus strict que
+    // SheetJS : casse, apostrophes, « History »).
+    const titles = ['Ventes', 'ventes', 'VENTES', "'Apostrophe'", "Fin d'", 'History', 'history', 'a'.repeat(40), 'a'.repeat(40),
+      'Ligne: A/B [x]?*', '', '   ', "''", 'x'.repeat(30) + "'y", 'Page 1 - Montant par catégorie et par région en 2026'];
+    const usedX = new Set();
+    const names = titles.map((tt) => data.sanitizeSheetName(tt, usedX));
+    assert.strictEqual(new Set(names.map((nm) => nm.toLowerCase())).size, names.length, 'noms uniques sans tenir compte de la casse');
+    assert.ok(names.every((nm) => nm.length >= 1 && nm.length <= 31 && !/^'|'$/.test(nm) && !/[:\\/?*[\]]/.test(nm) && nm.toLowerCase() !== 'history'));
+    assert.deepStrictEqual(names.slice(0, 3), ['Ventes', 'ventes (2)', 'VENTES (3)']);
+    const wbNames = exportJs.buildWorkbook(ExcelJSLib, names.map((nm) => ({ name: nm, header: ['A'], rows: [[1]] })));
+    assert.strictEqual(wbNames.worksheets.length, titles.length);
+
+    // Bout en bout (hors DuckDB et hors DOM) : les feuilles d'un VRAI état, par la chaîne que js/export.js utilise.
+    const stateX = {
+      rows: [{ Region: 'Nord', Montant: 10 }, { Region: 'Sud', Montant: 20 }, { Region: 'Nord', Montant: 5 }],
+      activeFilters: [], advancedFilters: [], drillIns: {},
+      pages: [
+        { id: 'p1', name: 'Ventes', tiles: [
+          { id: 't1', type: 'bar', title: 'Par région', dimension: 'Region', measure: 'Montant', aggFn: 'sum' },
+          { id: 't2', type: 'kpi', measure: 'Montant', aggFn: 'sum' },
+          { id: 't3', type: 'text', text: 'note' }
+        ] },
+        { id: 'p2', name: 'Autre', tiles: [{ id: 't4', type: 'pivot', dimension: 'Region', columnDimension: 'Region', measure: 'Montant', aggFn: 'sum' }] }
+      ]
+    };
+    const sheetsReal = await data.buildWorkbookSheetsAsync(stateX, async () => { throw new Error('pas de mesure temporelle ici'); });
+    const wbReal = exportJs.buildWorkbook(ExcelJSLib, sheetsReal);
+    const backReal = new ExcelJSLib.Workbook();
+    await backReal.xlsx.load(Buffer.from(await wbReal.xlsx.writeBuffer()));
+    assert.deepStrictEqual(backReal.worksheets.map((w) => w.name), ['Ventes - Par région', 'Ventes - sum(Montant)', 'Autre - sum(Montant)']);
+    assert.deepStrictEqual(backReal.getWorksheet('Ventes - Par région').getRow(2).values.slice(1), ['Nord', 15]);
+    assert.deepStrictEqual(backReal.getWorksheet('Ventes - Par région').getRow(3).values.slice(1), ['Sud', 20]);
+    assert.deepStrictEqual(backReal.getWorksheet('Ventes - sum(Montant)').getRow(2).values.slice(1), ['sum(Montant)', 35]);
+    console.log('OK export Excel ExcelJS 4.4.0 — empreinte de GFS, SheetJS retiré, cellules (types, NaN, grands entiers, objets), texte = formule jamais, noms de feuille, relecture complète');
+  }
 })().then(() => {
   console.log('\nTous les tests data.js/state.js/demo-data.js/combobox.js/duckdb-engine.js/i18n.js sont passés.');
 }).catch((e) => {

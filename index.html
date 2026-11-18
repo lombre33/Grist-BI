@@ -10,9 +10,11 @@
      script, que le navigateur refuse d'exécuter (X-Content-Type-Options: nosniff) - la bibliothèque
      ne se charge jamais et les tuiles graphiques restent vides sans erreur explicite. -->
 <script src="js/vendor/echarts/echarts.min.js"></script>
-<!-- SheetJS (js/vendor/xlsx/, Apache-2.0) n'est PLUS chargé ici (consigne GFS 013, 10/11/2026) :
+<!-- ExcelJS 4.4.0 (js/vendor/exceljs/, MIT) n'est PAS chargé ici (consigne GFS 013, 10/11/2026) :
      il ne sert qu'à l'export Excel, chargé paresseusement par js/export.js au premier clic sur
-     "Exporter en Excel" plutôt qu'à l'ouverture du widget — même origine, aucun CDN. -->
+     "Exporter en Excel" plutôt qu'à l'ouverture du widget — même origine, aucun CDN. Il a remplacé
+     SheetJS 0.18.5 le 18/11/2026 (consigne GFS 017 : deux avis de sécurité, corrigés seulement à
+     cdn.sheetjs.com) ; c'est le même fichier que celui que GFS sert à Publipostage+. -->
 <!-- DuckDB-WASM (js/vendor/duckdb/, MIT) : moteur SQL, fondation Tier 2 (voir ROADMAP.md/
      HYPOTHESES.md) — chargé PARESSEUX uniquement (js/duckdb-engine.js), jamais au démarrage.
      duckdb-browser.mjs importe "apache-arrow" (Apache-2.0) et "flatbuffers" (Apache-2.0) via des

@@ -16,8 +16,8 @@ délibérément hors scope, et ce qui reste à valider en conditions réelles.
 Architecture reprise du widget [publipostageGrist](https://github.com/lombre33/publipostagegrist)
 du même auteur : page statique unique, **aucune étape de build**, config du dashboard stockée dans
 une table Grist interne cachée (`BI_Dashboard_Config`). ECharts 6.1.0 (la bibliothèque de graphiques) et
-SheetJS (l'export Excel) sont embarqués directement dans le repo (`js/vendor/echarts/` et
-`js/vendor/xlsx/`, tous deux Apache-2.0) plutôt que chargés depuis un CDN externe — un réseau qui
+ExcelJS 4.4.0 (l'export Excel, chargé seulement au premier export) sont embarqués directement dans le repo
+(`js/vendor/echarts/` Apache-2.0 et `js/vendor/exceljs/` MIT) plutôt que chargés depuis un CDN externe — un réseau qui
 filtre `cdnjs.cloudflare.com` (proxy d'entreprise/institution, etc.) laisserait sinon les tuiles
 graphiques vides (ou l'export Excel muet) sans erreur explicite. Même principe pour DuckDB-WASM
 (`js/vendor/duckdb/`, MIT — moteur SQL, fondation Tier 2, voir plus bas) et ses dépendances
@@ -74,8 +74,8 @@ réellement (voir HYPOTHESES.md).
   ET avec les filtres croisés existants et s'appliquent à toutes les tuiles.
 - **Export Excel** : « Exporter en Excel » télécharge un classeur `.xlsx` avec une feuille par tuile
   (toutes pages confondues), agrégées exactement comme à l'écran — mêmes filtres croisés, filtres
-  avancés et niveau de drill-down par tuile appliqués. Basé sur [SheetJS](https://sheetjs.com/)
-  embarqué localement ; le déclenchement du téléchargement depuis l'iframe du widget n'est pas
+  avancés et niveau de drill-down par tuile appliqués. Basé sur [ExcelJS](https://github.com/exceljs/exceljs)
+  embarqué localement (SheetJS jusqu'au 18/11/2026) ; le déclenchement du téléchargement depuis l'iframe du widget n'est pas
   encore vérifié en conditions réelles Grist (voir HYPOTHESES.md). Une tuile en mode mesure (voir
   ci-dessous) exporte désormais ses vraies valeurs (Cumul/YTD/N-1, calculées via DuckDB-WASM comme
   à l'écran), pas un texte d'excuse — voir HYPOTHESES.md.
@@ -208,7 +208,7 @@ tuiles (treemap plat, nuage de points agrégé, jauge), des **dashboards multi-p
 croisés/drill-down délibérément globaux entre pages, format de config persisté rétrocompatible avec
 les deux formats antérieurs), des **filtres avancés typés** (plage numérique, plage de dates,
 dates relatives, recherche texte — une colonne `Date` ISO a été ajoutée aux jeux de données pour les
-rendre démontrables), un **export Excel** (SheetJS embarqué localement, une feuille par tuile
+rendre démontrables), un **export Excel** (SheetJS à l'origine, ExcelJS depuis le 18/11/2026, embarqué localement, une feuille par tuile
 reflétant exactement les filtres/drill-down actifs à l'écran), une **autocomplétion** (composant
 Combobox maison) sur tous les sélecteurs de colonne du formulaire de tuile et de la barre de
 filtres, un **sélecteur de table** (Combobox également) permettant de reconnecter le widget à
@@ -232,8 +232,8 @@ l'export Excel depuis l'iframe du widget.
 
 **GNU GPL v3.0** pour le code de ce dépôt (texte complet dans [LICENSE](./LICENSE), identité Grist
 Factory — passé de MIT le 2026-09-29, à la demande d'Antoine). `js/vendor/echarts/` contient [Apache ECharts](https://echarts.apache.org/)
-et `js/vendor/xlsx/` contient [SheetJS](https://sheetjs.com/), tous deux embarqués tels quels
-(Apache-2.0, licence incluse dans chaque dossier). `js/vendor/duckdb/` contient
+(Apache-2.0) et `js/vendor/exceljs/` contient [ExcelJS](https://github.com/exceljs/exceljs) 4.4.0 (MIT), tous deux
+embarqués tels quels (licence incluse dans chaque dossier). `js/vendor/duckdb/` contient
 [DuckDB-WASM](https://github.com/duckdb/duckdb-wasm) (MIT), `js/vendor/apache-arrow/` contient
 [Apache Arrow](https://arrow.apache.org/) et `js/vendor/flatbuffers/` contient
 [FlatBuffers](https://flatbuffers.dev/) (tous deux Apache-2.0, dépendances transitives de
