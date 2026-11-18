@@ -716,6 +716,96 @@
     return { days, from: days[0].date, to: last, ignored, hidden: all.length - days.length, total: all.length };
   }
 
+  // --- Gantt / planning (`type: 'gantt'`) -------------------------------------------------------------------
+  // Une LIGNE par ligne de la table : `tile.dimension` = le libellé de la tâche, `tile.startColumn` et `tile.endColumn` = deux
+  // colonnes de DATES (format ISO), `tile.seriesColumn` = une couleur par valeur (un statut), facultatif. Pas d'agrégat ni de mesure :
+  // une barre est une tâche telle que la table la décrit. Une ligne dont le début ou la fin n'est pas une date valide, ou dont la fin
+  // précède le début, n'a pas de barre (une tâche « en cours » sans fin ne se dessine pas : on n'invente pas sa durée) ; elle est
+  // comptée dans `ignored`. Triées par date de début (ordre stable : à début égal, l'ordre de la table). Au plus GANTT_MAX_ROWS lignes
+  // dessinées (`hidden` compte le reste). JS pur à tout volume : une passe puis un tri.
+  const GANTT_MAX_ROWS = 200;
+
+  // Rend `{ tasks: [{label, start, end, status}], statuses, ignored, hidden, total, min, max }` : `tasks` = les lignes retenues
+  // (début/fin au format ISO, `status` seulement avec une colonne de couleur, '' pour une cellule vide), `statuses` = les valeurs de
+  // couleur dans l'ordre d'apparition dans la TABLE (sur toutes les tâches valides : les couleurs ne bougent pas avec le plafond),
+  // `total` = tâches valides avant le plafond, `min`/`max` = premier début et dernière fin des tâches retenues (null si aucune).
+  function ganttTasks(rows, labelColumn, startColumn, endColumn, colorColumn, maxTasks) {
+    const valid = [];
+    const statuses = [];
+    const seen = new Set();
+    let ignored = 0;
+    for (const row of rows || []) {
+      const start = row[startColumn];
+      const end = row[endColumn];
+      const startMs = parseDateValue(start);
+      const endMs = parseDateValue(end);
+      if (startMs === null || endMs === null || endMs < startMs) { ignored++; continue; }
+      const label = row[labelColumn];
+      const task = { label: label === null || label === undefined ? '' : String(label), start, end };
+      if (colorColumn) {
+        const cell = row[colorColumn];
+        task.status = cell === null || cell === undefined ? '' : String(cell);
+        if (!seen.has(task.status)) { seen.add(task.status); statuses.push(task.status); }
+      }
+      valid.push(task);
+    }
+    valid.sort((a, b) => (a.start < b.start ? -1 : (a.start > b.start ? 1 : 0))); // dates ISO : l'ordre alphabétique est l'ordre du calendrier ; tri stable
+    const cap = maxTasks === Infinity ? Infinity : (Number.isInteger(maxTasks) && maxTasks > 0 ? maxTasks : GANTT_MAX_ROWS);
+    const tasks = cap === Infinity ? valid : valid.slice(0, cap);
+    if (!tasks.length) return { tasks, statuses, ignored, hidden: 0, total: valid.length, min: null, max: null };
+    const max = tasks.reduce((m, task) => (task.end > m ? task.end : m), tasks[0].end);
+    return { tasks, statuses, ignored, hidden: valid.length - tasks.length, total: valid.length, min: tasks[0].start, max };
+  }
+
+  // Graduations de l'axe du temps : `[{pct, kind, year, month, day}]` (`pct` de 0 à 1 le long de l'axe ; `month` de 0 à 11). Mois au-delà de
+  // 60 jours, lundis au-delà de 10 jours, sinon chaque jour ; au plus `maxTicks` (GANTT_MAX_TICKS par défaut : on en saute une sur deux,
+  // trois…, selon la largeur dont dispose l'axe), plus une graduation au tout début quand la 1re tombe loin du bord (le premier mois
+  // commence au milieu : sans elle, rien ne le nomme).
+  const GANTT_MAX_TICKS = 8;
+  function ganttTicks(minMs, maxMs, maxTicks) {
+    const span = maxMs - minMs + MS_PER_DAY;
+    const days = Math.round(span / MS_PER_DAY);
+    const kind = days > 60 ? 'month' : (days > 10 ? 'week' : 'day');
+    const at = (ms) => {
+      const d = new Date(ms);
+      return { pct: (ms - minMs) / span, kind, year: d.getUTCFullYear(), month: d.getUTCMonth(), day: d.getUTCDate() };
+    };
+    const ticks = [];
+    if (kind === 'month') {
+      const first = new Date(minMs);
+      let y = first.getUTCFullYear();
+      let m = first.getUTCMonth() + (first.getUTCDate() > 1 ? 1 : 0);
+      for (let ms = Date.UTC(y, m, 1); ms <= maxMs; ms = Date.UTC(y, ++m, 1)) ticks.push(at(ms));
+    } else {
+      for (let ms = minMs; ms <= maxMs; ms += MS_PER_DAY) {
+        if (kind === 'day' || new Date(ms).getUTCDay() === 1) ticks.push(at(ms));
+      }
+    }
+    const budget = Number.isInteger(maxTicks) && maxTicks >= 1 ? Math.min(maxTicks, GANTT_MAX_TICKS) : GANTT_MAX_TICKS;
+    const step = Math.max(1, Math.ceil(ticks.length / budget));
+    const kept = ticks.filter((_, i) => i % step === 0);
+    if (!kept.length || kept[0].pct > 0.2) kept.unshift(at(minMs));
+    return kept;
+  }
+
+  // Géométrie du dessin à partir de `ganttTasks` : chaque barre reçoit `left`/`width` en fraction de l'axe (une tâche d'un jour occupe
+  // UNE case de jour entière : fin incluse), `today` = position (0 à 1, milieu de la case du jour) ou null si aujourd'hui sort de
+  // l'axe ; `nowMs` est un paramètre (jamais l'horloge en dur) pour rester testable.
+  function ganttLayout(res, nowMs, maxTicks) {
+    if (!res.tasks.length) return Object.assign({}, res, { bars: [], ticks: [], today: null });
+    const minMs = parseDateValue(res.min);
+    const maxMs = parseDateValue(res.max);
+    const span = maxMs - minMs + MS_PER_DAY;
+    const bars = res.tasks.map((task) => {
+      const s = parseDateValue(task.start);
+      const e = parseDateValue(task.end);
+      return Object.assign({}, task, { left: (s - minMs) / span, width: (e - s + MS_PER_DAY) / span });
+    });
+    const dayStart = Number.isFinite(nowMs) ? nowMs - (((nowMs % MS_PER_DAY) + MS_PER_DAY) % MS_PER_DAY) : NaN;
+    const inside = Number.isFinite(dayStart) && dayStart >= minMs && dayStart <= maxMs;
+    return Object.assign({}, res, { bars, ticks: ganttTicks(minMs, maxMs, maxTicks), today: inside ? (dayStart - minMs + MS_PER_DAY / 2) / span : null });
+  }
+
   // --- Boîte à moustaches (`type: 'box'`) ----------------------------------------------------------
   // Distribution d'UNE colonne numérique PAR GROUPE (valeurs de `tile.dimension`) : médiane, quartiles, moustaches et valeurs
   // aberrantes — notes par classe, délais par service. Il faut les valeurs BRUTES de chaque ligne, jamais un agrégat : c'est
@@ -867,7 +957,7 @@
   }
   // Types dont les couleurs viennent de la palette. Hors liste : la cascade (vert = hausse, rouge =
   // baisse : un sens, pas une identité), le KPI et le tableau croisé (aucune couleur de série).
-  const PALETTE_TILE_TYPES = ['bar', 'line', 'pie', 'funnel', 'treemap', 'scatter', 'radar', 'gauge', 'wordcloud', 'combo', 'histogram', 'heatmap', 'box', 'sankey', 'calendar'];
+  const PALETTE_TILE_TYPES = ['bar', 'line', 'pie', 'funnel', 'treemap', 'scatter', 'radar', 'gauge', 'wordcloud', 'combo', 'histogram', 'heatmap', 'box', 'sankey', 'calendar', 'gantt'];
   function supportsPalette(tile) {
     if (!tile) return false;
     // Tableau croisé : une palette n'a de sens que si ses cellules sont colorées (`pivotHeat`).
@@ -1271,7 +1361,7 @@
   // graphique) — ces deux réutilisent directement tileExportSheet, déjà correct pour eux.
   function tileExportKind(tile) {
     if (tile.type === 'text') return 'text'; // ni graphique ni tableau : le texte lui-même
-    return (tile.type === 'kpi' || tile.type === 'pivot' || tile.type === 'table' || tile.type === 'progress') ? 'table' : 'image';
+    return (tile.type === 'kpi' || tile.type === 'pivot' || tile.type === 'table' || tile.type === 'progress' || tile.type === 'gantt') ? 'table' : 'image';
   }
 
   // Représentation tabulaire d'une tuile pour l'export Excel : mêmes agrégats que le rendu
@@ -1435,6 +1525,16 @@
         name: title,
         header: [tile.dimension, 'Effectif', 'Moustache basse', '1er quartile', 'Médiane', '3e quartile', 'Moustache haute', 'Valeurs aberrantes'],
         rows: box.groups.map((g) => [g.name, g.n, g.low, g.q1, g.median, g.q3, g.high, g.outlierCount])
+      };
+    }
+    // Gantt : une ligne par tâche DESSINABLE (début et fin valides), triées par début, TOUTES (au-delà du plafond d'affichage aussi) ;
+    // la colonne de couleur n'existe que si elle est choisie. Les filtres des autres tuiles s'appliquent.
+    if (tile.type === 'gantt') {
+      const gt = ganttTasks(rows, tile.dimension, tile.startColumn, tile.endColumn, tile.seriesColumn, Infinity);
+      return {
+        name: title,
+        header: [tile.dimension, tile.startColumn, tile.endColumn].concat(tile.seriesColumn ? [tile.seriesColumn] : []),
+        rows: gt.tasks.map((task) => [task.label, task.start, task.end].concat(tile.seriesColumn ? [task.status] : []))
       };
     }
     // Calendrier : une ligne par jour AVEC une valeur (les jours que le dessin n'affiche plus, au-delà de l'année, restent dans le
@@ -1692,7 +1792,7 @@
     importMapHas, tableToRows, epochSecondsToIsoDate, applyFilters, matchesFilter, sameValue, parseDateValue,
     relativeDateRange, RELATIVE_DATE_PRESETS, groupByAggregate, aggregateSingle, wordFrequency, pivotTable,
     distinctColumnValues, computeTrend, trendFromGroups, periodLabel, measureSeriesForTile,
-    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, isBubbleTile, isColorSplitTile, bubblePoints, bubbleDiameters, calendarDays, isoDayShift, CALENDAR_MAX_DAYS, comboModeOf, paretoSeries, comboSeries, niceStep, histogramBins, histogramFilter, histogramBinIsActive, HISTOGRAM_MAX_BINS, boxStatsByGroup, quantileSorted, BOX_MAX_OUTLIERS, BOX_MIN_RELIABLE, BOX_MAX_GROUPS, sankeyFlows, topFlows, SANKEY_MAX_NODES, SANKEY_MAX_LINKS, filterSelects, LINE_SHAPES, lineShapeOf, supportsValueLabels, isStackedPercentTile, shareOfTotal, stackShares, REF_LINE_KINDS, supportsRefLine, refLineKind, refLineValue, cellFilterToggles, HEAT_RAMPS, heatStops, heatColor, heatTextColor, heatRange, heatCellColors, isStackedTile, splitBySeries, assembleSeries, PALETTES, PALETTE_KEYS, paletteColors, supportsPalette, supportsNumberFormat, NUMBER_FORMAT_TILE_TYPES, escapeHtml,
+    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, isBubbleTile, isColorSplitTile, bubblePoints, bubbleDiameters, calendarDays, isoDayShift, CALENDAR_MAX_DAYS, ganttTasks, ganttTicks, ganttLayout, GANTT_MAX_ROWS, GANTT_MAX_TICKS, comboModeOf, paretoSeries, comboSeries, niceStep, histogramBins, histogramFilter, histogramBinIsActive, HISTOGRAM_MAX_BINS, boxStatsByGroup, quantileSorted, BOX_MAX_OUTLIERS, BOX_MIN_RELIABLE, BOX_MAX_GROUPS, sankeyFlows, topFlows, SANKEY_MAX_NODES, SANKEY_MAX_LINKS, filterSelects, LINE_SHAPES, lineShapeOf, supportsValueLabels, isStackedPercentTile, shareOfTotal, stackShares, REF_LINE_KINDS, supportsRefLine, refLineKind, refLineValue, cellFilterToggles, HEAT_RAMPS, heatStops, heatColor, heatTextColor, heatRange, heatCellColors, isStackedTile, splitBySeries, assembleSeries, PALETTES, PALETTE_KEYS, paletteColors, supportsPalette, supportsNumberFormat, NUMBER_FORMAT_TILE_TYPES, escapeHtml,
     tileDrillLevels, currentDimension, rowsForTile, tileExportSheet, tileExportKind, renderTextHtml, plainTextOf, TEXT_TILE_MAX,
     DEFAULT_GOOD_PCT, DEFAULT_WARN_PCT, targetProgress, progressRows, sparklineValues, sparklineGeometry,
     TABLE_TILE_MAX_ROWS, TABLE_EXPORT_MAX_ROWS, tableColumnsOf, cellText, compareCells, sortRowsBy, moveInOrder, nextSortDir, tableSheet,

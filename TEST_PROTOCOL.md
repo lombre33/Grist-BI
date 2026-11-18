@@ -1033,6 +1033,22 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 - [ ] Rendu dans un vrai Grist / un vrai GFS ⬜ **[NON TESTABLE ICI]**
 - **Piège de test** : un `setOption` avec `calendar` mais sans `range` lève dans ECharts ; l'état vide ne doit pas écrire de composant `calendar`.
 
+### `js/data.js` + `js/charts.js` + panneau — Gantt (18/11/2026 ; Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`, 14 et 6 014 lignes, clair et sombre)
+
+- [x] `ganttTasks` : tri par début (stable à début égal), fin avant début / fin absente / date illisible / nombre / date non ISO écartées et comptées, tâche d'un jour valide, libellé et statut vides, statuts dans l'ordre de la table et sur TOUTES les tâches valides, plafond (réglé, invalide, `Infinity`), `min`/`max`, entrées vides ✅
+- [x] `ganttTicks` : mois / lundis / jours selon la durée, au plus 8, budget réglé (invalide = défaut), graduation de début seulement si la 1re est loin du bord, croissantes dans [0, 1) ✅ ; `ganttLayout` : `left`/`width` en fraction de l'axe, tâche d'un jour = une case, aujourd'hui dans l'axe (milieu de la case) / hors axe / NaN / jours limites ✅
+- [x] Store : clic = filtre d'égalité du libellé, tuile source entière, autres tuiles filtrées, même valeur = retiré, suppression de la tuile = filtre levé ✅
+- [x] Export Excel : une ligne par tâche dessinable, TOUTES (au-delà du plafond), triées, colonne de couleur seulement si choisie, filtre d'une autre tuile appliqué, aucune ligne = en-têtes seuls ; `tileExportKind` = `table` ✅
+- [x] Types : palette oui, format de nombre non ; tri, séries de barres, repère, étiquettes non ✅ ; défauts (colonnes de dates dans l'ordre inverse de la table, libellé, statut), `noTwoDates`, conseils `noTask` / `manyStatuses` / `ignored` / `truncated`, jamais à l'accueil, i18n fr/en avec pluriels ✅
+- [x] Câblage lu dans les sources : carte / option / icône, pas de drill-down, deux champs de colonne comboboxes, validation début et fin, ni mesure exigée ni écrite, dispatch, **chaque chaîne saisie échappée** (libellé, statut, infobulle), couleurs en ligne = palette seulement ✅
+- [x] Formulaire : libellés, champs masqués (mesure, agrégat, drill-down, tri, 2e dimension), préremplissage, fin vide / colonne non date refusées avec leur message, tuile enregistrée sans mesure ni agrégat, édition qui recharge début / fin / statut 🌐
+- [x] Rendu : lignes dans l'ordre du calcul pur, **géométrie des barres mesurée contre `ganttLayout`** (gauche, largeur), couleur par statut = palette, pastilles = statuts de la table, note des lignes écartées, graduations sans recouvrement, légende visible dans la tuile, année dans le coin de l'axe 🌐 ; thème sombre (axe collant = fond de la tuile) 🌐
+- [x] **Clic réel de souris** sur une tâche = filtre (autres lignes estompées, tuile entière, 2e clic = retiré), Entrée sur une ligne focalisée, clic sur une pastille = filtre du statut (autres pastilles estompées) 🌐 ; filtre d'une autre tuile = seules les tâches retenues 🌐
+- [x] Repère « aujourd'hui » à la position du calcul pur ; agrandissement = lignes plus hautes ; 260 tâches = 200 lignes + note + conseil + 260 exportées ; libellé et statut hostiles (`<img onerror>`) = texte, jamais du balisage, clic = filtre du texte exact ; aucune tâche = message + conseil ; gantt -> barres -> gantt (plus de balisage Gantt sur des barres) ; aucune erreur console 🌐
+- [x] 6 014 lignes (au-delà du plafond), page directe ET cadre isolé : mêmes vérifications 🌐
+- [ ] Rendu dans un vrai Grist / un vrai GFS ⬜ **[NON TESTABLE ICI]**
+- **Piège de test** : les comboboxes du formulaire n'offrent que les colonnes du harnais au moment du chargement (Region, Produit, Mois, Quantite, Montant) : un essai qui remplace les lignes par d'autres noms de colonnes ne peut pas les choisir en tapant (le mode strict les refuse). Réutiliser ces noms, `Mois` et `Quantite` portant des dates ISO.
+
 ### CSS — classe de bug à systématiquement re-vérifier
 
 - [x] `.field[hidden]` masque réellement l'élément (pas seulement `display:flex` de `.field` qui gagne à spécificité égale) [BUG RÉEL, trouvé 2 fois sur des champs différents] ✅ (règle en place)
