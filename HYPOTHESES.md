@@ -3273,6 +3273,15 @@ Dernier lot de l'audit : tout ce qui, hors des nombres eux-mêmes, rendait une t
 - **Testé** : Node (`dev-tests/test-data.js`) ; Playwright contre `dev-tests/harness.html` (ligne `BI_Dashboard_Config` hostile, avant/après) et contre `index.html` (aucune erreur au
   chargement). **Pas testé dans un vrai Grist ni un vrai GFS.**
 
+### Correctifs avant l'alpha — carte KPI sans objectif (18/11/2026)
+
+- **Défaut** : sous toute carte KPI sans objectif s'affichait une piste grise vide (8 px de `.goal-bar` + ligne de texte vide). Cause : `.tile-kpi-goal { display: flex }`
+  bat `[hidden]` (piège n°10) alors que le rendu cache bien l'élément. Vu en préparant les captures du brouillon d'annonce forum, pas rapporté par un utilisateur (bug réel n°46, TEST_PROTOCOL.md).
+- **Correctif** : `.tile-kpi-goal[hidden] { display: none; }`. Même défaut possible sur tout élément qui cumule un `display` de feuille et `hidden` posé par le JS :
+  `.tile-kpi-spark` (sans `display` propre) n'est pas concerné ; le bloc de test ne vérifie que ces deux-là, pas un balayage général de la feuille.
+- **Testé** : Node (règle présente, piste créée cachée, `renderKpi` la cache/montre) ; Playwright contre le vrai `index.html` + `grist-stub.js` SANS le correctif injecté
+  dans les captures. **Pas testé dans un vrai Grist.**
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée

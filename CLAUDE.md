@@ -372,9 +372,9 @@ Cette liste condense les bugs réels les plus instructifs (détail complet dans 
    capture d'écran.
 10. **`[hidden]` vs. une règle d'auteur `display:flex`** : à spécificité CSS égale, une règle
     d'auteur bat toujours la règle native du navigateur `[hidden]{display:none}`, indépendamment de
-    l'ordre de chargement. `.hidden = true` en JS n'a alors **aucun effet visuel**. Rencontré 3 fois
-    (`.demo-banner`, `.field`, et par précaution étendu à `.combobox-list`) ; nécessite une règle
-    explicite `.selector[hidden]{display:none}`.
+    l'ordre de chargement. `.hidden = true` en JS n'a alors **aucun effet visuel**. Rencontré 4 fois
+    (`.demo-banner`, `.field`, `.tile-kpi-goal` — piste grise sous toute carte KPI sans objectif, 18/11/2026 — et par
+    précaution étendu à `.combobox-list`) ; nécessite une règle explicite `.selector[hidden]{display:none}`.
 11. **Un combobox strict qui laisse Entrée sans correspondance sans `e.preventDefault()`** laisse
     fuiter l'événement `change` natif du navigateur avec le texte brut invalide, contournant toute
     la validation — a révélé que le sélecteur de table ne fonctionnait en réalité que grâce à ce
