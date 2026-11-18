@@ -1,0 +1,269 @@
+/* ==========================================================================================
+   Agencement d'une page (demande d'Antoine, 18/11/2026) — voir js/layouts.js, qui calcule le plan.
+   ------------------------------------------------------------------------------------------
+   `#tiles[data-layout="<id>"]` est posé par js/main.js:render() ; pour la grille d'origine (`grid`), RIEN n'est posé et rien de ce fichier
+   ne s'applique : une page d'avant ce réglage s'affiche exactement comme avant. Chaque tuile reçoit du plan trois variables CSS :
+     --ls  largeur en colonnes (sur 12)      --lr  hauteur en rangées de --lu (28 px)      --lc  ligne de départ (Rail seulement)
+   et `data-layout-group` ("figure" | "rail" | "chart"), `.layout-first` (le chiffre phare), `.layout-hero` (la vedette), `.layout-rowstart`.
+   Les valeurs viennent de variables, jamais de `style="grid-column: …"` : un style en ligne bat toute règle de cette feuille.
+
+   Règles qui ont déjà mordu :
+   - Les hauteurs restent FIXES (piège n°8) : `grid-auto-rows: 28px` et `grid-row: span N` donnent une hauteur qui ne dépend jamais du
+     contenu du graphique (sinon boucle de redimensionnement). Une tuile n'y a donc pas son `height: 224px`, c'est la grille qui la donne.
+   - Un agencement ne s'applique qu'au-dessus d'une LARGEUR DE ZONE (`@container ws`, la zone de travail et non la fenêtre : le panneau
+     « Ajouter une visualisation » en retire 400 px). En dessous, la grille d'origine reprend.
+   - Les agencements posent leur propre trait, fond, ombre et coins : ils l'emportent (sélecteur à identifiant) sur le style global
+     (css/dash-styles.css) et sur ses deux options — « Tuiles sans bordure » et « Tableau de bord uni » ne valent que pour la grille. Le style
+     garde ses couleurs, ses polices et le traitement des graphiques ; seuls les cadres de tuile disparaissent.
+   - La tuile de chiffres porte AUSSI la classe `.tile-kpi` (centrage en colonne) : sans `justify-content: flex-start` son titre monte ou
+     descend selon la quantité de contenu, et deux chiffres voisins ne s'alignent plus.
+   - Les boutons d'une tuile passent PAR-DESSUS le titre (en lecture, au survol seulement) : en flux, ils réservent ~130 px même invisibles,
+     et le titre d'un chiffre dans un rail de 252 px était rogné. En Édition (boutons toujours visibles) et sur écran tactile, ils restent en flux.
+   - La valeur d'une tuile de chiffres ne prend jamais plus de 56 % de la largeur (`56cqw`) : le réglage d'origine (100cqw) laissait un chiffre de 56 px
+     avaler toute la tuile et réduire la courbe à un point dans une colonne de 300 px (Rapport à 700 px de zone).
+   - Les chiffres du chiffre phare sont PROPORTIONNELS (`font-variant-numeric: normal`) : `tabular-nums` donne à chaque chiffre la largeur d'un
+     zéro, un grand nombre y paraît lâche (compétence dataviz). Un seul chiffre phare par page (`.layout-first`), les autres plus petits.
+   ========================================================================================== */
+
+/* La zone de travail est le conteneur que les `@container ws` ci-dessous interrogent. */
+.workspace-main { container: ws / inline-size; }
+
+/* -----------------------------------------------------------------------------------------
+   Rapport : une rangée de chiffres puis les graphiques DEUX par ligne, sur 12 colonnes (≥ 640 px de zone).
+   Les règles communes ci-dessous sont les MÊMES que celles de la Planche et de la Vedette (bloc suivant, ≥ 900 px) à un sélecteur près :
+   dev-tests/test-layouts.js le vérifie. Une feuille sans préprocesseur ne peut pas donner deux seuils à une même règle.
+   ----------------------------------------------------------------------------------------- */
+@container ws (min-width: 640px) {
+  #tiles:is([data-layout="report"]) {
+    --lu: 28px;
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    grid-auto-flow: row dense;
+    grid-auto-rows: var(--lu);
+    gap: 0 48px;
+    padding: 0;
+  }
+  #tiles:is([data-layout="report"]) > .tile {
+    position: relative;
+    height: auto;
+    margin: 0;
+    padding: 14px 0 22px;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    grid-column: span var(--ls, 4);
+    grid-row: span var(--lr, 9);
+    min-width: 0;
+  }
+  #tiles:is([data-layout="report"]) > .tile:hover { box-shadow: none; }
+
+  /* La rangée de chiffres (les trois agencements) : le chiffre à gauche, la courbe à droite, l'objectif dessous. */
+  #tiles:is([data-layout="report"]) > .tile[data-layout-group="figure"] .tile-kpi {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: "v s" "t s" "l s" "g g";
+    column-gap: 28px;
+    row-gap: 2px;
+    align-content: start;
+    align-items: center;
+    justify-content: stretch;
+    text-align: left;
+    padding-top: 10px;
+  }
+  #tiles:is([data-layout="report"]) > .tile[data-layout-group="figure"] .tile-kpi-value { grid-area: v; align-self: end; }
+  #tiles:is([data-layout="report"]) > .tile[data-layout-group="figure"] .tile-kpi-trend { grid-area: t; align-self: start; margin-top: 0; }
+  #tiles:is([data-layout="report"]) > .tile[data-layout-group="figure"] .tile-kpi-label { grid-area: l; align-self: start; }
+  #tiles:is([data-layout="report"]) > .tile[data-layout-group="figure"] .tile-kpi-spark { grid-area: s; height: 64px; flex: none; margin-top: 0; align-self: center; }
+  #tiles:is([data-layout="report"]) > .tile[data-layout-group="figure"] .tile-kpi-goal { grid-area: g; margin-top: 12px; }
+
+  /* Tuile de chiffres : alignée en haut, titre en casse normale et discret, chiffre phare grand et les autres plus petits. */
+  #tiles:is([data-layout="report"]) > .tile[data-layout-group="figure"] { justify-content: flex-start; align-items: stretch; }
+  #tiles:is([data-layout="report"]) > .tile[data-layout-group="figure"] .tile-header { font-size: 12.5px; font-weight: 500; color: var(--text-muted); }
+  #tiles:is([data-layout="report"]) > .tile[data-layout-group="figure"] .tile-kpi-value { --kpi-max: 36px; font-variant-numeric: normal; font-size: min(var(--kpi-max), calc(56cqw / (var(--kpi-chars, 8) * 0.6))); }
+  #tiles:is([data-layout="report"]) > .tile.layout-first .tile-kpi-value { --kpi-max: 56px; }
+
+  /* Boutons de la tuile par-dessus son titre (lecture, souris) ; le titre cède la place au survol. */
+  @media (hover: hover) {
+    body:not([data-mode="edit"]) #tiles:is([data-layout="report"]) > .tile .tile-header { position: relative; }
+    body:not([data-mode="edit"]) #tiles:is([data-layout="report"]) > .tile .tile-actions {
+      position: absolute; right: 0; top: 50%; transform: translateY(-50%);
+    }
+    body:not([data-mode="edit"]) #tiles:is([data-layout="report"]) > .tile:is(:hover, :focus-within) .tile-title { padding-right: 132px; }
+    body:not([data-mode="edit"]) #tiles:is([data-layout="report"]) > .tile .tile-header:has(.has-comments) .tile-title { padding-right: 30px; }
+  }
+  #tiles[data-layout="report"] { column-gap: 56px; }
+  /* Rapport : un filet au-dessus de chaque bloc, plus épais au-dessus des chiffres ; l'espace sépare le reste. */
+  #tiles[data-layout="report"] > .tile { border-top: 1px solid var(--border-strong); }
+  #tiles[data-layout="report"] > .tile[data-layout-group="figure"] { border-top: 2px solid var(--text); }
+}
+
+/* -----------------------------------------------------------------------------------------
+   Planche et Vedette : une rangée de chiffres puis les graphiques TROIS par ligne (≥ 900 px de zone).
+   ----------------------------------------------------------------------------------------- */
+@container ws (min-width: 900px) {
+  #tiles:is([data-layout="board"], [data-layout="spotlight"]) {
+    --lu: 28px;
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    grid-auto-flow: row dense;
+    grid-auto-rows: var(--lu);
+    gap: 0 48px;
+    padding: 0;
+  }
+  #tiles:is([data-layout="board"], [data-layout="spotlight"]) > .tile {
+    position: relative;
+    height: auto;
+    margin: 0;
+    padding: 14px 0 22px;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    grid-column: span var(--ls, 4);
+    grid-row: span var(--lr, 9);
+    min-width: 0;
+  }
+  #tiles:is([data-layout="board"], [data-layout="spotlight"]) > .tile:hover { box-shadow: none; }
+
+  /* La rangée de chiffres (les trois agencements) : le chiffre à gauche, la courbe à droite, l'objectif dessous. */
+  #tiles:is([data-layout="board"], [data-layout="spotlight"]) > .tile[data-layout-group="figure"] .tile-kpi {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: "v s" "t s" "l s" "g g";
+    column-gap: 28px;
+    row-gap: 2px;
+    align-content: start;
+    align-items: center;
+    justify-content: stretch;
+    text-align: left;
+    padding-top: 10px;
+  }
+  #tiles:is([data-layout="board"], [data-layout="spotlight"]) > .tile[data-layout-group="figure"] .tile-kpi-value { grid-area: v; align-self: end; }
+  #tiles:is([data-layout="board"], [data-layout="spotlight"]) > .tile[data-layout-group="figure"] .tile-kpi-trend { grid-area: t; align-self: start; margin-top: 0; }
+  #tiles:is([data-layout="board"], [data-layout="spotlight"]) > .tile[data-layout-group="figure"] .tile-kpi-label { grid-area: l; align-self: start; }
+  #tiles:is([data-layout="board"], [data-layout="spotlight"]) > .tile[data-layout-group="figure"] .tile-kpi-spark { grid-area: s; height: 64px; flex: none; margin-top: 0; align-self: center; }
+  #tiles:is([data-layout="board"], [data-layout="spotlight"]) > .tile[data-layout-group="figure"] .tile-kpi-goal { grid-area: g; margin-top: 12px; }
+
+  /* Tuile de chiffres : alignée en haut, titre en casse normale et discret, chiffre phare grand et les autres plus petits. */
+  #tiles:is([data-layout="board"], [data-layout="spotlight"]) > .tile[data-layout-group="figure"] { justify-content: flex-start; align-items: stretch; }
+  #tiles:is([data-layout="board"], [data-layout="spotlight"]) > .tile[data-layout-group="figure"] .tile-header { font-size: 12.5px; font-weight: 500; color: var(--text-muted); }
+  #tiles:is([data-layout="board"], [data-layout="spotlight"]) > .tile[data-layout-group="figure"] .tile-kpi-value { --kpi-max: 36px; font-variant-numeric: normal; font-size: min(var(--kpi-max), calc(56cqw / (var(--kpi-chars, 8) * 0.6))); }
+  #tiles:is([data-layout="board"], [data-layout="spotlight"]) > .tile.layout-first .tile-kpi-value { --kpi-max: 56px; }
+
+  /* Boutons de la tuile par-dessus son titre (lecture, souris) ; le titre cède la place au survol. */
+  @media (hover: hover) {
+    body:not([data-mode="edit"]) #tiles:is([data-layout="board"], [data-layout="spotlight"]) > .tile .tile-header { position: relative; }
+    body:not([data-mode="edit"]) #tiles:is([data-layout="board"], [data-layout="spotlight"]) > .tile .tile-actions {
+      position: absolute; right: 0; top: 50%; transform: translateY(-50%);
+    }
+    body:not([data-mode="edit"]) #tiles:is([data-layout="board"], [data-layout="spotlight"]) > .tile:is(:hover, :focus-within) .tile-title { padding-right: 132px; }
+    body:not([data-mode="edit"]) #tiles:is([data-layout="board"], [data-layout="spotlight"]) > .tile .tile-header:has(.has-comments) .tile-title { padding-right: 30px; }
+  }
+  #tiles[data-layout="spotlight"] { column-gap: 44px; }
+
+  /* Vedette : le titre se pose sur un filet, un trait vertical sépare les chiffres d'une même ligne. */
+  #tiles[data-layout="spotlight"] > .tile .tile-header { border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 10px; }
+  #tiles[data-layout="spotlight"] > .tile[data-layout-group="figure"] { border-top: 2px solid var(--text); }
+  #tiles[data-layout="spotlight"] > .tile[data-layout-group="figure"] .tile-header { border-bottom: 0; margin-bottom: 0; padding-bottom: 0; }
+  #tiles[data-layout="spotlight"] > .tile[data-layout-group="figure"]:not(.layout-rowstart) {
+    margin-left: -22px;
+    padding-left: 22px;
+    border-left: 1px solid var(--border);
+  }
+  #tiles[data-layout="spotlight"] > .tile.layout-hero .tile-header { font-size: 15px; }
+  /* Planche : UNE surface arrondie ; les filets ne sont tracés qu'ENTRE les cellules (les ombres de la dernière colonne et de la dernière
+     ligne sortent de la surface, rognée par `overflow: hidden`, donc aucun double trait au bord). Le bandeau de chiffres est teinté. */
+  #tiles[data-layout="board"] {
+    gap: 0;
+    margin: 4px 0 24px;
+    background: var(--dash-card-bg, var(--surface));
+    -webkit-backdrop-filter: var(--dash-backdrop, none);
+    backdrop-filter: var(--dash-backdrop, none);
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 0 0 1px var(--border-strong), var(--shadow-panel);
+  }
+  #tiles[data-layout="board"] > .tile { padding: 16px 22px 14px; box-shadow: 1px 0 0 var(--border), 0 1px 0 var(--border); }
+  #tiles[data-layout="board"] > .tile:hover { box-shadow: 1px 0 0 var(--border), 0 1px 0 var(--border); }
+  #tiles[data-layout="board"] > .tile[data-layout-group="figure"] { background: var(--surface-sunken); padding-top: 20px; }
+}
+
+/* -----------------------------------------------------------------------------------------
+   Rail : une colonne de chiffres et de jauges à gauche (252 px), les graphiques à droite, trois par ligne (≥ 1040 px de zone).
+   ----------------------------------------------------------------------------------------- */
+@container ws (min-width: 1040px) {
+  #tiles[data-layout="rail"] {
+    --lu: 28px;
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    grid-auto-flow: row dense;
+    grid-auto-rows: var(--lu);
+    gap: 0 36px;
+    padding: 0;
+  }
+  /* Avec un rail : une colonne de plus (la ligne 1) ; les graphiques commencent à la ligne 2 (voir js/layouts.js:plan). */
+  #tiles[data-layout="rail"][data-has-rail] { grid-template-columns: 252px repeat(12, minmax(0, 1fr)); }
+
+  #tiles[data-layout="rail"] > .tile {
+    position: relative;
+    height: auto;
+    margin: 0;
+    padding: 14px 0 22px;
+    background: transparent;
+    border: 0;
+    border-top: 1px solid var(--border-strong);
+    border-radius: 0;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    grid-column: var(--lc, auto) / span var(--ls, 4);
+    grid-row: span var(--lr, 9);
+    min-width: 0;
+  }
+  #tiles[data-layout="rail"] > .tile:hover { box-shadow: none; }
+  #tiles[data-layout="rail"] > .tile[data-layout-group="rail"] { border-top-color: var(--border); border-right: 1px solid var(--border); padding-right: 28px; }
+  #tiles[data-layout="rail"] > .tile.layout-first { border-top: 2px solid var(--text); }
+
+  #tiles[data-layout="rail"] > .tile[data-layout-group="rail"] { justify-content: flex-start; align-items: stretch; }
+  #tiles[data-layout="rail"] > .tile[data-layout-group="rail"] .tile-kpi { align-items: flex-start; justify-content: flex-start; text-align: left; gap: 4px; }
+  #tiles[data-layout="rail"] > .tile[data-layout-group="rail"] .tile-kpi-spark,
+  #tiles[data-layout="rail"] > .tile[data-layout-group="rail"] .tile-kpi-goal { margin-top: 6px; }
+  #tiles[data-layout="rail"] > .tile[data-layout-group="rail"].tile-kpi .tile-header { font-weight: 500; color: var(--text-muted); }
+  #tiles[data-layout="rail"] > .tile[data-layout-group="rail"] .tile-kpi-value { --kpi-max: 34px; font-variant-numeric: normal; }
+  #tiles[data-layout="rail"] > .tile.layout-first .tile-kpi-value { --kpi-max: 46px; }
+
+  /* Les boutons restent en flux en Édition et sur écran tactile : sept boutons mangent les 224 px utiles de la colonne (« Unit… »). Le titre
+     prend alors sa ligne, les boutons passent dessous, et la tuile gagne UNE rangée (hauteur toujours fixe, jamais mesurée). */
+  body[data-mode="edit"] #tiles[data-layout="rail"] > .tile[data-layout-group="rail"] { grid-row: span calc(var(--lr, 9) + 1); }
+  body[data-mode="edit"] #tiles[data-layout="rail"] > .tile[data-layout-group="rail"] .tile-header { flex-wrap: wrap; row-gap: 0; }
+  body[data-mode="edit"] #tiles[data-layout="rail"] > .tile[data-layout-group="rail"] .tile-title { flex: 1 1 100%; }
+  body[data-mode="edit"] #tiles[data-layout="rail"] > .tile[data-layout-group="rail"] .tile-actions { margin-left: auto; }
+  @media (hover: none) {
+    #tiles[data-layout="rail"] > .tile[data-layout-group="rail"] { grid-row: span calc(var(--lr, 9) + 1); }
+    #tiles[data-layout="rail"] > .tile[data-layout-group="rail"] .tile-header { flex-wrap: wrap; row-gap: 0; }
+    #tiles[data-layout="rail"] > .tile[data-layout-group="rail"] .tile-title { flex: 1 1 100%; }
+    #tiles[data-layout="rail"] > .tile[data-layout-group="rail"] .tile-actions { margin-left: auto; }
+  }
+
+  @media (hover: hover) {
+    body:not([data-mode="edit"]) #tiles[data-layout="rail"] > .tile .tile-header { position: relative; }
+    body:not([data-mode="edit"]) #tiles[data-layout="rail"] > .tile .tile-actions { position: absolute; right: 0; top: 50%; transform: translateY(-50%); }
+    body:not([data-mode="edit"]) #tiles[data-layout="rail"] > .tile:is(:hover, :focus-within) .tile-title { padding-right: 132px; }
+    body:not([data-mode="edit"]) #tiles[data-layout="rail"] > .tile .tile-header:has(.has-comments) .tile-title { padding-right: 30px; }
+  }
+}
+
+/* -----------------------------------------------------------------------------------------
+   Menu Réglages : les cartes de choix reprennent `.style-option` (css/dash-styles.css) ; la miniature est un SVG de 60 x 40.
+   ----------------------------------------------------------------------------------------- */
+.layout-swatch { display: block; height: 64px; padding: 6px; border-radius: 6px; background: var(--bg); border: 1px solid var(--border); }
+.layout-swatch svg { display: block; width: 100%; height: 100%; }
+.layout-swatch .lt-frame { fill: var(--surface); stroke: var(--border-strong); stroke-width: 0.8; }
+.layout-swatch .lt-fill { fill: var(--surface-sunken); stroke: var(--border); stroke-width: 0.5; }
+.layout-swatch .lt-hero { fill: var(--accent); opacity: 0.85; }
+.layout-swatch .lt-rule { stroke: var(--border-strong); stroke-width: 0.8; }

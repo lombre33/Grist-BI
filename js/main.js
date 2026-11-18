@@ -409,6 +409,8 @@
   const settingsModal = document.getElementById('settings-modal');
   const styleOptionsEl = document.getElementById('settings-style-options'); // cartes de choix du style des tuiles, voir renderStyleOptions
   const styleExtraInputs = { hideBorders: document.getElementById('settings-opt-hideBorders'), uniform: document.getElementById('settings-opt-uniform') }; // options valables pour tous les styles
+  const layoutOptionsEl = document.getElementById('settings-layout-options'); // cartes de choix de la disposition de la page courante, voir renderLayoutOptions
+  const layoutHintEl = document.getElementById('settings-layout-hint');
   const settingsCloseBtn = document.getElementById('settings-close');
   const commentsModal = document.getElementById('comments-modal');
   const commentsCloseBtn = document.getElementById('comments-close');
@@ -1075,6 +1077,25 @@
     renderConnectionStatus(store.getState());
   }
 
+  // Pose le plan d'agencement d'UNE tuile (js/layouts.js:plan) : variables CSS lues par css/layouts.css (`--ls` colonnes, `--lr` rangées,
+  // `--lc` colonne de départ du Rail), groupe et classes de repère. `item` absent (grille) = tout retirer, la tuile redevient ce qu'elle était.
+  function applyTileLayout(el, item) {
+    if (!item) {
+      el.style.removeProperty('--ls');
+      el.style.removeProperty('--lr');
+      el.style.removeProperty('--lc');
+      delete el.dataset.layoutGroup;
+      el.classList.remove('layout-hero', 'layout-first');
+      return;
+    }
+    el.style.setProperty('--ls', String(item.span));
+    el.style.setProperty('--lr', String(item.rows));
+    if (item.start) el.style.setProperty('--lc', String(item.start)); else el.style.removeProperty('--lc');
+    el.dataset.layoutGroup = item.group;
+    el.classList.toggle('layout-hero', !!item.hero);
+    el.classList.toggle('layout-first', !!item.first);
+  }
+
   function render(state) {
     // Style global des tuiles (js/styles.js) : posé AVANT les rendus ci-dessous, que js/charts.js lit à chaque tuile
     // (`GristBI.styles.current()`) — un changement de style repasse donc par ce `render()` complet, sans rien d'autre à rafraîchir.
@@ -1098,6 +1119,14 @@
     );
     const nextIds = new Set(state.tiles.map((t) => t.id));
     const zoomedIds = new Set(state.zoomedTileIds);
+    // Agencement de la page (js/layouts.js) : un plan par page, posé en variables CSS sur chaque tuile. L'ordre ENREGISTRÉ (`state.tiles`) ne
+    // change jamais ; seul l'ordre AFFICHÉ en dérive (les chiffres d'abord) et c'est lui qu'on pose dans le DOM, pour que la tabulation suive l'écran.
+    const layoutId = GristBI.layouts.normalizeLayoutId(state.pageLayout);
+    const layoutPlan = GristBI.layouts.plan(layoutId, state.tiles);
+    const displayTiles = layoutPlan ? GristBI.layouts.displayOrder(layoutId, state.tiles) : state.tiles;
+    if (layoutPlan) tilesContainer.dataset.layout = layoutId; else delete tilesContainer.dataset.layout;
+    if (layoutPlan && layoutPlan.hasRail) tilesContainer.dataset.hasRail = ''; else delete tilesContainer.dataset.hasRail;
+    refreshLayoutOptions(state);
 
     for (const [id, el] of existingEls) {
       if (!nextIds.has(id)) {
@@ -1113,7 +1142,7 @@
     // tuiles ; on ne touche au DOM que si la place est mauvaise (avant : un déplacement à chaque rendu).
     let previousGridEl = null;
     let previousFocusEl = null;
-    state.tiles.forEach((tile, index) => {
+    displayTiles.forEach((tile) => {
       let el = existingEls.get(tile.id);
       // Une tuile dont le TYPE a changé (Modifier > Changer de type) ne peut pas garder son élément : le balisage
       // (KPI, texte, graphique), la classe `tile-<type>` et l'instance ECharts attachée sont ceux de l'ancien type
@@ -1136,6 +1165,7 @@
       }
       if (isZoomed) previousFocusEl = el; else previousGridEl = el;
       el.classList.toggle('tile-zoomed', isZoomed);
+      applyTileLayout(el, layoutPlan && layoutPlan.items[tile.id]);
       const zoomBtn = el.querySelector('.tile-zoom');
       if (zoomBtn) {
         const zoomKey = isZoomed ? 'tile.unzoom' : 'tile.zoom';
@@ -1155,8 +1185,9 @@
       }
       const moveLeftBtn = el.querySelector('.tile-move-left');
       const moveRightBtn = el.querySelector('.tile-move-right');
-      if (moveLeftBtn) moveLeftBtn.disabled = index === 0;
-      if (moveRightBtn) moveRightBtn.disabled = index === state.tiles.length - 1;
+      // Dans un agencement, une tuile ne dépasse que celles de son groupe (js/layouts.js:moveTarget) : sinon rien ne changerait à l'écran.
+      if (moveLeftBtn) moveLeftBtn.disabled = GristBI.layouts.moveTarget(layoutId, state.tiles, tile.id, -1) === null;
+      if (moveRightBtn) moveRightBtn.disabled = GristBI.layouts.moveTarget(layoutId, state.tiles, tile.id, 1) === null;
       // Badge de compte sur le bouton "Commentaires" : recalculé à chaque rendu (comme
       // moveLeftBtn/moveRightBtn ci-dessus), jamais seulement à la création de la tuile — un
       // commentaire peut être ajouté alors que la tuile est déjà affichée depuis longtemps.
@@ -1501,8 +1532,14 @@
     el.querySelector('.tile-zoom').addEventListener('click', () => { store.toggleZoom(tile.id); flashTile(tile.id); });
     el.querySelector('.tile-comments').addEventListener('click', () => openCommentsModal(liveTile()));
     el.querySelector('.tile-detail').addEventListener('click', () => openDetailModal(liveTile()));
-    el.querySelector('.tile-move-left').addEventListener('click', () => store.moveTile(tile.id, -1));
-    el.querySelector('.tile-move-right').addEventListener('click', () => store.moveTile(tile.id, 1));
+    // L'état est relu au clic (piège n°18), jamais figé à la création de la tuile : la page change d'agencement sans que la tuile soit recréée.
+    const moveBy = (direction) => {
+      const live = store.getState();
+      const target = GristBI.layouts.moveTarget(live.pageLayout, live.tiles, tile.id, direction);
+      if (target !== null) store.moveTile(tile.id, direction, target);
+    };
+    el.querySelector('.tile-move-left').addEventListener('click', () => moveBy(-1));
+    el.querySelector('.tile-move-right').addEventListener('click', () => moveBy(1));
     return el;
   }
 
@@ -3712,6 +3749,75 @@
     input.addEventListener('change', () => store.setDashStyleOptions(Object.assign({}, store.getState().dashStyleOptions, { [key]: input.checked })));
   });
   renderStyleOptions();
+
+  // Disposition de la PAGE courante (js/layouts.js, css/layouts.css) : une carte par agencement dans le menu Réglages, construites d'après le
+  // registre. La miniature est un petit SVG fait des formes de `GristBI.layouts.thumb` (testées sous Node), coloré par les mêmes jetons que
+  // la page ; le texte vient de `data-i18n`. Choisir un agencement passe par le store (`setPageLayout`, pour LA page affichée) : `render()` pose le
+  // plan, redessine et planifie la sauvegarde, comme pour le style. Le réglage suit la page : changer d'onglet recoche la carte de cette page.
+  function renderLayoutOptions() {
+    if (!layoutOptionsEl) return;
+    layoutOptionsEl.textContent = '';
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+    GristBI.layouts.LAYOUT_IDS.forEach((id) => {
+      const layout = GristBI.layouts.LAYOUTS[id];
+      const label = document.createElement('label');
+      label.className = 'style-option layout-option';
+      label.dataset.layoutId = id;
+      const input = document.createElement('input');
+      input.type = 'radio';
+      input.name = 'settings-layout';
+      input.value = id;
+      input.addEventListener('change', () => { if (input.checked) store.setPageLayout(store.getState().currentPageId, id); });
+      const swatch = document.createElement('span');
+      swatch.className = 'layout-swatch';
+      swatch.setAttribute('aria-hidden', 'true');
+      const svg = document.createElementNS(SVG_NS, 'svg');
+      svg.setAttribute('viewBox', `0 0 ${GristBI.layouts.THUMB_W} ${GristBI.layouts.THUMB_H}`);
+      svg.setAttribute('focusable', 'false');
+      GristBI.layouts.thumb(id).forEach((shape) => {
+        const node = document.createElementNS(SVG_NS, shape.kind === 'rule' ? 'line' : 'rect');
+        if (shape.kind === 'rule') {
+          node.setAttribute('x1', shape.x); node.setAttribute('y1', shape.y);
+          node.setAttribute('x2', shape.x + shape.w); node.setAttribute('y2', shape.y + shape.h);
+        } else {
+          node.setAttribute('x', shape.x); node.setAttribute('y', shape.y);
+          node.setAttribute('width', shape.w); node.setAttribute('height', shape.h);
+          node.setAttribute('rx', shape.kind === 'frame' ? '2' : '1');
+        }
+        node.setAttribute('class', 'lt-' + shape.kind);
+        svg.appendChild(node);
+      });
+      swatch.appendChild(svg);
+      const name = document.createElement('span');
+      name.className = 'style-option-name';
+      name.setAttribute('data-i18n', layout.nameKey);
+      name.textContent = t(layout.nameKey);
+      const desc = document.createElement('span');
+      desc.className = 'style-option-desc';
+      desc.setAttribute('data-i18n', layout.descKey);
+      desc.textContent = t(layout.descKey);
+      label.append(input, swatch, name, desc);
+      layoutOptionsEl.appendChild(label);
+    });
+    refreshLayoutOptions(store.getState());
+  }
+  // Coche la carte de l'agencement de la page affichée (un id inconnu de ce widget s'affiche, et se coche, en Grille) et nomme la page.
+  function refreshLayoutOptions(state) {
+    if (!layoutOptionsEl) return;
+    const page = state.pages.find((p) => p.id === state.currentPageId) || state.pages[0];
+    if (layoutHintEl) {
+      const hint = t('layout.hint', { page: page ? page.name : '' });
+      if (layoutHintEl.textContent !== hint) layoutHintEl.textContent = hint;
+    }
+    const current = GristBI.layouts.normalizeLayoutId(state.pageLayout);
+    layoutOptionsEl.querySelectorAll('.layout-option').forEach((label) => {
+      const selected = label.dataset.layoutId === current;
+      label.classList.toggle('is-selected', selected);
+      const input = label.querySelector('input');
+      if (input && input.checked !== selected) input.checked = selected;
+    });
+  }
+  renderLayoutOptions();
 
   bootstrap();
 })();

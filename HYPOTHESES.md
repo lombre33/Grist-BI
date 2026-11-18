@@ -3559,6 +3559,54 @@ Retour d'Antoine sur la 1re livraison : « Standard, Fluide, Édito : ok. Les de
 
 **Non vérifié** : rendu dans un vrai Grist/GFS ; interaction avec une VRAIE ambiance GFS (ses jetons en ligne gagnent sur les couleurs d'un style — pour Console et Verre, un accent ou un fond d'ambiance sur le décor propre à ces styles peut détonner) ; `backdrop-filter` dans le navigateur d'un vrai Grist (supporté par les navigateurs récents, mais pas rejoué sur un vieux) ; exports PDF/PPTX avec le vrai CDN (une carte de verre y devient un fond uni, les graphiques gardent leur dégradé).
 
+### Disposition de la page — Rapport, Planche, Vedette, Rail, au choix PAGE PAR PAGE (18/11/2026)
+
+Point de départ : Antoine, sur les deux options « sans bordure » et « tableau de bord uni » du lot précédent : « pas convaincu pour les options macro d'agencement du dashboard ; essaie de comprendre le
+problème et d'imaginer plusieurs formats de dashboard ; j'imagine une version sur un fond uni qui paraisse bien plus liée ; 3 à 4 propositions », puis « c'est un enjeu d'UI/UX, hésite pas à utiliser des
+compétences dédiées », puis « pourquoi pas tous ? en plus des styles, on laisse le choix de l'arrangement, avec 3 à 4 options, et ça reste changeable sans souci pour chaque page ? ».
+
+**Diagnostic** (ce que j'en ai compris) : une grille de cartes identiques ne relie rien — chaque carte est une boîte, toutes pèsent autant, l'œil n'a ni entrée ni parcours, et « sans bordure » ou « uni »
+ne change que le trait, pas la hiérarchie. Un tableau de bord qui paraît « lié » donne un poids différent aux chiffres (en tête, un seul chiffre phare), aligne tout sur une même grille, remplit ses lignes
+(jamais une case vide au bout) et remplace les boîtes par des filets ou une seule surface. Principes tirés de la compétence `dataviz` : un chiffre phare unique (>= 48 px, chiffres proportionnels), libellés
+de chiffre en minuscules, filets pleins d'un pixel, dernière ligne incomplète = elle se partage la largeur. Les quatre propositions ont d'abord été rendues dans le vrai widget (captures dans
+`/mnt/project-files/agencements-tuiles/`), avant d'être codées.
+
+**Fait** : un réglage PAR PAGE (Réglages > « Disposition de la page », visible en Édition seulement, indication qui nomme la page), enregistré avec la page dans `BI_Dashboard_Config` (champ `layout`, écrit
+seulement s'il diffère de `grid` : une page d'avant ce réglage reste identique octet pour octet). Cinq entrées : **Grille** (la grille de cartes d'origine, défaut, rien n'est posé), **Rapport** (sans cartes ;
+chiffres en tête, deux graphiques par ligne, filet fin au-dessus de chaque bloc), **Planche** (une seule surface arrondie, bandeau de chiffres teinté, filets seulement entre les cellules), **Vedette** (chiffres,
+un grand graphique — le premier en barres, courbe ou combo —, deux plus petits à côté, le reste par trois) et **Rail** (colonne de chiffres et de jauges à gauche, graphiques à droite, trois par ligne). Le
+module pur `js/layouts.js` calcule un PLAN (largeur sur 12 colonnes, hauteur en rangées fixes de 28 px, groupe, colonne de départ du Rail) ; `js/main.js:render()` le pose en variables CSS et réordonne le DOM
+(les chiffres d'abord : l'ordre de tabulation suit l'écran) ; `css/layouts.css` le dessine. L'ordre ENREGISTRÉ des tuiles ne change jamais ; les flèches ◀ ▶ échangent une tuile avec la plus proche du même
+groupe. Les deux options du lot précédent ne valent plus que pour la Grille (leurs cases sont sous le choix de disposition).
+
+**Choix à connaître** : (1) **Seuils de largeur** : un agencement ne s'applique qu'au-dessus de 640 px (Rapport), 900 px (Planche, Vedette) ou 1 040 px (Rail) de largeur de la ZONE de travail (conteneur CSS,
+pas la fenêtre : le panneau « Ajouter » en retire 400 px) ; en dessous, la grille d'origine reprend, plutôt que d'écraser des graphiques. Ces seuils sont MON choix, non mesuré sur un vrai Grist (largeur
+réelle d'un widget dans une page Grist à confirmer). (2) **Vedette** : la vedette est le premier graphique en barres, courbe ou combo (les types qui se lisent sur toute une largeur) ; sans un tel graphique,
+pas de vedette, trois par ligne. (3) **Rail** : la colonne de gauche prend les chiffres ET les jauges ; sans aucune de ces tuiles, elle disparaît et les graphiques partent de la colonne 1. (4) Les chiffres
+passent devant les graphiques dans les quatre dispositions, même rangés après dans la page ; seul l'ordre affiché change. (5) **Boutons des tuiles** : en lecture à la souris, ils passent par-dessus le titre au
+survol seulement ; en Édition et sur écran tactile, ils restent en flux (dans le Rail, le titre prend alors sa ligne). (6) Chaque disposition garde les couleurs, les polices et le traitement des graphiques du style
+choisi (Fluide, Éditorial, Console, Verre dépoli) mais redessine le cadre de la tuile ; les contrastes du verre n'ont pas été recalculés pour du texte posé DIRECTEMENT sur le dégradé (le test de contraste du
+style vise sa pire carte translucide, donc ce cas est couvert par construction, mais non mesuré à part). (7) Une disposition n'est PAS dans une vue sauvegardée (un bookmark ne porte que filtres, page, drill-down).
+
+**Vérifié** : Node (`dev-tests/test-layouts.js`, 9 blocs) — registre, seuils et clés fr/en ; ids inconnus ou hostiles (clés de prototype comprises) -> grille ; `spansFor` : toute ligne pleine pour 0 à 14 éléments
+et 1 à 4 par ligne ; plan de chaque disposition sur le rapport de démonstration (11 tuiles) et pour toutes les combinaisons de 0 à 13 chiffres x 0 à 14 graphiques (aucun trou, hauteurs entières et bornées,
+chaque tuile une seule fois) ; vedette seule / à deux / absente, Rail avec et sans colonne, objectif (colonne, nombre fini, texte refusé) ; entrées bizarres sans exception, 1 000 tuiles dans le temps imparti ;
+ordre affiché (copie) et cible des flèches ; miniatures (dans la boîte, sans recouvrement) ; store (par page, la grille retire le champ, refus des ids mal formés, id futur gardé, configuration hostile assainie,
+même référence quand rien ne change) ; aller-retour de la configuration par le vrai `js/grist-api.js` avec un faux `grist` ; CSS parsé (trois seuils `@container` = `minWidthOf`, `--lu` = 28 px, rangées
+fixes, jamais de `min-height`, règles communes de 640 et de 900 px identiques, tuile sans ombre ni verre, boutons par-dessus le titre au survol seulement, contrastes AA du texte atténué sur le fond teinté dans les
+deux thèmes) ; câblage d'`index.html` et du harnais. Navigateur (Playwright, Chromium, `index.html` + `dev-tests/grist-stub.js`, rapport de démonstration de 4 pages et 5 760 lignes) : les quatre dispositions x
+clair/sombre (Standard) puis Console, Éditorial, Fluide et Verre dépoli ; largeurs de fenêtre 560 / 700 / 880 / 960 / 1 100 / 1 280 px (colonnes de la grille lues : 1, 2, 3 puis 12 ; Rail à 13 colonnes dès
+1 040 px de zone), aucun défilement horizontal ; **stabilité des hauteurs** (8 échantillons sur 3 s par disposition, identiques) ; survol et mode Édition (boutons, flèches désactivées au bon endroit,
+échange dans la Vedette) ; une page par disposition (Rapport / Rail / Grille / Vedette) retrouvée en changeant de page, **aucune erreur console** ; enregistrement vérifié dans `BI_Dashboard_Config` ; tuile
+agrandie dans le Rail ; panneau « Ajouter » ouvert (zone de 832 px : la Planche retombe en grille) ; cadre `<iframe sandbox="allow-scripts">` (clic réel sur une carte de disposition : `data-layout` posé,
+enregistré). Trois défauts trouvés ainsi et corrigés : une carte de chiffres avec objectif rognée dans la colonne étroite du Rail (7 rangées -> 9), un chiffre de 56 px qui réduisait la courbe à un point dans une
+colonne de 300 px (plafond `56cqw`), et le titre du Rail rogné par sept boutons en Édition (titre sur sa ligne).
+
+**Non vérifié** : rendu dans un vrai Grist/GFS ; largeur réelle d'une zone de widget (les seuils 640/900/1 040 px sont un choix) ; interaction avec une VRAIE ambiance GFS ; comportement tactile réel (règle
+`@media (hover: none)` écrite et relue, jamais rejouée sur un écran tactile) ; `:has()` (utilisé pour réserver la place du badge de commentaires) sur un vieux navigateur : sans lui, le badge peut recouvrir la fin
+d'un long titre ; exports PDF/PPTX (ils capturent l'image du graphique déjà rendu, indépendante de la disposition). **Limite connue** : Planche et Vedette n'ont pas de variante à deux colonnes pour la zone
+intermédiaire (640-900 px) : elles retombent sur la grille ; la Vedette ne choisit pas elle-même sa vedette (le premier graphique éligible), un réglage par tuile serait un lot à part.
+
 ### Tuiles usuelles des outils BI — lot 3, flux (Sankey) (18/11/2026)
 
 - **Ce qui est livré** (PR 9 du plan, §5.2 de `etudes/tuiles-usuelles-dashboard-2026-11-18.md`) : un type `sankey` (« Flux (Sankey) »). Deux colonnes catégorielles (source à gauche, cible à droite) et une mesure ;
