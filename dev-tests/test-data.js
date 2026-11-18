@@ -2402,7 +2402,7 @@ const SAMPLE_TIME_SERIES = [
   const charts = require('fs').readFileSync(require('path').join(__dirname, '..', 'js', 'charts.js'), 'utf8');
   assert.ok(/F\.gaugeTicks\(g\.min, g\.max, n\)/.test(charts) && /F\.gaugeTickBudget\(base\.r\)/.test(charts) && /F\.gaugeTickPlacement\(L, it\.frac\)/.test(charts), 'graduations calculées, plafonnées par la place, placées à l\'extérieur de l\'arc');
   assert.ok(/g\.fmt\.forScale\(g\.min, g\.max\)/.test(charts) && /scale\.format\(g\.value\)/.test(charts), 'jauge : bornes, graduations et valeur lues sur l\'échelle entière (années jamais compactées)');
-  assert.ok(/f\.forScale\(hist\.bins\[0\]\.lo, hist\.bins\[hist\.bins\.length - 1\]\.hi\)/.test(charts), 'histogramme : les bornes de classes forment une échelle');
+  assert.ok(/histogramFormat\.forScale\(hist\.bins\[0\]\.lo, hist\.bins\[hist\.bins\.length - 1\]\.hi\)/.test(charts), 'histogramme : les bornes de classes forment une échelle');
   assert.ok(/axisLabel: \{ interval: 'auto', width: 84, overflow: 'truncate'/.test(charts), 'histogramme : libellé de classe de largeur fixée (finalizeOption ne le tronque pas à la largeur d\'une barre : « 199… »)');
   assert.ok(/lay\.overflow/.test(charts) && /0\.72 \* base\.r/.test(charts), 'elles disparaissent plutôt que de faire trop rétrécir l\'arc ou de sortir de la tuile');
   assert.ok(/startAngle: 180,\s*endAngle: 0/.test(charts), 'jauge en demi-cercle');
@@ -3485,7 +3485,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     const panel = fsK.readFileSync(pathK.join(__dirname, '..', 'js', 'keywords-panel.js'), 'utf8');
     const main = fsK.readFileSync(pathK.join(__dirname, '..', 'js', 'main.js'), 'utf8');
     // chaque élément que le panneau cherche par id existe dans la page
-    const wanted = Array.from(panel.matchAll(/\$\('([a-z-]+)'\)/g)).map((m) => m[1]);
+    const wanted = Array.from(panel.matchAll(/byId\('([a-z-]+)'\)/g)).map((m) => m[1]);
     assert.ok(wanted.length >= 20);
     for (const id of wanted) assert.ok(index.includes(`id="${id}"`), `#${id} manque dans index.html`);
     // les scripts, dans l'ordre : les pièces pures avant le pont Grist, le panneau avant main.js
@@ -5093,7 +5093,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     assert.ok(/type: 'heatmap'/.test(chartsH) && /visualMap/.test(chartsH) && /inverse: true/.test(chartsH));
     assert.ok(!/Intl\.NumberFormat|toFixed/.test(chartsH), 'aucun format de nombre en dur dans charts.js');
     // Seules des couleurs CALCULÉES (hex des rampes) entrent dans un attribut `style` du tableau croisé, jamais une chaîne de la configuration.
-    assert.ok(/style="background:\$\{c\.bg\};color:\$\{c\.fg\}"/.test(chartsH) && !/style="[^"]*\$\{tile\./.test(chartsH));
+    assert.ok(/style="background:\$\{heatCell\.bg\};color:\$\{heatCell\.fg\}"/.test(chartsH) && !/style="[^"]*\$\{tile\./.test(chartsH));
     // Carte de chaleur et pivot restent hors drill-down (deux dimensions déjà affichées en même temps).
     assert.ok(/type !== 'heatmap'/.test(mainH));
     const cssH = fsH.readFileSync(pathH.join(rootH, 'css', 'style.css'), 'utf8');
@@ -5643,7 +5643,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     assert.ok(/inferColumnKind\(dimension\) !== 'date'\) fail\('tile-dimension', 'tileForm\.error\.calendarNotDate'\)/.test(mainC), 'la colonne doit contenir de vraies dates');
     assert.ok(/currentTile\.type === 'calendar'/.test(chartsC) && /toggleFilter\(currentTile\.dimension, day, currentTile\.id\)/.test(chartsC), 'clic = filtre du jour');
     assert.ok(/firstDay: 1/.test(chartsC) && /escapeHtml\(longDate\(/.test(chartsC) && /heatStops\(tile\.palette\)/.test(chartsC), 'lundi en premier, date de l\'infobulle échappée, rampe de la carte de chaleur');
-    const emptyCal = chartsC.slice(chartsC.indexOf('function renderCalendar'), chartsC.indexOf('const f = fmtFor(tile, tile.measure);', chartsC.indexOf('function renderCalendar')));
+    const emptyCal = chartsC.slice(chartsC.indexOf('function renderCalendar'), chartsC.indexOf('const calendarFormat = fmtFor(tile, tile.measure);', chartsC.indexOf('function renderCalendar')));
     assert.ok(!/calendar: \{/.test(emptyCal) && !/visualMap/.test(emptyCal), 'aucun composant `calendar` sans plage (ECharts lèverait une exception)');
     assert.ok(!/Intl\.NumberFormat|toFixed/.test(chartsC), 'aucun format de nombre en dur dans charts.js');
     console.log('OK calendrier — valeur par jour, jours sans ligne, fenêtre d\'un an, clic = filtre du jour, export, défauts, conseils, i18n, câblage');

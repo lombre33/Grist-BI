@@ -38,10 +38,10 @@
   // quelconque choisie via le sélecteur de table (voir loadTable) : ce cas reste un point ouvert,
   // documenté dans HYPOTHESES.md plutôt que traité par une heuristique fragile sur la seule valeur.
   function epochSecondsToIsoDate(seconds) {
-    const d = new Date(seconds * 1000);
-    const yyyy = d.getUTCFullYear();
-    const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
-    const dd = String(d.getUTCDate()).padStart(2, '0');
+    const utcDate = new Date(seconds * 1000);
+    const yyyy = utcDate.getUTCFullYear();
+    const mm = String(utcDate.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(utcDate.getUTCDate()).padStart(2, '0');
     return `${yyyy}-${mm}-${dd}`;
   }
 
@@ -98,14 +98,14 @@
     last7d: (now) => [now - 6 * MS_PER_DAY, now],
     last30d: (now) => [now - 29 * MS_PER_DAY, now],
     thisMonth: (now) => {
-      const d = new Date(now);
-      const start = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1);
-      const end = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0);
+      const dateUtc = new Date(now);
+      const start = Date.UTC(dateUtc.getUTCFullYear(), dateUtc.getUTCMonth(), 1);
+      const end = Date.UTC(dateUtc.getUTCFullYear(), dateUtc.getUTCMonth() + 1, 0);
       return [start, end];
     },
     thisYear: (now) => {
-      const d = new Date(now);
-      return [Date.UTC(d.getUTCFullYear(), 0, 1), Date.UTC(d.getUTCFullYear(), 11, 31)];
+      const yearDate = new Date(now);
+      return [Date.UTC(yearDate.getUTCFullYear(), 0, 1), Date.UTC(yearDate.getUTCFullYear(), 11, 31)];
     },
     last12m: (now) => [now - 364 * MS_PER_DAY, now]
   };
@@ -599,8 +599,8 @@
     if (!(raw > 0) || !Number.isFinite(raw)) return 1;
     const exp = Math.floor(Math.log10(raw));
     const base = Math.pow(10, exp);
-    const f = raw / base;
-    const nice = f < 1.5 ? 1 : (f < 3 ? 2 : (f < 7 ? 5 : 10));
+    const ratio = raw / base;
+    const nice = ratio < 1.5 ? 1 : (ratio < 3 ? 2 : (ratio < 7 ? 5 : 10));
     return nice * base;
   }
 
@@ -768,8 +768,8 @@
     const days = Math.round(span / MS_PER_DAY);
     const kind = days > 60 ? 'month' : (days > 10 ? 'week' : 'day');
     const at = (ms) => {
-      const d = new Date(ms);
-      return { pct: (ms - minMs) / span, kind, year: d.getUTCFullYear(), month: d.getUTCMonth(), day: d.getUTCDate() };
+      const tickDate = new Date(ms);
+      return { pct: (ms - minMs) / span, kind, year: tickDate.getUTCFullYear(), month: tickDate.getUTCMonth(), day: tickDate.getUTCDate() };
     };
     const ticks = [];
     if (kind === 'month') {
@@ -993,10 +993,10 @@
   function heatColor(t, stops) {
     const x = Math.max(0, Math.min(1, Number.isFinite(t) ? t : 0)) * (stops.length - 1);
     const i = Math.min(stops.length - 2, Math.floor(x));
-    const f = x - i;
-    const a = hexToRgb(stops[i]);
-    const b = hexToRgb(stops[i + 1]);
-    return rgbToHex(a.map((c, k) => c + (b[k] - c) * f));
+    const fraction = x - i;
+    const lowerRgb = hexToRgb(stops[i]);
+    const upperRgb = hexToRgb(stops[i + 1]);
+    return rgbToHex(lowerRgb.map((c, k) => c + (upperRgb[k] - c) * fraction));
   }
   function relativeLuminance(hex) {
     const [r, g, b] = hexToRgb(hex).map((c) => {
@@ -1069,7 +1069,7 @@
     const list = seriesValues || [];
     const nCat = list.reduce((m, v) => Math.max(m, (v || []).length), 0);
     const out = list.map(() => new Array(nCat).fill(null));
-    for (let c = 0; c < nCat; c++) shareOfTotal(list.map((v) => (v || [])[c])).forEach((x, s) => { out[s][c] = x; });
+    for (let catIndex = 0; catIndex < nCat; catIndex++) shareOfTotal(list.map((v) => (v || [])[catIndex])).forEach((x, s) => { out[s][catIndex] = x; });
     return out;
   }
 
@@ -1097,8 +1097,8 @@
   function sunburstLevels(tile) {
     const out = [];
     if (!tile) return out;
-    for (const c of [tile.dimension].concat(tileDrillLevels(tile))) {
-      if (typeof c === 'string' && c && out.indexOf(c) === -1) out.push(c);
+    for (const levelColumn of [tile.dimension].concat(tileDrillLevels(tile))) {
+      if (typeof levelColumn === 'string' && levelColumn && out.indexOf(levelColumn) === -1) out.push(levelColumn);
     }
     return out.slice(0, SUNBURST_MAX_LEVELS);
   }
@@ -1119,7 +1119,7 @@
   // = 0 ; `BigInt` et chaînes numériques acceptés. Valeur du niveau en `String()` (DuckDB et les cellules numériques rendent des types variés).
   function sunburstTree(rows, levels, measureColumn, aggFn, sortMode, maxChildren) {
     const cols = [];
-    for (const c of levels || []) if (typeof c === 'string' && c && cols.indexOf(c) === -1) cols.push(c);
+    for (const drillColumn of levels || []) if (typeof drillColumn === 'string' && drillColumn && cols.indexOf(drillColumn) === -1) cols.push(drillColumn);
     cols.splice(SUNBURST_MAX_LEVELS);
     const cap = Number.isInteger(maxChildren) && maxChildren > 0 ? maxChildren : SUNBURST_MAX_CHILDREN;
     const counting = aggFn === 'count' || !measureColumn;
@@ -1130,12 +1130,12 @@
       if (!cols.length || empty(row[cols[0]])) { ignored++; continue; }
       let node = top;
       let path = [];
-      for (let d = 0; d < cols.length; d++) {
-        const cell = row[cols[d]];
+      for (let depthIndex = 0; depthIndex < cols.length; depthIndex++) {
+        const cell = row[cols[depthIndex]];
         if (empty(cell)) break;
         const name = String(cell);
         let child = node.kids.get(name);
-        if (!child) { child = { name, column: cols[d], path: path.concat([name]), own: 0, ownCount: 0, kids: new Map() }; node.kids.set(name, child); }
+        if (!child) { child = { name, column: cols[depthIndex], path: path.concat([name]), own: 0, ownCount: 0, kids: new Map() }; node.kids.set(name, child); }
         node = child;
         path = child.path;
       }
@@ -1197,7 +1197,7 @@
     const eq = (f) => f.type == null || f.type === 'eq';
     const current = (col) => filters.find((f) => f.column === col);
     const wanted = vals.map((value, i) => ({ column: cols[i], value })).filter((w) => w.column);
-    const already = (w) => { const f = current(w.column); return !!f && eq(f) && sameValue(f.value, w.value); };
+    const already = (w) => { const existingFilter = current(w.column); return !!existingFilter && eq(existingFilter) && sameValue(existingFilter.value, w.value); };
     const deeper = cols.slice(wanted.length).map((col) => current(col)).filter((f) => f && f.sourceTileId === tileId);
     if (wanted.length && wanted.every(already) && !deeper.length) return wanted;
     const out = wanted.filter((w) => !already(w));
@@ -1209,8 +1209,8 @@
   // plus profond ne concerne pas ses parents (ils contiennent la part retenue) : `path` ne couvre que les anneaux jusqu'à la part.
   function sunburstNodeSelected(activeFilters, columns, path) {
     for (let i = 0; i < (path || []).length; i++) {
-      const f = (activeFilters || []).find((x) => x.column === (columns || [])[i]);
-      if (f && !filterSelects(f, path[i])) return false;
+      const ringFilter = (activeFilters || []).find((x) => x.column === (columns || [])[i]);
+      if (ringFilter && !filterSelects(ringFilter, path[i])) return false;
     }
     return true;
   }
@@ -1243,14 +1243,14 @@
       const rows = Math.ceil(n / cols);
       const plotW = Math.max(1, (width - o.left - o.right - (cols - 1) * o.gapX) / cols);
       const plotH = Math.max(1, (height - o.bottom - rows * o.titleH - (rows - 1) * o.gapY) / rows);
-      const xs = []; for (let c = 0; c < cols; c++) xs.push(o.left + c * (plotW + o.gapX));
+      const xs = []; for (let colIndex = 0; colIndex < cols; colIndex++) xs.push(o.left + colIndex * (plotW + o.gapX));
       const ys = []; for (let r = 0; r < rows; r++) ys.push(r * (o.titleH + plotH + o.gapY) + o.titleH);
       return { cols, rows, plotW, plotH, xs, ys, titleH: o.titleH, empty: cols * rows - n };
     };
     let best = null;
     if (!(width > 0) || !(height > 0)) {
-      const c = Math.ceil(Math.sqrt(n));
-      best = build(c);
+      const squareCols = Math.ceil(Math.sqrt(n));
+      best = build(squareCols);
     } else {
       for (let cols = 1; cols <= n; cols++) {
         const g = build(cols);
@@ -1286,12 +1286,12 @@
       for (const m of [1, 2, 2.5, 5, 10]) {
         const step = roundTo(m * Math.pow(10, e), 10);
         if (m === 2.5 && !Number.isInteger(step)) continue;
-        const a = Math.floor(lo / step + 1e-9);
-        const b = Math.ceil(hi / step - 1e-9);
-        const intervals = b - a;
+        const firstTick = Math.floor(lo / step + 1e-9);
+        const lastTick = Math.ceil(hi / step - 1e-9);
+        const intervals = lastTick - firstTick;
         if (intervals < Math.min(2, cap) || intervals > cap) continue; // au moins deux intervalles : une échelle « 0 et 100 » seule ne se lit pas
         const extent = intervals * step;
-        if (!best || extent < best.extent - 1e-9 || (Math.abs(extent - best.extent) <= 1e-9 && step > best.step)) best = { extent, step, a, b };
+        if (!best || extent < best.extent - 1e-9 || (Math.abs(extent - best.extent) <= 1e-9 && step > best.step)) best = { extent, step, a: firstTick, b: lastTick };
       }
     }
     if (!best) { const step = niceStep(span / cap); return { min: roundTo(Math.floor(lo / step + 1e-9) * step, 10), max: roundTo(Math.ceil(hi / step - 1e-9) * step, 10), step }; }
@@ -1531,12 +1531,12 @@
     if (!column || (dir !== 'asc' && dir !== 'desc')) return rows;
     const sign = dir === 'desc' ? -1 : 1;
     return rows.slice().sort((r1, r2) => {
-      const a = r1[column];
-      const b = r2[column];
-      const ae = isEmptyCell(a);
-      const be = isEmptyCell(b);
+      const leftValue = r1[column];
+      const rightValue = r2[column];
+      const ae = isEmptyCell(leftValue);
+      const be = isEmptyCell(rightValue);
       if (ae || be) return ae === be ? 0 : (ae ? 1 : -1);
-      return sign * compareCells(a, b);
+      return sign * compareCells(leftValue, rightValue);
     });
   }
 
@@ -1967,10 +1967,10 @@
     return (rows || []).map((row) => {
       const ms = parseDateValue(row[dateColumn]);
       if (ms == null) return Object.assign({}, row, { [anneeKey]: null, [trimestreKey]: null, [moisKey]: null });
-      const d = new Date(ms);
-      const month = d.getUTCMonth(); // 0-11
+      const rowDate = new Date(ms);
+      const month = rowDate.getUTCMonth(); // 0-11
       return Object.assign({}, row, {
-        [anneeKey]: d.getUTCFullYear(),
+        [anneeKey]: rowDate.getUTCFullYear(),
         [trimestreKey]: `T${Math.floor(month / 3) + 1}`,
         [moisKey]: String(month + 1).padStart(2, '0')
       });

@@ -151,17 +151,17 @@
   function toHex(rgb) { return `#${rgb.map((v) => v.toString(16).padStart(2, '0')).join('')}`; }
   // `amount` (0..1) de `toward` mélangé à `color`. 0 -> `color`, 1 -> `toward`.
   function mixColors(color, toward, amount) {
-    const a = parseColor(color);
-    const b = parseColor(toward);
-    if (!a || !b) return color;
+    const fromRgb = parseColor(color);
+    const towardRgb = parseColor(toward);
+    if (!fromRgb || !towardRgb) return color;
     const t = Math.max(0, Math.min(1, Number(amount) || 0));
-    return toHex(a.map((v, i) => Math.round(v * (1 - t) + b[i] * t)));
+    return toHex(fromRgb.map((v, i) => Math.round(v * (1 - t) + towardRgb[i] * t)));
   }
   // Luminance relative (0 noir .. 1 blanc) d'une couleur lisible par `parseColor` ; null sinon.
   function luminance(input) {
     const rgb = parseColor(input);
     if (!rgb) return null;
-    const lin = rgb.map((v) => { const c = v / 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); });
+    const lin = rgb.map((v) => { const channel = v / 255; return channel <= 0.03928 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4); });
     return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2];
   }
   // Teinte douce d'une couleur UNIQUE. Une teinte « vers la couleur de la carte » donne un pastel sur une carte claire mais, sur une
@@ -188,10 +188,10 @@
     const lum = th && th.surface ? luminance(th.surface) : null;
     if (lum === null || lum >= 0.2 || !th.text) return color;
     for (let amount = 0; amount <= 0.8; amount += 0.08) {
-      const c = amount === 0 ? color : mixColors(color, th.text, amount);
-      const ratio = contrastRatio(c, th.surface);
+      const mixedColor = amount === 0 ? color : mixColors(color, th.text, amount);
+      const ratio = contrastRatio(mixedColor, th.surface);
       if (ratio === null) return color;
-      if (ratio >= min) return c;
+      if (ratio >= min) return mixedColor;
     }
     return mixColors(color, th.text, 0.8);
   }
@@ -199,8 +199,8 @@
   function withAlpha(color, alpha) {
     const rgb = parseColor(color);
     if (!rgb) return null;
-    const a = Math.max(0, Math.min(1, Number(alpha)));
-    return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${Math.round(a * 1000) / 1000})`;
+    const clampedAlpha = Math.max(0, Math.min(1, Number(alpha)));
+    return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${Math.round(clampedAlpha * 1000) / 1000})`;
   }
   // Dégradé linéaire ECharts (objet simple, sans classe : ce fichier ne dépend pas d'ECharts) de `color`, d'une opacité `from` à une
   // opacité `to`. `direction` : 'down' (haut -> bas), 'right' (gauche -> droite). null si la couleur n'est pas lisible.
@@ -408,19 +408,19 @@
   // Retouche `option` (ECharts) selon `style` et rend la même option. `th` : les couleurs de la page lues par js/charts.js:chartTheme
   // ({ text, surface, ... }). Sans réglage `chart` (Standard) : option rendue telle quelle, pas une copie, pas une propriété touchée.
   function applyToOption(option, style, th) {
-    const c = style && style.chart;
-    if (!option || !c) return option;
+    const chartStyle = style && style.chart;
+    if (!option || !chartStyle) return option;
     const theme = th || {};
     const state = { valueLabels: false };
-    styleBars(option, c, theme, state); // d'abord : décide si l'axe des valeurs disparaît
-    styleLines(option, c, theme);
-    styleSlices(option, c, theme);
-    styleAxes(option, c, state);
-    if (option.legend && c.legendIcon) option.legend = Object.assign({ icon: c.legendIcon, itemWidth: 10, itemHeight: 10 }, option.legend);
-    if (option.tooltip && c.tooltipRadius != null) {
+    styleBars(option, chartStyle, theme, state); // d'abord : décide si l'axe des valeurs disparaît
+    styleLines(option, chartStyle, theme);
+    styleSlices(option, chartStyle, theme);
+    styleAxes(option, chartStyle, state);
+    if (option.legend && chartStyle.legendIcon) option.legend = Object.assign({ icon: chartStyle.legendIcon, itemWidth: 10, itemHeight: 10 }, option.legend);
+    if (option.tooltip && chartStyle.tooltipRadius != null) {
       const css = typeof option.tooltip.extraCssText === 'string' ? option.tooltip.extraCssText.trim() : '';
       const sep = css && !css.endsWith(';') ? ';' : '';
-      option.tooltip = Object.assign({}, option.tooltip, { extraCssText: `${css}${sep} border-radius: ${c.tooltipRadius}px;`.trim() });
+      option.tooltip = Object.assign({}, option.tooltip, { extraCssText: `${css}${sep} border-radius: ${chartStyle.tooltipRadius}px;`.trim() });
     }
     return option;
   }

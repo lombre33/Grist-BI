@@ -70,9 +70,9 @@
   const intlCache = new Map();
   function intl(locale, options) {
     const key = `${locale}|${JSON.stringify(options)}`;
-    let f = intlCache.get(key);
-    if (!f) { f = new Intl.NumberFormat(locale, options); intlCache.set(key, f); }
-    return f;
+    let cachedIntl = intlCache.get(key);
+    if (!cachedIntl) { cachedIntl = new Intl.NumberFormat(locale, options); intlCache.set(key, cachedIntl); }
+    return cachedIntl;
   }
 
   // Une échelle de valeurs (jauge, classes d'un histogramme) dont les deux bouts sont des ENTIERS de moins de 5 chiffres
@@ -82,17 +82,17 @@
   // valeur isolée : sur un même axe, « 1000 » à côté de « 1,5 k » se lirait comme deux unités différentes.
   const PLAIN_SCALE_BELOW = 10000;
   function plainScale(lo, hi) {
-    const a = toNumber(lo);
-    const b = toNumber(hi);
-    return a != null && b != null && Number.isInteger(a) && Number.isInteger(b) && Math.max(Math.abs(a), Math.abs(b)) < PLAIN_SCALE_BELOW;
+    const lowValue = toNumber(lo);
+    const highValue = toNumber(hi);
+    return lowValue != null && highValue != null && Number.isInteger(lowValue) && Number.isInteger(highValue) && Math.max(Math.abs(lowValue), Math.abs(highValue)) < PLAIN_SCALE_BELOW;
   }
 
   // Règle d'Automatique, par magnitude de la valeur (voir l'en-tête).
   function autoOptions(n) {
-    const a = Math.abs(n);
-    if (a === 0 || a >= 1000) return { maximumFractionDigits: 0 };
-    if (a >= 100) return { maximumFractionDigits: 1 };
-    if (a >= 0.1) return { maximumFractionDigits: 2 };
+    const magnitude = Math.abs(n);
+    if (magnitude === 0 || magnitude >= 1000) return { maximumFractionDigits: 0 };
+    if (magnitude >= 100) return { maximumFractionDigits: 1 };
+    if (magnitude >= 0.1) return { maximumFractionDigits: 2 };
     return { maximumSignificantDigits: 2 };
   }
 
@@ -166,8 +166,8 @@
   function normalizeSpec(spec) {
     if (!spec || typeof spec !== 'object' || !MODES.includes(spec.mode)) return { mode: 'auto' };
     if (spec.mode === 'custom') {
-      const d = spec.decimals;
-      const decimals = (Number.isInteger(d) && d >= 0 && d <= MAX_CUSTOM_DECIMALS) ? d : 'auto';
+      const requestedDecimals = spec.decimals;
+      const decimals = (Number.isInteger(requestedDecimals) && requestedDecimals >= 0 && requestedDecimals <= MAX_CUSTOM_DECIMALS) ? requestedDecimals : 'auto';
       return { mode: 'custom', decimals, notation: spec.notation === 'compact' ? 'compact' : 'standard' };
     }
     return { mode: spec.mode };
@@ -175,10 +175,10 @@
 
   // ctx : { lang, column?: { type, widgetOptions }, docSettings?: { locale, currency } }
   function resolveStyle(spec, ctx) {
-    const c = ctx || {};
+    const context = ctx || {};
     const s = normalizeSpec(spec);
-    const uiLocale = localeForLang(c.lang);
-    if (s.mode === 'column' && c.column) return styleFromColumn(c.column, c.docSettings, c.lang);
+    const uiLocale = localeForLang(context.lang);
+    if (s.mode === 'column' && context.column) return styleFromColumn(context.column, context.docSettings, context.lang);
     if (s.mode === 'custom') {
       return {
         locale: uiLocale, kind: 'decimal', currency: null, parens: false,
@@ -314,12 +314,12 @@
     const spec = normalizeSpec(tile && tile.numberFormat);
     const useColumn = spec.mode === 'column' && !(tile && tile.aggFn === 'count') && columnRegistry[columnId];
     const key = `${lang}|${JSON.stringify(spec)}|${useColumn ? columnId : ''}`;
-    let f = formatterCache.get(key);
-    if (!f) {
-      f = makeFormatter(resolveStyle(spec, { lang, column: useColumn ? columnRegistry[columnId] : null, docSettings: docSettingsRegistry }));
-      formatterCache.set(key, f);
+    let cachedFormatter = formatterCache.get(key);
+    if (!cachedFormatter) {
+      cachedFormatter = makeFormatter(resolveStyle(spec, { lang, column: useColumn ? columnRegistry[columnId] : null, docSettings: docSettingsRegistry }));
+      formatterCache.set(key, cachedFormatter);
     }
-    return f;
+    return cachedFormatter;
   }
 
   // Texte d'un nombre dans une TABLE PLATE (tuile `table`) : la donnée telle quelle, pas un chiffre clé. Automatique =
@@ -378,12 +378,12 @@
       let top = 0;
       let side = 0;
       for (const t of list) {
-        const a = Math.PI * (1 - t.frac);
-        const c = Math.abs(Math.cos(a));
-        const sn = Math.sin(a);
+        const tickAngle = Math.PI * (1 - t.frac);
+        const cosine = Math.abs(Math.cos(tickAngle));
+        const sn = Math.sin(tickAngle);
         const tw = t.w10 * font / 10;
         top = Math.max(top, R * sn + (sn > 0.6 ? 1.25 : 0.65) * font - r);
-        side = Math.max(side, R * c + (c > 0.35 ? tw : tw / 2) - r);
+        side = Math.max(side, R * cosine + (cosine > 0.35 ? tw : tw / 2) - r);
       }
       return { top: Math.max(0, top), side: Math.max(0, side), font, len, gap, off };
     };
@@ -435,8 +435,8 @@
       const out = [];
       for (let k = Math.ceil(lo / step - 1e-9); k * step <= hi + step * 1e-9; k++) {
         const v = Number((k * step).toPrecision(12));
-        const f = (v - lo) / range;
-        if (f > GAUGE_TICK_EDGE && f < 1 - GAUGE_TICK_EDGE) out.push(v === 0 ? 0 : v);
+        const tickFraction = (v - lo) / range;
+        if (tickFraction > GAUGE_TICK_EDGE && tickFraction < 1 - GAUGE_TICK_EDGE) out.push(v === 0 ? 0 : v);
         if (out.length > cap + 40) break; // pas bien trop fin : inutile de continuer à compter
       }
       return out;
@@ -455,17 +455,17 @@
   // (x1,y1 -> x2,y2, juste au-delà de l'arc) puis le point d'ancrage du libellé et son alignement — vers l'extérieur :
   // à droite d'un repère de droite, à gauche d'un repère de gauche, au-dessus d'un repère du haut.
   function gaugeTickPlacement(L, frac) {
-    const a = Math.PI * (1 - frac);
-    const c = Math.cos(a);
-    const sn = Math.sin(a);
+    const placeAngle = Math.PI * (1 - frac);
+    const placeCosine = Math.cos(placeAngle);
+    const sn = Math.sin(placeAngle);
     const r1 = L.r + 2;
     const r2 = r1 + L.tick.len;
     const rl = L.r + L.tick.off;
     return {
-      x1: L.cx + r1 * c, y1: L.cy - r1 * sn,
-      x2: L.cx + r2 * c, y2: L.cy - r2 * sn,
-      x: L.cx + rl * c, y: L.cy - rl * sn,
-      align: c > 0.35 ? 'left' : c < -0.35 ? 'right' : 'center',
+      x1: L.cx + r1 * placeCosine, y1: L.cy - r1 * sn,
+      x2: L.cx + r2 * placeCosine, y2: L.cy - r2 * sn,
+      x: L.cx + rl * placeCosine, y: L.cy - rl * sn,
+      align: placeCosine > 0.35 ? 'left' : placeCosine < -0.35 ? 'right' : 'center',
       valign: sn > 0.6 ? 'bottom' : 'middle'
     };
   }

@@ -28,10 +28,10 @@
   const H = 64;
   const PAD = 8;
 
-  const f = (n) => Math.round(n * 100) / 100;
+  const round2 = (n) => Math.round(n * 100) / 100;
 
   function arcPoint(cx, cy, r, angle) {
-    return [f(cx + r * Math.sin(angle)), f(cy - r * Math.cos(angle))];
+    return [round2(cx + r * Math.sin(angle)), round2(cy - r * Math.cos(angle))];
   }
 
   function pieShapes(values, donut) {
@@ -40,7 +40,7 @@
     const r = (H - 2 * PAD) / 2;
     if (values.length === 1) {
       return donut
-        ? `<circle cx="${cx}" cy="${cy}" r="${f(r - 6)}" fill="none" stroke="${PALETTE[0]}" stroke-width="12"/>`
+        ? `<circle cx="${cx}" cy="${cy}" r="${round2(r - 6)}" fill="none" stroke="${PALETTE[0]}" stroke-width="12"/>`
         : `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${PALETTE[0]}"/>`;
     }
     let from = 0;
@@ -70,7 +70,7 @@
     const bh = innerH / values.length;
     return values.map((v, i) => {
       const w = Math.max(4, v * innerW);
-      return `<rect x="${f((W - w) / 2)}" y="${f(PAD + i * bh + 1)}" width="${f(w)}" height="${f(bh - 2)}" rx="1.5" fill="${PALETTE[i % PALETTE.length]}"/>`;
+      return `<rect x="${round2((W - w) / 2)}" y="${round2(PAD + i * bh + 1)}" width="${round2(w)}" height="${round2(bh - 2)}" rx="1.5" fill="${PALETTE[i % PALETTE.length]}"/>`;
     }).join('');
   }
 
@@ -82,11 +82,11 @@
     const innerW = W - 2 * PAD;
     const innerH = H - 2 * PAD;
     const leftW = rest.length ? innerW * Math.max(0.3, Math.min(0.6, left / (left + total))) : innerW;
-    let out = `<rect x="${PAD}" y="${PAD}" width="${f(leftW - 1)}" height="${innerH}" fill="${PALETTE[0]}" rx="1.5"/>`;
+    let out = `<rect x="${PAD}" y="${PAD}" width="${round2(leftW - 1)}" height="${innerH}" fill="${PALETTE[0]}" rx="1.5"/>`;
     let y = PAD;
     rest.forEach((v, i) => {
       const h = innerH * (v / total);
-      out += `<rect x="${f(PAD + leftW + 1)}" y="${f(y)}" width="${f(innerW - leftW - 1)}" height="${f(Math.max(1, h - 1))}" fill="${PALETTE[(i + 1) % PALETTE.length]}" rx="1.5"/>`;
+      out += `<rect x="${round2(PAD + leftW + 1)}" y="${round2(y)}" width="${round2(innerW - leftW - 1)}" height="${round2(Math.max(1, h - 1))}" fill="${PALETTE[(i + 1) % PALETTE.length]}" rx="1.5"/>`;
       y += h;
     });
     return out;
@@ -117,20 +117,20 @@
         const n = p.values.length;
         if (p.horizontal) {
           const bh = innerH / n;
-          body = p.values.map((v, i) => `<rect x="${PAD}" y="${f(PAD + i * bh + bh * 0.15)}" width="${f(Math.max(2, v * innerW))}" height="${f(bh * 0.7)}" rx="1.5" fill="${PALETTE[0]}"/>`).join('');
+          body = p.values.map((v, i) => `<rect x="${PAD}" y="${round2(PAD + i * bh + bh * 0.15)}" width="${round2(Math.max(2, v * innerW))}" height="${round2(bh * 0.7)}" rx="1.5" fill="${PALETTE[0]}"/>`).join('');
         } else {
           const bw = innerW / n;
           body = p.values.map((v, i) => {
             const h = Math.max(2, v * innerH);
-            return `<rect x="${f(PAD + i * bw + bw * 0.15)}" y="${f(H - PAD - h)}" width="${f(bw * 0.7)}" height="${f(h)}" rx="1.5" fill="${PALETTE[0]}"/>`;
+            return `<rect x="${round2(PAD + i * bw + bw * 0.15)}" y="${round2(H - PAD - h)}" width="${round2(bw * 0.7)}" height="${round2(h)}" rx="1.5" fill="${PALETTE[0]}"/>`;
           }).join('');
         }
         break;
       }
       case 'line': {
         const n = p.values.length;
-        const pts = p.values.map((v, i) => `${f(PAD + (i * innerW) / (n - 1))},${f(H - PAD - v * innerH)}`);
-        if (p.area) body += `<polygon points="${f(PAD)},${H - PAD} ${pts.join(' ')} ${f(W - PAD)},${H - PAD}" fill="${PALETTE[0]}" fill-opacity="0.25"/>`;
+        const pts = p.values.map((v, i) => `${round2(PAD + (i * innerW) / (n - 1))},${round2(H - PAD - v * innerH)}`);
+        if (p.area) body += `<polygon points="${round2(PAD)},${H - PAD} ${pts.join(' ')} ${round2(W - PAD)},${H - PAD}" fill="${PALETTE[0]}" fill-opacity="0.25"/>`;
         body += `<polyline points="${pts.join(' ')}" fill="none" stroke="${PALETTE[0]}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
         break;
       }
@@ -154,7 +154,7 @@
         break;
       }
       case 'points':
-        body = p.points.map((pt) => `<circle cx="${f(PAD + pt.x * innerW)}" cy="${f(H - PAD - pt.y * innerH)}" r="2.6" fill="${PALETTE[0]}" fill-opacity="0.8"/>`).join('');
+        body = p.points.map((pt) => `<circle cx="${round2(PAD + pt.x * innerW)}" cy="${round2(H - PAD - pt.y * innerH)}" r="2.6" fill="${PALETTE[0]}" fill-opacity="0.8"/>`).join('');
         break;
       case 'radar':
         body = radarShapes(p.values);
@@ -174,9 +174,9 @@
         const cw = innerW / cols;
         const rh = innerH / rowsN;
         for (let r = 0; r < rowsN; r++) {
-          for (let c = 0; c < cols; c++) {
-            const header = r === 0 || c === 0;
-            body += `<rect x="${f(PAD + c * cw + 1)}" y="${f(PAD + r * rh + 1)}" width="${f(cw - 2)}" height="${f(rh - 2)}" rx="1.5" fill="${PALETTE[0]}" fill-opacity="${header ? 0.55 : 0.18 + ((r * 3 + c * 5) % 4) * 0.1}"/>`;
+          for (let colIndex = 0; colIndex < cols; colIndex++) {
+            const header = r === 0 || colIndex === 0;
+            body += `<rect x="${round2(PAD + colIndex * cw + 1)}" y="${round2(PAD + r * rh + 1)}" width="${round2(cw - 2)}" height="${round2(rh - 2)}" rx="1.5" fill="${PALETTE[0]}" fill-opacity="${header ? 0.55 : 0.18 + ((r * 3 + colIndex * 5) % 4) * 0.1}"/>`;
           }
         }
         break;
