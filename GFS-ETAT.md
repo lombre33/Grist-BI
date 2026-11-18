@@ -1,6 +1,6 @@
 # GFS-ETAT : Grist-BI
 
-Mis à jour le 2026-11-18 (demande `pdfjs-dist` corrigée : GFS porte déjà cette bibliothèque en module ; ECharts 6.1.0 noté dans « Changements qui touchent GFS » ; consigne 016 faite, `consignes/bi/INDEX.md` à `47365bc` ou plus récent). La
+Mis à jour le 2026-11-18 (demande `pdfjs` refaite : GFS porte déjà cette bibliothèque en module, `js/pdf-text.js` adapté ; ECharts 6.1.0 noté dans « Changements qui touchent GFS » ; consigne 016 faite, `consignes/bi/INDEX.md` à `47365bc` ou plus récent). La
 011 n'a pas été lue (remplacée par la 012 avant lecture, consigne explicite d'Antoine).
 
 ## Consignes
@@ -252,6 +252,7 @@ Mis à jour le 2026-11-18 (demande `pdfjs-dist` corrigée : GFS porte déjà cet
   ligne « modeles » dans « Demandes à GFS ».
 
 ## Changements qui touchent GFS
+- 2026-11-18 · `js/pdf-text.js` adapté à la forme que GFS fournit pour `pdfjs` (module dans `GfsPaquets`, plus de global `window.pdfjsLib`) ; toujours rien de branché dans `index.html`. Voir la demande `pdfjs` plus bas.
 - 2026-11-18 · ECharts monté de la 5.6.0 à la **6.1.0** (dernière stable du registre npm, 19/05/2026, même version que
   celle que GFS donne à l'extension « Graphique » de Publipostage+). **Ce n'est pas une demande à GFS** : ECharts est la
   bibliothèque dont cette app ne peut pas se passer pour tourner seule, donc elle reste dans le dépôt de l'app
@@ -339,22 +340,17 @@ Mis à jour le 2026-11-18 (demande `pdfjs-dist` corrigée : GFS porte déjà cet
   (`drawWordCloud`/`hitTestWordCloud`), déjà vérifié avec un stub écrit à la main reproduisant
   l'API documentée (jamais le vrai paquet, non exécutable dans un navigateur depuis ce sandbox,
   même limite que pour les demandes précédentes de ce fichier).
-- **`pdfjs-dist`** · version exacte **`6.5.438`** (dernière stable au moment de la demande,
-  03/11/2026, vérifiée sur le registre npm) · fonction concernée : `js/pdf-text.js:extractTextFromPdf`,
-  consommée ensuite par `js/keywords.js:extractKeywords` pour les mots-clés automatiques à l'ajout
-  d'une publication · usage en une phrase : extraire le texte brut d'un PDF déposé en pièce jointe
-  Grist, entièrement côté client, sans jamais envoyer le fichier à un service externe.
-  **Correction du 18/11/2026** (relevé dans `lombre33/grist-widget-GFS`) : GFS porte DÉJÀ cette même
-  version exacte (`pdfjs-dist` 6.5.438, bibliothèque `pdfjs` 1.0.0, forme `module`, vendorisée, avec son
-  worker : `pdfjs-dist/build/pdf.min.mjs` et `pdf.worker.min.mjs`) pour l'extension `lecture-pdf` de
-  Publipostage+. La demande se réduit donc à : déclarer une extension de Grist-BI qui s'appuie sur cette
-  bibliothèque et dire comment l'app la reçoit. Le texte d'origine ci-dessous (un global
-  `window.pdfjsLib`, build UMD) ne correspond PAS à ce que GFS fournit (ESM, pas de global) : à ne pas
-  suivre. `js/pdf-text.js` sera adapté dès que la consigne de réponse dit la forme (spécificateur nu
-  dans l'`importmap`, comme `d3-cloud`, ou autre) ; il n'est branché nulle part d'ici là. Même réserve
-  que GFS le note lui-même : pdf.js 6 veut `Map.getOrInsertComputed` (Chrome/Edge 145, Firefox 144) ;
-  sur un navigateur plus ancien l'app dira « mettez-le à jour », rien ne casse.
-  (Texte d'origine du 03/11/2026 :) Détail technique pour le choix du build/CDN : le code attend un
-  global `window.pdfjsLib` (build UMD classique, ex. `legacy/build/pdf.js` du paquet npm) ET un
-  fichier worker séparé (`pdf.worker.js`/`.mjs`) — sans `pdfjsLib.GlobalWorkerOptions.workerSrc`
-  configuré vers ce worker, PDF.js échoue silencieusement à l'exécution.
+- **`pdfjs`** (la bibliothèque que GFS porte déjà : `pdfjs` 1.0.0, forme `module`, contient `pdfjs-dist` **6.5.438**) ·
+  `pdfjs-dist` 6.5.438, modules `pdfjs-dist/build/pdf.min.mjs` et `pdfjs-dist/build/pdf.worker.min.mjs` · fonction :
+  `js/pdf-text.js:extractTextFromPdf`, consommée par `js/keywords.js:extractKeywords` pour les mots-clés automatiques à
+  l'ajout d'une publication · à quoi elle sert : lire le texte d'un PDF déposé en pièce jointe Grist, entièrement dans le
+  navigateur, sans envoyer le fichier nulle part. Demande du 03/11/2026, **refaite le 18/11/2026** : la première version
+  supposait un global `window.pdfjsLib` (UMD), que GFS ne fournit pas. Ce qu'il y a à faire côté GFS : déclarer une
+  extension de Grist-BI (`manifestes/bi.json`) qui prend la bibliothèque `pdfjs` 1.0.0, et dire dans la consigne comment
+  l'app reçoit `{ src, integrite, forme }`. Côté app, c'est prêt : `js/pdf-text.js` lit
+  `globalThis.GfsPaquets.pdfjs.modules['pdfjs-dist/build/pdf.min.mjs']` et sait charger `src` par `<script type="module"
+  integrity crossorigin>` (`loadLibrary(source)`), comme la sonde Y de GFS ; il ouvre le PDF avec `getDocument({ data,
+  isEvalSupported: false, verbosity: 0 })`. Rien n'est encore branché dans `index.html` ni dans `js/main.js` (pas de `<script>`,
+  pas de CSP changée) : l'app tourne comme avant sans l'extension. Testé sous Node avec un faux module posé dans
+  `GfsPaquets` (`dev-tests/test-data.js`), jamais avec le vrai pdf.js ni dans une copie de GFS. pdf.js 6 demande
+  `Map.getOrInsertComputed` (Chrome/Edge 145, Firefox 144) : sur un navigateur plus ancien l'app le dira, rien ne casse.
