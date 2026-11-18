@@ -346,7 +346,17 @@
   </p>
 
   <div class="workspace" id="workspace">
-  <div class="workspace-main">
+  <div class="workspace-main" id="workspace-main">
+  
+  <section id="tiles-focus" class="tiles-focus" role="region" data-i18n-aria="zoom.zone.aria" aria-label="Tuiles agrandies" hidden>
+    <div class="tiles-focus-bar">
+      <span id="tiles-focus-label" class="tiles-focus-label"></span>
+      <button id="tiles-focus-reset" type="button" class="btn-secondary btn-chip">
+        <svg class="icon icon-collapse" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M6.5 2.5v4h-4M9.5 13.5v-4h4M2.5 6.5l4-4M13.5 9.5l-4 4"/></svg><span data-i18n="zoom.reset">Tout réduire</span>
+      </button>
+    </div>
+    <div id="tiles-focus-grid" class="tiles-focus-grid"></div>
+  </section>
   <main id="tiles" class="tiles" role="tabpanel"></main>
   
   <section id="welcome" class="welcome">

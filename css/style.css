@@ -921,6 +921,46 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   gap: 14px;
 }
 
+/* Zone d'agrandissement (retours d'Antoine du 18/11/2026, point 8) : au-dessus de la grille, dans le même
+   flux (ni fenêtre ni `position: fixed`). Une tuile agrandie occupe toute la largeur ; deux ou plus se
+   partagent la ligne tant que chacune garde ~440 px. La hauteur reste FIXE (piège n°8 : jamais dépendante du
+   contenu du graphique), simplement plus grande que celle d'une tuile de la grille et proportionnelle à la
+   hauteur de la fenêtre du widget. */
+.tiles-focus {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px dashed var(--border-strong);
+}
+.tiles-focus[hidden] { display: none; }
+.tiles-focus-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.tiles-focus-label {
+  font-family: var(--font-label, inherit);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-label, 0.03em);
+}
+.tiles-focus-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr));
+  gap: 14px;
+}
+.tile.tile-zoomed {
+  height: clamp(340px, 62vh, 680px);
+  border-color: var(--accent-soft-border);
+  box-shadow: var(--shadow-float);
+}
+.tile-zoomed .tile-header { font-size: 14px; }
+.tile-zoomed .tile-kpi-value { font-size: clamp(48px, 9vw, 84px); }
+.tile-zoomed .tile-kpi-label { font-size: 13px; }
+.tile-zoomed .tile-kpi-trend { font-size: 14px; }
+/* Réordonner n'a pas de sens dans la zone d'agrandissement (l'ordre est celui de la grille). */
+.tile-zoomed .tile-move-left, .tile-zoomed .tile-move-right { display: none; }
+
 .tile {
   background: var(--surface);
   border: var(--bw, 1px) solid var(--border);
@@ -970,7 +1010,7 @@ body[data-mode="edit"] .tile-actions button:not(:disabled), .tile-actions .tile-
 body[data-mode="edit"] .tile-actions button:disabled { opacity: 0.3; }
 @media (hover: none) { .tile-actions button:not(:disabled) { opacity: 1; } }
 
-.tile-move-left, .tile-move-right, .tile-edit, .tile-remove, .tile-comments, .tile-detail {
+.tile-move-left, .tile-move-right, .tile-edit, .tile-remove, .tile-comments, .tile-detail, .tile-zoom {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -987,7 +1027,11 @@ body[data-mode="edit"] .tile-actions button:disabled { opacity: 0.3; }
 .tile-move-left:disabled, .tile-move-right:disabled { opacity: 0.3; cursor: default; }
 .tile-move-left:hover:not(:disabled), .tile-move-right:hover:not(:disabled) { color: var(--accent); }
 .tile-edit:hover { color: var(--accent); }
-.tile-comments:hover, .tile-detail:hover { background: var(--surface-sunken); color: var(--accent); }
+.tile-comments:hover, .tile-detail:hover, .tile-zoom:hover { background: var(--surface-sunken); color: var(--accent); }
+.tile-zoom[aria-pressed="true"] { color: var(--accent-ink); }
+/* Agrandir / réduire : une seule icône à la fois selon l'état de la tuile. */
+.tile-zoom .icon-collapse, .tile-zoomed .tile-zoom .icon-expand { display: none; }
+.tile-zoomed .tile-zoom .icon-collapse { display: inline-block; }
 .tile-remove:hover { color: var(--critical); }
 .tile-comments { position: relative; }
 .tile-comments-count {

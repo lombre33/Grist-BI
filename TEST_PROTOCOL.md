@@ -767,6 +767,18 @@ délibérément laissé de côté (contenu généré par `js/data.js`/`js/demo-d
 - [ ] **[NON TESTABLE ICI]** vrai Grist / GFS ⬜ ; lecteur d'écran réel (pas de zone `aria-live` sur « modifiée ») ⬜
 - Pièges de test : (1) la démo (`demo/preseed.json`) contient DÉJÀ 4 vues : un test « liste vide » doit partir d'une copie dont `bookmarks` est vidé ; (2) dans le cadre isolé la langue ne peut pas être forcée par `localStorage` (origine opaque) : tester l'anglais en page directe ; (3) le libellé du compteur de lignes dépend de la langue (`ligne`/`row`) : ne pas s'en servir comme signal de chargement en dur ; (4) cliquer dans la fenêtre de confirmation compte comme un clic hors du menu, qui se referme.
 
+### `js/state.js` + `js/main.js` + `index.html` + `css/style.css` — agrandir une tuile sur place (retours d'Antoine, 18/11/2026, point 8 ; Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`, page directe, `<iframe sandbox="allow-scripts">`, anglais à 1300 px, 420 px)
+
+- [x] État : plusieurs tuiles agrandies exposées dans l'ordre d'AFFICHAGE, toggle, id inconnu = no-op, aucune nouvelle référence de `pages` (rien à persister), `clearZoom` sans effet ne notifie pas ✅ (Node)
+- [x] Nettoyage : supprimer une tuile / une page / `setPages` retirent les ids disparus, une tuile recréée n'est pas agrandie ; multi-pages : agrandissement mémorisé par tuile, `getState` n'expose que la page courante ✅ (Node)
+- [x] Bouton Agrandir sur chaque tuile : `aria-pressed`, nom accessible qui change (Agrandir / Réduire), une seule icône visible 🌐
+- [x] Zone : masquée au départ, au-DESSUS de la grille, pleine largeur pour une tuile, côte à côte pour deux, libellé au pluriel, ordre d'affichage conservé, tuiles de la grille inchangées et dans le même ordre 🌐
+- [x] MÊME instance ECharts (non détruite) déplacée et redimensionnée (largeur ×1,5 au moins), canvas contenu dans la tuile, hauteur stable sur 5 mesures espacées de 350 ms (piège n°8), retour à la taille d'origine à la réduction 🌐
+- [x] Un clic sur une barre de la tuile AGRANDIE pose un filtre croisé ; carte KPI agrandie : chiffre ≥ 1,4× plus grand 🌐
+- [x] « Tout réduire », réduction par le bouton de la tuile, changement de page (zone masquée puis retrouvée), Édition (déplacer masqué, modifier/supprimer disponibles, supprimer une tuile agrandie), panneau d'ajout ouvert (la zone reste dans la colonne de gauche), 420 px sans défilement horizontal, aucune erreur de console 🌐
+- [ ] **[NON TESTABLE ICI]** vrai Grist / GFS ⬜ ; widget de moins de 400 px de haut ⬜
+- Pièges de test : (1) `locator.evaluate(fn, arg)` passe l'ÉLÉMENT en 1er paramètre, l'argument en 2e (`(el, id) => …`) — un `(id) => …` reçoit le `<body>` et `getInstance` rend `null` sans erreur claire ; (2) la démo au-delà de 5 000 lignes passe par DuckDB : les valeurs et les catégories sont des `BigInt` (`JSON.stringify` et `convertToPixel` échouent) — viser une barre par son INDICE (`[0, v/2]`) et stringifier ; (3) `innerText` rend le texte APRÈS `text-transform` (« 1 TUILE AGRANDIE ») ; (4) la 1re version de `.tile-zoomed` perdait contre `.tile { height: 224px }` (même spécificité, `.tile` défini plus bas) : sélecteur `.tile.tile-zoomed`, attrapé par la mesure de hauteur, jamais « à l'œil ».
+
 ### `js/models.js` + `modeles/` + `js/main.js:openModelById` — modèles de « Nouveau > Depuis un modèle » (consigne GFS 016, 18/11/2026, Node ; Playwright contre le vrai `index.html` dans un `<iframe sandbox="allow-scripts">` servi par un FAUX GFS parent, avec le vrai kit 0.24.0)
 
 - [x] `models.build` sur le jeu de test pour les 3 modèles, fr ET en : de 3 à 6 tuiles, vraies colonnes, agrégat valide par tuile, tuiles sans `id`, ajout au store ✅

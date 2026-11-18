@@ -3028,6 +3028,35 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     **Non vérifié** : un vrai Grist / GFS ; lecteur d'écran réel ; l'annonce vocale du passage à « modifiée » (pas de zone
     `aria-live`).
 
+- **Retours d'Antoine sur la nouvelle interface, 3e partie : agrandir une tuile sur place (18/11/2026, point 8)** — `js/state.js`,
+  `js/main.js`, `index.html`, `css/style.css`, `js/i18n.js`. Demande : « zoomer sur une tuile, qu'elle s'affiche en grand en un
+  clic, mais pas en popup : définir dynamiquement une zone où se mettent en grand la ou les tuiles choisies, les autres en
+  dessous ».
+  - **Ce qui est fait** : chaque tuile a un bouton « Agrandir » (⤢, en Lecture comme en Édition ; il devient « Réduire » une fois la
+    tuile agrandie). La tuile quitte la grille et s'affiche dans une zone au-dessus d'elle, dans le même flux (pas une fenêtre,
+    rien ne se superpose : filtres croisés, drill-down, commentaires, détail restent utilisables). Plusieurs tuiles peuvent être
+    agrandies : une seule prend toute la largeur, deux ou plus se partagent la ligne tant que chacune garde ~440 px. Une barre
+    « N tuiles agrandies » + « Tout réduire » coiffe la zone. Les autres tuiles restent dessous, dans leur ordre d'origine ; une
+    tuile réduite retrouve exactement sa place. Hauteur d'une tuile agrandie : 62 % de la hauteur du widget, bornée entre 340 et
+    680 px ; une carte KPI agrandie montre un chiffre jusqu'à 84 px.
+  - **Choix techniques** : la tuile est DÉPLACÉE dans le DOM, pas recréée — la même instance ECharts continue (vérifié : même
+    objet, non détruit) et `resizeAll()` lui donne sa nouvelle taille ; c'est ce qui évite le piège n°6 (instance détachée).
+    Conséquence : les tuiles vivent dans deux conteneurs, donc le rendu passe par leur parent commun (`#workspace-main`). La
+    hauteur reste FIXE (piège n°8), simplement plus grande. Le déplacement ◂ ▸ est masqué dans la zone (l'ordre est celui de la
+    grille).
+  - **Volontairement PAS fait** : (a) l'agrandissement n'est pas persisté (confort de lecture, pas une mise en page : comme les
+    filtres et les vues actives, il disparaît au rechargement) ; (b) pas de plein écran ni de fenêtre ; (c) pas de redimensionnement
+    à la souris ni de zone « à définir » à la main — la zone est celle qui se forme d'elle-même avec les tuiles choisies ; (d) pas de
+    raccourci clavier dédié (le bouton est atteignable au clavier) ; (e) PDF/PPTX/Excel exportent comme avant, un graphique agrandi
+    est simplement capturé à sa taille du moment.
+  - **Testé** : Node (état : plusieurs tuiles, ordre d'affichage, toggle, tout réduire, suppression, multi-pages, `setPages`, aucune
+    nouvelle référence de `pages`) ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`, page directe,
+    `<iframe sandbox="allow-scripts">`, anglais à 1300 px, 420 px : zone au-dessus de la grille, largeur pleine, même instance
+    ECharts redimensionnée, canvas contenu dans la tuile, hauteur stable sur 1,7 s, clic sur une barre agrandie = filtre croisé,
+    deux tuiles côte à côte, retour à la taille d'origine, KPI, pages, Édition (déplacer masqué, supprimer une tuile agrandie),
+    panneau d'ajout ouvert (la zone ne passe pas dessous). **Non vérifié** : un vrai Grist / GFS ; un très grand nombre de
+    tuiles agrandies ; un très petit widget (< 400 px de haut : la hauteur plancher de 340 px y dépasse la fenêtre, la page défile).
+
 - **Modèles de rapport pour « Nouveau > Depuis un modèle » de GFS** (18/11/2026, fil « Appliquer la nouvelle consigne GFS »,
   consigne 016, facultative) :
   - **Ce qu'est un modèle ici** : un rapport de départ (une page de tuiles) posé sur une table que la personne a DÉJÀ — jamais une

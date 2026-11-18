@@ -74,6 +74,12 @@
     // Que les filtres actuels s'écartent ensuite de la vue (« modifiée ») se DÉRIVE de l'état, voir
     // activeBookmarkModified dans getState — jamais un second indicateur à tenir à jour.
     let activeBookmarkId = null;
+    // Tuiles « agrandies » (retours d'Antoine du 18/11/2026, point 8) : ids des tuiles posées dans la zone
+    // d'agrandissement au-dessus de la grille, plusieurs possibles. SESSION SEULEMENT, jamais persisté
+    // (c'est un confort de lecture, pas une mise en page : l'ordre des tuiles ne change pas), global à
+    // toutes les pages — la liste mémorise donc aussi les tuiles des autres pages, et `getState`
+    // n'expose que celles de la page courante, dans l'ordre d'affichage des tuiles.
+    let zoomedTileIds = [];
     // { secondaryTableId, primaryColumn, secondaryColumn } ou null (aucune jointure) — data blending
     // multi-tables (voir GristBI.data.blendRows/js/main.js) : propre à la table de travail
     // courante, comme bookmarks/pages, persisté avec elles dans BI_Dashboard_Config.
@@ -103,6 +109,7 @@
       const active = activeBookmarkId && bookmarks.find((b) => b.id === activeBookmarkId);
       return {
         rows, pages, currentPageId, tiles: currentPage().tiles, activeFilters, advancedFilters, drillIns, bookmarks, blend, comments,
+        zoomedTileIds: currentPage().tiles.map((t) => t.id).filter((id) => zoomedTileIds.includes(id)),
         activeBookmarkId: active ? active.id : null,
         activeBookmarkModified: active ? !sameSnapshot(active, { activeFilters, advancedFilters, drillIns }) : false
       };
@@ -122,6 +129,9 @@
     function setPages(newPages, newCurrentPageId) {
       pages = (newPages && newPages.length) ? newPages : [{ id: DEFAULT_PAGE_ID, name: 'Page 1', tiles: [] }];
       currentPageId = (newCurrentPageId && pages.some((p) => p.id === newCurrentPageId)) ? newCurrentPageId : pages[0].id;
+      // Un autre rapport / une autre table n'a plus les mêmes tuiles : seules celles qui existent
+      // encore restent agrandies (aucune, dans la pratique, les ids de tuile étant uniques).
+      zoomedTileIds = zoomedTileIds.filter((id) => pages.some((p) => p.tiles.some((t) => t.id === id)));
       notify();
     }
 
@@ -155,6 +165,7 @@
       if (currentPageId === pageId) currentPageId = pages[0].id;
       const removedTileIds = new Set(removedPage.tiles.map((t) => t.id));
       if (removedTileIds.size) {
+        zoomedTileIds = zoomedTileIds.filter((id) => !removedTileIds.has(id));
         drillIns = Object.assign({}, drillIns);
         removedTileIds.forEach((id) => { delete drillIns[id]; });
         activeFilters = activeFilters.filter((f) => !removedTileIds.has(f.sourceTileId));
@@ -166,6 +177,7 @@
 
     function removeTile(id) {
       replaceCurrentPageTiles(currentPage().tiles.filter((t) => t.id !== id));
+      zoomedTileIds = zoomedTileIds.filter((z) => z !== id);
       if (id in drillIns) { drillIns = Object.assign({}, drillIns); delete drillIns[id]; }
       // Retire aussi tout filtre croisé (toggleFilter OU drill-cross-filter, voir
       // syncDrillCrossFilters) provenant de la tuile supprimée : sinon il reste actif, affiché,
@@ -190,6 +202,22 @@
         delete drillIns[id];
       }
       syncDrillCrossFilters(id);
+      notify();
+    }
+
+    // Agrandit / réduit une tuile de la page courante (no-op si l'id n'y est pas). Plusieurs tuiles
+    // peuvent être agrandies en même temps ; `clearZoom` les réduit toutes. Pas persisté (voir
+    // zoomedTileIds). Une nouvelle référence de `pages` n'est PAS créée : main.js n'y voit donc aucun
+    // changement à sauvegarder dans BI_Dashboard_Config.
+    function toggleZoom(id) {
+      if (!currentPage().tiles.some((t) => t.id === id)) return;
+      zoomedTileIds = zoomedTileIds.includes(id) ? zoomedTileIds.filter((z) => z !== id) : zoomedTileIds.concat([id]);
+      notify();
+    }
+
+    function clearZoom() {
+      if (!zoomedTileIds.length) return;
+      zoomedTileIds = [];
       notify();
     }
 
@@ -357,6 +385,7 @@
       addTile, removeTile, updateTile, moveTile,
       toggleFilter, clearFilter, setAdvancedFilter, clearAdvancedFilter, drillInto, drillUp,
       setBookmarks, saveBookmark, applyBookmark, updateBookmark, leaveBookmark, removeBookmark, setBlend,
+      toggleZoom, clearZoom,
       setComments, addCommentLocal
     };
   }
