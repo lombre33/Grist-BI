@@ -815,6 +815,17 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 - [x] `niceCeil`, `gaugeLayout` (arc, bornes et valeur dans la zone à 7 tailles), `fitFont` ✅
 - [ ] Rendu dans un vrai Grist ⬜ **[NON TESTABLE ICI]**
 
+### `js/data.js` + `js/charts.js` + `js/advice.js` + panneau — tuile Texte (18/11/2026 ; Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`)
+
+- [x] `renderTextHtml` : `<script>`, `<img onerror>`, `&`, guillemets échappés ; seules `h3 h4 p ul li strong br` apparaissent ✅
+- [x] Repères : `# ` / `## ` / `- ` / `* ` / `**gras**`, ligne vide = paragraphe, retour à la ligne simple = `<br>` ; texte vide/`null`/non-chaîne -> chaîne vide ✅
+- [x] Plafond `TEXT_TILE_MAX` (2 000 signes) ✅ ; `plainTextOf` sans repères ✅
+- [x] Exports : `tileExportKind` = `text`, absente du classeur Excel (sync et async), feuille d'une cellule si demandée ✅
+- [x] i18n fr/en (type, champ, aide, erreur, titre auto), ligne d'usage du type, aucun conseil de tuile ✅
+- [x] Panneau : champs de données masqués, texte vide -> erreur sous le champ sans tuile ajoutée, HTML hostile jamais exécuté (aperçu et tuile), bouton Détail masqué, édition recharge le texte, titre anglais « Text » 🌐
+- [x] `<iframe sandbox="allow-scripts">` : parcours au clic (Ajouter > carte Texte > saisie > bouton), aucune erreur ni boîte de dialogue 🌐
+- [ ] Rendu dans un vrai Grist / un vrai GFS ⬜ **[NON TESTABLE ICI]**
+
 ### CSS — classe de bug à systématiquement re-vérifier
 
 - [x] `.field[hidden]` masque réellement l'élément (pas seulement `display:flex` de `.field` qui gagne à spécificité égale) [BUG RÉEL, trouvé 2 fois sur des champs différents] ✅ (règle en place)
