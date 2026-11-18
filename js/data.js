@@ -631,6 +631,79 @@
       && !!filter.maxExclusive === !bin.last;
   }
 
+  // --- Boîte à moustaches (`type: 'box'`) ----------------------------------------------------------
+  // Distribution d'UNE colonne numérique PAR GROUPE (valeurs de `tile.dimension`) : médiane, quartiles, moustaches et valeurs
+  // aberrantes — notes par classe, délais par service. Il faut les valeurs BRUTES de chaque ligne, jamais un agrégat : c'est
+  // pourquoi ce type n'a ni agrégat ni mode « mesure ». Calcul en JS pur à tout volume (une passe, un tri par groupe), comme
+  // l'histogramme : pas de sérialisation vers DuckDB (voir HYPOTHESES.md).
+  //   - quantiles par interpolation linéaire entre les deux valeurs voisines (« type 7 » : QUARTILE.INC d'Excel, `quantile_cont`
+  //     de DuckDB, numpy par défaut) — la médiane d'un nombre pair de notes est la moyenne des deux du milieu ;
+  //   - moustaches de Tukey : la plus petite et la plus grande valeur comprises dans [Q1 - 1,5 x EIQ ; Q3 + 1,5 x EIQ] ;
+  //     au-delà, une valeur aberrante (tracée seule, jamais absorbée dans la moustache) ;
+  //   - une valeur vide, booléenne ou non numérique est ignorée (jamais comptée comme 0) ; un groupe sans aucune valeur
+  //     numérique n'a pas de boîte ; les groupes gardent leur ordre de première apparition (comme `groupByAggregate`) ;
+  //   - un groupe de moins de BOX_MIN_RELIABLE valeurs a des quartiles peu parlants : la boîte est tracée, l'effectif est dans
+  //     l'infobulle et js/advice.js prévient.
+  const BOX_MAX_OUTLIERS = 60; // valeurs aberrantes TRACÉES par groupe (le compte, lui, est toujours exact)
+  const BOX_MIN_RELIABLE = 5;
+  const BOX_MAX_GROUPS = 24; // au-delà, des boîtes de quelques pixels : js/advice.js conseille de regrouper
+
+  // Quantile `p` (0 à 1) d'un tableau TRIÉ par ordre croissant, interpolation linéaire ; null si le tableau est vide.
+  function quantileSorted(sorted, p) {
+    const n = sorted.length;
+    if (!n) return null;
+    if (n === 1) return sorted[0];
+    const h = (n - 1) * Math.min(1, Math.max(0, p));
+    const lo = Math.floor(h);
+    const hi = Math.ceil(h);
+    return sorted[lo] + (h - lo) * (sorted[hi] - sorted[lo]);
+  }
+
+  // Une entrée par groupe : { dimension (valeur d'origine), name (texte), n, min, max, q1, median, q3, low, high, outliers,
+  // outlierCount } ; `low`/`high` = bouts des moustaches, `outliers` = au plus `maxOutliers` valeurs aberrantes (les plus
+  // éloignées de la médiane, rangées par ordre croissant), `outlierCount` = leur nombre réel. `ignored` = lignes laissées de côté.
+  function boxStatsByGroup(rows, dimension, measure, maxOutliers) {
+    const cap = Number.isFinite(maxOutliers) && maxOutliers >= 0 ? Math.floor(maxOutliers) : BOX_MAX_OUTLIERS;
+    const byGroup = new Map();
+    let ignored = 0;
+    for (const row of (rows || [])) {
+      const v = row[measure];
+      if (v == null || v === '' || typeof v === 'boolean') { ignored++; continue; }
+      const x = Number(v); // un BigInt (DuckDB) devient un nombre
+      if (!Number.isFinite(x)) { ignored++; continue; }
+      const key = row[dimension];
+      if (!byGroup.has(key)) byGroup.set(key, []);
+      byGroup.get(key).push(x);
+    }
+    const groups = [];
+    byGroup.forEach((values, key) => {
+      values.sort((a, b) => a - b);
+      const q1 = quantileSorted(values, 0.25);
+      const median = quantileSorted(values, 0.5);
+      const q3 = quantileSorted(values, 0.75);
+      const reach = 1.5 * (q3 - q1);
+      const fenceLo = q1 - reach;
+      const fenceHi = q3 + reach;
+      let low = Infinity;
+      let high = -Infinity;
+      const outside = [];
+      values.forEach((v) => {
+        if (v < fenceLo || v > fenceHi) outside.push(v);
+        else { if (v < low) low = v; if (v > high) high = v; }
+      });
+      // Toutes les valeurs hors barrières : impossible (la médiane est toujours dedans), mais jamais d'infini en sortie.
+      if (!Number.isFinite(low)) { low = median; high = median; }
+      const drawn = outside.length > cap
+        ? outside.slice().sort((a, b) => Math.abs(b - median) - Math.abs(a - median)).slice(0, cap).sort((a, b) => a - b)
+        : outside;
+      groups.push({
+        dimension: key, name: String(key), n: values.length, min: values[0], max: values[values.length - 1],
+        q1, median, q3, low, high, outliers: drawn, outlierCount: outside.length
+      });
+    });
+    return { groups, ignored };
+  }
+
   // --- Palettes de couleurs (`tile.palette`) -----------------------------------------------------
   // Six palettes au choix par tuile ; `standard` est la palette historique du tableau de bord (elle ne
   // change JAMAIS : une tuile sans `palette` doit rester identique). Toutes ont été passées au
@@ -659,7 +732,7 @@
   }
   // Types dont les couleurs viennent de la palette. Hors liste : la cascade (vert = hausse, rouge =
   // baisse : un sens, pas une identité), le KPI et le tableau croisé (aucune couleur de série).
-  const PALETTE_TILE_TYPES = ['bar', 'line', 'pie', 'funnel', 'treemap', 'scatter', 'radar', 'gauge', 'wordcloud', 'combo', 'histogram', 'heatmap'];
+  const PALETTE_TILE_TYPES = ['bar', 'line', 'pie', 'funnel', 'treemap', 'scatter', 'radar', 'gauge', 'wordcloud', 'combo', 'histogram', 'heatmap', 'box'];
   function supportsPalette(tile) {
     if (!tile) return false;
     // Tableau croisé : une palette n'a de sens que si ses cellules sont colorées (`pivotHeat`).
@@ -742,7 +815,7 @@
   // Types qui AFFICHENT une valeur numérique (donc concernés par `tile.numberFormat`, voir js/format.js) :
   // tout type de tuile nouveau qui montre un nombre s'ajoute ici, pour que le champ « Format des nombres »
   // du panneau apparaisse. Le nuage de mots n'y est que pour la valeur de son infobulle ; la table plate l'applique à chacune de ses colonnes numériques (`format.cellNumber`).
-  const NUMBER_FORMAT_TILE_TYPES = ['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo', 'histogram', 'heatmap'];
+  const NUMBER_FORMAT_TILE_TYPES = ['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo', 'histogram', 'heatmap', 'box'];
   function supportsNumberFormat(tile) {
     return !!tile && NUMBER_FORMAT_TILE_TYPES.indexOf(tile.type) !== -1;
   }
@@ -1206,6 +1279,16 @@
       const hist = histogramBins(state.rows, rows, tile.measure, tile.bins);
       return { name: title, header: [tile.measure + ' : borne basse', 'borne haute', 'Lignes'], rows: hist.bins.map((b) => [b.lo, b.hi, b.count]) };
     }
+    // Boîte à moustaches : une ligne par groupe, les statistiques tracées (effectif, moustaches, quartiles, médiane) et le nombre de
+    // valeurs aberrantes (leurs valeurs ne sont pas exportées une à une : le tableau de la table plate le fait). En-têtes en dur.
+    if (tile.type === 'box') {
+      const box = boxStatsByGroup(rows, tile.dimension, tile.measure);
+      return {
+        name: title,
+        header: [tile.dimension, 'Effectif', 'Moustache basse', '1er quartile', 'Médiane', '3e quartile', 'Moustache haute', 'Valeurs aberrantes'],
+        rows: box.groups.map((g) => [g.name, g.n, g.low, g.q1, g.median, g.q3, g.high, g.outlierCount])
+      };
+    }
     // Séries multiples (barres/courbe/aire avec `seriesColumn`) : une colonne par série, dans le même
     // ordre de catégories que le rendu ; une cellule vide (pas 0) là où la série n'a aucune ligne.
     if (isSeriesTile(tile)) {
@@ -1449,7 +1532,7 @@
     importMapHas, tableToRows, epochSecondsToIsoDate, applyFilters, matchesFilter, sameValue, parseDateValue,
     relativeDateRange, RELATIVE_DATE_PRESETS, groupByAggregate, aggregateSingle, wordFrequency, pivotTable,
     distinctColumnValues, computeTrend, trendFromGroups, periodLabel, measureSeriesForTile,
-    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, comboModeOf, paretoSeries, comboSeries, niceStep, histogramBins, histogramFilter, histogramBinIsActive, HISTOGRAM_MAX_BINS, filterSelects, LINE_SHAPES, lineShapeOf, supportsValueLabels, isStackedPercentTile, shareOfTotal, stackShares, REF_LINE_KINDS, supportsRefLine, refLineKind, refLineValue, cellFilterToggles, HEAT_RAMPS, heatStops, heatColor, heatTextColor, heatRange, heatCellColors, isStackedTile, splitBySeries, assembleSeries, PALETTES, PALETTE_KEYS, paletteColors, supportsPalette, supportsNumberFormat, NUMBER_FORMAT_TILE_TYPES, escapeHtml,
+    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, comboModeOf, paretoSeries, comboSeries, niceStep, histogramBins, histogramFilter, histogramBinIsActive, HISTOGRAM_MAX_BINS, boxStatsByGroup, quantileSorted, BOX_MAX_OUTLIERS, BOX_MIN_RELIABLE, BOX_MAX_GROUPS, filterSelects, LINE_SHAPES, lineShapeOf, supportsValueLabels, isStackedPercentTile, shareOfTotal, stackShares, REF_LINE_KINDS, supportsRefLine, refLineKind, refLineValue, cellFilterToggles, HEAT_RAMPS, heatStops, heatColor, heatTextColor, heatRange, heatCellColors, isStackedTile, splitBySeries, assembleSeries, PALETTES, PALETTE_KEYS, paletteColors, supportsPalette, supportsNumberFormat, NUMBER_FORMAT_TILE_TYPES, escapeHtml,
     tileDrillLevels, currentDimension, rowsForTile, tileExportSheet, tileExportKind, renderTextHtml, plainTextOf, TEXT_TILE_MAX,
     DEFAULT_GOOD_PCT, DEFAULT_WARN_PCT, targetProgress, progressRows, sparklineValues, sparklineGeometry,
     TABLE_TILE_MAX_ROWS, TABLE_EXPORT_MAX_ROWS, tableColumnsOf, cellText, compareCells, sortRowsBy, moveInOrder, nextSortDir, tableSheet,

@@ -956,6 +956,23 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 - [x] 6 000 lignes (DuckDB) dans un cadre isolé : mêmes réglages, aucune erreur 🌐
 - [ ] Rendu dans un vrai Grist / un vrai GFS ⬜ **[NON TESTABLE ICI]**
 
+### `js/data.js` + `js/charts.js` + panneau — boîte à moustaches (18/11/2026 ; Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`, 220 et 6 000 lignes)
+
+- [x] `quantileSorted` : vide, une valeur, effectif pair (médiane = moyenne des deux du milieu), impair, `p` hors [0 ; 1] borné ✅
+- [x] `boxStatsByGroup` : quartiles contre des valeurs calculées à la main (`[2,4,4,4,5,5,7,9,100]` -> 4 / 5 / 7, 100 aberrante) ET contre un second calcul indépendant sur 300 lignes pseudo-aléatoires (3 groupes) ✅
+- [x] Moustache = la valeur extrême qui reste dans les barrières (pas la barrière) ; aberrantes basses ET hautes ; valeurs identiques ; une seule valeur ; EIQ nul = toute autre valeur aberrante ✅
+- [x] Ignorés sans devenir 0 : `null`, texte, chaîne vide, booléen, `NaN` ; `BigInt` et chaîne numérique acceptés ; groupe sans valeur numérique sans boîte ; ordre de première apparition ; `undefined`/vide sans exception ✅
+- [x] Plafond de points tracés : les plus éloignées gardées, ordre croissant, `outlierCount` exact, plafond par défaut, plafond 0 ✅
+- [x] Store : clic = filtre d'égalité du groupe, tuile source entière, autres tuiles filtrées, même groupe = retiré, suppression de la tuile = filtre levé ✅
+- [x] Export Excel : une ligne par groupe, filtre d'une autre tuile appliqué, aucune ligne = en-têtes seuls ; `tileExportKind` = `image` ✅
+- [x] Types : palette et format oui ; tri, séries, ligne de repère, étiquettes non ✅ ; défauts (vraie mesure, catégorie de peu de groupes, pas d'agrégat), `noMeasure`, conseils `tooManyGroups` / `fewValues`, jamais à l'accueil, i18n fr/en (pluriels) ✅
+- [x] Formulaire : champ Agrégat masqué, libellé « Colonne numérique », préremplissage distinct, tuile enregistrée sans `aggFn` ni drill-down, titre `tileTitle.box` 🌐
+- [x] Rendu : séries `boxplot` + `scatter`, valeurs = calcul pur, **pixel de la médiane = couleur de palette**, intérieur teinté, fond au-dessus de la moustache 🌐 ; thème sombre lisible 🌐
+- [x] Clic réel : boîte = filtre + autres groupes à 0,3 + tuile source entière ; 2e clic (position relue : la rangée de pastilles décale la tuile) = filtre retiré ; **clic sur une valeur aberrante = filtre du bon groupe** (rang `value[0]`, pas `dataIndex`) 🌐
+- [x] Filtre d'une autre tuile : boîtes recalculées ; barres -> boîte -> barres sans reliquat (`dataset.tileType`) ; tuile sans valeur numérique = message ; aucune erreur console 🌐
+- [x] 6 000 lignes, page directe ET cadre isolé : mêmes vérifications, 157 aberrantes tracées (plafond 60 par groupe) 🌐
+- [ ] Rendu dans un vrai Grist / un vrai GFS ⬜ **[NON TESTABLE ICI]**
+
 ### `js/styles.js` + `css/dash-styles.css` + `js/state.js` + `js/grist-api.js` + `js/main.js` — style global des tuiles (18/11/2026 ; Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`)
 - [x] ✅ Registre : cinq ids, clés `style.<id>.name/desc` présentes en fr ET en anglais ; id inconnu, vide, non chaîne ou clé de prototype (`constructor`, `__proto__`) -> Standard ; `configValue` n'écrit rien pour Standard
 - [x] ✅ Passe ECharts : Standard rend le MÊME objet, rien de touché ; barres (rayon, pilule horizontale, valeurs au bout avec le formateur d'axe de la tuile, jamais au-delà de 14 barres, jamais avec plusieurs séries/empilé/combo/histogramme) ; courbes (lissage, repères gardés, aire non empilée seulement) ; parts (couleur de la carte, jamais du blanc en dur) ; palette de la tuile jamais remplacée ; options vides ou sans axe sans erreur
