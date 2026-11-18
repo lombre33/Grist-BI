@@ -2497,14 +2497,26 @@
         instance.__refit = placed ? () => { const p = placeRadar(); if (p) instance.setOption({ radar: p }); } : undefined;
       }
       option.radar = Object.assign({}, option.radar, placed || {}, {
-        // Noms d'axe tronqués à un tiers de la tuile (`overflow` n'agit pas sur les noms d'axe d'un radar : on coupe nous-mêmes) :
-        // « Station d'accueil USB-C » sortait de la carte à droite.
+        // Noms d'axe tronqués à la PLACE qu'a chacun dans la tuile (`GristBI.format.radarNameRoom` : un nom de côté n'a que l'espace entre le
+        // polygone et le bord ; `overflow` n'agit pas sur les noms d'axe d'un radar, on coupe nous-mêmes) : « Station d'accueil USB-C »
+        // sortait de la carte à droite, « Montre Connectée » à gauche. La taille de la tuile est relue à chaque appel (agrandissement).
         axisName: Object.assign({
           color: th.muted,
           formatter: (name) => {
-            const max = Math.max(8, Math.floor((width || 330) * 0.34 / 6.8));
             const text = String(name == null ? '' : name);
-            return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+            const w = instance && typeof instance.getWidth === 'function' ? instance.getWidth() : 0;
+            const h = instance && typeof instance.getHeight === 'function' ? instance.getHeight() : 0;
+            const names = (option.radar.indicator || []).map((ind) => ind && ind.name);
+            if (!w || !h || !names.length) {
+              const max = Math.max(8, Math.floor((width || 330) * 0.34 / 6.8));
+              return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+            }
+            const font = (option.radar.axisName && option.radar.axisName.fontSize) || 12;
+            const room = GristBI.format.radarNameRoom(w, h, !!option.legend, Math.max(0, names.indexOf(text)), names.length);
+            if (measureText(text, font, 400, th.font) <= room) return text;
+            let k = text.length - 1;
+            while (k > 1 && measureText(`${text.slice(0, k)}…`, font, 400, th.font) > room) k -= 1;
+            return `${text.slice(0, Math.max(1, k))}…`;
           }
         }, option.radar.axisName),
         axisLine: Object.assign({ lineStyle: { color: th.grid } }, option.radar.axisLine),

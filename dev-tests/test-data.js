@@ -2451,6 +2451,51 @@ const SAMPLE_TIME_SERIES = [
   console.log('OK js/format.js — radar avec légende : radarLayout (9 tailles de zone, ancienne géométrie qui se chevauchait), câblage');
 }
 
+// js/format.js + js/charts.js : noms d'axe d'un radar qui sortent de la tuile (bug réel n°53, 18/11/2026) — sur les captures du forum, « Montre Connectée »
+// (axe de gauche) avait sa première lettre coupée par le bord de la tuile : l'ancienne règle (un tiers de la largeur) ne tenait pas compte de la place
+// réelle entre le polygone et le bord.
+{
+  const fs = require('fs');
+  const path = require('path');
+  const format = require('../js/format.js');
+  // Estimation de la largeur d'un nom (comme un canvas de 12 px, ~0,56 em par signe) : suffisante pour comparer à la place disponible.
+  const textW = (n) => n * 12 * 0.56;
+  const sizes = [[283, 162], [330, 190], [240, 150], [316, 224], [600, 400], [938, 422], [200, 160]];
+  for (const withLegend of [false, true]) {
+    for (const [w, h] of sizes) {
+      for (const count of [3, 4, 5, 8, 12]) {
+        for (let i = 0; i < count; i += 1) {
+          const room = format.radarNameRoom(w, h, withLegend, i, count);
+          assert.ok(room >= 24 && room <= w, `${w}x${h} n=${count} i=${i} : place bornée (${room})`);
+          // Le sommet de ce nom ne sort jamais de la tuile : un nom de côté tient entre le polygone et le bord.
+          const L = format.radarLayout(w, h, withLegend);
+          const r = withLegend ? L.r : 0.62 * Math.min(w, h) / 2;
+          const gap = withLegend ? L.gap : 15;
+          const s = Math.abs(Math.sin((2 * Math.PI * i) / count));
+          if (s >= 0.1) assert.ok(r * s + gap * s + room <= w / 2 + 1e-6, `${w}x${h} n=${count} i=${i} : le nom, posé à côté de son sommet, reste dans la tuile`);
+        }
+      }
+    }
+  }
+  // Le cas des captures : tuile de 330 x 190, 8 axes, sans légende. Le nom de l'axe de gauche (i = 6) n'a que la place entre le polygone et le bord.
+  const left = format.radarNameRoom(330, 190, false, 6, 8);
+  const old = Math.floor(330 * 0.34 / 6.8) * 6.8; // largeur permise par l'ancienne règle (16 signes)
+  assert.ok(left < old, 'avant : la règle d\'un tiers laissait ' + old.toFixed(0) + ' px à un nom qui n\'en a que ' + left);
+  assert.ok(left < textW('Montre Connectée'.length), '« Montre Connectée » est donc tronqué (au lieu de sortir de la tuile)');
+  // Le nom du haut est centré : il a presque toute la largeur ; celui d'un côté a moins que celui du haut.
+  assert.ok(format.radarNameRoom(330, 190, false, 0, 8) > format.radarNameRoom(330, 190, false, 2, 8), 'l\'axe du haut a plus de place que celui du côté');
+  // Symétrie : l'axe de droite et celui de gauche ont la même place.
+  assert.strictEqual(format.radarNameRoom(330, 190, false, 2, 8), format.radarNameRoom(330, 190, false, 6, 8));
+  // Une tuile agrandie donne plus de place.
+  assert.ok(format.radarNameRoom(938, 422, true, 2, 8) > format.radarNameRoom(283, 162, true, 2, 8));
+  // câblage : le formatter du nom d'axe lit la taille de l'instance à chaque appel (agrandissement) et mesure le texte
+  const charts = fs.readFileSync(path.join(__dirname, '..', 'js', 'charts.js'), 'utf8');
+  const fmtSrc = charts.slice(charts.indexOf('formatter: (name) => {\n            const text = String(name == null'), charts.indexOf('axisLine: Object.assign({ lineStyle: { color: th.grid } }, option.radar.axisLine)'));
+  assert.ok(/GristBI\.format\.radarNameRoom\(w, h, !!option\.legend/.test(fmtSrc) && /instance\.getWidth\(\)/.test(fmtSrc) && /measureText\(/.test(fmtSrc), 'le nom d\'axe est coupé à la place réelle, mesurée en pixels');
+  assert.ok(!/Math\.floor\(\(width \|\| 330\) \* 0\.34/.test(fmtSrc.slice(0, fmtSrc.indexOf('if (!w || !h')) ), 'la règle d\'un tiers de la largeur n\'est plus la règle principale');
+  console.log('OK js/format.js — radarNameRoom : place d\'un nom d\'axe de radar (7 tailles, avec/sans légende, 3 à 12 axes), ancien cas « Montre Connectée », câblage');
+}
+
 // js/format.js + panneau : réglage « Format des nombres » par tuile (audit de lisibilité, lot 3, 18/11/2026)
 {
   const fs = require('fs');

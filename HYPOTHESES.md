@@ -3436,6 +3436,19 @@ Dernier lot de l'audit : tout ce qui, hors des nombres eux-mêmes, rendait une t
 - **Testé** : Node (bloc « radar avec légende ») ; Playwright contre le vrai `index.html` + `grist-stub.js` sur le radar d'orientation de démo (400 élèves) : tuile normale, agrandie, réduite
   (le centre et le rayon suivent), tuile étroite avec un nom d'élève très long. **Pas testé dans un vrai Grist.**
 
+### Correctifs avant l'alpha — noms d'axe du radar coupés par le bord de la tuile (18/11/2026)
+
+- **Défaut** (bug réel n°53, TEST_PROTOCOL.md), vu en reprenant les captures du forum avec les nouveaux styles : sur le radar « CA par produit » (8 axes, tuile de 330 x 190), le nom de
+  l'axe de GAUCHE, « Montre Connectée », avait sa première lettre coupée par le bord de la tuile. Il était déjà là sur les captures précédentes (Standard : « Montre Connect… » avec le « M »
+  rogné) ; je ne l'avais pas vu. La règle d'origine tronquait tout nom d'axe à un tiers de la largeur de la tuile (`0,34 x largeur / 6,8` signes), quelle que soit la PLACE réelle : le sommet le
+  plus à gauche d'un polygone de 62 % laisse, entre lui et le bord, un peu moins du tiers de la tuile (165 - 59 - 15 = 91 px sur 330 px), moins que ce que la règle autorisait (112 px).
+- **Décision** : `GristBI.format.radarNameRoom(w, h, hasLegend, index, count)` (pure, testée) donne la place en pixels de chaque nom : un axe du HAUT ou du BAS est centré sur son sommet (presque
+  toute la largeur), un axe de côté est posé à côté de son sommet et n'a que la place entre le polygone (rayon de `radarLayout` avec légende, 62 % du demi-côté sans légende) et le bord, écart de
+  15 px (celui d'ECharts) ou de `radarLayout`. `js/charts.js:finalizeOption` coupe chaque nom à cette place, MESURÉE en pixels (`measureText`, 12 px par défaut), et relit la taille de l'instance à
+  chaque appel : une tuile agrandie donne plus de place. Conséquence assumée : un nom long de côté est tronqué avec « … » (« Montre Conne… ») au lieu d'être coupé net ; en bas ou en haut il a plus de place.
+- **Testé** : Node (bloc « radarNameRoom » : 7 tailles de zone, avec et sans légende, 3 à 12 axes, place bornée, le nom posé à côté de son sommet reste dans la tuile, l'ancien cas de 330 x 190) ;
+  Playwright contre le vrai `index.html` + `grist-stub.js` : radar « CA par produit » en Console et en Standard (nom entier visible), radar d'orientation avec légende. **Pas testé dans un vrai Grist.**
+
 ### Jauge : graduations à l'extérieur de l'arc (18/11/2026)
 
 Point de départ : sur la capture « après » du lot 2 de l'audit de lisibilité, Antoine remarque que la jauge « semble perdre les graduations intermédiaires » et propose de les rajouter, « peut-être à l'extérieur ».
