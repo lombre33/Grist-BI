@@ -310,9 +310,14 @@
    *  5. une unité qui n'est presque qu'un morceau d'une unité déjà retenue (« sémantique » dans
    *     « analyse sémantique ») est écartée ; un mot qui sert aussi seul (tf bien plus grand) reste.
    * options : `lang` ('fr' | 'en' | 'auto'), `maxKeywords` (20), `minWordLength` (2),
-   * `maxPhraseWords` (3 : la longueur maximale d'un mot-clé). Rend [{ phrase, score }], ex-aequo dans
+   * `maxPhraseWords` (3 : la longueur maximale d'un mot-clé). Le nombre de mots-clés est aussi plafonné
+   * à un pour cinq mots utiles du texte (au moins 3) : un résumé court n'en rend que quelques-uns.
+   * Rend [{ phrase, score }], ex-aequo dans
    * l'ordre de première apparition (jamais alphabétique, CLAUDE.md §7 piège n°14).
    */
+  const MIN_SHORT_TEXT_KEYWORDS = 3;
+  const WORDS_PER_KEYWORD = 5;
+
   function extractKeywords(text, options) {
     const opts = options || {};
     const maxKeywords = opts.maxKeywords || 20;
@@ -383,9 +388,13 @@
       }
       return false;
     };
+    // Un texte court (titre, résumé de 40 mots) n'a que quelques termes : au-delà d'un mot-clé pour cinq
+    // mots utiles, la fin de liste n'est plus que du bruit (« jour, hausse, personnes… », essai du 18/11/2026).
+    // Un texte de 100 mots utiles ou plus n'est pas touché (20 mots-clés et plus).
+    const limit = Math.min(maxKeywords, Math.max(MIN_SHORT_TEXT_KEYWORDS, Math.ceil(totalWords / WORDS_PER_KEYWORD)));
     const chosen = [];
     for (const u of scored) {
-      if (chosen.length >= maxKeywords) break;
+      if (chosen.length >= limit) break;
       if (chosen.some((c) => contains(c.words, u.words) && u.tf <= c.tf * 2)) continue;
       chosen.push(u);
     }
