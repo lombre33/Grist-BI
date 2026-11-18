@@ -492,6 +492,28 @@
     return { cx: w / 2, cy: legendH + availH / 2, r, gap: RADAR_NAME_GAP, nameH: RADAR_NAME_H, legendH };
   }
 
+  // Place (px) dont dispose le nom du `index`-ième axe d'un radar de `count` axes dans une tuile de `w` x `h` : un nom d'axe ne doit jamais
+  // sortir de la tuile. Les axes sont répartis dans le sens horaire, le 1er en haut ; le nom d'un axe du haut ou du bas est CENTRÉ sur son
+  // sommet (il a presque toute la largeur), celui d'un axe de côté est posé À CÔTÉ du sommet, du côté du bord (il n'a que la place entre
+  // le polygone et le bord : le sommet le plus à gauche ou à droite d'un polygone de 62 % de la tuile en laisse à peine plus du quart).
+  // Ancienne règle (un tiers de la largeur, quelle que soit la place) : « Montre Connectée » sortait de la tuile à gauche, sa première
+  // lettre coupée (retour sur les captures du forum, 18/11/2026). Sans légende le rayon est celui d'ECharts (62 % du demi-côté), l'écart
+  // celui d'ECharts (15 px) ; avec une légende ce sont ceux de `radarLayout`.
+  const RADAR_RADIUS_SHARE = 0.62;
+  const RADAR_DEFAULT_NAME_GAP = 15;
+  const RADAR_NAME_EDGE = 3;
+  function radarNameRoom(w, h, hasLegend, index, count) {
+    const n = Math.max(1, Math.floor(count) || 1);
+    const i = Math.max(0, Math.floor(index) || 0);
+    let r;
+    let gap;
+    if (hasLegend) { const L = radarLayout(w, h, true); r = L.r; gap = L.gap; }
+    else { r = RADAR_RADIUS_SHARE * Math.min(w, h) / 2; gap = RADAR_DEFAULT_NAME_GAP; }
+    const s = Math.abs(Math.sin((2 * Math.PI * i) / n));
+    if (s < 0.1) return Math.max(24, Math.floor(w - 2 * RADAR_NAME_EDGE - 2 * r * s));
+    return Math.max(24, Math.floor(w / 2 - s * (r + gap) - RADAR_NAME_EDGE));
+  }
+
   // Plus grande taille de police (entre `minFont` et `maxFont`) qui tient en `maxWidth` pixels ; `measure(texte, taille)`
   // rend la largeur du texte (canvas dans le navigateur, estimation dans les tests).
   function fitFont(text, maxWidth, maxFont, minFont, measure) {
@@ -531,7 +553,7 @@
   }
 
   return {
-    niceCeil, plainScale, refLabelLayout, gaugeLayout, gaugeTicks, gaugeTickBudget, gaugeTickPlacement, radarLayout, fitFont, cellNumber,
+    niceCeil, plainScale, refLabelLayout, gaugeLayout, gaugeTicks, gaugeTickBudget, gaugeTickPlacement, radarLayout, radarNameRoom, fitFont, cellNumber,
     MODES, MAX_CUSTOM_DECIMALS, localeForLang, normalizeSpec, parseWidgetOptions, parseDocSettings,
     styleFromColumn, resolveStyle, makeFormatter, forTile, setColumnInfo, getColumnInfo, getDocSettings, columnModeState
   };
