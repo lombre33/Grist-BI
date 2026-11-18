@@ -201,7 +201,7 @@ Mis à jour le 2026-11-18 (consigne 015 lue, `consignes/bi/INDEX.md` à `a16fe10
     `js/vendor/xlsx/xlsx.full.min.js` sur disque, 882 Ko annoncés par GFS).
   `node dev-tests/test-data.js` toujours entièrement vert (inchangé par cette consigne, aucun test
   Node ne charge `js/export.js`, voir CLAUDE.md §5).
-- 014 · faite · `e06b239` · `vitrine/` à la racine : `vitrine.json` (description de 267 et 238
+- 014 · faite · `e06b239`, captures remplacées au `16379d0` (18/11, voir « vitrine » dans « Demandes à GFS ») · `vitrine/` à la racine : `vitrine.json` (description de 267 et 238
   caractères, légendes de 43 à 55, fr/en) et `1.webp`/`2.webp`/`3.webp` (960 × 600, 48 734 / 42 450 /
   55 818 octets, mesurés ; en clair, l'app seule). Aucun code, aucun changement de manifeste ni de
   politique de sécurité. Scène 1 (celle de la carte) : un rapport au repos, indicateurs avec tendance,
@@ -211,7 +211,9 @@ Mis à jour le 2026-11-18 (consigne 015 lue, `consignes/bi/INDEX.md` à `a16fe10
   aucun nom de personne. **Une réserve : ces captures ne viennent pas d'un vrai Grist** (voir la
   demande « vitrine » plus bas) ; la description dit aussi que l'app est un brouillon à l'essai,
   comme le README.
-- 015 · lue · aucun code · réponse de GFS à la 014, rien à changer dans ce dépôt. Relevé du
+- 015 · lue · aucun code · réponse de GFS à la 014, rien à changer dans ce dépôt (sauf que les
+  captures de la vitrine ont été refaites le 18/11 à la demande d'Antoine, voir « vitrine » dans
+  « Demandes à GFS » : `16379d0` remplace `e06b239`). Relevé du
   18/11/2026 contre ce que la consigne annonce : (1) les trois images de `prototype/vitrine/bi/` chez
   GFS ont les MÊMES empreintes SHA-256 que `vitrine/1.webp`/`2.webp`/`3.webp` ici (48 734, 42 450 et
   55 818 octets), donc copiées telles quelles comme dit ; (2) la référence de GFS pour cette app
@@ -244,8 +246,16 @@ Mis à jour le 2026-11-18 (consigne 015 lue, `consignes/bi/INDEX.md` à `a16fe10
 - aucune
 
 ## Demandes à GFS
-- **`vitrine`** · `e06b239` · `vitrine/vitrine.json` · description et trois captures pour la carte et
-  la fiche. Réserve : la consigne demandait des captures « prises dans un vrai Grist ». Le build d'un
+- **`vitrine`** · `16379d0` · `vitrine/vitrine.json` · description et trois captures pour la carte et
+  la fiche. **Remplacement du 18/11/2026** (Antoine : les deux premières captures se ressemblaient) :
+  les trois images sont refaites sous les MÊMES noms (`1.webp` 48 692, `2.webp` 47 250, `3.webp`
+  56 654 octets, 960 × 600 ; SHA-256 commençant par 9476e14d87a0, 998720ff24a1, d395d517163b), une page et des
+  types de tuile différents par scène : 1 = indicateurs avec tendance, courbe en aire, anneau, barres
+  horizontales triées ; 2 = camembert, treemap en drill-down, tableau croisé, nuage de points, avec un
+  filtre croisé actif ; 3 = cascade et mesures dans le temps. Dans `vitrine.json`, seules les
+  légendes 1 et 3 changent (la 2 reste mot pour mot) ; la description est inchangée. Les images
+  actuelles chez GFS (celles du `e06b239`) sont donc à remplacer, et les légendes 1 et 3 à
+  redéclarer. Même réserve qu'avant : la consigne demandait des captures « prises dans un vrai Grist ». Le build d'un
   vrai Grist depuis les sources (`git clone` de `grist-core` + `yarn install`) a été refusé dans
   l'environnement de cette session et n'a pas été contourné. Les trois images montrent le VRAI
   `index.html` de ce dépôt, servi en HTTP local, avec le faux `window.grist` du dépôt

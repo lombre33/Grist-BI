@@ -2507,17 +2507,29 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     équipes (aucun nom de personne dans les images), les quantités sont pondérées par produit (sinon le
     nuage de points est une colonne verticale), la jauge passe en dernière tuile (sa taille de 270 px la
     rend peu lisible) et les titres de tuile sont raccourcis pour ne pas finir en « … ».
-    Scènes : (1) page « Vue d'ensemble » au repos ; (2) clic sur « Nord » (filtre croisé) puis sur
-    2025 (drill-down vers les trimestres) ; (3) page « Analyse avancée » (cascade, N-1, YTD, tableau
-    croisé, cumul, nuage de points). Les scripts de prise de vue ne sont pas committés (même règle que
-    toute la suite Playwright de ce dépôt, voir CLAUDE.md §5) : ils sont dans le dossier partagé du
-    projet, `demos/vitrine-gfs/`.
+    Scènes (reprises le 18/11/2026, voir plus bas) : (1) page « Vue d'ensemble » au repos, avec les
+    types ajoutés par la PR #53 (courbe en aire, anneau avec %, barres horizontales triées) ; (2) page
+    « Segments & canaux » : clic sur une part du camembert (filtre croisé, les autres parts
+    s'estompent) puis sur « Nord » dans le treemap (drill-down, fil d'Ariane) ; (3) page « Analyse
+    avancée » (cascade, N-1, YTD, cumul). Les scripts de prise de vue ne sont pas committés (même
+    règle que toute la suite Playwright de ce dépôt, voir CLAUDE.md §5) : ils sont dans le dossier
+    partagé du projet, `demos/vitrine-gfs/`.
+  - **Reprise du 18/11/2026 (Antoine : « les deux premières images se ressemblent »)** : les trois
+    captures sont refaites, sous les mêmes noms, depuis `main` à `5a64945` (PR #53 comprise). Avant,
+    les scènes 1 et 2 montraient la même page de barres et de camemberts, filtrée ou non. Maintenant
+    chaque scène a sa page et ses types de tuile : 1 = indicateurs avec tendance, courbe en aire,
+    anneau, barres horizontales ; 2 = camembert, treemap, tableau croisé, nuage de points, filtre
+    croisé et drill-down en cours ; 3 = cascade et mesures dans le temps. Retouches de données en plus
+    des précédentes : une saisonnalité par mois (creux d'été, pic de fin d'année, sinon la courbe par
+    mois est plate), 3 pages réécrites à la main plutôt que réordonnées (`prep2.py`). Légendes 1 et 3
+    changées dans `vitrine.json` (la 2 reste vraie), description inchangée.
   - **Constats vus en passant, non corrigés (hors périmètre de la consigne)** : la jauge à 270 px de
     large a ses graduations et son aiguille qui se chevauchent ; le radar coupe l'étiquette du haut et
     celle du bas ; le titre de la tuile KPI déborde de quelques pixels à gauche quand la grille passe à
     4 colonnes (fenêtre de 1 200 px) ; ECharts lève `Cannot read properties of null (reading
-    'offsetWidth')` dans l'info-bulle (`_updatePosition`) quand un drill-down redessine un graphique
-    sous le pointeur (bénin en apparence, pas investigué).
+    'offsetWidth')` dans l'info-bulle (`_updatePosition`), et `Cannot set properties of null (setting
+    'innerHTML')` (`setContent`, vue le 18/11 au clic sur le treemap), quand un drill-down redessine un
+    graphique sous le pointeur (même cause, bénin en apparence, pas investigué).
 
 - **Courbe / aire, anneau, barres horizontales, tri (18/11/2026)** : issus de la comparaison avec
   l'« Assistant Data Visualisation » de la DRANE d'Orléans-Tours (`gristgouv/drane-orleans-tours-grist-widgets`,
