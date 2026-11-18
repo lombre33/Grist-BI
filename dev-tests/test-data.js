@@ -2459,13 +2459,13 @@ const SAMPLE_TIME_SERIES = [
   const format = require('../js/format.js');
 
   // types concernés : ceux qui affichent un nombre ; pas de réglage pour un type inconnu ni null
-  for (const type of ['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo', 'histogram', 'heatmap', 'box', 'sankey']) {
+  for (const type of ['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo', 'histogram', 'heatmap', 'box', 'sankey', 'calendar']) {
     assert.strictEqual(data.supportsNumberFormat({ type }), true, type);
   }
   assert.strictEqual(data.supportsNumberFormat({ type: 'text' }), false, 'la tuile Texte ne montre aucun nombre');
   assert.strictEqual(data.supportsNumberFormat({ type: 'inconnu' }), false);
   assert.strictEqual(data.supportsNumberFormat(null), false);
-  assert.deepStrictEqual(data.NUMBER_FORMAT_TILE_TYPES.filter((ty) => !['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo', 'histogram', 'heatmap', 'box', 'sankey'].includes(ty)), []);
+  assert.deepStrictEqual(data.NUMBER_FORMAT_TILE_TYPES.filter((ty) => !['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo', 'histogram', 'heatmap', 'box', 'sankey', 'calendar'].includes(ty)), []);
 
   // verdict de « Comme dans la colonne » : sert l'explication affichée sous le réglage
   format.setColumnInfo({
@@ -2524,8 +2524,8 @@ const SAMPLE_TIME_SERIES = [
   const charts = read('js/charts.js');
   const main = read('js/main.js');
   const css = read('css/style.css');
-  // une seule dernière étape avant setOption, pour les quatre chemins ECharts (graphiques, mesures temporelles, histogramme, carte de chaleur)
-  assert.strictEqual((charts.match(/finalizeOption\(option, instance\);\s*\n\s*instance\.setOption\(option, true\);/g) || []).length, 6, 'finalizeOption avant chaque setOption d\'option');
+  // une seule dernière étape avant setOption, pour les sept chemins ECharts (graphiques, mesures temporelles, histogramme, carte de chaleur, boîte, flux, calendrier)
+  assert.strictEqual((charts.match(/finalizeOption\(option, instance\);\s*\n\s*instance\.setOption\(option, true\);/g) || []).length, 7, 'finalizeOption avant chaque setOption d\'option');
   assert.strictEqual((charts.match(/^\s*confineTooltip\(option\);/gm) || []).length, 1, 'confineTooltip n\'est plus appelée qu\'à l\'intérieur de finalizeOption');
   // les jetons du thème viennent de la page, pas de couleurs en dur
   for (const token of ["'--surface'", "'--border-strong'", "'--border'", "'--text-secondary'"]) assert.ok(charts.includes(token), `chartTheme lit ${token}`);
@@ -2568,35 +2568,123 @@ const SAMPLE_TIME_SERIES = [
   console.log('OK carte KPI — piste d\'objectif : [hidden] respecté (piège n°10), cachée sans objectif, visible avec');
 }
 
-// Nuage de mots : plus proposé dans « Ajouter une visualisation » tant que d3-cloud n'est pas fourni (18/11/2026)
+// Extensions de GFS (consigne 019, 18/11/2026) : « Nuage de mots » grisé, jamais masqué, bibliothèque reçue de GFS (js/extensions.js)
 {
   const fs = require('fs');
   const path = require('path');
   const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
-  // importMapHas : pure, ne lève jamais
-  const withCloud = '{"imports":{"apache-arrow":"./a.mjs","d3-cloud":"./js/vendor/d3-cloud/index.js"}}';
-  const withoutCloud = '{"imports":{"apache-arrow":"./a.mjs","flatbuffers":"./f.js","tslib":"./t.js"}}';
-  assert.strictEqual(data.importMapHas(withCloud, 'd3-cloud'), true, 'entrée présente');
-  assert.strictEqual(data.importMapHas(withoutCloud, 'd3-cloud'), false, 'entrée absente');
-  assert.strictEqual(data.importMapHas(withCloud, 'd3'), false, 'pas de correspondance partielle');
-  for (const bad of ['', 'pas du json', 'null', '[]', '{}', '{"imports":null}', '{"imports":[]}', '{"imports":{"d3-cloud":""}}', '{"imports":{"d3-cloud":null}}', undefined, null, 42]) {
-    assert.strictEqual(data.importMapHas(bad, 'd3-cloud'), false, 'illisible ou vide -> false : ' + JSON.stringify(bad));
-  }
-  // câblage : la carte n'est filtrée que dans renderTypeCards, la tuile en cours de modification garde la sienne,
-  // la liste TYPE_CARDS et le <select> (qui sert à relire une tuile existante) ne changent pas
-  const main = read('js/main.js');
-  const charts = read('js/charts.js');
-  const html = read('index.html');
-  assert.ok(/isWordCloudAvailable\(\) \|\| \(Boolean\(editingTileId\) && tileTypeSelect\.value === 'wordcloud'\)/.test(main), 'carte Nuage de mots : seulement si d3-cloud est fourni ou si on modifie une tuile Nuage de mots');
-  assert.ok(/TYPE_CARDS\.filter\(\(type\) => type !== 'wordcloud' \|\| wordCloudOffered\)/.test(main), 'le filtre ne retire que wordcloud');
-  assert.ok(/'wordcloud'/.test(main.match(/const TYPE_CARDS = \[[^\]]*\]/)[0]), 'TYPE_CARDS garde wordcloud (l\'ajouter à l\'importmap suffit à le rendre)');
-  assert.ok(/<option value="wordcloud"/.test(html), 'le <select> garde l\'option (relecture d\'une tuile enregistrée)');
-  assert.ok(/importMapHas\(el\.textContent, 'd3-cloud'\)/.test(charts) && /isWordCloudAvailable \}/.test(charts), 'charts.js lit l\'importmap et expose isWordCloudAvailable');
-  // l'importmap réel d'index.html ne déclare pas encore d3-cloud : si GFS le fournit, ce test doit être mis à jour avec la carte
-  const map = html.match(/<script type="importmap">([\s\S]*?)<\/script>/)[1];
-  assert.strictEqual(data.importMapHas(map, 'd3-cloud'), false, 'index.html : d3-cloud pas encore déclaré (en attente de GFS)');
-  assert.strictEqual(data.importMapHas(map, 'apache-arrow'), true, 'index.html : importmap lisible (apache-arrow)');
-  console.log('OK nuage de mots — carte proposée seulement si d3-cloud est dans l\'importmap (importMapHas), tuile existante conservée');
+  const ext = require('../js/extensions.js');
+  const link = (opts) => {
+    const o = Object.assign({ hosted: true, libs: {}, ready: Promise.resolve(), installs: [], onExt: null }, opts || {});
+    return {
+      hosted: o.hosted, ready: o.ready,
+      library: (id) => o.libs[id] || null,
+      onExtensions: (fn) => { o.onExt = fn; },
+      install: async (id) => { o.installs.push(id); if (o.reject) throw new Error('annulé'); return []; },
+      _o: o
+    };
+  };
+  const SRC = { src: 'https://gfs.example/vendor/d3-cloud/1.0.0/d3-cloud.js', integrite: 'sha384-AAAA', forme: 'module' };
+
+  // état : seule, hébergée sans l'extension, hébergée avec elle ; id inconnu -> seule (jamais « active » par défaut)
+  assert.strictEqual(ext.stateFor(null, 'nuage-de-mots'), 'standalone', 'pas de lien -> seule');
+  assert.strictEqual(ext.stateFor(link({ hosted: false }), 'nuage-de-mots'), 'standalone', 'lien non hébergé -> seule');
+  assert.strictEqual(ext.stateFor(link(), 'nuage-de-mots'), 'inactive', 'hébergée, bibliothèque non donnée -> pas encore ajoutée');
+  assert.strictEqual(ext.stateFor(link({ libs: { 'd3-cloud': SRC } }), 'nuage-de-mots'), 'active', 'hébergée avec la bibliothèque -> active');
+  assert.strictEqual(ext.stateFor(link({ libs: { 'd3-cloud': { src: SRC.src } } }), 'nuage-de-mots'), 'inactive', 'sans empreinte la source ne vaut rien');
+  assert.strictEqual(ext.stateFor(link({ libs: { 'd3-cloud': SRC } }), 'inconnue'), 'standalone', 'extension inconnue -> jamais active');
+  assert.strictEqual(ext.stateFor(link({ libs: { pdfjs: SRC } }), 'mots-cles-pdf'), 'active', 'mots-clés des PDF : même état, bibliothèque pdfjs');
+
+  // module posé par GFS : lu à chaque appel, jamais figé
+  class FakeCloud {}
+  const scopeWith = { GfsPaquets: { 'd3-cloud': { modules: { 'd3-cloud': { default: FakeCloud } } } } };
+  assert.strictEqual(ext.moduleFrom(scopeWith, 'nuage-de-mots').default, FakeCloud, 'GfsPaquets["d3-cloud"].modules["d3-cloud"].default');
+  assert.strictEqual(ext.moduleFrom({}, 'nuage-de-mots'), null);
+  assert.strictEqual(ext.moduleFrom({ GfsPaquets: { 'd3-cloud': {} } }, 'nuage-de-mots'), null);
+  assert.strictEqual(ext.moduleFrom({ GfsPaquets: { pdfjs: { modules: { 'pdfjs-dist/build/pdf.min.mjs': { getDocument() {} } } } } }, 'mots-cles-pdf').getDocument !== undefined, true, 'pdf.js : clé du module de la demande');
+
+  // Rejoué dans la chaîne asynchrone du fichier (`await extensionsAsyncTest()` plus bas) : un faux `document` posé ici ne doit pas
+  // rester en place pendant les essais synchrones qui suivent.
+  globalThis.extensionsAsyncTest = async () => {
+    const savedDoc = global.document;
+    const scripts = [];
+    global.document = {
+      createElement: () => ({}),
+      head: { append(script) { scripts.push(script); setTimeout(() => { global.GfsPaquets = scopeWith.GfsPaquets; script.onload(); }, 0); } }
+    };
+    try {
+      // sans lien (hors GFS) : null, rien n'est chargé, aucun abonné réveillé
+      let changes = 0;
+      const off = ext.onChange(() => { changes++; });
+      await ext.attach(Promise.resolve(null));
+      assert.strictEqual(await ext.load('nuage-de-mots'), null);
+      assert.strictEqual(scripts.length, 0, 'seule : aucune balise <script>');
+      assert.strictEqual(changes, 0, 'seule : rien ne change, personne n\'est réveillé');
+      assert.strictEqual(await ext.requestInstall('nuage-de-mots'), 'standalone', 'seule : le clic rend « standalone » (l\'appelant montre la fenêtre du grisé)');
+
+      // hébergée sans l'extension : null (non gardé), un clic appelle GfsLink.install, une annulation ne lève rien
+      const hosted = link();
+      await ext.attach(Promise.resolve(hosted));
+      assert.strictEqual(changes, 1, 'hébergée : un réveil quand GFS a répondu');
+      assert.strictEqual(ext.stateOf('nuage-de-mots'), 'inactive');
+      assert.strictEqual(await ext.load('nuage-de-mots'), null);
+      assert.strictEqual(scripts.length, 0, 'sans l\'extension : aucune balise <script>');
+      assert.strictEqual(await ext.requestInstall('nuage-de-mots'), 'inactive');
+      assert.deepStrictEqual(hosted._o.installs, ['nuage-de-mots'], 'un clic ouvre « Apps et extensions » sur la ligne de l\'extension');
+      hosted._o.reject = true;
+      assert.strictEqual(await ext.requestInstall('nuage-de-mots'), 'inactive', 'installation annulée : pas d\'exception');
+
+      // l'extension est ajoutée pendant que l'app est ouverte : l'événement réveille l'abonné, la bibliothèque se charge
+      hosted._o.libs['d3-cloud'] = SRC;
+      hosted._o.onExt(['nuage-de-mots']);
+      assert.strictEqual(changes, 2, 'l\'événement `extensions` réveille l\'abonné');
+      assert.strictEqual(ext.stateOf('nuage-de-mots'), 'active');
+      const mod = await ext.load('nuage-de-mots');
+      assert.strictEqual(mod.default, FakeCloud, 'le module posé par le fichier de GFS');
+      assert.strictEqual(scripts.length, 1);
+      assert.strictEqual(scripts[0].type, 'module', '<script type="module">, jamais import()');
+      assert.strictEqual(scripts[0].src, SRC.src);
+      assert.strictEqual(scripts[0].integrity, SRC.integrite, 'empreinte de GFS');
+      assert.strictEqual(scripts[0].crossOrigin, 'anonymous');
+      assert.strictEqual((await ext.load('nuage-de-mots')).default, FakeCloud);
+      assert.strictEqual(scripts.length, 1, 'déjà posé : pas de deuxième balise');
+      // l'extension est retirée alors que son fichier est déjà en mémoire : la fonction se grise (null), jamais à moitié
+      hosted._o.libs = {};
+      hosted._o.onExt([]);
+      assert.strictEqual(await ext.load('nuage-de-mots'), null, 'retirée : plus de module, même déjà chargé');
+      hosted._o.libs['d3-cloud'] = SRC;
+      assert.strictEqual((await ext.load('nuage-de-mots')).default, FakeCloud, 'ré-ajoutée : le module déjà posé sert, sans deuxième balise');
+      assert.strictEqual(scripts.length, 1);
+      // GFS muet : link.ready rejeté ne bloque pas
+      await ext.attach(Promise.resolve(link({ ready: Promise.reject(new Error('muet')) })));
+      assert.strictEqual(ext.stateOf('nuage-de-mots'), 'inactive');
+      off();
+    } finally {
+      global.document = savedDoc;
+      delete global.GfsPaquets;
+    }
+
+    // câblage : le type reste proposé (grisé), plus aucun import map ni import() pour d3-cloud
+    const main = read('js/main.js');
+    const charts = read('js/charts.js');
+    const html = read('index.html');
+    const css = read('css/style.css');
+    assert.ok(/'wordcloud'/.test(main.match(/const TYPE_CARDS = \[[^\]]*\]/)[0]), 'TYPE_CARDS garde wordcloud');
+    assert.ok(!/TYPE_CARDS\.filter\(/.test(main), 'aucune carte n\'est retirée : grisée, jamais masquée');
+    assert.ok(/const TYPE_EXTENSION = \{ wordcloud: 'nuage-de-mots' \}/.test(main), 'le type nuage de mots dépend de l\'extension nuage-de-mots');
+    assert.ok(/aria-disabled/.test(main) && /type-card-locked/.test(main) && /\.type-card-locked/.test(css), 'carte grisée : aria-disabled + classe + règle CSS');
+    assert.ok(/function chooseType\(type\) \{\s*const extensionId = TYPE_EXTENSION\[type\];\s*if \(extensionId && GristBI\.extensions\.stateOf\(extensionId\) !== 'active'\) \{ requestExtension/.test(main), 'un type grisé ne se choisit pas : il appelle requestExtension');
+    assert.ok(/GristBI\.extensions\.attach\(gfsLinkReady\)/.test(main) && /GristBI\.extensions\.onChange\(/.test(main), 'main.js donne le lien à js/extensions.js et repeint à chaque changement');
+    assert.ok(/dialogs\.notice\(\{[^}]*ext\.standalone\.title/.test(main.replace(/\s+/g, ' ')), 'seule : la fenêtre du grisé');
+    assert.ok(!/import\('d3-cloud'\)|importMapHas|isWordCloudAvailable/.test(charts + main), 'plus d\'import() nu ni de lecture de l\'importmap');
+    assert.ok(/GristBI\.extensions\.load\('nuage-de-mots'\)/.test(charts), 'charts.js reçoit d3-cloud de js/extensions.js');
+    assert.ok(/<option value="wordcloud"/.test(html), 'le <select> garde l\'option (relecture d\'une tuile enregistrée)');
+    const map = JSON.parse(html.match(/<script type="importmap">([\s\S]*?)<\/script>/)[1]);
+    assert.ok(!('d3-cloud' in map.imports) && !('pdfjs-dist' in map.imports), 'l\'import map ne nomme aucune bibliothèque d\'extension (règle 9 du guide)');
+    assert.ok(html.indexOf('js/extensions.js') > html.indexOf('js/data.js') && html.indexOf('js/extensions.js') < html.indexOf('js/charts.js'), 'js/extensions.js chargé entre data.js et charts.js');
+    assert.ok(!/https?:\/\//.test(read('js/extensions.js').replace(/\/\*[\s\S]*?\*\//, '')), 'aucune adresse en dur dans js/extensions.js');
+    console.log('OK extensions de GFS — états seule/pas encore/active, module de GfsPaquets, <script type="module"> avec empreinte, événement `extensions`, clic -> GfsLink.install ou fenêtre du grisé, carte grisée jamais masquée');
+  };
 }
 
 // Assistant de démarrage : un montant passe avant un prix unitaire (18/11/2026, constaté sur la table de démo où PrixUnitaire précédait Montant)
@@ -2667,6 +2755,8 @@ const SAMPLE_TIME_SERIES = [
 // que son achèvement précède le message final ci-dessous plutôt que de le laisser s'afficher avant
 // que ces assertions n'aient tourné.
 (async () => {
+  await globalThis.extensionsAsyncTest();
+  delete globalThis.extensionsAsyncTest;
   const fakeTimeSeries = [
     { period: '2025-01-01', value: 100, cumulative: 100, ytd: 100, previousYear: null },
     { period: '2025-02-01', value: 50, cumulative: 150, ytd: 150, previousYear: null },
@@ -5305,7 +5395,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     const chartsK = fsK.readFileSync(pathK.join(rootK, 'js', 'charts.js'), 'utf8');
     const indexK = fsK.readFileSync(pathK.join(rootK, 'index.html'), 'utf8');
     assert.ok(/const TYPE_CARDS = \[[^\]]*'sankey'/.test(mainK) && /<option value="sankey"/.test(indexK) && /'type-sankey':/.test(mainK), 'carte, option et icône du type');
-    assert.ok(/type !== 'sankey'; \}/.test(mainK), 'pas de drill-down');
+    assert.ok(/type !== 'sankey' && type !== 'calendar'; \}/.test(mainK), 'pas de drill-down (flux, calendrier)');
     assert.ok(/isGrid = isPivot \|\| isHeatmap \|\| isSankey/.test(mainK) && /sankeyDimsDiffer/.test(mainK) && /sankeyTargetRequired/.test(mainK), 'deux colonnes obligatoires et différentes, messages propres au flux');
     assert.ok(/currentTile\.type === 'sankey'/.test(chartsK) && /params\.dataType === 'edge'/.test(chartsK) && /toggleCellFilters\(currentTile, from\.value, to\.value\)/.test(chartsK) && /toggleFilter\(node\.column, node\.value, currentTile\.id\)/.test(chartsK), 'nœud = filtre de sa colonne, lien = source ET cible');
     assert.ok(/instance\.__refit = \(\) => \{\s*const p = place\(\);/.test(chartsK), 'les marges de libellés suivent le redimensionnement');
@@ -5390,6 +5480,98 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     assert.ok(/escapeHtml\(String\(params\.name\)\)/.test(chartsB) && /escapeHtml\(tile\.measureSize\)/.test(chartsB), 'noms échappés dans l\'infobulle');
     assert.ok(!/Intl\.NumberFormat|toFixed/.test(chartsB), 'aucun format de nombre en dur dans charts.js');
     console.log('OK bulles — points alignés par nom, diamètres à aire proportionnelle, tailles sans aire, export, conseils, i18n, câblage');
+  }
+
+  // Calendrier (type 'calendar', 18/11/2026, lot 3 de l'étude des tuiles usuelles, §5.6) : valeur agrégée par jour, jours sans ligne,
+  // fenêtre d'un an, clic = filtre du jour, export, défauts, conseils, i18n, câblage.
+  {
+    const fsC = require('fs');
+    const pathC = require('path');
+    const rootC = pathC.join(__dirname, '..');
+    // Décalage de jours : fins de mois, année bissextile, entrée invalide.
+    assert.strictEqual(data.isoDayShift('2024-02-28', 1), '2024-02-29'); assert.strictEqual(data.isoDayShift('2023-02-28', 1), '2023-03-01');
+    assert.strictEqual(data.isoDayShift('2024-12-31', 1), '2025-01-01'); assert.strictEqual(data.isoDayShift('2025-03-01', -1), '2025-02-28');
+    assert.strictEqual(data.isoDayShift('2025-01-10', 0), '2025-01-10'); assert.strictEqual(data.isoDayShift('x', 1), null); assert.strictEqual(data.isoDayShift(null, 1), null);
+    // Une valeur par jour, jours triés, plusieurs lignes le même jour agrégées, lignes sans date valide ignorées.
+    const rowsC = [
+      { D: '2025-03-05', M: 10, R: 'a' }, { D: '2025-03-03', M: 4, R: 'a' }, { D: '2025-03-05', M: 6, R: 'b' }, { D: '2025-03-03', M: 1, R: 'b' }, { D: '2025-03-10', M: 2, R: 'a' },
+      { D: 'bad', M: 99 }, { D: null, M: 99 }, { D: '2025-13-45', M: 99 }, { D: 45000, M: 99 }, { M: 99 }
+    ];
+    const cs = data.calendarDays(rowsC, 'D', 'M', 'sum');
+    assert.deepStrictEqual(cs.days, [{ date: '2025-03-03', value: 5 }, { date: '2025-03-05', value: 16 }, { date: '2025-03-10', value: 2 }], 'somme par jour, dates triées');
+    assert.deepStrictEqual([cs.from, cs.to, cs.ignored, cs.hidden, cs.total], ['2025-03-03', '2025-03-10', 5, 0, 3], 'dates invalides ou absentes : ignorées, jamais un jour inventé');
+    assert.deepStrictEqual(data.calendarDays(rowsC, 'D', 'M', 'count').days.map((d) => d.value), [2, 2, 1], 'comptage : lignes par jour');
+    assert.deepStrictEqual(data.calendarDays(rowsC, 'D', 'M', 'avg').days.map((d) => d.value), [2.5, 8, 2]);
+    assert.deepStrictEqual(data.calendarDays(rowsC, 'D', 'M', 'min').days.map((d) => d.value), [1, 6, 2]); assert.deepStrictEqual(data.calendarDays(rowsC, 'D', 'M', 'max').days.map((d) => d.value), [4, 10, 2]);
+    assert.deepStrictEqual(data.calendarDays(rowsC, 'D', 'M', 'inconnu').days.map((d) => d.value), [5, 16, 2], 'agrégat inconnu : somme');
+    assert.deepStrictEqual(data.calendarDays([], 'D', 'M', 'sum'), { days: [], from: null, to: null, ignored: 0, hidden: 0, total: 0 }); assert.deepStrictEqual(data.calendarDays(undefined, 'D', 'M', 'sum').days, []);
+    assert.deepStrictEqual(data.calendarDays([{ D: 'x', M: 1 }], 'D', 'M', 'sum'), { days: [], from: null, to: null, ignored: 1, hidden: 0, total: 0 }, 'aucune date valide : aucun jour');
+    // Fenêtre d'un an : les 366 derniers jours depuis le dernier jour qui a une valeur ; le reste est compté, pas perdu.
+    const long = []; for (let i = 0; i < 500; i++) long.push({ D: data.isoDayShift('2024-01-01', i), M: i });
+    const lg = data.calendarDays(long, 'D', 'M', 'sum');
+    assert.deepStrictEqual([lg.days.length, lg.hidden, lg.total, lg.to, lg.from], [366, 134, 500, data.isoDayShift('2024-01-01', 499), data.isoDayShift('2024-01-01', 134)]);
+    assert.strictEqual(lg.days[0].value, 134, 'le plus ancien jour dessiné est le 135e'); assert.strictEqual(data.CALENDAR_MAX_DAYS, 366);
+    assert.strictEqual(data.calendarDays(long, 'D', 'M', 'sum', 30).days.length, 30, 'plafond réglé'); assert.strictEqual(data.calendarDays(long, 'D', 'M', 'sum', Infinity).days.length, 500, 'sans plafond : tout');
+    assert.strictEqual(data.calendarDays(long, 'D', 'M', 'sum', 'x').days.length, 366, 'plafond invalide : défaut');
+    // Un trou n'est pas un jour à zéro : seuls les jours avec ligne existent.
+    const gaps = data.calendarDays([{ D: '2025-01-01', M: 1 }, { D: '2025-01-05', M: 1 }], 'D', 'M', 'sum'); assert.strictEqual(gaps.days.length, 2);
+    // Store : le clic pose un filtre d'égalité sur le jour ; la tuile reste entière, les autres sont filtrées ; même jour = retiré.
+    {
+      const st = state.createStore();
+      st.setRows(rowsC.slice(0, 5));
+      st.addTile({ id: 'cal', type: 'calendar', dimension: 'D', measure: 'M', aggFn: 'sum', title: 'C' });
+      st.addTile({ id: 'br', type: 'bar', dimension: 'R', measure: 'M', aggFn: 'sum', title: 'B' });
+      st.toggleFilter('D', '2025-03-05', 'cal');
+      assert.strictEqual(data.rowsForTile(st.getState().tiles[0], st.getState()).length, 5, 'le calendrier reste affiché en entier');
+      assert.strictEqual(data.rowsForTile(st.getState().tiles[1], st.getState()).length, 2, 'les autres tuiles ne gardent que les lignes du jour');
+      st.toggleFilter('D', '2025-03-05', 'cal'); assert.deepStrictEqual(st.getState().activeFilters, [], 'même jour : filtre retiré');
+      st.toggleFilter('D', '2025-03-03', 'cal'); st.removeTile('cal'); assert.deepStrictEqual(st.getState().activeFilters, [], 'supprimer la tuile lève son filtre');
+    }
+    // Export : un jour par ligne, TOUS les jours avec une valeur (au-delà de l'année aussi), filtres des autres tuiles appliqués.
+    const stC = { rows: long, activeFilters: [], advancedFilters: [], drillIns: {}, comments: [], pages: [] };
+    const calTile = { id: 'cal', type: 'calendar', title: 'Activité', dimension: 'D', measure: 'M', aggFn: 'sum' };
+    const sheetC = data.tileExportSheet(calTile, stC);
+    assert.deepStrictEqual(sheetC.header, ['D', 'M']); assert.strictEqual(sheetC.rows.length, 500); assert.deepStrictEqual(sheetC.rows[0], ['2024-01-01', 0]);
+    assert.strictEqual(data.tileExportSheet(calTile, Object.assign({}, stC, { rows: [] })).rows.length, 0, 'aucune ligne : en-têtes seuls'); assert.strictEqual(data.tileExportKind(calTile), 'image');
+    assert.deepStrictEqual(data.tileExportSheet(calTile, Object.assign({}, stC, { rows: rowsC, activeFilters: [{ column: 'R', value: 'a', sourceTileId: 'autre' }] })).rows, [['2025-03-03', 4], ['2025-03-05', 10], ['2025-03-10', 2]], 'filtre d\'une autre tuile');
+    // Types : palette et format oui ; ni tri, ni séries, ni repère, ni étiquettes de valeur, ni drill-down.
+    assert.strictEqual(data.supportsPalette({ type: 'calendar' }), true); assert.strictEqual(data.supportsNumberFormat({ type: 'calendar' }), true);
+    assert.strictEqual(data.isSortableTile({ type: 'calendar' }), false); assert.strictEqual(data.isSeriesTile({ type: 'calendar', seriesColumn: 'x' }), false);
+    assert.strictEqual(data.supportsRefLine({ type: 'calendar' }), false); assert.strictEqual(data.supportsValueLabels({ type: 'calendar' }), false);
+    // Défauts : la vraie colonne de dates (jamais l'année dérivée), Somme d'une vraie mesure ou Comptage ; pas de date = type déconseillé.
+    const ventes = [];
+    for (let i = 0; i < 60; i++) ventes.push({ Date: data.isoDayShift('2025-01-01', i), Region: ['Nord', 'Sud', 'Est'][i % 3], Montant: 100.5 + i * 3.25 });
+    const dc = advice.defaultsForType('calendar', ventes, ['Date', 'Region', 'Montant']);
+    assert.strictEqual(dc.dimension, 'Date'); assert.strictEqual(dc.measure, 'Montant'); assert.strictEqual(dc.aggFn, 'sum');
+    const cnt = advice.defaultsForType('calendar', ventes.map((r) => ({ Date: r.Date, Region: r.Region })), ['Date', 'Region']); assert.strictEqual(cnt.dimension, 'Date'); assert.strictEqual(cnt.aggFn, 'count', 'aucune mesure : comptage');
+    assert.strictEqual(advice.defaultsForType('calendar', ventes.map((r) => ({ Region: r.Region, Montant: r.Montant })), ['Region', 'Montant']), null, 'aucune colonne de dates : rien à préremplir');
+    assert.strictEqual(advice.adviceForType('calendar', ventes.map((r) => ({ Region: r.Region, Montant: r.Montant })), ['Region', 'Montant']).key, 'advice.fit.noDate');
+    assert.strictEqual(advice.adviceForType('calendar', ventes, ['Date', 'Region', 'Montant']).key, 'advice.use.calendar'); assert.strictEqual(advice.TILE_TYPES.includes('calendar'), false, 'jamais proposé à l\'accueil');
+    // Conseils : colonne sans date, moins d'une semaine, au-delà d'un an ; rien pour un calendrier sain ; colonnes absentes sans exception.
+    const tc = { type: 'calendar', dimension: 'Date', measure: 'Montant', aggFn: 'sum' };
+    assert.strictEqual(advice.adviceForTile(tc, ventes), null);
+    assert.deepStrictEqual(advice.adviceForTile(Object.assign({}, tc, { dimension: 'Region' }), ventes), { key: 'advice.calendar.notDate', vars: { dimension: 'Region' }, level: 'warn' });
+    assert.deepStrictEqual(advice.adviceForTile(tc, ventes.slice(0, 4)), { key: 'advice.calendar.fewDays', vars: { n: 4 }, level: 'warn' });
+    assert.deepStrictEqual(advice.adviceForTile(tc, long.map((r) => ({ Date: r.D, Montant: r.M }))), { key: 'advice.calendar.truncated', vars: { days: 366, hidden: 134 }, level: 'tip' });
+    assert.doesNotThrow(() => advice.adviceForTile({ type: 'calendar', dimension: 'Absente', measure: 'Autre', aggFn: 'sum' }, ventes));
+    // i18n : textes, 7 jours (dimanche en premier) et 12 mois dans les deux langues, pluriels sans objet.
+    ['tileForm.type.calendar', 'tileTitle.calendar', 'tileForm.dimension.labelDate', 'tileForm.error.calendarNotDate', 'chart.calendar.empty', 'chart.calendar.dayNames', 'chart.calendar.monthNames',
+      'advice.use.calendar', 'advice.fit.noDate', 'advice.calendar.notDate', 'advice.calendar.fewDays', 'advice.calendar.truncated'].forEach((k) => assert.ok(i18n.STRINGS[k] && i18n.STRINGS[k].fr && i18n.STRINGS[k].en, 'traduction fr/en : ' + k));
+    for (const lang of ['fr', 'en']) { i18n.setLang(lang); assert.strictEqual(i18n.t('chart.calendar.dayNames').split(',').length, 7, lang); assert.strictEqual(i18n.t('chart.calendar.monthNames').split(',').length, 12, lang); }
+    i18n.setLang('fr'); assert.strictEqual(i18n.t('tileTitle.calendar', { measure: 'Montant', dimension: 'Date' }), 'Montant par jour (Date)'); i18n.setLang('en'); assert.strictEqual(i18n.t('tileTitle.calendar', { measure: 'Montant', dimension: 'Date' }), 'Montant per day (Date)'); i18n.setLang('fr');
+    assert.strictEqual(i18n.t('chart.calendar.dayNames').split(',')[0], 'D', 'le tableau commence par dimanche (convention d\'ECharts), lundi en premier par `firstDay: 1`');
+    // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
+    const mainC = fsC.readFileSync(pathC.join(rootC, 'js', 'main.js'), 'utf8');
+    const chartsC = fsC.readFileSync(pathC.join(rootC, 'js', 'charts.js'), 'utf8');
+    const indexC = fsC.readFileSync(pathC.join(rootC, 'index.html'), 'utf8');
+    assert.ok(/const TYPE_CARDS = \[[^\]]*'calendar'/.test(mainC) && /<option value="calendar"/.test(indexC) && /'type-calendar':/.test(mainC), 'carte, option et icône du type');
+    assert.ok(/inferColumnKind\(dimension\) !== 'date'\) fail\('tile-dimension', 'tileForm\.error\.calendarNotDate'\)/.test(mainC), 'la colonne doit contenir de vraies dates');
+    assert.ok(/currentTile\.type === 'calendar'/.test(chartsC) && /toggleFilter\(currentTile\.dimension, day, currentTile\.id\)/.test(chartsC), 'clic = filtre du jour');
+    assert.ok(/firstDay: 1/.test(chartsC) && /escapeHtml\(longDate\(/.test(chartsC) && /heatStops\(tile\.palette\)/.test(chartsC), 'lundi en premier, date de l\'infobulle échappée, rampe de la carte de chaleur');
+    const emptyCal = chartsC.slice(chartsC.indexOf('function renderCalendar'), chartsC.indexOf('const f = fmtFor(tile, tile.measure);', chartsC.indexOf('function renderCalendar')));
+    assert.ok(!/calendar: \{/.test(emptyCal) && !/visualMap/.test(emptyCal), 'aucun composant `calendar` sans plage (ECharts lèverait une exception)');
+    assert.ok(!/Intl\.NumberFormat|toFixed/.test(chartsC), 'aucun format de nombre en dur dans charts.js');
+    console.log('OK calendrier — valeur par jour, jours sans ligne, fenêtre d\'un an, clic = filtre du jour, export, défauts, conseils, i18n, câblage');
   }
 
   // Export Excel avec ExcelJS 4.4.0 (consigne GFS 017, 18/11/2026) : le VRAI paquet vendorisé, exécuté sous Node

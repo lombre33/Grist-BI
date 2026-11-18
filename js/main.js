@@ -14,7 +14,7 @@
   // qui lui donnerait le sien — voir le README du kit, section « L'ambiance de GFS ». `import()`
   // dynamique plutôt qu'un `<script type="module">` séparé dans index.html : `js/main.js` reste un
   // script classique (CLAUDE.md §2), et c'est déjà ainsi que ce widget charge un module ES depuis du
-  // code classique (js/duckdb-engine.js:VENDOR_BASE_URL, js/charts.js:loadD3Cloud). `document.
+  // code classique (js/duckdb-engine.js:VENDOR_BASE_URL). `document.
   // currentScript` n'est fiable qu'ICI, à l'exécution synchrone initiale de CE script (jamais dans
   // du code async) : capturé en tout premier, avant le moindre rendu, pour démarrer l'ambiance aussi
   // tôt que possible dans ce widget sans module d'entrée propre — et pour que le chemin reste juste
@@ -87,6 +87,15 @@
   }
 
   const GristBI = window.GristBI;
+  // Extensions de GFS (consigne 019, js/extensions.js) : reçoit le lien du kit résolu plus haut. Quand l'état d'une extension change
+  // (GFS a répondu, ou la personne en ajoute/retire une pendant que l'app est ouverte), les tuiles qui en dépendent sont repeintes et
+  // les cartes de « Ajouter une visualisation » (grisées ou non) refaites. `store`/`render`/`renderTypeCards` sont définis plus bas :
+  // l'abonné n'est appelé que bien après, jamais à l'exécution synchrone de ce bloc.
+  GristBI.extensions.attach(gfsLinkReady);
+  GristBI.extensions.onChange(() => {
+    if (typeof render === 'function' && store) render(store.getState());
+    if (typeof refreshTilePanelTexts === 'function') refreshTilePanelTexts();
+  });
   const store = (GristBI.store = GristBI.state.createStore());
   const { escapeHtml, tileDrillLevels } = GristBI.data;
   const { t } = GristBI.i18n;
@@ -112,6 +121,7 @@
     'type-bar': '<path d="M3.5 13V8M8 13V3.5M12.5 13V6"/><path d="M2 14h12"/>',
     'type-line': '<path d="M2 12l3.5-4 3 2.5L14 4"/><path d="M2 14h12"/>',
     'type-histogram': '<path d="M2 14v-4h2.6v4M4.6 14V6h2.6v8M7.2 14V3h2.6v11M9.8 14V7h2.6v7M12.4 14v-3H14v3"/><path d="M2 14h12"/>',
+    'type-calendar': '<rect x="2.5" y="3" width="11" height="10" rx="1.2"/><path d="M2.5 6.5h11M5.5 2v2.5M10.5 2v2.5"/><path d="M5 9h1M7.5 9h1M10 9h1M5 11h1M7.5 11h1"/>',
     'type-sankey': '<path d="M2.5 3v4.5M2.5 9v4M13.5 3v10"/><path d="M3 4.5c4 0 6 1 10 1.5M3 6.5c4 0 6 2.2 10 3.5M3 11c4 0 6-1.2 10-1.5"/>',
     'type-box': '<path d="M5 3v2.5M5 10.5V13M3.5 3h3M3.5 13h3"/><rect x="3" y="5.5" width="4" height="5" rx=".5"/><path d="M3 8h4"/><path d="M11.5 4.5v1.5M11.5 11v2M10 4.5h3M10 13h3"/><rect x="9.5" y="6" width="4" height="5" rx=".5"/><path d="M9.5 8.5h4"/>',
     'type-combo': '<path d="M3 13V9M7 13V6M11 13V8"/><path d="M2 14h12"/><path d="M2.5 6l4-2.5L10.5 5l3-2.7"/>',
@@ -769,6 +779,7 @@
     let vars;
     if (p.isText) { key = 'tileTitle.text'; vars = undefined; }
     else if (p.isHistogram) { key = 'tileTitle.histogram'; vars = { measure: p.measure }; }
+    else if (p.isCalendar) { key = 'tileTitle.calendar'; vars = { measure: p.measure, dimension: p.dimension }; }
     else if (p.isSankey) { key = 'tileTitle.sankey'; vars = { measure: p.measure, dimension: p.dimension, columnDimension: p.columnDimension }; }
     else if (p.isBox) { key = 'tileTitle.box'; vars = { measure: p.measure, dimension: p.dimension }; }
     else if (p.isCombo && p.comboPareto) { key = 'tileTitle.pareto'; vars = { measure: p.measure, dimension: p.dimension }; }
@@ -824,7 +835,7 @@
   // générique l'ignore explicitement (voir le garde dans getOrCreateChartInstance). Masquer le
   // formulaire de configuration du drill-down pour ce type plutôt que de laisser l'utilisateur
   // configurer des niveaux qui ne se déclencheront jamais au clic.
-  function supportsDrillDown(type) { return !typeHasNoDimension(type) && type !== 'pivot' && type !== 'heatmap' && type !== 'radar' && type !== 'progress' && type !== 'box' && type !== 'sankey'; }
+  function supportsDrillDown(type) { return !typeHasNoDimension(type) && type !== 'pivot' && type !== 'heatmap' && type !== 'radar' && type !== 'progress' && type !== 'box' && type !== 'sankey' && type !== 'calendar'; }
 
   // Drill-down à N niveaux : un combobox par niveau, créé dynamiquement ("+ Niveau") plutôt que des
   // champs figés dans le HTML — data.js/state.js/charts.js gèrent déjà un tableau drillDimensions
@@ -1958,7 +1969,7 @@
     // une 2e mesure (axe Y). Le pivot et le radar ajoutent une 2e dimension/un axe par valeur mais
     // n'ont pas de drill-down (voir supportsDrillDown).
     dimensionField.hidden = formHasNoDimension();
-    dimensionLabel.textContent = t(isSankey ? 'tileForm.dimension.labelSource' : (isGrid ? 'tileForm.dimension.labelRows' : 'tileForm.dimension.label'));
+    dimensionLabel.textContent = t(isSankey ? 'tileForm.dimension.labelSource' : (isGrid ? 'tileForm.dimension.labelRows' : (type === 'calendar' ? 'tileForm.dimension.labelDate' : 'tileForm.dimension.label')));
     columnDimensionLabel.textContent = t(isSankey ? 'tileForm.columnDimension.labelTarget' : 'tileForm.columnDimension.label');
     columnDimensionField.hidden = !isGrid;
     pivotHeatField.hidden = !isPivot;
@@ -2268,6 +2279,8 @@
     if (usesTarget && (target !== undefined || targetColumn) && !(Number.isFinite(goodPct) && Number.isFinite(warnPct) && warnPct >= 0 && goodPct > warnPct)) fail('tile-good-pct', 'tileForm.error.thresholds');
     if (!isRadarColumns && !isWordCloudSplit && !isText && !isTable && !measure) fail('tile-measure', 'tileForm.error.measureRequired');
     if (hasDimension && !dimension) fail('tile-dimension', 'tileForm.error.dimensionRequired');
+    // Calendrier : une case = un jour, la colonne doit contenir de vraies dates (format ISO, comme toutes les colonnes Date).
+    else if (type === 'calendar' && dimension && inferColumnKind(dimension) !== 'date') fail('tile-dimension', 'tileForm.error.calendarNotDate');
     if (isScatter && !measureYSelect.value) fail('tile-measure-y', 'tileForm.error.measureYRequired'); // 2e mesure obligatoire pour un nuage de points
     if (isHistogram && binsValue !== undefined && !(Number.isInteger(binsValue) && binsValue >= 2 && binsValue <= GristBI.data.HISTOGRAM_MAX_BINS)) fail('tile-bins', 'tileForm.error.binsRange');
     // Ligne de repère : une valeur fixe demande un nombre.
@@ -2305,7 +2318,7 @@
     // voir i18n.js:tileTitle) pour que l'en-tête de tuile suive la langue de l'interface au lieu de
     // rester figé dans celle de sa création.
     const auto = autoTileTitle({
-      isText, isTable, isProgress, isCombo, comboPareto, isHistogram, isBox, isSankey, isBubble: isScatter && !!measureSizeSelect.value, measureSize: measureSizeSelect.value, measureY: measureYSelect.value, tableColumns, isPivot, isHeatmap, isRadarColumns, isWordCloudSplit, hasDimension, measureMode,
+      isText, isTable, isProgress, isCombo, comboPareto, isHistogram, isBox, isSankey, isCalendar: type === 'calendar', isBubble: isScatter && !!measureSizeSelect.value, measureSize: measureSizeSelect.value, measureY: measureYSelect.value, tableColumns, isPivot, isHeatmap, isRadarColumns, isWordCloudSplit, hasDimension, measureMode,
       measure, dimension, columnDimension, aggFn, radarAxes, seriesColumn
     });
     const customTitle = tileTitleInput.value.trim();
@@ -2456,8 +2469,10 @@
   // repliées, aperçu en direct, conseil en direct). Le panneau est en flux normal (voir css/style.css) :
   // il ne recouvre jamais la barre. Toute la lecture du formulaire passe par readTileForm() ci-dessus.
   // =============================================================================================
-  const TYPE_CARDS = ['bar', 'histogram', 'box', 'line', 'combo', 'pie', 'treemap', 'funnel', 'sankey', 'scatter', 'waterfall', 'radar', 'wordcloud', 'kpi', 'gauge', 'progress', 'pivot', 'heatmap', 'table', 'text'];
+  const TYPE_CARDS = ['bar', 'histogram', 'box', 'line', 'combo', 'pie', 'treemap', 'funnel', 'sankey', 'calendar', 'scatter', 'waterfall', 'radar', 'wordcloud', 'kpi', 'gauge', 'progress', 'pivot', 'heatmap', 'table', 'text'];
   const PREVIEW_TILE_ID = '__preview__';
+  // Types de tuile portés par une extension de GFS (js/extensions.js:EXTENSIONS).
+  const TYPE_EXTENSION = { wordcloud: 'nuage-de-mots' };
   let panelOpener = null;
   let previewTimer = null;
 
@@ -2475,16 +2490,22 @@
     const rows = store.getState().rows;
     const columns = availableColumns(rows);
     typeGridEl.innerHTML = '';
-    // « Nuage de mots » n'est proposé que si d3-cloud est fourni (importmap d'index.html) ; la tuile qu'on modifie garde sa carte.
-    const wordCloudOffered = GristBI.charts.isWordCloudAvailable() || (Boolean(editingTileId) && tileTypeSelect.value === 'wordcloud');
-    TYPE_CARDS.filter((type) => type !== 'wordcloud' || wordCloudOffered).forEach((type) => {
+    // Un type qui dépend d'une extension de GFS reste proposé, GRISÉ avec « pas encore » comme raison (consigne 019, point 4) ;
+    // son clic ne choisit pas le type : voir `requestExtension`.
+    TYPE_CARDS.forEach((type) => {
+      const extensionId = TYPE_EXTENSION[type];
+      const locked = Boolean(extensionId) && GristBI.extensions.stateOf(extensionId) !== 'active';
       const advice = GristBI.advice ? GristBI.advice.adviceForType(type, rows, columns) : null;
       const card = document.createElement('button');
       card.type = 'button';
       card.className = 'type-card';
       card.dataset.type = type;
+      const adviceText = locked
+        ? t(GristBI.extensions.stateOf(extensionId) === 'inactive' ? 'ext.pending.hosted' : 'ext.pending.standalone', { extension: t('ext.name.' + extensionId) })
+        : (advice ? t(advice.key, advice.vars) : '');
       card.innerHTML = `${icon('type-' + type)}<span class="type-card-name">${escapeHtml(t('tileForm.type.' + type))}</span>`
-        + `<span class="type-card-advice" data-level="${advice ? advice.level : ''}">${advice ? escapeHtml(t(advice.key, advice.vars)) : ''}</span>`;
+        + `<span class="type-card-advice" data-level="${locked ? 'locked' : (advice ? advice.level : '')}">${escapeHtml(adviceText)}</span>`;
+      if (locked) { card.classList.add('type-card-locked'); card.setAttribute('aria-disabled', 'true'); }
       card.addEventListener('click', () => chooseType(type));
       typeGridEl.appendChild(card);
     });
@@ -2579,7 +2600,20 @@
     }
   }
 
+  // Un clic sur une fonction grisée (consigne 019, point 4) : dans GFS, sa fenêtre « Apps et extensions » s'ouvre sur la ligne de
+  // l'extension ; l'app seule montre la fenêtre du grisé du guide (section 5). Rien n'est jamais ajouté sans le geste de la personne.
+  async function requestExtension(extensionId, type) {
+    const state = await GristBI.extensions.requestInstall(extensionId);
+    if (state !== 'standalone') return;
+    await GristBI.dialogs.notice({
+      title: t('ext.standalone.title'),
+      message: t('ext.standalone.body', { feature: t('tileForm.type.' + type), extension: t('ext.name.' + extensionId) })
+    });
+  }
+
   function chooseType(type) {
+    const extensionId = TYPE_EXTENSION[type];
+    if (extensionId && GristBI.extensions.stateOf(extensionId) !== 'active') { requestExtension(extensionId, type); return; }
     applyTypeDefaults(type);
     submitAttempted = false;
     clearFormErrors();

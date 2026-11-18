@@ -806,7 +806,8 @@
   // `realDateColumnIds` (tables système lisibles avec l'accès `full`) ; le JSON n'est PAS interprété ici
   // (`GristBI.format.parseWidgetOptions` s'en charge, testé sous Node). Repli sur `{columns: {}, docSettings:
   // null}` en cas d'échec : le format de chaque tuile retombe alors sur Automatique, jamais d'erreur.
-  // La forme exacte de ces deux tables n'a PAS été vérifiée sur un vrai document Grist depuis cette session.
+  // `documentSettings` est un texte JSON (`{"locale":"en-US","engine":"python3"}`), vérifié par GFS dans un vrai Grist (consigne 020, 18/11/2026) ; la forme exacte
+  // de `widgetOptions` de `_grist_Tables_column` et la devise du document n'ont PAS été mesurées sur un vrai document Grist depuis cette session.
   async function readColumnFormats(tableId) {
     const empty = { columns: {}, docSettings: null };
     try {

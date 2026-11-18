@@ -678,6 +678,44 @@
       && !!filter.maxExclusive === !bin.last;
   }
 
+  // --- Calendrier (`type: 'calendar'`) ---------------------------------------------------------------------
+  // Une case par JOUR, colorée selon la valeur agrégée de ce jour : `tile.dimension` = une colonne de DATES (format ISO
+  // 'AAAA-MM-JJ', celui de toutes les colonnes Date de ce widget), `tile.measure` + `tile.aggFn` (Comptage = lignes par jour). Un
+  // jour sans ligne n'a PAS de case colorée (jamais « la plus petite valeur »). Un calendrier lisible tient sur une année :
+  // au-delà, seuls les CALENDAR_MAX_DAYS derniers jours (depuis le dernier jour qui a une valeur) sont dessinés, le reste est compté.
+  // JS pur à tout volume : une passe pour ranger les lignes par jour, puis un agrégat par jour.
+  const CALENDAR_MAX_DAYS = 366;
+
+  function isoDayShift(iso, days) {
+    const t = parseDateValue(iso);
+    return t === null ? null : new Date(t + days * MS_PER_DAY).toISOString().slice(0, 10);
+  }
+
+  // Rend `{ days: [{date, value}], from, to, ignored, hidden, total }` : `days` triés par date, seulement les jours avec une valeur
+  // numérique ; `ignored` = lignes dont la cellule n'est pas une date ISO valide ; `hidden` = jours (avec valeur) plus anciens que la
+  // fenêtre affichée ; `total` = jours avec une valeur avant ce plafond ; `from`/`to` = premier et dernier jour dessinés (null si aucun).
+  function calendarDays(rows, dateColumn, measureColumn, aggFn, maxDays) {
+    const byDay = new Map();
+    let ignored = 0;
+    for (const row of rows || []) {
+      const day = row[dateColumn];
+      if (parseDateValue(day) === null) { ignored++; continue; }
+      if (!byDay.has(day)) byDay.set(day, []);
+      byDay.get(day).push(row);
+    }
+    const all = [];
+    Array.from(byDay.keys()).sort().forEach((day) => {
+      const raw = aggregateSingle(byDay.get(day), measureColumn, aggFn);
+      const value = typeof raw === 'bigint' ? Number(raw) : raw;
+      if (Number.isFinite(value)) all.push({ date: day, value });
+    });
+    if (!all.length) return { days: [], from: null, to: null, ignored, hidden: 0, total: 0 };
+    const last = all[all.length - 1].date;
+    const cap = maxDays === Infinity ? Infinity : (Number.isInteger(maxDays) && maxDays > 0 ? maxDays : CALENDAR_MAX_DAYS);
+    const days = cap === Infinity ? all : all.filter((d) => d.date >= isoDayShift(last, -(cap - 1)));
+    return { days, from: days[0].date, to: last, ignored, hidden: all.length - days.length, total: all.length };
+  }
+
   // --- Boîte à moustaches (`type: 'box'`) ----------------------------------------------------------
   // Distribution d'UNE colonne numérique PAR GROUPE (valeurs de `tile.dimension`) : médiane, quartiles, moustaches et valeurs
   // aberrantes — notes par classe, délais par service. Il faut les valeurs BRUTES de chaque ligne, jamais un agrégat : c'est
@@ -829,7 +867,7 @@
   }
   // Types dont les couleurs viennent de la palette. Hors liste : la cascade (vert = hausse, rouge =
   // baisse : un sens, pas une identité), le KPI et le tableau croisé (aucune couleur de série).
-  const PALETTE_TILE_TYPES = ['bar', 'line', 'pie', 'funnel', 'treemap', 'scatter', 'radar', 'gauge', 'wordcloud', 'combo', 'histogram', 'heatmap', 'box', 'sankey'];
+  const PALETTE_TILE_TYPES = ['bar', 'line', 'pie', 'funnel', 'treemap', 'scatter', 'radar', 'gauge', 'wordcloud', 'combo', 'histogram', 'heatmap', 'box', 'sankey', 'calendar'];
   function supportsPalette(tile) {
     if (!tile) return false;
     // Tableau croisé : une palette n'a de sens que si ses cellules sont colorées (`pivotHeat`).
@@ -912,7 +950,7 @@
   // Types qui AFFICHENT une valeur numérique (donc concernés par `tile.numberFormat`, voir js/format.js) :
   // tout type de tuile nouveau qui montre un nombre s'ajoute ici, pour que le champ « Format des nombres »
   // du panneau apparaisse. Le nuage de mots n'y est que pour la valeur de son infobulle ; la table plate l'applique à chacune de ses colonnes numériques (`format.cellNumber`).
-  const NUMBER_FORMAT_TILE_TYPES = ['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo', 'histogram', 'heatmap', 'box', 'sankey'];
+  const NUMBER_FORMAT_TILE_TYPES = ['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo', 'histogram', 'heatmap', 'box', 'sankey', 'calendar'];
   function supportsNumberFormat(tile) {
     return !!tile && NUMBER_FORMAT_TILE_TYPES.indexOf(tile.type) !== -1;
   }
@@ -1399,6 +1437,12 @@
         rows: box.groups.map((g) => [g.name, g.n, g.low, g.q1, g.median, g.q3, g.high, g.outlierCount])
       };
     }
+    // Calendrier : une ligne par jour AVEC une valeur (les jours que le dessin n'affiche plus, au-delà de l'année, restent dans le
+    // fichier ; les filtres des autres tuiles s'appliquent). `calendarDays` plafonne l'affichage : l'export prend toute la plage.
+    if (tile.type === 'calendar') {
+      const all = calendarDays(rows, tile.dimension, tile.measure, tile.aggFn, Infinity);
+      return { name: title, header: [tile.dimension, tile.measure], rows: all.days.map((d) => [d.date, d.value]) };
+    }
     // Flux (Sankey) : une ligne par paire source -> cible, TOUTES les paires (y compris nulles ou négatives, que le dessin écarte) ;
     // les filtres des autres tuiles s'appliquent. En-têtes = les noms de colonnes.
     if (tile.type === 'sankey') {
@@ -1630,25 +1674,11 @@
     return /blocked by[^]*access rules/i.test(text);
   }
 
-  // Un module ES « optionnel » (d3-cloud, pas encore fourni par GFS) est-il déclaré dans l'`importmap` de la page ? `text` est le
-  // contenu JSON de la balise `<script type="importmap">`. Sans entrée, `import('d3-cloud')` est rejeté sur-le-champ par le
-  // navigateur (spécificateur non résolu) : la réponse est donc la même que celle de l'import, sans le tenter ni toucher au réseau.
-  // Illisible/absent -> false (jamais d'exception : appelé au dessin d'une carte).
-  function importMapHas(text, specifier) {
-    try {
-      const map = JSON.parse(text);
-      const imports = map && map.imports;
-      return Boolean(imports && typeof imports === 'object' && typeof imports[specifier] === 'string' && imports[specifier]);
-    } catch (e) {
-      return false;
-    }
-  }
-
   return {
-    importMapHas, tableToRows, epochSecondsToIsoDate, applyFilters, matchesFilter, sameValue, parseDateValue,
+    tableToRows, epochSecondsToIsoDate, applyFilters, matchesFilter, sameValue, parseDateValue,
     relativeDateRange, RELATIVE_DATE_PRESETS, groupByAggregate, aggregateSingle, wordFrequency, pivotTable,
     distinctColumnValues, computeTrend, trendFromGroups, periodLabel, measureSeriesForTile,
-    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, isBubbleTile, isColorSplitTile, bubblePoints, bubbleDiameters, comboModeOf, paretoSeries, comboSeries, niceStep, histogramBins, histogramFilter, histogramBinIsActive, HISTOGRAM_MAX_BINS, boxStatsByGroup, quantileSorted, BOX_MAX_OUTLIERS, BOX_MIN_RELIABLE, BOX_MAX_GROUPS, sankeyFlows, topFlows, SANKEY_MAX_NODES, SANKEY_MAX_LINKS, filterSelects, LINE_SHAPES, lineShapeOf, supportsValueLabels, isStackedPercentTile, shareOfTotal, stackShares, REF_LINE_KINDS, supportsRefLine, refLineKind, refLineValue, cellFilterToggles, HEAT_RAMPS, heatStops, heatColor, heatTextColor, heatRange, heatCellColors, isStackedTile, splitBySeries, assembleSeries, PALETTES, PALETTE_KEYS, paletteColors, supportsPalette, supportsNumberFormat, NUMBER_FORMAT_TILE_TYPES, escapeHtml,
+    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, isBubbleTile, isColorSplitTile, bubblePoints, bubbleDiameters, calendarDays, isoDayShift, CALENDAR_MAX_DAYS, comboModeOf, paretoSeries, comboSeries, niceStep, histogramBins, histogramFilter, histogramBinIsActive, HISTOGRAM_MAX_BINS, boxStatsByGroup, quantileSorted, BOX_MAX_OUTLIERS, BOX_MIN_RELIABLE, BOX_MAX_GROUPS, sankeyFlows, topFlows, SANKEY_MAX_NODES, SANKEY_MAX_LINKS, filterSelects, LINE_SHAPES, lineShapeOf, supportsValueLabels, isStackedPercentTile, shareOfTotal, stackShares, REF_LINE_KINDS, supportsRefLine, refLineKind, refLineValue, cellFilterToggles, HEAT_RAMPS, heatStops, heatColor, heatTextColor, heatRange, heatCellColors, isStackedTile, splitBySeries, assembleSeries, PALETTES, PALETTE_KEYS, paletteColors, supportsPalette, supportsNumberFormat, NUMBER_FORMAT_TILE_TYPES, escapeHtml,
     tileDrillLevels, currentDimension, rowsForTile, tileExportSheet, tileExportKind, renderTextHtml, plainTextOf, TEXT_TILE_MAX,
     DEFAULT_GOOD_PCT, DEFAULT_WARN_PCT, targetProgress, progressRows, sparklineValues, sparklineGeometry,
     TABLE_TILE_MAX_ROWS, TABLE_EXPORT_MAX_ROWS, tableColumnsOf, cellText, compareCells, sortRowsBy, moveInOrder, nextSortDir, tableSheet,

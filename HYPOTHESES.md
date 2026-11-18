@@ -3284,6 +3284,8 @@ Dernier lot de l'audit : tout ce qui, hors des nombres eux-mêmes, rendait une t
 
 ### Correctifs avant l'alpha — « Nuage de mots » plus proposé sans d3-cloud (18/11/2026)
 
+> **Remplacé le 18/11/2026 par la consigne GFS 019 (section suivante) :** la carte n'est plus retirée mais GRISÉE, et d3-cloud ne vient plus de l'importmap mais de GFS. `importMapHas` et `isWordCloudAvailable` n'existent plus.
+
 - **Pourquoi** : la carte « Nuage de mots » de « Ajouter une visualisation » créait une tuile qui n'affichait que « indisponible pour le moment » (d3-cloud attend GFS,
   GFS-ETAT.md). Pour l'alpha standalone, on ne propose pas un type qui ne marche pas.
 - **Comment** : `GristBI.charts.isWordCloudAvailable()` lit l'`importmap` d'index.html (`GristBI.data.importMapHas`, pure) : sans entrée `d3-cloud`, le navigateur
@@ -3294,6 +3296,33 @@ Dernier lot de l'audit : tout ce qui, hors des nombres eux-mêmes, rendait une t
   mots à l'accueil (`suggestTiles`). Un appel direct à `GristBI.openTilePanel({ type: 'wordcloud' })` n'est pas bloqué.
 - **Testé** : Node (`importMapHas` : présent/absent/illisible, câblage lu dans la source, importmap réel d'index.html) ; Playwright contre le vrai `index.html` +
   `grist-stub.js` : 15 cartes sans d3-cloud, 16 avec une entrée d'importmap ajoutée à la volée, carte conservée en modifiant une tuile Nuage de mots. **Pas testé dans un vrai Grist.**
+
+### Extensions de GFS — « Nuage de mots » grisé et branché sur d3-cloud de GFS (consigne 019, 18/11/2026)
+
+- **Ce que GFS a fait** (consigne 019) : `d3-cloud` (2.0.0, ESM seul) est dans sa liste en forme `module`, servi par GFS seul ; deux extensions de Grist-BI sont déclarées dans son manifeste, `nuage-de-mots` et
+  `mots-cles-pdf` (pdf.js, la même copie que Publipostage+). L'app les reçoit par `GfsLink.library(id)` = `{ src, integrite, forme: 'module' }` ou `null`, charge `src` par `<script type="module" integrity
+  crossorigin="anonymous">` et lit `GfsPaquets['d3-cloud'].modules['d3-cloud'].default` (la classe `CloudLayout`). Plus d'`import('d3-cloud')`, plus d'entrée d'importmap (il n'y en avait pas).
+- **Ce qui est fait ici** : `js/extensions.js` (UMD, chargé entre `data.js` et `charts.js`) : `stateFor`/`stateOf` (`standalone` = app seule, `inactive` = dans GFS sans l'extension, `active`), `moduleFrom`,
+  `load(id)` (null sans l'extension, même si son fichier est déjà en mémoire : une extension RETIRÉE en cours de route se grise comme au démarrage suivant), `requestInstall(id)` (`GfsLink.install` quand
+  hébergée, `'standalone'` sinon : l'appelant montre la fenêtre du grisé), `attach(promesse du lien)` et `onChange` (réveillé quand GFS a répondu ET à chaque événement `extensions`, jamais en app seule).
+  `js/charts.js:loadD3Cloud` = `GristBI.extensions.load('nuage-de-mots')`. `js/main.js` : la carte « Nuage de mots » reste dans « Ajouter une visualisation », **grisée** (`aria-disabled`,
+  `.type-card-locked`, trait en tirets, jamais d'opacité) avec « Pas encore : extension « Nuage de mots » à ajouter » (dans GFS) ou « Pas encore : disponible dans Grist Factory Suite » (seule) ;
+  un clic ne choisit pas le type : dans GFS il appelle `GfsLink.install('nuage-de-mots')` (la fenêtre « Apps et extensions » s'ouvre sur sa ligne), seule il ouvre la fenêtre du grisé du guide (section 5,
+  `ext.standalone.*`). Un changement d'état repeint toutes les tuiles et refait les cartes. Une tuile enregistrée sans l'extension écrit `chart.wordCloudNeedsExtension` / `chart.wordCloudNeedsGfs`.
+  `importMapHas` (js/data.js) et `isWordCloudAvailable` (js/charts.js) sont supprimés.
+- **Vérifié l'API 2.x** : `placeWordCloud` utilise `new CloudLayout().size([w, h]).overflow(false)`, `layout.getSprite(texte, { size, font, padding, rotate })` et `layout.place(sprite)`, les mots du plus grand au
+  plus petit : exactement la suite que la consigne décrit (jamais l'ancienne `cloud().words().on('end').start()`). Joué cette fois avec le VRAI paquet (voir « Testé »).
+- **Testé** : Node (`dev-tests/test-data.js`, bloc « Extensions de GFS ») : états (seule, hébergée sans, avec, source sans empreinte, extension inconnue), `moduleFrom`, `load` avec un faux `document` (balise
+  `type=module`, `src`, `integrity`, `crossOrigin='anonymous'`, pas de deuxième balise, rien chargé sans extension), événement `extensions`, retrait, `requestInstall` (install appelé, annulation sans exception,
+  seule -> `'standalone'`), câblage lu dans les sources (aucune carte retirée, importmap sans bibliothèque d'extension, aucune adresse en dur). Playwright : le vrai `index.html` dans un
+  `<iframe sandbox="allow-scripts">` servi par un FAUX GFS parent qui parle le vrai kit 0.24.0 (contexte avec `extensions`/`bibliotheques`, appel `installer`, événement `extensions`), avec le **VRAI d3-cloud 2.0.0**
+  (tarball npm, intégrité sha512 comparée à celle du registre) assemblé en fichier de forme `module` comme la consigne le décrit : app seule (carte grisée, fenêtre du grisé), dans GFS sans l'extension (carte grisée,
+  appel `installer { extension: 'nuage-de-mots' }`, tuile enregistrée = message), l'extension ajoutée SANS rechargement (carte dégrisée, tuile repeinte : 68 000 px encrés), retirée (message de retour),
+  extension déjà active au contexte (nuage de 250 x 162 px dessiné). Aucune erreur de console, aucune politique de contenu touchée.
+- **Pas vérifié** : le fichier `d3-cloud` de GFS lui-même (fixture à moi, assemblée d'après la description de la consigne ; les octets, l'empreinte et l'adresse réels sont ceux de GFS), la fenêtre « Apps et extensions »
+  de GFS, un vrai Grist. **Le texte de la fenêtre du grisé** est celui du guide (section 5, « proposition ») moins l'adresse de GFS : le guide ne donne pas d'adresse définitive et dit lui-même que les mots exacts du
+  panneau de Grist restent à relever dans un vrai Grist (question posée à GFS dans `GFS-ETAT.md`). **`mots-cles-pdf` n'est PAS branché** : `js/pdf-text.js`/`js/keywords.js` ne sont chargés par aucune page ; c'est
+  le fil « Recherche sémantique sur publications » qui les branche (il reçoit pdf.js par `GristBI.extensions.load('mots-cles-pdf')` ; pdf.js tourne DANS la page : lire les pages une à une, en rendant la main).
 
 ### Tuiles usuelles des outils BI — lot 2, histogramme (18/11/2026)
 
@@ -3529,6 +3558,25 @@ Constat (en testant le style global des tuiles) : sur une courbe ou des barres v
   injection par un nom de valeur) ; **clic réel de souris sur une bulle libre** = filtre, autres bulles à 0,3, 2e clic = filtre retiré ; agrandissement = bulle maximale plus grosse ; filtre d'une autre tuile = tailles
   recalculées ; feuille Excel ; taille négative = bulle absente + conseil ; nuage de points simple inchangé ; nuage de points -> barres -> bulles sans reliquat ; aucune erreur console). **Pas testé dans un vrai Grist ni un
   vrai GFS.**
+
+### Tuiles usuelles des outils BI — lot 3, calendrier (18/11/2026)
+
+- **Ce qui est livré** (PR 11 du plan, §5.6 de `etudes/tuiles-usuelles-dashboard-2026-11-18.md`) : un type `calendar` (« Calendrier (activité par jour) »). Une colonne de DATES + une mesure et son agrégat ; une case par
+  jour, semaines en colonnes, lundi en haut, mois en en-tête, même rampe de couleur que la carte de chaleur avec sa légende. Comptage = nombre de lignes par jour (« activité »), Somme = un montant par jour. Clic sur un
+  jour = filtre d'égalité sur la colonne de dates (la tuile reste entière, les autres jours s'estompent, 2e clic = filtre retiré). Pas de drill-down.
+- **Choix** : fenêtre d'UN an (les 366 derniers jours depuis le dernier jour qui a une valeur) : au-delà, les cases deviendraient des points de 3 px ; les jours plus anciens sont comptés (« n plus anciens restent dans
+  l'export »), jamais perdus. Un jour sans ligne garde la trame neutre : « aucune ligne » n'est pas « la valeur la plus basse ». Composant `calendar` d'ECharts (et pas une grille HTML) : même thème, infobulle et
+  légende que la carte de chaleur, rien à réécrire. Calcul en JS pur à tout volume (une passe, un agrégat par jour). Le formulaire refuse une colonne qui n'est pas de dates (format AAAA-MM-JJ, celui de toutes les
+  colonnes Date du widget).
+- **Pas fait, à décider** : plusieurs années côte à côte (une bande par année), choix du premier jour de la semaine, case carrée (les cases s'étirent avec la tuile), plage réglable, regroupement par semaine ou par
+  mois, clic-glisser pour filtrer une période (aujourd'hui un jour à la fois ; le filtre « plage de dates » du menu Filtre existe), jours fériés.
+- **Conseils** : colonne sans date valide, moins d'une semaine de données, plus d'un an (la dernière année seulement). Jamais proposé à l'écran d'accueil.
+- **Testé** : Node (bloc « calendrier » : décalage de jours, agrégation par jour pour les 5 agrégats, tri, dates invalides ignorées, fenêtre d'un an et plafonds, trou != 0, store, export, défauts, conseils, i18n
+  dont 7 jours et 12 mois par langue, câblage dont l'absence de composant `calendar` dans l'état vide) ; Playwright contre le vrai `index.html` + `grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`,
+  400 et 6 000 lignes, clair et sombre (formulaire : libellé « Colonne de dates », champs masqués, colonne non date refusée, préremplissage ; option ECharts = calcul pur, plage de mois entiers ; **pixel** de la case du
+  maximum = dernier arrêt de la rampe, **pixel** d'un jour sans ligne = hors rampe ; infobulle survolée ; **clic réel de souris** sur un jour = filtre, autres jours à 0,3, tuile entière, 2e clic = filtre retiré, clic sur
+  un jour sans ligne = rien ; filtre d'une autre tuile = jours recalculés ; agrandissement = cases plus larges ; feuille Excel ; 500 jours = 366 dessinés + 500 exportés + conseil ; aucune date = message ; calendrier ->
+  barres -> calendrier ; valeurs toutes égales ; aucune erreur console). **Pas testé dans un vrai Grist ni un vrai GFS.**
 
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
