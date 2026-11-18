@@ -278,8 +278,8 @@
   }
 
   function luminanceOf(rgb) {
-    const f = (v) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4); };
-    return 0.2126 * f(rgb.r) + 0.7152 * f(rgb.g) + 0.0722 * f(rgb.b);
+    const linearize = (v) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4); };
+    return 0.2126 * linearize(rgb.r) + 0.7152 * linearize(rgb.g) + 0.0722 * linearize(rgb.b);
   }
 
   // Fond de la page derrière les tuiles : celui de <body> (couleur + dégradé du style Verre dépoli), sinon celui de <html>, sinon
@@ -443,13 +443,13 @@
   // dans le cadre isolé de GFS, GFS déclare `allow-downloads`).
   function downloadBlob(blob, filename) {
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.style.display = 'none';
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 30000);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => { link.remove(); URL.revokeObjectURL(url); }, 30000);
   }
 
   const api = { capture, capturePage, captureTile, canvasToBlob, downloadBlob, pickScale, cleanXmlText, pageBackground, currentPageOf, DEFAULT_EXCLUDE };

@@ -45,9 +45,9 @@
   }
 
   function pdfDate(date) {
-    const d = date instanceof Date && !isNaN(date) ? date : new Date();
+    const when = date instanceof Date && !isNaN(date) ? date : new Date();
     const p = (n) => String(n).padStart(2, '0');
-    return 'D:' + d.getUTCFullYear() + p(d.getUTCMonth() + 1) + p(d.getUTCDate()) + p(d.getUTCHours()) + p(d.getUTCMinutes()) + p(d.getUTCSeconds()) + 'Z';
+    return 'D:' + when.getUTCFullYear() + p(when.getUTCMonth() + 1) + p(when.getUTCDate()) + p(when.getUTCHours()) + p(when.getUTCMinutes()) + p(when.getUTCSeconds()) + 'Z';
   }
 
   // Pixels RGBA d'un canvas (ImageData.data) -> RGB sans transparence, 3 octets par pixel : ce que PDF attend pour /DeviceRGB.

@@ -85,7 +85,8 @@ Le lot 3 ne change aucune note : il corrige un vrai défaut que l'outil ne sait 
   seulement entre fichiers : la règle passe de majeure à mineure.
 - **B-NOM-01** (76 identifiants non descriptifs) : renommés avec le service de langage TypeScript (portée respectée, collisions
   vérifiées une à une) dans `advice.js`, `charts.js`, `csv-import.js`, `data.js`, `duckdb-engine.js`, `format.js`, `grist-api.js`, `i18n.js`,
-  `keywords-panel.js`, `main.js`, `state.js`, `styles.js`, `welcome.js`. Aucun nom exporté (`GristBI.*`) ni clé de configuration ne change.
+  `keywords-panel.js`, `main.js`, `state.js`, `styles.js`, `welcome.js` ; six noms d'une lettre arrivés avec les exports PDF/PPTX et Excel refaits
+  (`js/export.js`, `js/snapshot.js`, `js/pdf-writer.js`) renommés dans la foulée, la règle étant revenue avec eux. Aucun nom exporté (`GristBI.*`) ni clé de configuration ne change.
   Quatre essais de `dev-tests/test-data.js` lisent le texte des sources avec des expressions régulières : ils suivent les nouveaux noms.
   Comparé à `main` dans Chromium (22 types de tuile, 6 000 lignes pour passer par DuckDB, page directe et `<iframe sandbox="allow-scripts">`) :
   0 pixel de différence, aucune erreur de console.
@@ -136,12 +137,12 @@ liste du combobox).
 
 ## Reste à faire
 
-- **A-TAILLE-01** (5 fichiers) : `js/main.js` 2 754 lignes de code et `js/charts.js` 1 924 (seuil majeur 1 200), puis `js/advice.js` 979,
-  `js/data.js` 897 et `js/i18n.js` 887 (seuil mineur 600). Découper `main.js` et `charts.js` est le seul chantier qui rapporte vraiment
+- **A-TAILLE-01** (5 fichiers) : `js/main.js` 2 752 lignes de code et `js/charts.js` 1 957 (seuil majeur 1 200), puis `js/advice.js` 979,
+  `js/data.js` 897 et `js/i18n.js` 883 (seuil mineur 600). Découper `main.js` et `charts.js` est le seul chantier qui rapporte vraiment
   (environ +16 points sur l'axe A) ; il touche le démarrage et le rendu de tous les types de tuile. Décision d'Antoine attendue (carte du 18/11/2026) : à faire
   par un fichier à la fois, avec la même vérification que `data.js` (essais Node + Chromium, page directe et cadre isolé, comparaison de pixels avec `main`).
   Le schéma qui a servi pour `data.js` : `api.extend(factory)` et un `tileCore` qui donne à la suite les fonctions communes (voir `CLAUDE.md` §2, ligne `js/data-tiles.js`).
-- **A-FONC-01 / A-FONC-02 / A-FONC-03** : 38 fonctions longues, 49 trop ramifiées, une imbrication de profondeur 6 (`captureTileImages`). Les plus lourdes sont `readTileForm`
+- **A-FONC-01 / A-FONC-02 / A-FONC-03** : 39 fonctions longues, 50 trop ramifiées, une imbrication de profondeur 6 (`captureTileImages`). Les plus lourdes sont `readTileForm`
   (135 chemins), `adviceForTile` (103), `defaultsForType` (82), `renderChart` (73) : ce sont les fonctions que chaque nouveau type de tuile modifie. Ces deux règles sont
   déjà au plafond de leur pénalité (30 points chacune) : il faut les faire disparaître *toutes* pour gagner, pas en réduire le nombre. Une table de correspondance par type
   remplace les cascades de `if` ; à faire quand plus aucun fil n'ajoute de type de tuile. Les « fonctions anonymes de 900 lignes » sont l'enveloppe
@@ -155,4 +156,4 @@ liste du combobox).
   compile une chaîne restent dans `js/vendor/` : le worker de DuckDB (`duckdb-browser-eh.worker.js`) embarque sa propre copie d'Apache
   Arrow, avec le même `createIsValidFunction` que celui qu'on a remplacé dans `apache-arrow/` (copie non modifiée : l'outil ne la
   voit pas, elle est chargée dans un `Worker`, et ce widget n'y déclare jamais de valeurs nulles), et ExcelJS (voir `SOURCES.md`).
-- **B-VERB-01** (12 300 lignes de code exécutées : l'ampleur du widget, pas un défaut à corriger) et **F-ECO-01** : voir le rapport.
+- **B-VERB-01** (13 750 lignes de code exécutées : l'ampleur du widget, pas un défaut à corriger) et **F-ECO-01** : voir le rapport.
