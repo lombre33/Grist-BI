@@ -59,6 +59,8 @@
 
   // Tous les types de tuile que le formulaire sait créer (voir index.html, #tile-type).
   const TABLE_DEFAULT_COLUMNS = 6;
+  // Au-delà, une carte de chaleur dans une tuile n'écrit plus rien dans ses cases (voir js/charts.js:renderHeatmap).
+  const HEATMAP_MAX_AXIS = 24;
   const TILE_TYPES = ['bar', 'line', 'pie', 'treemap', 'funnel', 'scatter', 'waterfall', 'radar', 'wordcloud', 'kpi', 'gauge', 'pivot'];
 
   // « Quand l'utiliser » : une ligne par type pour l'étape « Choisir ». Littéraux (pas de clé
@@ -79,6 +81,7 @@
     kpi: 'advice.use.kpi',
     gauge: 'advice.use.gauge',
     pivot: 'advice.use.pivot',
+    heatmap: 'advice.use.heatmap',
     // Hors TILE_TYPES : aucune agrégation (texte : aucune donnée ; table : les lignes telles quelles), donc ni
     // miniature ni avertissement ; seule la table préremplit ses colonnes (`defaultsForType`).
     table: 'advice.use.table',
@@ -777,7 +780,8 @@
         }
         break;
       }
-      case 'pivot': {
+      case 'pivot':
+      case 'heatmap': {
         const small = ctx.categories.filter((d) => d.kind === 'text' && d.distinct >= 2 && d.distinct <= 12);
         out.dimension = (small[0] && small[0].id) || dimensionFallback;
         const other = (small[1] && small[1].id) || ctx.categories.map((d) => d.id).find((id) => id !== out.dimension);
@@ -838,6 +842,12 @@
     }
     if (type === 'treemap' && agg.some((g) => g.value < 0)) return warn('advice.treemap.negative');
     if (type === 'histogram' && measureProfile && measureProfile.distinct < 5) return warn('advice.histogram.fewValues');
+    if (type === 'heatmap' && tile.columnDimension) {
+      // Une case lisible demande de la place : au-delà de ~24 lignes ou colonnes, plus de nombre dans la case, des libellés
+      // masqués un sur deux — mieux vaut regrouper (par mois plutôt que par jour, par famille plutôt que par produit).
+      const colCount = new Set(rows.map((r) => r[tile.columnDimension])).size;
+      if (n > HEATMAP_MAX_AXIS || colCount > HEATMAP_MAX_AXIS) return warn('advice.heatmap.tooBig', { rows: n, columns: colCount });
+    }
     if (type === 'combo') {
       if (tile.comboMode === 'pareto') {
         if (tile.aggFn === 'avg' || tile.aggFn === 'min' || tile.aggFn === 'max') return warn('advice.combo.paretoAgg');
@@ -926,6 +936,7 @@
       case 'scatter':
         return ctx.measures.filter((p) => !p.ordinal).length < 2 ? 'advice.fit.needTwoMeasures' : null;
       case 'pivot':
+      case 'heatmap':
         return ctx.categories.filter((d) => d.distinct >= 2).length < 2 ? 'advice.fit.needTwoDimensions' : null;
       case 'wordcloud':
         return ctx.profiles.some((p) => p.kind === 'text' && p.role !== 'constant') ? null : 'advice.fit.needText';
@@ -1048,6 +1059,7 @@
         return span > 0 ? { kind: 'gauge', ratio: Math.max(0, Math.min(1, (value - tileData.gaugeMin) / span)) } : null;
       }
       case 'pivot':
+      case 'heatmap':
         return { kind: 'grid' };
       default:
         return null;

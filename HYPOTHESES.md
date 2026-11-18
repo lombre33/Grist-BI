@@ -3339,6 +3339,29 @@ Point de départ : sur la capture « après » du lot 2 de l'audit de lisibilit�
 
 **Vérifié** : Node (valeurs rondes sur 10 plages x 5 plafonds, jamais plus que demandé, jamais -0 ni bruit de flottant, 7 tailles de tuile x 4 plages x 3 plafonds : libellés dans la zone, au-dessus de la ligne de base, hors de l'arc, sans recouvrement entre voisins, l'arc ne grandit jamais ; sans graduation la géométrie est exactement celle d'avant) ; rendu réel dans `index.html`/harnais : six jauges (somme, négative, 0-100, sans borne, valeurs minuscules, années) en clair, en sombre + anglais, à 340 px, agrandie. **Non vérifié** : rendu dans un vrai Grist/GFS. **Limite connue** : une jauge dont les bornes sont des années (1990-2030) affiche « 2 k, 2,01 k, 2,02 k » parce que `axis` est compact dès 1 000 — même défaut que pour n'importe quel axe de valeurs ; pas traité ici (rare, et le format de la tuile « Personnalisé : standard » donne « 2 010 »).
 
+### Tuiles usuelles des outils BI — lot 2, carte de chaleur et tableau croisé coloré (18/11/2026)
+
+- **Tuile « Carte de chaleur »** (`type: 'heatmap'`, PR 6 du plan de l'étude, §4.5) : le MÊME calcul que le tableau croisé (`pivotTable`, DuckDB au-delà de 5 000 lignes), dessiné en
+  cases colorées plutôt qu'en chiffres. Mêmes champs (dimension lignes, dimension colonnes, mesure, agrégat), même clic (filtre sur la ligne ET la colonne), pas de drill-down.
+- **Couleur** : un dégradé séquentiel d'une seule teinte (`tile.palette` : bleu / orange / vert / gris ; « Standard » et « Okabe-Ito » donnent le bleu, dit sous la liste), 4 arrêts
+  (blanc teinté, puis trois crans des dégradés déjà validés de `PALETTES`). Jamais l'arc-en-ciel. Légende continue sous la carte (bornes min et max, au format de la mesure).
+  Une intersection sans donnée reste vide (pas la couleur du minimum) ; toutes les valeurs égales -> couleur du milieu.
+- **Nombre dans la case** seulement quand elle mesure au moins 40 x 17 px (une tuile standard de 24 cases n'en écrit pas, la tuile agrandie oui) ; sinon dans l'infobulle. Texte noir pur
+  ou blanc par case (contraste >= 4,5:1 sur toute la rampe : `#1a1a1a` tombait à 4,2:1 au pire cas, noir pur à 4,6:1).
+- **Clic** : écart avec le tableau croisé existant, volontaire — deux `toggleFilter` consécutifs lèvent le filtre de la LIGNE quand on clique une autre case de la même ligne. La carte
+  passe par `cellFilterToggles` (une case déjà sélectionnée retire ses deux filtres, sinon seuls ceux qui manquent sont posés). Le tableau croisé garde son comportement d'origine : à
+  décider s'il doit adopter le même (changement visible pour qui s'en sert déjà).
+- **Tableau croisé coloré** (`tile.pivotHeat`) : case à cocher « Colorer les cellules selon leur valeur » ; fond des cellules de DONNÉES seulement (ni totaux ni cases vides, un total
+  écraserait l'échelle), même rampe, même texte noir/blanc, le nombre reste écrit. Sélection et survol deviennent des contours (le fond posé en ligne écrase ceux de la feuille).
+  Une tuile sans la case garde exactement son rendu d'avant.
+- **Pas fait, à décider** : échelle divergente (valeurs négatives autour d'un zéro), échelle par ligne ou par colonne, légende cliquable, étiquettes d'axe de toutes les cases quand
+  elles sont étroites (ECharts en masque un libellé sur deux), carte « jour × heure » directe depuis une colonne de dates (ce sera la tuile Calendrier), couleur dans l'export
+  Excel (la grille y est celle du tableau croisé, sans mise en forme).
+- **Testé** : Node (bloc « carte de chaleur » : rampes, luminance monotone, contraste du texte balayé sur toute la rampe, grille, cellule sans valeur, `cellFilterToggles` + store, export,
+  défauts, conseil, i18n, câblage) ; Playwright contre le vrai `index.html` + `grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">` (formulaire, pixel de chaque case lu
+  dans le graphique = couleur calculée à 0 près, clic de case, 2e clic sur la même ligne, 3e clic qui retire, tableau croisé coloré, contour de la cellule active, retour au rendu
+  d'avant, édition, thème sombre, 6 000 lignes servies avec CORS). **Pas testé dans un vrai Grist ni un vrai GFS.**
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée

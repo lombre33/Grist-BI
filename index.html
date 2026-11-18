@@ -471,6 +471,7 @@
         <option value="gauge" data-i18n="tileForm.type.gauge">Jauge</option>
         <option value="progress" data-i18n="tileForm.type.progress">Progression</option>
         <option value="pivot" data-i18n="tileForm.type.pivot">Tableau croisé</option>
+        <option value="heatmap" data-i18n="tileForm.type.heatmap">Carte de chaleur</option>
         <option value="table" data-i18n="tileForm.type.table">Table</option>
         <option value="text" data-i18n="tileForm.type.text">Texte</option>
       </select>
@@ -679,6 +680,12 @@
                 <option value="label" data-i18n="tileForm.sort.byLabel">Libellé (A→Z, 1→9)</option>
               </select>
             </div>
+            <div class="field field-checkbox" id="tile-pivot-heat-field" hidden>
+              <label for="tile-pivot-heat">
+                <input type="checkbox" id="tile-pivot-heat" />
+                <span data-i18n="tileForm.pivotHeat.label">Colorer les cellules selon leur valeur</span>
+              </label>
+            </div>
             <div class="field" id="tile-palette-field" hidden>
               <label for="tile-palette" data-i18n="tileForm.palette.label">Palette de couleurs</label>
               <select id="tile-palette">
@@ -690,6 +697,7 @@
                 <option value="gray" data-i18n="tileForm.palette.gray">Dégradé gris (impression noir et blanc)</option>
               </select>
               <div class="palette-swatch" id="tile-palette-swatch" aria-hidden="true"></div>
+              <p class="field-hint" id="tile-palette-hint" data-i18n="tileForm.palette.heatHint" hidden>Un dégradé d'une seule teinte : clair = petite valeur, foncé = grande. « Standard » et « Okabe-Ito » donnent le bleu.</p>
             </div>
             <div class="field" id="tile-numfmt-field" hidden>
               <label for="tile-numfmt" data-i18n="tileForm.numFormat.label">Format des nombres</label>
