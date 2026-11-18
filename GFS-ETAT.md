@@ -1,6 +1,6 @@
 # GFS-ETAT : Grist-BI
 
-Mis à jour le 2026-11-17 (consigne 014 lue, `consignes/bi/INDEX.md` à `3f6983b` ou plus récent). La
+Mis à jour le 2026-11-18 (consigne 015 lue, `consignes/bi/INDEX.md` à `a16fe10` ou plus récent). La
 011 n'a pas été lue (remplacée par la 012 avant lecture, consigne explicite d'Antoine).
 
 ## Consignes
@@ -211,6 +211,18 @@ Mis à jour le 2026-11-17 (consigne 014 lue, `consignes/bi/INDEX.md` à `3f6983b
   aucun nom de personne. **Une réserve : ces captures ne viennent pas d'un vrai Grist** (voir la
   demande « vitrine » plus bas) ; la description dit aussi que l'app est un brouillon à l'essai,
   comme le README.
+- 015 · lue · aucun code · réponse de GFS à la 014, rien à changer dans ce dépôt. Relevé du
+  18/11/2026 contre ce que la consigne annonce : (1) les trois images de `prototype/vitrine/bi/` chez
+  GFS ont les MÊMES empreintes SHA-256 que `vitrine/1.webp`/`2.webp`/`3.webp` ici (48 734, 42 450 et
+  55 818 octets), donc copiées telles quelles comme dit ; (2) la référence de GFS pour cette app
+  (`docs/apps.md`) est bien `d72f613`, le dernier commit de `main` de ce dépôt à ce jour (PR #51,
+  contenant la 013 et la 014) ; (3) les textes de `vitrine/vitrine.json` n'ont pas bougé depuis la 014
+  (267 et 238 caractères). La réserve sur les captures (vrai `index.html` + faux `window.grist`, pas un
+  vrai Grist) est acceptée par GFS telle quelle ; si Antoine veut un jour de vraies captures, GFS le
+  dira par une consigne et les fichiers seront remplacés sous les mêmes noms, avec la ligne « vitrine »
+  de « Demandes à GFS » redite au nouveau commit. Les demandes `d3-cloud` et `pdfjs-dist` attendent
+  toujours le mot du porteur côté GFS, inchangées par cette consigne. **Pas mesuré par GFS** : le
+  premier export Excel dans GFS (013) — hors du périmètre de cette consigne, rien à rejouer ici.
 
 ## Changements qui touchent GFS
 - 2026-11-03 · `e035bcf` · tuile « Nuage de mots » (`js/charts.js`/`js/data.js`/`js/main.js`) :
@@ -240,7 +252,8 @@ Mis à jour le 2026-11-17 (consigne 014 lue, `consignes/bi/INDEX.md` à `3f6983b
   (`dev-tests/grist-stub.js`, préchargé de 5 760 lignes) à la place de l'API Grist : l'interface est la
   même qu'en vrai (même document, même CSS), ce que ce montage ne prouve pas c'est `grist.docApi`.
   Si tu veux de vraies captures, dis-le et elles seront refaites sous les mêmes noms de fichier ; le
-  détail de la méthode est dans HYPOTHESES.md (entrée « Vitrine de GFS »).
+  détail de la méthode est dans HYPOTHESES.md (entrée « Vitrine de GFS »). **Reçue par la 015
+  (17/11/2026) : GFS prend les captures telles quelles**, rien à refaire tant que GFS ne le demande pas.
 - **`d3-cloud`** · version exacte **`2.0.0`** · remplace la demande `echarts-wordcloud` 2.1.0 d'un
   lot précédent (écartée sur demande d'Antoine : dépôt amont sans commit de code depuis fin 2022,
   voir l'historique de cette section dans git) · fonction concernée : `js/charts.js`
