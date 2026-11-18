@@ -1,6 +1,6 @@
 # GFS-ETAT : Grist-BI
 
-Mis à jour le 2026-11-18 (ECharts 6.1.0 noté dans « Changements qui touchent GFS » ; consigne 016 faite, `consignes/bi/INDEX.md` à `47365bc` ou plus récent). La
+Mis à jour le 2026-11-18 (demande `pdfjs-dist` corrigée : GFS porte déjà cette bibliothèque en module ; ECharts 6.1.0 noté dans « Changements qui touchent GFS » ; consigne 016 faite, `consignes/bi/INDEX.md` à `47365bc` ou plus récent). La
 011 n'a pas été lue (remplacée par la 012 avant lecture, consigne explicite d'Antoine).
 
 ## Consignes
@@ -344,7 +344,17 @@ Mis à jour le 2026-11-18 (ECharts 6.1.0 noté dans « Changements qui touchent 
   consommée ensuite par `js/keywords.js:extractKeywords` pour les mots-clés automatiques à l'ajout
   d'une publication · usage en une phrase : extraire le texte brut d'un PDF déposé en pièce jointe
   Grist, entièrement côté client, sans jamais envoyer le fichier à un service externe.
-  Détail technique pour le choix du build/CDN : le code attend un global `window.pdfjsLib` (build
-  UMD classique, ex. `legacy/build/pdf.js` du paquet npm) ET un fichier worker séparé
-  (`pdf.worker.js`/`.mjs`) — sans `pdfjsLib.GlobalWorkerOptions.workerSrc` configuré vers ce worker,
-  PDF.js échoue silencieusement à l'exécution ; à couvrir dans la consigne de réponse.
+  **Correction du 18/11/2026** (relevé dans `lombre33/grist-widget-GFS`) : GFS porte DÉJÀ cette même
+  version exacte (`pdfjs-dist` 6.5.438, bibliothèque `pdfjs` 1.0.0, forme `module`, vendorisée, avec son
+  worker : `pdfjs-dist/build/pdf.min.mjs` et `pdf.worker.min.mjs`) pour l'extension `lecture-pdf` de
+  Publipostage+. La demande se réduit donc à : déclarer une extension de Grist-BI qui s'appuie sur cette
+  bibliothèque et dire comment l'app la reçoit. Le texte d'origine ci-dessous (un global
+  `window.pdfjsLib`, build UMD) ne correspond PAS à ce que GFS fournit (ESM, pas de global) : à ne pas
+  suivre. `js/pdf-text.js` sera adapté dès que la consigne de réponse dit la forme (spécificateur nu
+  dans l'`importmap`, comme `d3-cloud`, ou autre) ; il n'est branché nulle part d'ici là. Même réserve
+  que GFS le note lui-même : pdf.js 6 veut `Map.getOrInsertComputed` (Chrome/Edge 145, Firefox 144) ;
+  sur un navigateur plus ancien l'app dira « mettez-le à jour », rien ne casse.
+  (Texte d'origine du 03/11/2026 :) Détail technique pour le choix du build/CDN : le code attend un
+  global `window.pdfjsLib` (build UMD classique, ex. `legacy/build/pdf.js` du paquet npm) ET un
+  fichier worker séparé (`pdf.worker.js`/`.mjs`) — sans `pdfjsLib.GlobalWorkerOptions.workerSrc`
+  configuré vers ce worker, PDF.js échoue silencieusement à l'exécution.
