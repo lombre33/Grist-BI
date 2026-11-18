@@ -166,7 +166,8 @@
   // mois calculé, pas une catégorie), jamais deux lignes. Pur : le rendu (js/charts.js) ne fait que le tracer.
   const REF_LINE_KINDS = ['average', 'value'];
   function supportsRefLine(tile) {
-    return !!tile && ((tile.type === 'bar' && (!tile.measureMode || tile.measureMode === 'brut')) || tile.type === 'line');
+    // Petits multiples : une ligne de repère est une valeur lue contre UN axe ; chaque panneau a le sien, le repère n'y est pas tracé.
+    return !!tile && !isSmallMultiplesTile(tile) && ((tile.type === 'bar' && (!tile.measureMode || tile.measureMode === 'brut')) || tile.type === 'line');
   }
   // Nombre fini représenté par `v` (nombre ou chaîne numérique), sinon null — une cellule vide n'est jamais 0.
   function finiteOrNull(v) {
@@ -1049,7 +1050,7 @@
   // Séries, et pour les barres ou l'AIRE (courbe + `areaFill`) : une courbe sans remplissage empilée
   // serait une courbe cumulée — un autre graphique, que personne ne lit comme tel.
   function isStackedTile(tile) {
-    if (!tile || !tile.stacked || !isSeriesTile(tile)) return false;
+    if (!tile || !tile.stacked || !isSeriesTile(tile) || isSmallMultiplesTile(tile)) return false; // petits multiples : une série par panneau, rien à empiler
     return tile.type === 'bar' || (tile.type === 'line' && !!tile.areaFill);
   }
 
@@ -1080,6 +1081,89 @@
   }
   // Étiquettes de valeur (`tile.valueLabels`) : barres (hors mode mesure temporelle) et courbe, comme la ligne de repère.
   function supportsValueLabels(tile) { return supportsRefLine(tile); }
+
+  // --- Petits multiples (`tile.smallMultiples`, barres ou courbe avec une colonne Séries) -----------------------------------------
+  // Au lieu de SUPERPOSER les séries (une couleur chacune sur un même graphique), un petit graphique par valeur de la colonne Séries, tous
+  // sur la MÊME échelle (sans quoi un petit panneau ressemblerait à un grand) et sur les mêmes catégories. Les calculs sont ceux des séries
+  // multiples (`computeSeriesGroups`/`assembleSeries`) : seul l'affichage change. Ni empilé, ni barres horizontales, ni ligne de repère,
+  // ni étiquettes de valeur : un panneau est trop petit pour les porter (le formulaire les masque, le rendu les ignore).
+  const SMALL_MULTIPLES_MAX = 12;
+  function isSmallMultiplesTile(tile) { return !!tile && tile.smallMultiples === true && isSeriesTile(tile); }
+
+  // Panneaux : une entrée par série (`[{name, values}]`, résultat d'`assembleSeries`), au plus `max` (SMALL_MULTIPLES_MAX par défaut) ;
+  // `hidden` compte les suivantes, jamais perdues sans le dire.
+  function smallMultiplesPanels(series, max) {
+    const cap = Number.isInteger(max) && max > 0 ? max : SMALL_MULTIPLES_MAX;
+    const list = Array.isArray(series) ? series : [];
+    return { panels: list.slice(0, cap), hidden: Math.max(0, list.length - cap) };
+  }
+
+  // Grille de panneaux dans une zone de `width` x `height` pixels : `{ cols, rows, plotW, plotH, xs, ys, titleH }` où `xs[c]` est le bord
+  // gauche de la colonne c et `ys[r]` le HAUT DE LA ZONE DE TRACÉ de la ligne r (le titre du panneau est au-dessus, sur `titleH`). `left` et
+  // `bottom` réservent la place des graduations (axe des valeurs à gauche, des catégories sous la dernière ligne). Le nombre de colonnes est
+  // celui qui donne la plus grande zone de tracé d'un rapport 1,6:1 (une grille de 4 panneaux dans une tuile de 270 x 180 px = 2 x 2 ; 12
+  // panneaux = 4 x 3) ; à égalité, le moins de cases vides. Zone absente ou nulle : une grille carrée.
+  function smallMultiplesGrid(count, width, height, opts) {
+    const o = Object.assign({ left: 40, bottom: 20, right: 8, titleH: 16, gapX: 8, gapY: 10 }, opts);
+    const n = Math.max(1, Math.floor(count) || 1);
+    const build = (cols) => {
+      const rows = Math.ceil(n / cols);
+      const plotW = Math.max(1, (width - o.left - o.right - (cols - 1) * o.gapX) / cols);
+      const plotH = Math.max(1, (height - o.bottom - rows * o.titleH - (rows - 1) * o.gapY) / rows);
+      const xs = []; for (let c = 0; c < cols; c++) xs.push(o.left + c * (plotW + o.gapX));
+      const ys = []; for (let r = 0; r < rows; r++) ys.push(r * (o.titleH + plotH + o.gapY) + o.titleH);
+      return { cols, rows, plotW, plotH, xs, ys, titleH: o.titleH, empty: cols * rows - n };
+    };
+    let best = null;
+    if (!(width > 0) || !(height > 0)) {
+      const c = Math.ceil(Math.sqrt(n));
+      best = build(c);
+    } else {
+      for (let cols = 1; cols <= n; cols++) {
+        const g = build(cols);
+        const score = Math.min(g.plotW / 1.6, g.plotH);
+        if (!best || score > best.score + 1e-9 || (Math.abs(score - best.score) <= 1e-9 && g.empty < best.empty)) best = Object.assign(g, { score });
+      }
+    }
+    delete best.score; delete best.empty;
+    return best;
+  }
+
+  // Échelle COMMUNE de tous les panneaux : de 0 (ou du plus bas négatif) au plus haut, bornes arrondies sur un pas rond (1, 2, 2,5 ou 5 x 10^n ;
+  // le 2,5 seulement s'il tombe sur un entier) avec 2 à `maxIntervals` intervalles (4 par défaut). Parmi les pas possibles, celui qui
+  // laisse l'échelle la plus SERRÉE (un maximum de 6 021 s'arrête à 7 500, pas à 10 000 : la plus haute barre remplit les quatre cinquièmes
+  // du panneau), à égalité le plus grand pas (moins de traits). Valeurs vides, texte et booléens ignorés ; rien de fini : 0 à 1.
+  function smallMultiplesRange(panels, maxIntervals) {
+    const cap = Number.isInteger(maxIntervals) && maxIntervals >= 1 ? maxIntervals : 4;
+    let lo = 0;
+    let hi = 0;
+    for (const panel of panels || []) {
+      for (const v of (panel && panel.values) || []) {
+        const n = finiteOrNull(typeof v === 'bigint' ? Number(v) : v);
+        if (n === null) continue;
+        if (n < lo) lo = n;
+        if (n > hi) hi = n;
+      }
+    }
+    if (hi === lo) return { min: 0, max: 1, step: 0.5 };
+    const span = hi - lo;
+    const e0 = Math.floor(Math.log10(span / cap));
+    let best = null;
+    for (let e = e0 - 1; e <= e0 + 1; e++) {
+      for (const m of [1, 2, 2.5, 5, 10]) {
+        const step = roundTo(m * Math.pow(10, e), 10);
+        if (m === 2.5 && !Number.isInteger(step)) continue;
+        const a = Math.floor(lo / step + 1e-9);
+        const b = Math.ceil(hi / step - 1e-9);
+        const intervals = b - a;
+        if (intervals < Math.min(2, cap) || intervals > cap) continue; // au moins deux intervalles : une échelle « 0 et 100 » seule ne se lit pas
+        const extent = intervals * step;
+        if (!best || extent < best.extent - 1e-9 || (Math.abs(extent - best.extent) <= 1e-9 && step > best.step)) best = { extent, step, a, b };
+      }
+    }
+    if (!best) { const step = niceStep(span / cap); return { min: roundTo(Math.floor(lo / step + 1e-9) * step, 10), max: roundTo(Math.ceil(hi / step - 1e-9) * step, 10), step }; }
+    return { min: roundTo(best.a * best.step, 10), max: roundTo(best.b * best.step, 10), step: best.step };
+  }
 
   // Lignes de `rows` rangées par valeur de `seriesColumn` : `[{ key, name, rows }]`. `name` est le
   // libellé affiché (la valeur en texte, ou `emptyLabel` pour une cellule vide).
@@ -1778,7 +1862,7 @@
     tableToRows, epochSecondsToIsoDate, applyFilters, matchesFilter, sameValue, parseDateValue,
     relativeDateRange, RELATIVE_DATE_PRESETS, groupByAggregate, aggregateSingle, wordFrequency, pivotTable,
     distinctColumnValues, computeTrend, trendFromGroups, periodLabel, measureSeriesForTile,
-    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, isBubbleTile, isColorSplitTile, bubblePoints, bubbleDiameters, calendarDays, isoDayShift, CALENDAR_MAX_DAYS, ganttTasks, ganttTicks, ganttLayout, GANTT_MAX_ROWS, GANTT_MAX_TICKS, comboModeOf, paretoSeries, comboSeries, niceStep, histogramBins, histogramFilter, histogramBinIsActive, HISTOGRAM_MAX_BINS, boxStatsByGroup, quantileSorted, BOX_MAX_OUTLIERS, BOX_MIN_RELIABLE, BOX_MAX_GROUPS, sankeyFlows, topFlows, SANKEY_MAX_NODES, SANKEY_MAX_LINKS, filterSelects, LINE_SHAPES, lineShapeOf, supportsValueLabels, isStackedPercentTile, shareOfTotal, stackShares, REF_LINE_KINDS, supportsRefLine, refLineKind, refLineValue, cellFilterToggles, HEAT_RAMPS, heatStops, heatColor, heatTextColor, heatRange, heatCellColors, isStackedTile, splitBySeries, assembleSeries, PALETTES, PALETTE_KEYS, paletteColors, supportsPalette, supportsNumberFormat, NUMBER_FORMAT_TILE_TYPES, escapeHtml,
+    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, isBubbleTile, isColorSplitTile, bubblePoints, bubbleDiameters, calendarDays, isoDayShift, CALENDAR_MAX_DAYS, ganttTasks, ganttTicks, ganttLayout, GANTT_MAX_ROWS, GANTT_MAX_TICKS, isSmallMultiplesTile, smallMultiplesPanels, smallMultiplesGrid, smallMultiplesRange, SMALL_MULTIPLES_MAX, comboModeOf, paretoSeries, comboSeries, niceStep, histogramBins, histogramFilter, histogramBinIsActive, HISTOGRAM_MAX_BINS, boxStatsByGroup, quantileSorted, BOX_MAX_OUTLIERS, BOX_MIN_RELIABLE, BOX_MAX_GROUPS, sankeyFlows, topFlows, SANKEY_MAX_NODES, SANKEY_MAX_LINKS, filterSelects, LINE_SHAPES, lineShapeOf, supportsValueLabels, isStackedPercentTile, shareOfTotal, stackShares, REF_LINE_KINDS, supportsRefLine, refLineKind, refLineValue, cellFilterToggles, HEAT_RAMPS, heatStops, heatColor, heatTextColor, heatRange, heatCellColors, isStackedTile, splitBySeries, assembleSeries, PALETTES, PALETTE_KEYS, paletteColors, supportsPalette, supportsNumberFormat, NUMBER_FORMAT_TILE_TYPES, escapeHtml,
     tileDrillLevels, currentDimension, rowsForTile, tileExportSheet, tileExportKind, renderTextHtml, plainTextOf, TEXT_TILE_MAX,
     DEFAULT_GOOD_PCT, DEFAULT_WARN_PCT, targetProgress, progressRows, sparklineValues, sparklineGeometry,
     TABLE_TILE_MAX_ROWS, TABLE_EXPORT_MAX_ROWS, tableColumnsOf, cellText, compareCells, sortRowsBy, moveInOrder, nextSortDir, tableSheet,

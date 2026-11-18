@@ -1054,6 +1054,22 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 - [ ] Rendu dans un vrai Grist / un vrai GFS ⬜ **[NON TESTABLE ICI]**
 - **Piège de test** : les comboboxes du formulaire n'offrent que les colonnes du harnais au moment du chargement (Region, Produit, Mois, Quantite, Montant) : un essai qui remplace les lignes par d'autres noms de colonnes ne peut pas les choisir en tapant (le mode strict les refuse). Réutiliser ces noms, `Mois` et `Quantite` portant des dates ISO.
 
+### `js/data.js` + `js/charts.js` + panneau — Petits multiples (18/11/2026 ; Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`, 60 et 6 060 lignes, clair et sombre)
+
+- [x] `isSmallMultiplesTile` : barres brutes ou courbe + colonne Séries + `true` exact ; faux sans Séries, en mode mesure, sur un autre type, pour `'true'` ✅
+- [x] Empilé / 100 % / repère / étiquettes ignorés quand la case est cochée, et BIEN restitués en la décochant (rien n'est effacé de la tuile) ✅ ; `refLineValue` = null
+- [x] `smallMultiplesPanels` : 12 au plus, les premières, le reste compté ✅ ; `smallMultiplesRange` : 0 au plus haut, négatifs, 2 à 4 intervalles entiers et la plus haute valeur ≥ 50 % de l'échelle pour 19 maxima, vides/texte/BigInt ignorés, rien = 0 à 1 ✅ ; `smallMultiplesGrid` : colonnes selon la forme de la tuile, dans la tuile, sans recouvrement (titres compris), marges réservées, zone nulle sans exception
+- [x] Export Excel identique à celui des mêmes séries superposées ✅ ; conseils (> 12 séries remplace celui des couleurs, une série, > 24 catégories, cas sain = rien, colonnes absentes sans exception) ✅ ; i18n fr/en ✅ ; câblage lu dans les sources (case, champs masqués, `readTileForm`, chaîne de `renderChart`, `__refit`, aucun HTML dans le nom de série) ✅
+- [x] Formulaire : case absente sans Séries, présente avec ; cochée = pile / barres horizontales / étiquettes / repère masqués ; tuile enregistrée avec `smallMultiples: true` et SANS `stacked`/`horizontal` bien qu'ils aient été cochés ; édition relit la case 🌐
+- [x] Option ECharts = calcul pur : un panneau, un titre, un jeu d'axes et une couleur par région, valeurs exactes dans l'ordre des catégories de la tuile, MÊMES `min`/`max`/`interval` partout, graduations des valeurs en 1re colonne seulement, catégories sous le dernier panneau de chaque colonne, aucune légende 🌐
+- [x] Géométrie : chaque panneau dans la tuile, assez grand pour se lire, aucun recouvrement 🌐 ; agrandir = panneaux plus larges (`__refit`) et retour exact à la taille d'origine 🌐
+- [x] **Clic réel de souris** sur une barre du 4e panneau (pixel par `convertToPixel`) : filtre de la catégorie, TOUS les panneaux estompent les autres catégories, tuile source entière, 2e clic = retiré 🌐 ; infobulle = catégorie + série survolée seulement, jamais les autres régions 🌐
+- [x] Courbe en aire lissée : 4 séries `line` avec `smooth` et `areaStyle` 🌐 ; décocher : 1 grille, 4 séries, `__refit` indéfini, pile restituée ; recocher avec `stacked` resté dans la tuile : aucune pile 🌐
+- [x] 14 séries = 12 panneaux + note « Les 12 premières séries sur 14 » + conseil `tooMany` 🌐 ; nom de série hostile (`<img onerror>`) : aucune balise injectée dans l'infobulle, rien exécuté 🌐
+- [x] Quatre styles globaux (fluide, éditorial, console, verre) : toujours 4 panneaux, sans erreur ; captures relues 🌐 ; 6 060 lignes (DuckDB), page directe ET cadre isolé : mêmes vérifications 🌐
+- [ ] Rendu dans un vrai Grist / un vrai GFS ⬜ **[NON TESTABLE ICI]**
+- **Piège de test** : l'ordre des catégories suit le tri de la tuile, pas l'ordre d'apparition des lignes : un essai qui compare les valeurs lit les catégories de l'option. Un clic réel vise `instance.convertToPixel({ xAxisIndex: i, yAxisIndex: i }, [catégorie, valeur])` du bon panneau (rangés par colonne puis rangée).
+
 ### CSS — classe de bug à systématiquement re-vérifier
 
 - [x] `.field[hidden]` masque réellement l'élément (pas seulement `display:flex` de `.field` qui gagne à spécificité égale) [BUG RÉEL, trouvé 2 fois sur des champs différents] ✅ (règle en place)
