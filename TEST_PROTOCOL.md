@@ -792,6 +792,20 @@ délibérément laissé de côté (contenu généré par `js/data.js`/`js/demo-d
 - [x] ⚠ Le rendu RÉEL de l'aire empilée du modèle « Évolution » : lire les valeurs de `getOption().series` (pas seulement la légende) — c'est ce qui a révélé le bug n°34 ✅
 - [ ] **[NON TESTABLE ICI]** le vrai GFS (fenêtre « Depuis un modèle », « Créer », copie du catalogue) ; un vrai Grist ; des tables réelles variées
 
+### `js/format.js` + `js/charts.js` — format des nombres des tuiles (audit de lisibilité, 18/11/2026 ; Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`)
+
+Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (somme énorme, moyenne minuscule, comptage, libellés longs, 24 catégories, négatifs) sur une table de 96 lignes, puis 6 000 lignes pour DuckDB. Captures avant/après dans le dossier du projet (`audits/`).
+
+- [x] Automatique : entiers dès 1 000, 1 décimale de 100 à 1 000, 2 décimales de 0,1 à 100, 2 chiffres significatifs sous 0,1, compact dès 10^12 ; séparateurs fr/en ✅
+- [x] `-0` jamais affiché ; `null`/`NaN`/`undefined` -> chaîne vide ; chaîne numérique et `BigInt` acceptés ✅
+- [x] Axes : graduations toutes distinctes (0 -> 0,3 par 0,05 ; 0 -> 0,0007 par 0,0001) ✅
+- [x] Personnalisé : décimales fixes (zéros conservés), notation compacte, bruit de flottant absent, spécification invalide -> Automatique ✅
+- [x] Comme dans la colonne (fonction pure seulement à ce stade) : devise, décimales min/max, %, scientifique, parenthèses, locale du document, JSON invalide, colonne absente/non numérique, comptage ✅
+- [x] Chaque infobulle (barre, courbe, aire, camembert, anneau, treemap, entonnoir, cascade, radar, nuage de points, empilé) affiche le format de la langue, jamais « 1,542,980.8799999997 » 🌐
+- [x] KPI : variation en % aux séparateurs de la langue (« 12,8 % » / « 12.8% ») ; valeur minuscule lisible (« 0,00056 ») 🌐
+- [x] 6 000 lignes (DuckDB, `BigInt`) : KPI, infobulle de barre, libellé d'axe formatés 🌐
+- [ ] Lecture des options de colonne dans un vrai Grist ⬜ **[NON TESTABLE ICI]** (réglage de tuile et lecture de `_grist_Tables_column` : lot suivant)
+
 ### CSS — classe de bug à systématiquement re-vérifier
 
 - [x] `.field[hidden]` masque réellement l'élément (pas seulement `display:flex` de `.field` qui gagne à spécificité égale) [BUG RÉEL, trouvé 2 fois sur des champs différents] ✅ (règle en place)
@@ -1000,6 +1014,8 @@ délibérément laissé de côté (contenu généré par `js/data.js`/`js/demo-d
 35. **« E,NameError » affiché comme auteur d'un commentaire** [BUG RÉEL, remonté par Antoine dans un vrai Grist, 18/11/2026] — la colonne de la table-sonde `BI_Dashboard_UserProbe` était une formule ordinaire ; `user` n'existe que dans une formule déclenchée, la cellule valait `NameError` et `fetchTable` la rend `['E','NameError']`, affiché tel quel dans un champ verrouillé (donc impossible à corriger à la main). Le mock ne simule pas le moteur de formules : invisible jusque-là. Corrigé : colonne déclenchée, validation de l'adresse, réparation des anciens documents (`ModifyColumn`). Test : `test-data.js` (faux `grist` dans un `vm`, 6 scénarios, mutation vérifiée : le test échoue sur l'ancien code).
 36. **Infobulle du radar posée hors de la carte, jusque hors de l'écran** [BUG RÉEL, remonté par Antoine, 18/11/2026] — sans `confine`, ECharts place la bulle à côté du point survolé ; pour un radar de 224 px de haut elle sortait à x = −66 px et 72 px au-dessus de la tuile, avec des nombres bruts (« 8.504166666666666 »). Corrigé : `confineTooltip` sur toutes les options + formateur de radar. Test : survol de 5 points d'un radar, rectangle de la bulle comparé à celui de la tuile.
 37. **Boutons Filtre / Vues / Exporter sans aucun nom accessible sous 900 px** [BUG RÉEL, trouvé en réécrivant le bouton Vues, 18/11/2026] — sous 900 px le libellé (`.bar-label`) passe en `display: none` et l'icône est décorative (`aria-hidden`) : le bouton n'avait ni nom ni infobulle pour un lecteur d'écran. Corrigé : `aria-label` (traduit) sur les trois ; le bouton Vues y met en plus la vue suivie et son état. Test : `t10-views.js` (nom accessible lu à 700 px).
+38. **Infobulles en format anglais avec le bruit de flottant, langue de l'interface ignorée** [BUG RÉEL, remonté par Antoine sur un treemap, « 600,688.2299999992 », puis confirmé sur barres/courbe/camembert/cascade par l'audit de lisibilité du 18/11/2026] — `js/charts.js` ne formatait que KPI/radar/entonnoir/empilé/nuage de points (`fr-FR` figé, quelle que soit la langue), les infobulles par défaut d'ECharts affichaient la valeur brute (« 1,542,980.8799999997 », « 0.20472679998130852 »). Corrigé par `js/format.js` : un formateur par tuile, séparateurs de la langue, `valueFormatter` sur toutes les infobulles, Cascade avec une seule ligne signée (« Hausse : 172 597 » au lieu de « Baisse 0 » en plus). Test : `test-data.js` (module de format, absence de `Intl.NumberFormat`/`toFixed` dans `js/charts.js`) + survol de chaque type de tuile dans le vrai `index.html` (clair, sombre, fr/en, 6 000 lignes pour DuckDB/BigInt).
+39. **Une valeur minuscule s'affichait « 0 » et des graduations d'axe se répétaient** [BUG RÉEL, audit de lisibilité du 18/11/2026] — la moyenne de 0,0006 d'une carte KPI valait « 0 » (2 décimales maximum, quelle que soit la valeur) ; l'axe d'une barre de 0,0001 à 0,0007 affichait sept fois « 0 », et 0,05 d'écart donnait « 0,1 » « 0,1 » (compact à 1 décimale). Corrigé : Automatique = 2 chiffres significatifs sous 0,1, `axis` à 3 chiffres significatifs. Test : `test-data.js` (graduations 0 -> 0,3 par 0,05 et 0 -> 0,0007 par 0,0001 toutes distinctes ; 0,000618 -> « 0,00062 »).
 
 ## Fragilité de test connue (PAS un bug produit — investiguée en profondeur, à ne pas re-diagnostiquer)
 

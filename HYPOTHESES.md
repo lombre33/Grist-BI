@@ -3094,6 +3094,22 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     (`Montant par Date.Annee`) comme les suggestions de l'accueil ; les vignettes sont des captures du vrai `index.html` avec le
     faux Grist du dépôt (même réserve que `vitrine/`), sur un jeu de ventes d'exemple sans nom de personne.
 
+### Lisibilité des valeurs sur les tuiles — lot 1 : format des nombres (18/11/2026)
+
+Demande d'Antoine : « un petit souci d'UI, peux-tu faire un audit de ce qu'affichent les cartes et si les valeurs sont bien lisibles à chaque fois ? », puis « par défaut les chiffres ont beaucoup de chiffres significatifs — avoir un réglage et une option "comme dans la colonne" » (avec la capture d'une infobulle de treemap : « 600,688.2299999992 »).
+
+**Audit (rendu réel du `index.html` avec le faux Grist du dépôt, 96 lignes puis 6 000 ; clair, sombre, fr/en)** : constats sur les valeurs et leurs formats.
+1. Trois formats pour une même valeur : `fr-FR` à 2 décimales (KPI, radar, entonnoir, empilé, nuage de points, tableau croisé), compact à 1 décimale (axes), et celui d'ECharts par défaut — anglais, sans limite de décimales — pour les infobulles de barre, courbe, camembert, anneau, treemap et cascade (« 1,542,980.8799999997 », « 0.20472679998130852 »).
+2. La langue de l'interface n'était pas suivie : en anglais, KPI et tableau croisé restaient en « 6 280 280,22 ».
+3. Variation KPI : « 1.5% » (point décimal) au milieu d'une interface française.
+4. Une valeur minuscule disparaissait : moyenne de 0,0006 -> « 0 » (carte KPI) ; axe de 0,0001 à 0,0007 -> sept « 0 » ; graduations de 0,05 d'écart -> « 0,1 » « 0,1 ».
+5. Cascade : l'infobulle listait aussi l'autre série à 0 (« Baisse 0 » sur une hausse) et la valeur non formatée.
+Autres constats (jauge, KPI de très grands nombres, libellés longs, thème sombre, nuage de mots) : traités dans les lots suivants.
+
+**Fait** : `js/format.js` (voir CLAUDE.md §2) — un formateur par tuile, trois modes (`auto` par défaut, `custom`, `column` ; ces deux derniers n'ont pas encore de réglage dans le panneau, lot suivant), `valueFormatter`/`formatter` sur toutes les infobulles, `axis` à 3 chiffres significatifs, variation en % aux séparateurs de la langue ; `js/charts.js` n'a plus aucun `Intl.NumberFormat`/`toFixed` (un test Node le vérifie). Choix de l'Automatique : entiers dès 1 000 (« 3 266 234 » au lieu de « 3 266 234,27 »), compact dès 10^12 (« 5,43 Bn », 13 chiffres ne se lisent plus).
+
+**Vérifié** : Node (`test-data.js`, 7 blocs) ; navigateur, vrai `index.html` + faux Grist, 17 types de tuile en français, anglais et thème sombre, puis 6 000 lignes (DuckDB, valeurs `BigInt`). **Non vérifié** : tout ce qui touche un vrai Grist (aucun document réel ouvert depuis cette session).
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée

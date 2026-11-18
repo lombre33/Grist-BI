@@ -2003,6 +2003,139 @@ const SAMPLE_TIME_SERIES = [
   console.log('OK i18n.js — démarre et fonctionne quand localStorage lève (cadre isolé GFS, consigne 007 point 1)');
 }
 
+// js/format.js : format des nombres des tuiles (audit de lisibilité du 18/11/2026). Les `Intl` insèrent des
+// espaces insécables fines (U+202F/U+00A0) : normalisées en espace simple pour que les attendus restent lisibles.
+{
+  const format = require('../js/format.js');
+  const n = (s) => s.replace(/[  ]/g, ' ');
+  const fmt = (spec, ctx) => format.makeFormatter(format.resolveStyle(spec, ctx));
+  const fr = fmt(null, { lang: 'fr' });
+  const en = fmt(null, { lang: 'en' });
+
+  // Automatique : peu de chiffres significatifs, séparateurs de la LANGUE (le bug de l'audit : 600,688.2299999992)
+  assert.strictEqual(n(fr.format(3266234.27)), '3 266 234', 'fr : entier dès 1 000');
+  assert.strictEqual(n(fr.format(600688.2299999992)), '600 688', 'le bruit de flottant ne ressort plus');
+  assert.strictEqual(n(fr.format(1542980.8799999997)), '1 542 981');
+  assert.strictEqual(n(en.format(3266234.27)), '3,266,234', 'en : virgule des milliers');
+  assert.strictEqual(fr.format(123.456), '123,5', '1 décimale de 100 à 1 000');
+  assert.strictEqual(fr.format(20.84), '20,84', '2 décimales de 0,1 à 100');
+  assert.strictEqual(fr.format(0.20472679998130852), '0,2');
+  assert.strictEqual(en.format(0.20472679998130852), '0.2');
+  assert.strictEqual(fr.format(0.000618558008651509), '0,00062', 'une valeur minuscule ne devient PAS « 0 » (KPI/axes de l\'audit)');
+  assert.strictEqual(fr.format(0), '0');
+  assert.strictEqual(n(fr.format(-1234.5)), '-1 235');
+  assert.strictEqual(fr.format(-0.4), '-0,4');
+  assert.strictEqual(fr.format(-0.00001), '-0,00001');
+  assert.strictEqual(fmt({ mode: 'custom', decimals: 0 }, { lang: 'fr' }).format(-0.3), '0', 'jamais un « -0 » : arrondi à zéro, le signe disparaît');
+  assert.strictEqual(fr.format(null), '');
+  assert.strictEqual(fr.format(NaN), '');
+  assert.strictEqual(fr.format(undefined), '');
+  assert.strictEqual(n(fr.format('12.5')), '12,5', 'une chaîne numérique est acceptée');
+  assert.strictEqual(n(fr.format(10n ** 13n)), '10 Bn', 'BigInt de DuckDB (au-delà de 5 000 lignes), compact dès 10^12');
+  assert.strictEqual(n(fr.format(5430335971750.53)), '5,43 Bn');
+  assert.strictEqual(n(en.format(5430335971750.53)), '5.43T');
+  assert.strictEqual(n(fr.format(7n)), '7', 'BigInt courant');
+  console.log('OK js/format.js — Automatique : entiers dès 1 000, 2 chiffres significatifs sous 0,1, fr/en, BigInt, null');
+
+  // Libellés d'axe : compacts, jamais deux graduations voisines identiques (« 0,1 » « 0,1 » sur 0,05 d'écart)
+  assert.strictEqual(n(fr.axis(1500000)), '1,5 M');
+  assert.strictEqual(n(fr.axis(825500)), '826 k');
+  assert.strictEqual(n(en.axis(1500000)), '1.5M');
+  assert.strictEqual(n(en.axis(1.5e12)), '1.5T');
+  assert.strictEqual(n(fr.axis(0)), '0');
+  assert.strictEqual(fr.axis(0.05), '0,05');
+  const ticks = [0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3].map(fr.axis);
+  assert.strictEqual(new Set(ticks).size, ticks.length, 'graduations 0 -> 0,3 par 0,05 : toutes distinctes : ' + ticks.join(' '));
+  const tiny = [0, 0.0001, 0.0002, 0.0003, 0.0004, 0.0005, 0.0006, 0.0007].map(fr.axis);
+  assert.strictEqual(new Set(tiny).size, tiny.length, 'graduations minuscules toutes distinctes (étaient toutes « 0 ») : ' + tiny.join(' '));
+  assert.strictEqual(n(fr.axis(-2000000)), '-2 M');
+  assert.strictEqual(fr.axis(null), '');
+  console.log('OK js/format.js — axis : compact, 3 chiffres significatifs, graduations distinctes');
+
+  // Variation en % : séparateurs de la langue (le KPI affichait « 1.5% » même en français)
+  assert.strictEqual(n(fr.percent(1.5)), '1,5 %');
+  assert.strictEqual(n(en.percent(12.84)), '12.8%');
+  assert.strictEqual(n(fr.percent(0)), '0 %');
+  assert.strictEqual(fr.percent(null), '');
+  console.log('OK js/format.js — percent : séparateurs de la langue');
+
+  // Personnalisé : décimales FIXES, notation complète ou compacte
+  assert.strictEqual(n(fmt({ mode: 'custom', decimals: 2, notation: 'standard' }, { lang: 'fr' }).format(3266234.27)), '3 266 234,27');
+  assert.strictEqual(n(fmt({ mode: 'custom', decimals: 2 }, { lang: 'fr' }).format(5)), '5,00', 'décimales fixes : zéros conservés');
+  assert.strictEqual(n(fmt({ mode: 'custom', decimals: 0 }, { lang: 'fr' }).format(3266234.27)), '3 266 234');
+  assert.strictEqual(n(fmt({ mode: 'custom', decimals: 6 }, { lang: 'fr' }).format(600688.2299999992)), '600 688,230000', 'le bruit de flottant ne ressort pas non plus en décimales fixes');
+  assert.strictEqual(n(fmt({ mode: 'custom', decimals: 'auto', notation: 'compact' }, { lang: 'fr' }).format(3266234.27)), '3,27 M');
+  assert.strictEqual(n(fmt({ mode: 'custom', decimals: 1, notation: 'compact' }, { lang: 'en' }).format(3266234.27)), '3.3M');
+  assert.strictEqual(n(fmt({ mode: 'custom', decimals: 'auto', notation: 'standard' }, { lang: 'fr' }).format(5430335971750.53)), '5 430 335 971 751', 'Personnalisé standard ne bascule jamais en compact tout seul');
+  assert.deepStrictEqual(format.normalizeSpec({ mode: 'custom', decimals: 9 }), { mode: 'custom', decimals: 'auto', notation: 'standard' }, 'décimales hors plage -> auto');
+  assert.deepStrictEqual(format.normalizeSpec({ mode: 'nimportequoi' }), { mode: 'auto' });
+  assert.deepStrictEqual(format.normalizeSpec(null), { mode: 'auto' });
+  assert.deepStrictEqual(format.normalizeSpec({ mode: 'column' }), { mode: 'column' });
+  console.log('OK js/format.js — Personnalisé : décimales fixes, notation, spécifications invalides ramenées à Automatique');
+
+  // Comme dans la colonne : widgetOptions Grist + réglages du document
+  const col = (type, widgetOptions) => ({ type, widgetOptions: typeof widgetOptions === 'string' ? widgetOptions : JSON.stringify(widgetOptions) });
+  const doc = { locale: 'fr-FR', currency: 'EUR' };
+  const colFmt = (column, docSettings, lang) => fmt({ mode: 'column' }, { lang: lang || 'fr', column, docSettings });
+  assert.strictEqual(n(colFmt(col('Numeric', { numMode: 'currency', currency: 'EUR', decimals: 2 }), doc).format(3266234.27)), '3 266 234,27 €', 'devise + 2 décimales');
+  assert.strictEqual(n(colFmt(col('Numeric', { numMode: 'currency' }), doc).format(1234.5)), '1 234,50 €', 'devise du DOCUMENT quand la colonne n\'en nomme pas');
+  assert.strictEqual(n(colFmt(col('Numeric', { numMode: 'currency', currency: 'USD' }), { locale: 'en-US' }).format(1234.5)), '$1,234.50', 'devise de la colonne, locale du document');
+  assert.strictEqual(n(colFmt(col('Numeric', { decimals: 2, maxDecimals: 2 }), doc).format(600688.2299999992)), '600 688,23', 'décimales de la colonne');
+  assert.strictEqual(n(colFmt(col('Numeric', { decimals: 2, maxDecimals: 2 }), doc).format(5)), '5,00', 'minimum de décimales de la colonne');
+  assert.strictEqual(n(colFmt(col('Numeric', { decimals: 0, maxDecimals: 0 }), doc).format(3266234.27)), '3 266 234');
+  assert.strictEqual(n(colFmt(col('Numeric', { decimals: 2, maxDecimals: 2 }), { locale: 'en-US' }).format(3266234.27)), '3,266,234.27', 'séparateurs de la locale du DOCUMENT, pas de la langue de l\'interface');
+  assert.strictEqual(n(colFmt(col('Numeric', { numMode: 'percent' }), doc).format(0.2147)), '21,5 %', 'mode pourcentage (fraction x 100)');
+  assert.strictEqual(n(colFmt(col('Numeric', { numMode: 'percent', decimals: 0, maxDecimals: 0 }), doc).format(0.2147)), '21 %');
+  assert.strictEqual(n(colFmt(col('Numeric', { numMode: 'scientific' }), doc).format(1234567)), '1,235E6');
+  assert.strictEqual(n(colFmt(col('Int', { numSign: 'parens', decimals: 0, maxDecimals: 0 }), doc).format(-1234.5)), '(1 235)', 'négatifs entre parenthèses');
+  assert.strictEqual(n(colFmt(col('Int', { numSign: 'parens', decimals: 0, maxDecimals: 0 }), doc).format(1234.5)), '1 235');
+  // Sans aucune option de décimales : rien à reprendre, rendu Automatique (jamais les 10 décimales par défaut de Grist)
+  assert.strictEqual(n(colFmt(col('Numeric', ''), doc).format(600688.2299999992)), '600 688');
+  assert.strictEqual(n(colFmt(col('Numeric', '{}'), doc).format(0.000618558)), '0,00062');
+  assert.strictEqual(n(colFmt(col('Numeric', 'pas du json'), doc).format(20.84)), '20,84', 'JSON invalide -> aucune option');
+  assert.strictEqual(n(colFmt(null, doc).format(3266234.27)), '3 266 234', 'colonne inconnue -> Automatique');
+  assert.strictEqual(n(colFmt(col('Text', { numMode: 'currency' }), doc).format(3266234.27)), '3 266 234', 'colonne non numérique -> Automatique');
+  assert.strictEqual(n(colFmt(col('Numeric', { decimals: 2, maxDecimals: 2 }), { locale: 'xx-pas-une-locale-valide-!!' }).format(1234.5)), '1 234,50', 'locale de document inutilisable -> langue de l\'interface');
+  assert.strictEqual(n(colFmt(col('Numeric', { decimals: 2, maxDecimals: 2 }), null, 'en').format(1234.5)), '1,234.50', 'pas de réglages de document -> langue de l\'interface');
+  // valeurs lues telles que Grist les range
+  assert.deepStrictEqual(format.parseWidgetOptions('{"numMode":"currency"}'), { numMode: 'currency' });
+  assert.deepStrictEqual(format.parseWidgetOptions('[1,2]'), {}, 'un tableau JSON n\'est pas un objet d\'options');
+  assert.deepStrictEqual(format.parseWidgetOptions(undefined), {});
+  assert.deepStrictEqual(format.parseDocSettings('{"locale":"fr-FR","currency":"EUR","engine":"python3"}'), { locale: 'fr-FR', currency: 'EUR' });
+  assert.strictEqual(format.parseDocSettings(''), null);
+  assert.strictEqual(format.parseDocSettings('{"engine":"python3"}'), null);
+  console.log('OK js/format.js — Comme dans la colonne : devise, décimales, %, scientifique, parenthèses, locale du document, replis');
+
+  // forTile : registre des colonnes, comptage, mise en cache
+  format.setColumnInfo({ Montant: col('Numeric', { numMode: 'currency', currency: 'EUR', decimals: 2 }), Quantite: col('Int', { decimals: 0, maxDecimals: 0 }) }, doc);
+  const tileCol = { measure: 'Montant', aggFn: 'sum', numberFormat: { mode: 'column' } };
+  assert.strictEqual(n(format.forTile(tileCol, 'Montant', 'fr').format(3266234.27)), '3 266 234,27 €');
+  assert.strictEqual(n(format.forTile({ ...tileCol, aggFn: 'count' }, 'Montant', 'fr').format(96)), '96', 'un comptage n\'est jamais formaté comme la colonne (pas « 96,00 € »)');
+  assert.strictEqual(n(format.forTile({ measure: 'Montant', aggFn: 'sum' }, 'Montant', 'fr').format(3266234.27)), '3 266 234', 'sans réglage de tuile : Automatique, la colonne ne compte pas');
+  assert.strictEqual(n(format.forTile(tileCol, 'Inconnue', 'fr').format(3266234.27)), '3 266 234', 'colonne absente du registre -> Automatique');
+  assert.strictEqual(n(format.forTile(tileCol, 'Quantite', 'fr').format(20.84)), '21', 'chaque colonne a SON format (radar « colonnes », nuage de points)');
+  assert.strictEqual(format.forTile(tileCol, 'Montant', 'fr'), format.forTile(tileCol, 'Montant', 'fr'), 'formateur mis en cache');
+  const before = format.forTile(tileCol, 'Montant', 'fr');
+  format.setColumnInfo({ Montant: col('Numeric', { decimals: 0, maxDecimals: 0 }) }, doc);
+  assert.notStrictEqual(format.forTile(tileCol, 'Montant', 'fr'), before, 'le cache est vidé quand les colonnes changent');
+  assert.strictEqual(n(format.forTile(tileCol, 'Montant', 'fr').format(3266234.27)), '3 266 234');
+  format.setColumnInfo({}, null);
+  assert.strictEqual(n(format.forTile(tileCol, 'Montant', 'fr').format(3266234.27)), '3 266 234', 'registre vidé (widget hors Grist) -> Automatique');
+  console.log('OK js/format.js — forTile : registre, comptage, cache, repli sans registre');
+
+  // câblage : plus aucun format en dur dans le rendu ; le module est chargé avant charts.js
+  {
+    const fs2 = require('fs');
+    const path2 = require('path');
+    const charts = fs2.readFileSync(path2.join(__dirname, '..', 'js', 'charts.js'), 'utf8');
+    assert.ok(!/Intl\.NumberFormat|toFixed\(/.test(charts), 'js/charts.js ne formate plus aucun nombre lui-même');
+    assert.ok(!/formatNumber|formatCompactNumber|formatPercent/.test(charts), 'anciennes fonctions de format retirées');
+    const index = fs2.readFileSync(path2.join(__dirname, '..', 'index.html'), 'utf8');
+    assert.ok(index.indexOf('js/format.js') > index.indexOf('js/data.js') && index.indexOf('js/format.js') < index.indexOf('js/charts.js'), 'format.js chargé après data.js et avant charts.js');
+    console.log('OK js/charts.js — aucun format en dur, format.js chargé avant charts.js');
+  }
+}
+
 // measureExportSheet / buildWorkbookSheetsAsync : export Excel RÉEL (plus un simple message) pour
 // une tuile Barres en mode de calcul temporel (Cumul/YTD/N-1) — voir js/export.js. `computeMeasureSeries`
 // est ici FACTICE (une Promise résolue avec un timeSeries écrit à la main), jamais le vrai
