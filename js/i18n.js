@@ -74,6 +74,7 @@
     'bookmarks.exportPdf': { fr: 'Exporter en PDF', en: 'Export to PDF' },
     'bookmarks.exportPptx': { fr: 'Exporter en PPTX', en: 'Export to PPTX' },
     'export.none': { fr: 'Aucune tuile à exporter.', en: 'No tile to export.' },
+    'export.soon': { fr: 'bientôt disponible', en: 'coming soon' },
     'export.failed': { fr: "Échec de l'export Excel — voir la console (F12).", en: 'Excel export failed — see the console (F12).' },
     'export.pdf.chartUnavailable': { fr: 'Graphique indisponible pour cette tuile — réaffichez-la avant d\'exporter.', en: 'Chart unavailable for this tile — display it again before exporting.' },
     'export.pdf.networkError': {

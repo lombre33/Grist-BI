@@ -663,6 +663,12 @@ Cette liste condense les bugs réels les plus instructifs (détail complet dans 
 
 ## 8. Règles du projet (vérifiées dans le code et la documentation)
 
+- **Exports PDF, PPTX et Excel provisoirement DÉSACTIVÉS (18/11/2026, demande d'Antoine)** : le PDF empilait les cartes au lieu de garder le visuel
+  du tableau de bord (KPI et tableaux en nombres bruts, tableau croisé rogné), et PptxGenJS ne se chargeait pas depuis cdnjs dans un vrai Grist.
+  Les trois boutons du menu Exporter sont grisés dans `index.html` avec la mention « bientôt disponible » (`export.soon`, fr/en) ;
+  `js/main.js:EXPORTS_AVAILABLE = false` les garde fermés quand une table se connecte et coupe les écouteurs. **Remettre le drapeau à `true`,
+  dégriser les boutons et retirer le test « exports désactivés » de `dev-tests/test-data.js` quand les exports sont refaits.** Le code des
+  exports (`js/export.js`, `js/pdf-export.js`, `js/pptx-export.js`) reste en place, non appelé.
 - **Zéro dépendance de build, JS vanilla.** Toute bibliothèque tierce est vendorisée localement
   dans `js/vendor/`, jamais chargée depuis un CDN externe (voir piège n°4/5 ci-dessus).
   **Exception actée par Antoine le 2026-09-29** : pdfmake et PptxGenJS (export PDF/PPT, voir

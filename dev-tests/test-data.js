@@ -6147,6 +6147,28 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     assert.deepStrictEqual(backReal.getWorksheet('Ventes - sum(Montant)').getRow(2).values.slice(1), ['sum(Montant)', 35]);
     console.log('OK export Excel ExcelJS 4.4.0 — empreinte de GFS, SheetJS retiré, cellules (types, NaN, grands entiers, objets), texte = formule jamais, noms de feuille, relecture complète');
   }
+
+  // Exports PDF/PPTX/Excel provisoirement désactivés (18/11/2026, demande d'Antoine) : boutons GRISÉS (jamais retirés) avec la
+  // mention « bientôt disponible » en fr ET en anglais ; le drapeau de js/main.js les garde fermés quand une table se connecte
+  // (setTableDependentControlsEnabled ré-activait tout) et coupe les trois écouteurs. À remplacer quand les exports reviennent.
+  {
+    const fsE = require('fs');
+    const pathE = require('path');
+    const indexE = fsE.readFileSync(pathE.join(__dirname, '..', 'index.html'), 'utf8');
+    const mainE = fsE.readFileSync(pathE.join(__dirname, '..', 'js', 'main.js'), 'utf8');
+    for (const id of ['export-excel', 'export-pdf', 'export-pptx']) {
+      const m = indexE.match(new RegExp('<button id="' + id + '"[^>]*>'));
+      assert.ok(m, id + ' : bouton présent (grisé, jamais retiré)');
+      assert.ok(/\sdisabled\b/.test(m[0]) && /aria-disabled="true"/.test(m[0]), id + ' : désactivé dans index.html');
+    }
+    assert.strictEqual((indexE.match(/data-i18n="export\.soon"/g) || []).length, 3, 'la mention « bientôt disponible » sur les trois boutons');
+    assert.strictEqual(i18n.STRINGS['export.soon'].fr, 'bientôt disponible');
+    assert.strictEqual(i18n.STRINGS['export.soon'].en, 'coming soon');
+    assert.ok(/const EXPORTS_AVAILABLE = false;/.test(mainE), 'drapeau EXPORTS_AVAILABLE à false');
+    assert.ok(/if \(!EXPORTS_AVAILABLE\) for \(const el of \[exportExcelBtn, exportPdfBtn, exportPptxBtn\]\) el\.disabled = true;/.test(mainE), 'la connexion d\'une table ne ré-active pas les exports');
+    assert.strictEqual((mainE.match(/if \(!EXPORTS_AVAILABLE\) return;/g) || []).length, 3, 'les trois écouteurs de clic sont coupés');
+    console.log('OK exports désactivés — trois boutons grisés avec « bientôt disponible » fr/en, jamais ré-activés par la connexion d\'une table');
+  }
 })().then(() => {
   console.log('\nTous les tests data.js/state.js/demo-data.js/combobox.js/duckdb-engine.js/i18n.js sont passés.');
 }).catch((e) => {
