@@ -3110,6 +3110,18 @@ Autres constats (jauge, KPI de très grands nombres, libellés longs, thème som
 
 **Vérifié** : Node (`test-data.js`, 7 blocs) ; navigateur, vrai `index.html` + faux Grist, 17 types de tuile en français, anglais et thème sombre, puis 6 000 lignes (DuckDB, valeurs `BigInt`). **Non vérifié** : tout ce qui touche un vrai Grist (aucun document réel ouvert depuis cette session).
 
+### Lisibilité des valeurs sur les tuiles — lot 2 : jauge et carte KPI (18/11/2026)
+
+Point de départ : la capture d'une jauge illisible envoyée par Antoine (graduations qui se chevauchent, aiguille sur les libellés, grande valeur qui sort sous la jauge).
+
+**Cause** : une jauge ECharts avec ses réglages par défaut (arc de 270°, 5 libellés et 5 traits dans l'arc, aiguille) dans une zone d'environ 316 x 162 px ; l'ancien correctif (4 divisions au lieu de 10, voir TEST_PROTOCOL.md) ne suffisait plus une fois la jauge aussi petite, et la valeur centrale restait à 18 px quelle que soit sa longueur.
+
+**Fait** : jauge en demi-cercle (`GristBI.format.gaugeLayout`, pur) : arc en haut, bornes min/max sous les extrémités, aiguille de 74 % du rayon (jamais sur l'anneau), valeur sous le moyeu ; police de la valeur réduite jusqu'à tenir, puis format compact ; géométrie recalculée au redimensionnement (`__refit`) ; sans borne haute, un « beau » nombre (`niceCeil`) ; couleurs lues sur les jetons CSS. Carte KPI : la police se réduit pour que la valeur tienne dans la tuile (`container-type: inline-size`, `cqw`).
+
+**Choix assumé** : plus de graduations intermédiaires sur la jauge (seulement le minimum et le maximum) — sur une tuile de 250 px, des graduations lisibles n'ont pas de place. Si Antoine en veut, elles reviendront sous forme de petits traits sans libellé.
+
+**Vérifié** : voir TEST_PROTOCOL.md (tailles normale, étroite, agrandie, thème sombre). **Non vérifié** : rendu dans un vrai Grist/GFS ; lecteur d'écran sur la jauge (aucun libellé accessible n'a été ajouté).
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée

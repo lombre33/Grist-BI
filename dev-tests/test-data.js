@@ -2136,6 +2136,48 @@ const SAMPLE_TIME_SERIES = [
   }
 }
 
+// js/format.js : échelle et géométrie de la jauge (audit de lisibilité du 18/11/2026, lot 2)
+{
+  const format = require('../js/format.js');
+  // borne haute « ronde » : le libellé de fin d'échelle se lit
+  assert.strictEqual(format.niceCeil(3919480), 4000000);
+  assert.strictEqual(format.niceCeil(0.252), 0.3);
+  assert.strictEqual(format.niceCeil(1), 1);
+  assert.strictEqual(format.niceCeil(1.01), 1.2);
+  assert.strictEqual(format.niceCeil(7.9), 8);
+  assert.strictEqual(format.niceCeil(9), 10);
+  assert.strictEqual(format.niceCeil(100), 100);
+  assert.strictEqual(format.niceCeil(6.5e12), 8e12);
+  assert.strictEqual(format.niceCeil(0), 1);
+  assert.strictEqual(format.niceCeil(-5), 1);
+  assert.strictEqual(format.niceCeil(null), 1);
+  for (const x of [0.00037, 0.8, 1.3, 17, 250, 999, 12345, 3919480, 1e9 + 1]) assert.ok(format.niceCeil(x) >= x, 'niceCeil >= x pour ' + x);
+  // géométrie : l'arc, les bornes et la valeur tiennent dans la zone, à toutes les tailles de tuile
+  for (const [w, h] of [[240, 150], [270, 160], [316, 162], [420, 200], [600, 400], [1200, 500], [900, 640]]) {
+    const L = format.gaugeLayout(w, h);
+    assert.ok(L.cx - L.r >= 10 && L.cx + L.r <= w - 10, `${w}x${h} : l'arc tient en largeur`);
+    assert.ok(L.cy - L.r >= 0, `${w}x${h} : l'arc tient en haut`);
+    assert.ok(L.cy + L.below <= h + 0.001, `${w}x${h} : bornes et valeur tiennent en bas (cy ${L.cy}, place ${L.below}, h ${h})`);
+    assert.ok(L.valueMaxWidth <= w && L.valueMaxWidth > 0, `${w}x${h} : la valeur tient en largeur`);
+    assert.ok(L.ringW >= 8 && L.labelFont >= 10 && L.valueMaxFont >= 14, `${w}x${h} : tailles lisibles`);
+  }
+  // une zone plus haute ou plus large donne un arc plus grand, jamais l'inverse
+  assert.ok(format.gaugeLayout(600, 400).r > format.gaugeLayout(316, 162).r);
+  // ajustement de la valeur : la plus grande police qui tient, jamais sous le plancher
+  const measure = (text, px) => text.length * px * 0.6;
+  assert.strictEqual(format.fitFont('96', 100, 40, 11, measure), 40, 'court : police maximale');
+  const fitted = format.fitFont('5 430 335 971 750,50', 160, 40, 11, measure);
+  assert.ok(fitted < 40 && measure('5 430 335 971 750,50', fitted) <= 160, 'long : réduit jusqu\'à tenir (' + fitted + ' px)');
+  assert.strictEqual(format.fitFont('5 430 335 971 750,50 5 430 335 971 750,50', 20, 40, 11, measure), 11, 'plancher respecté');
+  // câblage : la jauge n'a plus de graduations intermédiaires ni d'aiguille sur des libellés ; elle suit le redimensionnement
+  const charts = require('fs').readFileSync(require('path').join(__dirname, '..', 'js', 'charts.js'), 'utf8');
+  assert.ok(/startAngle: 180,\s*endAngle: 0/.test(charts), 'jauge en demi-cercle');
+  assert.ok(/axisLabel: \{ show: false \}/.test(charts) && /splitLine: \{ show: false \}/.test(charts), 'plus de graduations dans l\'arc');
+  assert.ok(/inst\.__refit/.test(charts) && /instance\.__refit = draw/.test(charts), 'la jauge se redessine à chaque redimensionnement (resizeAll)');
+  assert.ok(/container-type: inline-size/.test(require('fs').readFileSync(require('path').join(__dirname, '..', 'css', 'style.css'), 'utf8')), 'carte KPI : conteneur de requête (valeur ajustée à la largeur)');
+  console.log('OK js/format.js — jauge : niceCeil, gaugeLayout (7 tailles de tuile), fitFont, câblage');
+}
+
 // measureExportSheet / buildWorkbookSheetsAsync : export Excel RÉEL (plus un simple message) pour
 // une tuile Barres en mode de calcul temporel (Cumul/YTD/N-1) — voir js/export.js. `computeMeasureSeries`
 // est ici FACTICE (une Promise résolue avec un timeSeries écrit à la main), jamais le vrai
