@@ -291,6 +291,21 @@
     return f;
   }
 
+  // Texte d'un nombre dans une TABLE PLATE (tuile `table`) : la donnée telle quelle, pas un chiffre clé. Automatique =
+  // les chiffres de la colonne, sans séparateur de milliers (une année reste « 2024 », un code « 75012 », jamais
+  // « 2 024 » ni « 75 012 ») et sans bruit de flottant ; décimales à la virgule ou au point selon la langue. Un format
+  // CHOISI (`custom`, ou `column` = celui de la colonne dans Grist) s'applique comme partout ailleurs.
+  function cellNumber(tile, columnId, v, lang) {
+    const n = toNumber(v);
+    if (n == null) return '';
+    const spec = normalizeSpec(tile && tile.numberFormat);
+    if (spec.mode !== 'auto') {
+      const formatted = forTile(tile, columnId, lang).format(n);
+      if (formatted) return formatted;
+    }
+    return intl(localeForLang(lang), { useGrouping: false, maximumFractionDigits: 10 }).format(n === 0 ? 0 : cleanFloat(n));
+  }
+
   // --- Échelle et géométrie de la jauge (pures : testées sous Node, ECharts n'y est pour rien) ------------
 
   // Plus petit « beau » nombre (1, 1,2, 1,5, 2, 2,5, 3, 4, 5, 6, 8 x 10^k) supérieur ou égal à `x` : borne haute d'une
@@ -337,7 +352,7 @@
   }
 
   return {
-    niceCeil, gaugeLayout, fitFont,
+    niceCeil, gaugeLayout, fitFont, cellNumber,
     MODES, MAX_CUSTOM_DECIMALS, localeForLang, normalizeSpec, parseWidgetOptions, parseDocSettings,
     styleFromColumn, resolveStyle, makeFormatter, forTile, setColumnInfo, getColumnInfo, getDocSettings, columnModeState
   };

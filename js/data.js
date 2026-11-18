@@ -457,8 +457,8 @@
 
   // Types qui AFFICHENT une valeur numérique (donc concernés par `tile.numberFormat`, voir js/format.js) :
   // tout type de tuile nouveau qui montre un nombre s'ajoute ici, pour que le champ « Format des nombres »
-  // du panneau apparaisse. Le nuage de mots n'y est que pour la valeur de son infobulle.
-  const NUMBER_FORMAT_TILE_TYPES = ['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud'];
+  // du panneau apparaisse. Le nuage de mots n'y est que pour la valeur de son infobulle ; la table plate l'applique à chacune de ses colonnes numériques (`format.cellNumber`).
+  const NUMBER_FORMAT_TILE_TYPES = ['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table'];
   function supportsNumberFormat(tile) {
     return !!tile && NUMBER_FORMAT_TILE_TYPES.indexOf(tile.type) !== -1;
   }
@@ -562,6 +562,122 @@
     return applyFilters(state.rows, filtersFromOtherTiles.concat(state.advancedFilters || []).concat(drillPath));
   }
 
+  // ---- Tuile Texte (type 'text') ----------------------------------------------------------------
+  // Texte libre d'un tableau de bord : titre de section, consigne de lecture, source, date de mise à jour.
+  // Aucune donnée, aucune mesure. SÉCURITÉ : ce widget a l'accès `full` au document, et le texte saisi par
+  // une personne est relu et affiché chez chaque lecteur du tableau de bord — jamais d'HTML brut. Tout est
+  // ÉCHAPPÉ d'abord (escapeHtml), puis seuls quatre repères simples deviennent des balises FIXES :
+  // `# titre`, `## sous-titre`, `- élément de liste`, `**gras**`. Pas de lien (à vérifier d'abord dans le cadre
+  // isolé de GFS, qui n'autorise que les scripts). Plafond de longueur : TEXT_TILE_MAX caractères.
+  const TEXT_TILE_MAX = 2000;
+  function textLines(text) {
+    return String(text == null ? '' : text).slice(0, TEXT_TILE_MAX).replace(/\r\n?/g, '\n').split('\n');
+  }
+  function renderTextHtml(text) {
+    const inline = (s) => escapeHtml(s).replace(/\*\*([^*]+?)\*\*/g, '<strong>$1</strong>');
+    const out = [];
+    let para = [];
+    let list = [];
+    const flushPara = () => { if (para.length) { out.push('<p>' + para.join('<br>') + '</p>'); para = []; } };
+    const flushList = () => { if (list.length) { out.push('<ul>' + list.map((li) => '<li>' + li + '</li>').join('') + '</ul>'); list = []; } };
+    textLines(text).forEach((raw) => {
+      const line = raw.replace(/\s+$/, '');
+      let m;
+      if (!line.trim()) { flushPara(); flushList(); }
+      else if ((m = /^(#{1,2})\s+(.*)$/.exec(line))) { flushPara(); flushList(); const h = m[1].length + 2; out.push('<h' + h + '>' + inline(m[2]) + '</h' + h + '>'); }
+      else if ((m = /^\s*[-*]\s+(.*)$/.exec(line))) { flushPara(); list.push(inline(m[1])); }
+      else { flushList(); para.push(inline(line)); }
+    });
+    flushPara();
+    flushList();
+    return out.join('');
+  }
+  // Le même texte sans repères, pour les exports (PDF, PowerPoint, Excel).
+  function plainTextOf(text) {
+    return textLines(text)
+      .map((l) => l.replace(/^\s*#{1,2}\s+/, '').replace(/^\s*[-*]\s+/, '• ').replace(/\*\*([^*]+?)\*\*/g, '$1'))
+      .join('\n').trim();
+  }
+
+  // ---- Table plate (type 'table') -----------------------------------------------------------------
+  // Une liste de colonnes choisies (`tile.columns`, dans l'ordre voulu), une ligne par ligne de la table de
+  // travail, après les filtres (mêmes lignes que le bouton « Détail », `rowsForTile`). Aucune agrégation : c'est
+  // la donnée telle quelle. Pur JS ici ; le DOM (en-têtes triables, plafond d'affichage) est dans js/charts.js.
+  const TABLE_TILE_MAX_ROWS = 500;        // lignes AFFICHÉES (un tableau HTML sans pagination au-delà ne se lit plus)
+  const TABLE_EXPORT_MAX_ROWS = 100000;   // lignes d'une feuille Excel (la limite d'Excel est à 1 048 576)
+
+  // Colonnes à afficher : celles de `tile.columns` qui existent encore dans les lignes (une colonne supprimée ou
+  // renommée dans Grist ne casse pas la tuile, elle disparaît). Sans ligne, on ne peut rien vérifier : la liste
+  // choisie est rendue telle quelle pour garder les en-têtes d'une table filtrée à vide.
+  function tableColumnsOf(tile, rows) {
+    const wanted = (tile && Array.isArray(tile.columns)) ? tile.columns.filter((c) => typeof c === 'string' && c) : [];
+    if (!rows || !rows.length) return wanted;
+    return wanted.filter((c) => Object.prototype.hasOwnProperty.call(rows[0], c));
+  }
+
+  function isEmptyCell(v) { return v == null || v === ''; }
+
+  // Texte d'une cellule NON numérique : vide pour null, liste de choix Grist (['L', 'a', 'b']) lue comme
+  // « a, b », jamais « [object Object] ». Les nombres passent par GristBI.format (js/charts.js).
+  function cellText(v) {
+    if (v == null) return '';
+    if (Array.isArray(v)) return (v[0] === 'L' ? v.slice(1) : v).map(cellText).join(', ');
+    if (typeof v === 'object') { try { return JSON.stringify(v); } catch (e) { return ''; } }
+    return String(v);
+  }
+
+  // Ordre de deux cellules : nombres comme des nombres, le reste comme du texte avec les nombres « naturels »
+  // (« Lot 2 » avant « Lot 10 »), sans tenir compte de la casse. Les dates `AAAA-MM-JJ` se trient telles quelles.
+  function compareCells(a, b) {
+    if (typeof a === 'number' && typeof b === 'number') return a - b;
+    if (typeof a === 'bigint' && typeof b === 'bigint') return a < b ? -1 : (a > b ? 1 : 0);
+    return cellText(a).localeCompare(cellText(b), undefined, { numeric: true, sensitivity: 'base' });
+  }
+
+  // Copie triée (le tableau d'origine, partagé avec toutes les tuiles, n'est jamais modifié). Les cellules vides
+  // vont TOUJOURS à la fin, dans les deux sens. Tri stable. `dir` autre que 'asc'/'desc' : ordre d'origine.
+  function sortRowsBy(rows, column, dir) {
+    if (!column || (dir !== 'asc' && dir !== 'desc')) return rows;
+    const sign = dir === 'desc' ? -1 : 1;
+    return rows.slice().sort((r1, r2) => {
+      const a = r1[column];
+      const b = r2[column];
+      const ae = isEmptyCell(a);
+      const be = isEmptyCell(b);
+      if (ae || be) return ae === be ? 0 : (ae ? 1 : -1);
+      return sign * compareCells(a, b);
+    });
+  }
+
+  // Déplace `id` de `delta` rangs (-1 = vers le haut) dans la liste ordonnée `order`, sans sortir de ses bornes.
+  // Renvoie une copie ; une valeur absente ou un déplacement impossible rendent la même liste.
+  function moveInOrder(order, id, delta) {
+    const list = order.slice();
+    const i = list.indexOf(id);
+    const j = i + delta;
+    if (i === -1 || j < 0 || j >= list.length) return list;
+    list.splice(j, 0, list.splice(i, 1)[0]);
+    return list;
+  }
+
+  // Cycle du clic sur un en-tête : croissant -> décroissant -> ordre d'origine.
+  function nextSortDir(current) { return current === 'asc' ? 'desc' : (current === 'desc' ? null : 'asc'); }
+
+  // Feuille d'export : mêmes colonnes et même ordre que la tuile, valeurs brutes (un nombre reste un nombre dans
+  // Excel). `maxRows` borne la feuille (PDF et PowerPoint n'ont pas la place d'un classeur) ; `truncated` dit combien
+  // de lignes ont été laissées de côté.
+  function tableSheet(tile, rows, maxRows) {
+    const columns = tableColumnsOf(tile, rows);
+    const limit = Number.isFinite(maxRows) ? maxRows : TABLE_EXPORT_MAX_ROWS;
+    const shown = rows.slice(0, limit);
+    return {
+      name: tile.title || 'Table',
+      header: columns,
+      rows: shown.map((r) => columns.map((c) => (typeof r[c] === 'number' || typeof r[c] === 'boolean' ? r[c] : cellText(r[c])))),
+      truncated: Math.max(0, rows.length - shown.length)
+    };
+  }
+
   // Comment une tuile doit être représentée dans un export visuel (PDF/PPT, voir js/pdf-export.js) :
   // 'image' pour toute tuile rendue par une instance ECharts déjà en cache (bar y compris en mode
   // mesure DAX, pie, treemap, scatter, gauge — voir GristBI.charts.getInstance), capturée telle
@@ -570,7 +686,8 @@
   // 'table' pour le pivot (déjà une table HTML, pas de graphique) et le KPI (texte simple, pas de
   // graphique) — ces deux réutilisent directement tileExportSheet, déjà correct pour eux.
   function tileExportKind(tile) {
-    return (tile.type === 'kpi' || tile.type === 'pivot') ? 'table' : 'image';
+    if (tile.type === 'text') return 'text'; // ni graphique ni tableau : le texte lui-même
+    return (tile.type === 'kpi' || tile.type === 'pivot' || tile.type === 'table') ? 'table' : 'image';
   }
 
   // Représentation tabulaire d'une tuile pour l'export Excel : mêmes agrégats que le rendu
@@ -579,8 +696,12 @@
   // d'objets : contrôle explicite des en-têtes même quand `rows` est vide (aucune ligne visible
   // après filtrage), ce que `XLSX.utils.json_to_sheet([])` ne permettrait pas (pas d'en-tête sans
   // au moins un objet pour les déduire).
-  function tileExportSheet(tile, state) {
+  function tileExportSheet(tile, state, maxRows) {
+    // Tuile Texte : aucune donnée. Les classeurs Excel l'ignorent (voir buildWorkbookSheets), mais un appel
+    // direct reste sûr plutôt que de produire « undefined(undefined) ».
+    if (tile.type === 'text') return { name: tile.title || 'Texte', header: ['Texte'], rows: [[plainTextOf(tile.text)]] };
     const rows = rowsForTile(tile, state);
+    if (tile.type === 'table') return tableSheet(tile, rows, maxRows);
     const title = tile.title || `${tile.aggFn}(${tile.measure})`;
     if (tile.type === 'kpi' || tile.type === 'gauge') {
       return { name: title, header: ['Mesure', 'Valeur'], rows: [[`${tile.aggFn}(${tile.measure})`, aggregateSingle(rows, tile.measure, tile.aggFn)]] };
@@ -719,6 +840,7 @@
     const multiPage = state.pages.length > 1;
     for (const page of state.pages) {
       for (const tile of page.tiles) {
+        if (tile.type === 'text') continue; // une note n'est pas une donnée : pas de feuille Excel
         const sheet = tileExportSheet(tile, state);
         const label = multiPage ? `${page.name} - ${sheet.name}` : sheet.name;
         sheets.push({ name: sanitizeSheetName(label, usedNames), header: sheet.header, rows: sheet.rows });
@@ -770,6 +892,7 @@
     const multiPage = state.pages.length > 1;
     for (const page of state.pages) {
       for (const tile of page.tiles) {
+        if (tile.type === 'text') continue; // idem buildWorkbookSheets
         const isTemporalMeasure = tile.type === 'bar' && tile.measureMode && tile.measureMode !== 'brut';
         const sheet = isTemporalMeasure
           ? await measureExportSheet(tile, state, computeMeasureSeries)
@@ -886,7 +1009,8 @@
     relativeDateRange, RELATIVE_DATE_PRESETS, groupByAggregate, aggregateSingle, wordFrequency, pivotTable,
     distinctColumnValues, computeTrend, trendFromGroups, periodLabel, measureSeriesForTile,
     waterfallSeries, sortGroups, isSortableTile, isSeriesTile, isStackedTile, splitBySeries, assembleSeries, PALETTES, PALETTE_KEYS, paletteColors, supportsPalette, supportsNumberFormat, NUMBER_FORMAT_TILE_TYPES, escapeHtml,
-    tileDrillLevels, currentDimension, rowsForTile, tileExportSheet, tileExportKind,
+    tileDrillLevels, currentDimension, rowsForTile, tileExportSheet, tileExportKind, renderTextHtml, plainTextOf, TEXT_TILE_MAX,
+    TABLE_TILE_MAX_ROWS, TABLE_EXPORT_MAX_ROWS, tableColumnsOf, cellText, compareCells, sortRowsBy, moveInOrder, nextSortDir, tableSheet,
     sanitizeSheetName, buildWorkbookSheets, measureExportSheet, buildWorkbookSheetsAsync,
     blendRows, deriveDateHierarchyColumns, commentsForTile, isAccessRuleRefusal, AGGREGATORS
   };

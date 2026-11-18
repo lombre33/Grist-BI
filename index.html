@@ -466,6 +466,8 @@
         <option value="kpi" data-i18n="tileForm.type.kpi">Carte KPI</option>
         <option value="gauge" data-i18n="tileForm.type.gauge">Jauge</option>
         <option value="pivot" data-i18n="tileForm.type.pivot">Tableau croisé</option>
+        <option value="table" data-i18n="tileForm.type.table">Table</option>
+        <option value="text" data-i18n="tileForm.type.text">Texte</option>
       </select>
     </div>
       <div class="field" id="tile-radar-mode-field" hidden>
@@ -533,6 +535,16 @@
         <label for="tile-gauge-max" data-i18n="tileForm.gaugeMax.label">Max</label>
         <input type="number" id="tile-gauge-max" value="100" />
       </div>
+        <div class="field" id="tile-columns-field" hidden>
+          <label id="tile-columns-label" data-i18n="tileForm.columns.label">Colonnes à afficher</label>
+          <ul id="tile-columns" class="columns-list" tabindex="-1" aria-labelledby="tile-columns-label"></ul>
+          <p class="field-hint" data-i18n="tileForm.columns.hint">Cochez les colonnes ; les flèches changent leur ordre.</p>
+        </div>
+        <div class="field" id="tile-text-field" hidden>
+          <label for="tile-text" data-i18n="tileForm.text.label">Texte</label>
+          <textarea id="tile-text" rows="6" maxlength="2000" autocomplete="off"></textarea>
+          <p class="field-hint" data-i18n="tileForm.text.hint">Une ligne vide sépare les paragraphes. « # » pour un titre, « - » pour une liste, **gras**. Le HTML n'est pas interprété.</p>
+        </div>
         <div class="field" id="tile-title-field">
           <label for="tile-title" data-i18n="tilePanel.titleField.label">Titre (facultatif)</label>
           <input type="text" id="tile-title" autocomplete="off" />

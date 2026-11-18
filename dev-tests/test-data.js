@@ -2186,12 +2186,13 @@ const SAMPLE_TIME_SERIES = [
   const format = require('../js/format.js');
 
   // types concernés : ceux qui affichent un nombre ; pas de réglage pour un type inconnu ni null
-  for (const type of ['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud']) {
+  for (const type of ['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table']) {
     assert.strictEqual(data.supportsNumberFormat({ type }), true, type);
   }
+  assert.strictEqual(data.supportsNumberFormat({ type: 'text' }), false, 'la tuile Texte ne montre aucun nombre');
   assert.strictEqual(data.supportsNumberFormat({ type: 'inconnu' }), false);
   assert.strictEqual(data.supportsNumberFormat(null), false);
-  assert.deepStrictEqual(data.NUMBER_FORMAT_TILE_TYPES.filter((ty) => !['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud'].includes(ty)), []);
+  assert.deepStrictEqual(data.NUMBER_FORMAT_TILE_TYPES.filter((ty) => !['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table'].includes(ty)), []);
 
   // verdict de « Comme dans la colonne » : sert l'explication affichée sous le réglage
   format.setColumnInfo({
@@ -2230,7 +2231,7 @@ const SAMPLE_TIME_SERIES = [
   assert.ok(/GristBI\.format\.setColumnInfo\(\{\}, null\)/.test(main), 'registre vidé au changement de table');
   // chaque clé i18n du réglage existe en fr et en
   const keys = [...html.matchAll(/data-i18n="(tileForm\.numFormat\.[\w.]+)"/g)].map((m) => m[1])
-    .concat(['tileForm.numFormat.hint.auto', 'tileForm.numFormat.hint.columnCount', 'tileForm.numFormat.hint.columnUnknown', 'tileForm.numFormat.hint.columnNone', 'tileForm.numFormat.hint.columnOk']);
+    .concat(['tileForm.numFormat.hint.auto', 'tileForm.numFormat.hint.columnCount', 'tileForm.numFormat.hint.columnUnknown', 'tileForm.numFormat.hint.columnNone', 'tileForm.numFormat.hint.columnOk', 'tileForm.numFormat.hint.columnEach']);
   for (const k of keys) {
     for (const lang of ['fr', 'en']) {
       i18n.setLang(lang);
@@ -2547,7 +2548,30 @@ const SAMPLE_TIME_SERIES = [
   {
     assert.strictEqual(pdfText.isAvailable(), false);
     await assert.rejects(pdfText.extractTextFromPdf(new ArrayBuffer(0)), (e) => e.code === 'PDFJS_NOT_AVAILABLE');
+    await assert.rejects(pdfText.loadLibrary(null), (e) => e.code === 'PDFJS_NOT_AVAILABLE');
     console.log('OK pdfText.extractTextFromPdf (rejette clairement sans PDF.js)');
+  }
+
+  // pdfText : la forme que GFS fournit (`GfsPaquets.pdfjs.modules['pdfjs-dist/build/pdf.min.mjs']`,
+  // relevée dans le dépôt de GFS le 18/11/2026) — un faux module qui rend deux pages, vérifié sur le
+  // texte joint (pages séparées par un saut de ligne) et sur les options passées à getDocument.
+  {
+    let opened = null;
+    const page = (strs) => ({ getTextContent: async () => ({ items: strs.map((str) => ({ str })) }) });
+    globalThis.GfsPaquets = { pdfjs: { version: '1.0.0', modules: { 'pdfjs-dist/build/pdf.min.mjs': {
+      getDocument: (options) => { opened = options; return { promise: Promise.resolve({ numPages: 2, getPage: async (n) => page(n === 1 ? ['Analyse', 'sémantique'] : ['des', 'publications']) }) }; },
+    } } } };
+    try {
+      assert.strictEqual(pdfText.isAvailable(), true);
+      assert.strictEqual(await pdfText.extractTextFromPdf(new ArrayBuffer(4)), 'Analyse sémantique\ndes publications');
+      assert.ok(opened.data instanceof Uint8Array && opened.data.length === 4);
+      assert.strictEqual(opened.isEvalSupported, false);
+      assert.strictEqual(await pdfText.loadLibrary(null), globalThis.GfsPaquets.pdfjs.modules['pdfjs-dist/build/pdf.min.mjs']);
+    } finally {
+      delete globalThis.GfsPaquets;
+    }
+    assert.strictEqual(pdfText.isAvailable(), false);
+    console.log('OK pdfText avec GfsPaquets.pdfjs (module de GFS : pages jointes, isEvalSupported=false)');
   }
 
   // extractVisuals + suggestTiles : waterfallChart — même forme que "bar" (1 dimension + 1 mesure,
@@ -3564,6 +3588,133 @@ const SAMPLE_TIME_SERIES = [
       assert.ok(/<script src="js\/models\.js"><\/script>/.test(fs.readFileSync(path.join(root, 'index.html'), 'utf8')), 'index.html charge js/models.js');
       assert.ok(fs.readFileSync(path.join(root, 'index.html'), 'utf8').indexOf('js/models.js') > fs.readFileSync(path.join(root, 'index.html'), 'utf8').indexOf('js/advice.js'), 'models.js après advice.js');
       console.log('OK js/main.js — onOpen/bootstrap lisent `modele` avant « Nouveau », openModelById ne crée aucune table, index.html charge js/models.js');
+    }
+
+    // --- Tuile Texte (type 'text') : une note sans donnée, rendue SANS HTML brut ---
+    {
+      // Échappement : rien de ce qu'une personne saisit ne devient une balise, sauf les quatre repères.
+      const html = data.renderTextHtml('# Titre <b>x</b>\n\nUn **gras** & "guillemets"\nsuite\n- un\n- deux **b**\n\n## Sous\n<img src=x onerror=alert(1)>\n<script>alert(1)</script>');
+      assert.strictEqual(html,
+        '<h3>Titre &lt;b&gt;x&lt;/b&gt;</h3><p>Un <strong>gras</strong> &amp; &quot;guillemets&quot;<br>suite</p><ul><li>un</li><li>deux <strong>b</strong></li></ul><h4>Sous</h4><p>&lt;img src=x onerror=alert(1)&gt;<br>&lt;script&gt;alert(1)&lt;/script&gt;</p>');
+      assert.ok(!/<(?!\/?(h3|h4|p|ul|li|strong|br)\b)/.test(html), 'aucune balise hors de la liste fermée');
+      assert.strictEqual(data.renderTextHtml(''), '');
+      assert.strictEqual(data.renderTextHtml(null), '');
+      assert.strictEqual(data.renderTextHtml(undefined), '');
+      // Un `**` seul en début de ligne n'est pas une liste ; deux ** vides ne font pas de gras vide.
+      assert.strictEqual(data.renderTextHtml('**gras** début'), '<p><strong>gras</strong> début</p>');
+      assert.strictEqual(data.renderTextHtml('a ** b'), '<p>a ** b</p>');
+      // Fins de ligne Windows, lignes vides multiples, plafond de longueur.
+      assert.strictEqual(data.renderTextHtml('a\r\nb\r\n\r\n\r\nc'), '<p>a<br>b</p><p>c</p>');
+      assert.ok(data.renderTextHtml('x'.repeat(data.TEXT_TILE_MAX + 500)).length <= '<p></p>'.length + data.TEXT_TILE_MAX);
+      // Texte sans repères pour les exports.
+      assert.strictEqual(data.plainTextOf('# T\n- a\n**b** c\n\n## S'), 'T\n• a\nb c\n\nS');
+      assert.strictEqual(data.plainTextOf(null), '');
+      // Exports : ni feuille Excel (synchrone comme asynchrone), un genre d'export dédié pour PDF/PPTX.
+      const textTile = { id: 'tt', type: 'text', title: 'Note', text: '# Lire\n- source : ERP' };
+      const barTile = { id: 'tb', type: 'bar', dimension: 'Region', measure: 'Montant', aggFn: 'sum', title: 'Montant par Région' };
+      const exState = { rows, activeFilters: [], advancedFilters: [], drillIns: {}, comments: [], pages: [{ id: 'p1', name: 'Page', tiles: [textTile, barTile] }] };
+      assert.strictEqual(data.tileExportKind(textTile), 'text');
+      assert.deepStrictEqual(data.tileExportSheet(textTile, exState), { name: 'Note', header: ['Texte'], rows: [['Lire\n• source : ERP']] });
+      assert.deepStrictEqual(data.buildWorkbookSheets(exState).map((sh) => sh.name), ['Montant par Région']);
+      assert.deepStrictEqual((await data.buildWorkbookSheetsAsync(exState, async () => ({}))).map((sh) => sh.name), ['Montant par Région']);
+      // Le texte n'est ni triable, ni colorable, ni filtré : aucune dimension.
+      assert.strictEqual(data.isSortableTile(textTile), false);
+      assert.strictEqual(data.supportsPalette(textTile), false);
+      // Conseil : une ligne « quand l'utiliser » (avec sa traduction), aucun préremplissage ni avertissement.
+      assert.strictEqual(advice.USE_KEYS.text, 'advice.use.text');
+      assert.ok(i18n.STRINGS['advice.use.text'] && i18n.STRINGS['tileForm.type.text'] && i18n.STRINGS['tileForm.error.textRequired'] && i18n.STRINGS['tileTitle.text']);
+      assert.deepStrictEqual(advice.adviceForType('text', big, ['Region']), { key: 'advice.use.text', vars: {}, level: 'info' });
+      assert.deepStrictEqual(advice.defaultsForType('text', big), {});
+      assert.strictEqual(advice.adviceForTile(textTile, big), null);
+      // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
+      const mainSrc = fs.readFileSync(path.join(root, 'js', 'main.js'), 'utf8');
+      const indexSrc = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+      const chartsSrc = fs.readFileSync(path.join(root, 'js', 'charts.js'), 'utf8');
+      assert.ok(/const TYPE_CARDS = \[[^\]]*'text'\]/.test(mainSrc), 'carte « Texte » dans l\'étape Choisir');
+      assert.ok(/<option value="text"/.test(indexSrc) && /<textarea id="tile-text"[^>]*maxlength="2000"/.test(indexSrc), 'option + zone de texte plafonnée');
+      assert.ok(/tile\.type === 'text'\) \{\s*renderText\(/.test(chartsSrc) || /tile\.type === 'text'\) \{\r?\n\s*renderText\(/.test(chartsSrc), 'renderTile aiguille vers renderText');
+      assert.ok(!/innerHTML = tile\.text|innerHTML = textValue/.test(mainSrc + chartsSrc), 'jamais de texte saisi dans innerHTML sans passer par renderTextHtml');
+      console.log('OK tuile Texte — échappement total (liste fermée de balises), repères # ## - **, plafond, exports sans feuille Excel, conseil et i18n');
+
+      // --- Table plate (type 'table') : les lignes telles quelles, colonnes choisies, tri de lecture ---
+      {
+        const fmtMod = require('../js/format.js');
+        const mixed = [
+          { id: 1, Region: 'Sud', Lot: 'Lot 10', Montant: 1542980.8799999997, Annee: 2024, Date: '2024-03-02', Note: null },
+          { id: 2, Region: 'nord', Lot: 'Lot 2', Montant: 12, Annee: 2023, Date: '2023-12-31', Note: '' },
+          { id: 3, Region: 'Est', Lot: 'Lot 1', Montant: null, Annee: 2025, Date: '2025-01-05', Note: ['L', 'a', 'b'] },
+          { id: 4, Region: 'Ouest', Lot: 'Lot 3', Montant: -4.5, Annee: 2022, Date: '', Note: 'ok' }
+        ];
+        const tb = { id: 'tt1', type: 'table', title: 'Lignes', columns: ['Lot', 'Region', 'Montant', 'Gone'] };
+        // Colonnes : celles qui existent encore, dans l'ordre choisi ; sans ligne, la liste choisie telle quelle.
+        assert.deepStrictEqual(data.tableColumnsOf(tb, mixed), ['Lot', 'Region', 'Montant']);
+        assert.deepStrictEqual(data.tableColumnsOf(tb, []), ['Lot', 'Region', 'Montant', 'Gone']);
+        assert.deepStrictEqual(data.tableColumnsOf({ type: 'table' }, mixed), []);
+        // Texte d'une cellule : liste de choix Grist lue sans son marqueur, null vide, objet jamais « [object Object] ».
+        assert.strictEqual(data.cellText(['L', 'a', 'b']), 'a, b');
+        assert.strictEqual(data.cellText(null), '');
+        assert.strictEqual(data.cellText(true), 'true');
+        assert.strictEqual(data.cellText({ a: 1 }), '{"a":1}');
+        // Tri : nombres comme des nombres, texte « naturel » sans casse, dates telles quelles, vides toujours à la fin.
+        const ids = (rs) => rs.map((r) => r.id);
+        assert.deepStrictEqual(ids(data.sortRowsBy(mixed, 'Montant', 'asc')), [4, 2, 1, 3]);
+        assert.deepStrictEqual(ids(data.sortRowsBy(mixed, 'Montant', 'desc')), [1, 2, 4, 3]);
+        assert.deepStrictEqual(ids(data.sortRowsBy(mixed, 'Lot', 'asc')), [3, 2, 4, 1]); // Lot 1, 2, 3, 10 (pas 1, 10, 2, 3)
+        assert.deepStrictEqual(ids(data.sortRowsBy(mixed, 'Region', 'asc')), [3, 2, 4, 1]); // Est, nord, Ouest, Sud
+        assert.deepStrictEqual(ids(data.sortRowsBy(mixed, 'Date', 'asc')), [2, 1, 3, 4]);
+        assert.deepStrictEqual(ids(data.sortRowsBy(mixed, 'Date', 'desc')), [3, 1, 2, 4]);
+        assert.deepStrictEqual(ids(data.sortRowsBy(mixed, 'Note', 'asc')), [3, 4, 1, 2]);
+        assert.strictEqual(data.sortRowsBy(mixed, 'Montant', null), mixed, 'sans sens : le même tableau, pas de copie');
+        assert.deepStrictEqual(ids(mixed), [1, 2, 3, 4], 'le tableau partagé n\'est jamais modifié par un tri');
+        const stable = [{ id: 1, k: 'a' }, { id: 2, k: 'a' }, { id: 3, k: 'a' }];
+        assert.deepStrictEqual(ids(data.sortRowsBy(stable, 'k', 'desc')), [1, 2, 3], 'tri stable');
+        assert.deepStrictEqual(ids(data.sortRowsBy([{ id: 1, k: 5n }, { id: 2, k: 2n }], 'k', 'asc')), [2, 1], 'BigInt (DuckDB)');
+        // Cycle du clic d'en-tête et réordonnancement du formulaire.
+        assert.strictEqual(data.nextSortDir(null), 'asc');
+        assert.strictEqual(data.nextSortDir('asc'), 'desc');
+        assert.strictEqual(data.nextSortDir('desc'), null);
+        assert.deepStrictEqual(data.moveInOrder(['a', 'b', 'c'], 'c', -1), ['a', 'c', 'b']);
+        assert.deepStrictEqual(data.moveInOrder(['a', 'b', 'c'], 'a', -1), ['a', 'b', 'c']);
+        assert.deepStrictEqual(data.moveInOrder(['a', 'b', 'c'], 'c', 1), ['a', 'b', 'c']);
+        assert.deepStrictEqual(data.moveInOrder(['a', 'b', 'c'], 'zz', 1), ['a', 'b', 'c']);
+        // Nombres : Automatique = la donnée (jamais « 2 024 » pour une année, ni de bruit de flottant) ; format choisi respecté.
+        assert.strictEqual(fmtMod.cellNumber(tb, 'Annee', 2024, 'fr'), '2024');
+        assert.strictEqual(fmtMod.cellNumber(tb, 'Montant', 1542980.8799999997, 'fr'), '1542980,88');
+        assert.strictEqual(fmtMod.cellNumber(tb, 'Montant', 1542980.88, 'en'), '1542980.88');
+        assert.strictEqual(fmtMod.cellNumber(tb, 'Montant', -0, 'fr'), '0');
+        assert.strictEqual(fmtMod.cellNumber(tb, 'Montant', 12345678901n, 'fr'), '12345678901');
+        assert.strictEqual(fmtMod.cellNumber(tb, 'Montant', null, 'fr'), '');
+        const withFmt = Object.assign({}, tb, { numberFormat: { mode: 'custom', decimals: 2, notation: 'standard' } });
+        assert.strictEqual(fmtMod.cellNumber(withFmt, 'Montant', 1542980.879, 'en'), '1,542,980.88');
+        // Export : mêmes colonnes et même ordre, valeurs brutes, plafond annoncé (`truncated`).
+        const exState = { rows: mixed, activeFilters: [{ column: 'Region', value: 'Est', sourceTileId: 'autre' }], advancedFilters: [], drillIns: {}, comments: [], pages: [{ id: 'p1', name: 'P', tiles: [tb] }] };
+        assert.strictEqual(data.tileExportKind(tb), 'table');
+        const sheet = data.tileExportSheet(tb, exState);
+        assert.deepStrictEqual(sheet.header, ['Lot', 'Region', 'Montant']);
+        assert.deepStrictEqual(sheet.rows, [['Lot 1', 'Est', '']], 'filtres croisés des autres tuiles respectés, valeur vide -> chaîne vide');
+        assert.strictEqual(data.tileExportSheet(tb, { rows: mixed, activeFilters: [], advancedFilters: [], drillIns: {} }, 2).truncated, 2);
+        assert.deepStrictEqual(data.tileExportSheet(tb, { rows: mixed, activeFilters: [], advancedFilters: [], drillIns: {} }).rows[0], ['Lot 10', 'Sud', 1542980.8799999997]);
+        assert.deepStrictEqual(data.buildWorkbookSheets(Object.assign({}, exState, { activeFilters: [] })).map((sh) => sh.name), ['Lignes']);
+        // Aucune dimension/mesure/agrégat : ni triable, ni colorable, aucun conseil ni préremplissage fantôme.
+        assert.strictEqual(data.isSortableTile(tb), false);
+        assert.strictEqual(data.supportsPalette(tb), false);
+        assert.strictEqual(advice.adviceForTile(tb, big), null);
+        assert.deepStrictEqual(advice.adviceForType('table', big, ['Region']), { key: 'advice.use.table', vars: {}, level: 'info' });
+        assert.deepStrictEqual(advice.defaultsForType('table', big, ['id', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']), { columns: ['a', 'b', 'c', 'd', 'e', 'f'] });
+        assert.deepStrictEqual(advice.suggestTiles(big, Object.keys(big[0]), { limit: 20, t: (k) => k }).filter((c) => c.type === 'table'), [], 'jamais proposée à l\'accueil');
+        ['tileForm.type.table', 'tileForm.columns.label', 'tileForm.columns.hint', 'tileForm.columns.up', 'tileForm.columns.down', 'tileForm.error.columnsRequired',
+          'tileTitle.table', 'advice.use.table', 'chart.table.empty', 'chart.table.noColumns', 'chart.table.sortBy', 'chart.table.truncated', 'export.table.more']
+          .forEach((k) => assert.ok(i18n.STRINGS[k] && i18n.STRINGS[k].fr && i18n.STRINGS[k].en, 'traduction fr/en : ' + k));
+        // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
+        const mainSrc2 = fs.readFileSync(path.join(root, 'js', 'main.js'), 'utf8');
+        const chartsSrc2 = fs.readFileSync(path.join(root, 'js', 'charts.js'), 'utf8');
+        const indexSrc2 = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+        assert.ok(/const TYPE_CARDS = \[[^\]]*'table'/.test(mainSrc2) && /<option value="table"/.test(indexSrc2) && /id="tile-columns"/.test(indexSrc2));
+        assert.ok(/tile\.type === 'table'\) \{\s*renderTable\(/.test(chartsSrc2), 'renderTile aiguille vers renderTable');
+        assert.ok(/el\.dataset\.tileType !== tile\.type/.test(mainSrc2), 'une tuile dont le type change est recréée');
+        assert.ok(!/Intl\.NumberFormat|toFixed/.test(chartsSrc2), 'aucun format de nombre en dur dans charts.js');
+        console.log('OK tuile Table — colonnes, tri (naturel, vides à la fin, stable), nombres bruts, exports plafonnés, conseil et i18n');
+      }
     }
   }
 })().then(() => {

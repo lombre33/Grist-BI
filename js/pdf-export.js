@@ -63,12 +63,18 @@
   // qu'affiché), soit un tableau natif (pivot/KPI, voir GristBI.data.tileExportKind — ni l'un ni
   // l'autre n'a de graphique ECharts à capturer, et tileExportSheet leur donne déjà la bonne forme,
   // déjà testée pour l'export Excel).
+  const PDF_TABLE_MAX_ROWS = 200;
   function tileToPdfBlocks(tile, state) {
     const title = { text: tile.title || `${tile.aggFn}(${tile.measure})`, style: 'tileTitle' };
+    // Tuile Texte : le texte lui-même, sans repères (ni graphique à capturer, ni tableau).
+    if (GristBI.data.tileExportKind(tile) === 'text') return [title, { text: GristBI.data.plainTextOf(tile.text), margin: [0, 4, 0, 16] }];
     if (GristBI.data.tileExportKind(tile) === 'table') {
-      const sheet = GristBI.data.tileExportSheet(tile, state);
+      // Table plate : un PDF n'est pas un classeur, les premières lignes seulement (le reste est dans l'export Excel).
+      const sheet = GristBI.data.tileExportSheet(tile, state, tile.type === 'table' ? PDF_TABLE_MAX_ROWS : undefined);
       const body = [sheet.header].concat(sheet.rows.map((row) => row.map((cell) => (cell == null ? '' : String(cell)))));
-      return [title, { table: { widths: sheet.header.map(() => '*'), body }, margin: [0, 4, 0, 16] }];
+      const blocks = [title, { table: { widths: sheet.header.map(() => '*'), body }, margin: [0, 4, 0, sheet.truncated ? 4 : 16] }];
+      if (sheet.truncated) blocks.push({ text: GristBI.i18n.t('export.table.more', { n: sheet.truncated }), italics: true, margin: [0, 0, 0, 16] });
+      return blocks;
     }
     const instance = GristBI.charts.getInstance(tile.id);
     if (!instance || instance.isDisposed()) {
