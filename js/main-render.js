@@ -404,13 +404,13 @@
   let restoreTabFocus = false;
  // le rendu qui suit une flèche doit rendre le focus à l'onglet actif
   function renderPageTabs(pages, currentPageId) {
-    pageTabsEl.innerHTML = pages.map((p) => {
+    GristBI.safeHtml.setHtml(pageTabsEl, pages.map((p) => {
       const active = p.id === currentPageId;
       const removeBtn = active && pages.length > 1
         ? `<button type="button" class="page-tab-remove edit-only" data-page-id="${escapeHtml(p.id)}" title="${escapeHtml(t('pages.remove.title'))}" aria-label="${escapeHtml(t('pages.remove.title'))}">${icon('close')}</button>`
         : '';
       return `<span class="page-tab-group${active ? ' active' : ''}"><button type="button" class="page-tab${active ? ' active' : ''}" role="tab" aria-selected="${active}" tabindex="${active ? 0 : -1}" data-page-id="${escapeHtml(p.id)}">${escapeHtml(p.name)}</button>${removeBtn}</span>`;
-    }).join('');
+    }).join(''));
     const tabs = Array.from(pageTabsEl.querySelectorAll('.page-tab'));
     tabs.forEach((tab, index) => {
       const pageId = tab.dataset.pageId;
@@ -457,12 +457,12 @@
   // avec son propre bouton de suppression, + le bouton "Effacer les filtres" global reste utile
   // dès qu'il y en a 2+.
   function renderFilterBadges(activeFilters) {
-    filterBadgesEl.innerHTML = activeFilters.map((f) => `
+    GristBI.safeHtml.setHtml(filterBadgesEl, activeFilters.map((f) => `
       <span class="filter-chip">
         ${f.type && f.type !== 'eq' ? escapeHtml(describeAdvancedFilter(f)) : `${escapeHtml(f.column)} = ${escapeHtml(String(f.value))}`}
         <button type="button" class="filter-chip-remove" data-column="${escapeHtml(f.column)}" aria-label="${escapeHtml(t('filters.remove.aria'))}">${icon('close')}</button>
       </span>
-    `).join('');
+    `).join(''));
     for (const btn of filterBadgesEl.querySelectorAll('.filter-chip-remove')) {
       btn.addEventListener('click', () => store.clearFilter(btn.dataset.column));
     }
@@ -518,12 +518,12 @@
   // croisés, mais retirés via clearAdvancedFilter et sans bouton "Effacer les filtres" partagé (une
   // barre de filtres avancés vide se contente de n'afficher aucun badge).
   function renderAdvancedFilterBadges(advancedFilters) {
-    advancedFilterBadgesEl.innerHTML = advancedFilters.map((f) => `
+    GristBI.safeHtml.setHtml(advancedFilterBadgesEl, advancedFilters.map((f) => `
       <span class="filter-chip">
         ${escapeHtml(describeAdvancedFilter(f))}
         <button type="button" class="advanced-filter-chip-remove" data-column="${escapeHtml(f.column)}" aria-label="${escapeHtml(t('filters.remove.aria'))}">${icon('close')}</button>
       </span>
-    `).join('');
+    `).join(''));
     for (const btn of advancedFilterBadgesEl.querySelectorAll('.advanced-filter-chip-remove')) {
       btn.addEventListener('click', () => store.clearAdvancedFilter(btn.dataset.column));
     }
@@ -540,7 +540,7 @@
     const active = bookmarks.find((b) => b.id === state.activeBookmarkId) || null;
     const modified = Boolean(active) && state.activeBookmarkModified;
 
-    viewsListEl.innerHTML = bookmarks.map((b) => {
+    GristBI.safeHtml.setHtml(viewsListEl, bookmarks.map((b) => {
       const isActive = active && b.id === active.id;
       return `<li class="views-item${isActive ? ' views-item-active' : ''}">
         <button type="button" class="views-item-apply" data-id="${escapeHtml(b.id)}"${isActive ? ' aria-current="true"' : ''}
@@ -554,7 +554,7 @@
           <svg class="icon icon-close" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M4 4l8 8M12 4l-8 8"/></svg>
         </button>
       </li>`;
-    }).join('');
+    }).join(''));
     viewsEmptyEl.hidden = bookmarks.length > 0;
 
     updateBookmarkBtn.hidden = !modified;
@@ -599,7 +599,7 @@
           <button class="tile-detail" type="button" data-i18n-aria="tile.detail.aria" data-i18n-title="tile.detail.title" aria-label="${escapeHtml(t('tile.detail.aria'))}" title="${escapeHtml(t('tile.detail.title'))}">${icon('search')}</button>
           <button class="tile-remove edit-only" type="button" data-i18n-aria="tile.remove.aria" data-i18n-title="tile.remove.title" aria-label="${escapeHtml(t('tile.remove.aria'))}" title="${escapeHtml(t('tile.remove.title'))}">${icon('close')}</button>
         </span>`}</div>`;
-    el.innerHTML = tile.type === 'text'
+    GristBI.safeHtml.setHtml(el, tile.type === 'text'
       ? `${header}
          <div class="tile-text-body"></div>`
       : tile.type === 'kpi'
@@ -616,7 +616,7 @@
          </div>`
       : `${header}
          <div class="tile-breadcrumb" data-tile-id="${escapeHtml(tile.id)}" hidden></div>
-         <div class="tile-chart" data-tile-id="${escapeHtml(tile.id)}"></div>`;
+         <div class="tile-chart" data-tile-id="${escapeHtml(tile.id)}"></div>`);
     if (preview) return el;
     el.querySelector('.tile-remove').addEventListener('click', () => {
       if (tile.id === S.editingTileId) closeTilePanel(false); // formulaire en cours d'édition sur une tuile qui disparaît

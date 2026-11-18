@@ -9,7 +9,7 @@ que chaque fichier listé ici correspond encore à son empreinte : changer une b
 
 | Dossier | Paquet npm | Version | Licence | Fichier suivi | SHA-256 |
 |---|---|---|---|---|---|
-| `echarts/` | `echarts` | 6.1.0 | Apache-2.0 | `dist/echarts.min.js` | `afe8c643d057e08d536fb4733d0bf07ed8dafd7f9cab6d34ae694c084dfc8760` (modifié) |
+| `echarts/` | `echarts` | 6.1.0 | Apache-2.0 | `dist/echarts.min.js` | `eccc0425fea4981ca5b940cab16b0f3da066f4352e579b8391a723bfdc40766d` (modifié) |
 | `exceljs/` | `exceljs` | 4.4.0 | MIT | `dist/exceljs.min.js` | `7e49da68588e250dbb8bba190d2caa8ab3787cc0284bda1d8b2f805c4df742c9` |
 | `duckdb/` | `@duckdb/duckdb-wasm` | 1.32.0 | MIT | `dist/duckdb-browser.mjs` | `4f8c0bb3c23d1ec457a451cc27418597b9a40dd772cceacc436a2cb7b9a49c18` |
 | `duckdb/` | `@duckdb/duckdb-wasm` | 1.32.0 | MIT | `dist/duckdb-eh.wasm` | `4c221bfa59c11f24dbd750e70c90b9252eca6eec5633936e6a2ec766e55fd879` |
@@ -37,11 +37,11 @@ contenu sans `unsafe-eval` refuserait. Dans les deux cas le code retiré n'est j
 
 | Fichier | SHA-256 d'origine (paquet npm) | Ce qui change | Pourquoi c'est sans effet ici |
 |---|---|---|---|
-| `echarts/echarts.min.js` | `b66b25aeb4df84e33199dc21694014d336d222cbd9deb0e5a7c14bd6aa0d0fd0` (`echarts@6.1.0`) | (1) le repli `"undefined"!=typeof JSON&&JSON.parse?JSON.parse(i):new Function("return ("+i+");")()` de l'analyse d'un GeoJSON devient `JSON.parse(i)` ; (2) une ligne d'en-tête (nom, version, licence, origine) ajoutée en tête, pour qu'on sache d'où vient ce fichier minifié | ECharts n'emploie `new Function` que si `JSON.parse` n'existe pas (aucun navigateur actuel) et pour un GeoJSON, type de carte que ce widget n'a pas |
+| `echarts/echarts.min.js` | `b66b25aeb4df84e33199dc21694014d336d222cbd9deb0e5a7c14bd6aa0d0fd0` (`echarts@6.1.0`) | (1) le repli `"undefined"!=typeof JSON&&JSON.parse?JSON.parse(i):new Function("return ("+i+");")()` de l'analyse d'un GeoJSON devient `JSON.parse(i)` ; (2) une ligne d'en-tête (nom, version, licence, origine) ajoutée en tête, pour qu'on sache d'où vient ce fichier minifié ; (3) les sept affectations `élément.innerHTML = texte` (infobulle HTML ; SVG et boîte « données » de la barre d'outils) passent par `__gristBiSetHtml(élément, texte)`, une fonction de six lignes posée sous l'en-tête, qui confie le texte à `GristBI.safeHtml.setHtml` (`js/safe-html.js`) et, si ce module manque, l'écrit comme TEXTE | (1) ECharts n'emploie `new Function` que si `JSON.parse` n'existe pas (aucun navigateur actuel) et pour un GeoJSON, type de carte que ce widget n'a pas ; (3) l'infobulle affiche le même contenu : le test `dev-tests/test-safe-html.js` et le parcours au survol (22 types de tuile) comparent l'infobulle avant et après |
 | `apache-arrow/builder/valid.mjs` | `5b6ed8736c4fcb54d268ed125b1bdd98c29f8eb29b55766faff3cace38ac27a2` (`apache-arrow@17.0.0`) | `createIsValidFunction` rend une fermeture sur un `Set` au lieu de compiler un `switch` par le constructeur `Function` | Même résultat : comparé à l'original sur 76 057 cas (listes de valeurs nulles tirées au hasard parmi `null`, `undefined`, `NaN`, `0`, `-0`, nombres, bigints, chaînes ; aucun écart). Ne sert qu'à construire des vecteurs Arrow avec des valeurs nulles déclarées, ce que ce widget ne fait pas (il lit les résultats de DuckDB) |
 
-`node dev-tests/test-audit.js` vérifie que ces deux fichiers ne contiennent plus de `new Function(`. Après une mise à jour d'ECharts,
-`node dev-tests/patch-echarts.js` rejoue les deux modifications (et dit si le motif a changé) ; pour Apache Arrow, reprendre le
+`node dev-tests/test-audit.js` vérifie que ces deux fichiers ne contiennent plus de `new Function(` et qu'ECharts ne contient plus d'affectation `.innerHTML=` hors de `__gristBiSetHtml`. Après une mise à jour d'ECharts,
+`node dev-tests/patch-echarts.js` rejoue les trois modifications (et dit si un motif a changé) ; pour Apache Arrow, reprendre le
 fichier de ce dépôt tel quel si `builder/valid.mjs` n'a pas changé dans le nouveau paquet (comparer à l'empreinte d'origine
 ci-dessus), sinon refaire la même modification. Si une mise à jour d'une de ces bibliothèques corrige le problème en amont,
 revenir au fichier du paquet et retirer sa ligne ici.

@@ -41,12 +41,12 @@
   function refreshFilterColumnList() {
     const q = filterColumnSearch.value.trim().toLowerCase();
     const shown = q ? filterColumns.filter((c) => c.id.toLowerCase().includes(q)) : filterColumns;
-    filterColumnList.innerHTML = shown.map((c) => {
+    GristBI.safeHtml.setHtml(filterColumnList, shown.map((c) => {
       const kind = t('filters.kind.' + c.kind);
       return `<li><button type="button" class="filter-column-item" data-column="${escapeHtml(c.id)}" aria-label="${escapeHtml(t('filters.column.aria', { name: c.id, kind }))}">`
         + `<span class="kind-badge kind-${c.kind}" aria-hidden="true">${KIND_BADGES[c.kind]}</span>`
         + `<span class="filter-column-label">${escapeHtml(c.id)}</span></button></li>`;
-    }).join('');
+    }).join(''));
     filterColumnEmpty.hidden = shown.length > 0;
   }
 
@@ -84,7 +84,7 @@
     const q = filterTextInput.value.trim().toLowerCase();
     const pool = q ? filterValuesPool.filter((v) => v.toLowerCase().includes(q)) : filterValuesPool;
     const shown = pool.slice(0, FILTER_VALUES_SHOWN);
-    filterValueList.innerHTML = shown.map((v) => `<li><button type="button" class="filter-value-item" data-value="${escapeHtml(v)}">${escapeHtml(v)}</button></li>`).join('');
+    GristBI.safeHtml.setHtml(filterValueList, shown.map((v) => `<li><button type="button" class="filter-value-item" data-value="${escapeHtml(v)}">${escapeHtml(v)}</button></li>`).join(''));
     filterValueList.hidden = shown.length === 0;
     filterValuesHint.hidden = filterValuesPool.length === 0;
     const more = pool.length - shown.length;

@@ -1016,7 +1016,7 @@
     if (typeof document === 'undefined') return; // Node (tests) : pas de DOM à mettre à jour.
     const scope = root || document;
     scope.querySelectorAll('[data-i18n]').forEach((el) => { el.textContent = translate(el.getAttribute('data-i18n')); });
-    scope.querySelectorAll('[data-i18n-html]').forEach((el) => { el.innerHTML = translate(el.getAttribute('data-i18n-html')); });
+    scope.querySelectorAll('[data-i18n-html]').forEach((el) => { GristBI.safeHtml.setHtml(el, translate(el.getAttribute('data-i18n-html'))); });
     scope.querySelectorAll('[data-i18n-title]').forEach((el) => { el.setAttribute('title', translate(el.getAttribute('data-i18n-title'))); });
     scope.querySelectorAll('[data-i18n-aria]').forEach((el) => { el.setAttribute('aria-label', translate(el.getAttribute('data-i18n-aria'))); });
     scope.querySelectorAll('[data-i18n-placeholder]').forEach((el) => { el.setAttribute('placeholder', translate(el.getAttribute('data-i18n-placeholder'))); });

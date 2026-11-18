@@ -487,9 +487,9 @@
     order.forEach((col, i) => {
       const li = document.createElement('li');
       li.dataset.col = col;
-      li.innerHTML = `<label><input type="checkbox"> <span></span></label>`
+      GristBI.safeHtml.setHtml(li, `<label><input type="checkbox"> <span></span></label>`
         + `<button type="button" class="col-move" data-dir="-1" aria-label="${escapeHtml(t('tileForm.columns.up', { column: col }))}">▲</button>`
-        + `<button type="button" class="col-move" data-dir="1" aria-label="${escapeHtml(t('tileForm.columns.down', { column: col }))}">▼</button>`;
+        + `<button type="button" class="col-move" data-dir="1" aria-label="${escapeHtml(t('tileForm.columns.down', { column: col }))}">▼</button>`);
       li.querySelector('span').textContent = col;
       li.querySelector('input').checked = checkedSet.has(col);
       li.querySelector('[data-dir="-1"]').disabled = i === 0;

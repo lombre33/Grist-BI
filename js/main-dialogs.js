@@ -87,11 +87,11 @@
     if (!commentsModalTileId) return;
     const comments = GristBI.data.commentsForTile(store.getState().comments, commentsModalTileId);
     const locale = GristBI.i18n.getLang() === 'en' ? 'en-US' : 'fr-FR';
-    commentsListEl.innerHTML = comments.map((c) => `
+    GristBI.safeHtml.setHtml(commentsListEl, comments.map((c) => `
       <li class="comment-item">
         <div class="comment-meta"><strong>${escapeHtml(c.Author)}</strong><span class="comment-date">${escapeHtml(new Date(c.CreatedAt).toLocaleString(locale))}</span></div>
         <p class="comment-text">${escapeHtml(c.Text)}</p>
-      </li>`).join('');
+      </li>`).join(''));
     commentsEmptyEl.hidden = comments.length > 0;
   }
 
@@ -148,7 +148,7 @@
       const columns = Object.keys(shown[0]);
       const head = columns.map((c) => `<th>${escapeHtml(c)}</th>`).join('');
       const body = shown.map((row) => `<tr>${columns.map((c) => `<td>${escapeHtml(row[c] == null ? '' : row[c])}</td>`).join('')}</tr>`).join('');
-      detailModalTableWrapEl.innerHTML = `<table class="detail-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+      GristBI.safeHtml.setHtml(detailModalTableWrapEl, `<table class="detail-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`);
     }
 
     detailModalTruncatedEl.hidden = rows.length <= DETAIL_MODAL_MAX_ROWS;
@@ -195,7 +195,7 @@
   // créer (`tileData` rempli), soit bloquée UNIQUEMENT par des colonnes introuvables
   // (`missingFields` forcément non vide dans ce cas, voir js/pbix-layout.js).
   function renderPbixImportResults() {
-    pbixImportResultsEl.innerHTML = pbixImportSuggestions.map((s, i) => {
+    GristBI.safeHtml.setHtml(pbixImportResultsEl, pbixImportSuggestions.map((s, i) => {
       const disabled = !s.tileData;
       const meta = disabled
         ? t('pbixImport.missingColumns', { columns: s.missingFields.join(', ') })
@@ -209,7 +209,7 @@
           </span>
         </label>
       </li>`;
-    }).join('');
+    }).join(''));
     pbixImportCreateBtn.hidden = !pbixImportSuggestions.some((s) => s.tileData);
   }
 
@@ -270,12 +270,12 @@
  // nom proposé à l'utilisateur sur la pop-up de confirmation
 
   function renderCsvImportColumns(columns) {
-    csvImportColumnsEl.innerHTML = columns.map((c) => `
+    GristBI.safeHtml.setHtml(csvImportColumnsEl, columns.map((c) => `
       <li class="csv-import-column">
         <span class="csv-import-col-label">${escapeHtml(c.label)}</span>
         <span class="csv-import-col-type">${escapeHtml(c.type)}</span>
       </li>
-    `).join('');
+    `).join(''));
   }
 
   // Nom de table proposé par défaut (modifiable avant confirmation) : nom de fichier sans
