@@ -1,6 +1,6 @@
 # GFS-ETAT : Grist-BI
 
-Mis à jour le 2026-11-18 (demande `pdfjs-dist` corrigée : GFS porte déjà cette bibliothèque en module ; ECharts 6.1.0 noté dans « Changements qui touchent GFS » ; consigne 016 faite, `consignes/bi/INDEX.md` à `47365bc` ou plus récent). La
+Mis à jour le 2026-11-18 (demande `pdfjs-dist` corrigée : GFS porte déjà cette bibliothèque en module ; ECharts 6.1.0 noté dans « Changements qui touchent GFS » ; consigne 016 faite ; consigne 017 lue, PAS faite (SheetJS : la dernière version est inatteignable d'ici, voir « Questions pour GFS »), `consignes/bi/INDEX.md` à `24d9993` ou plus récent). La
 011 n'a pas été lue (remplacée par la 012 avant lecture, consigne explicite d'Antoine).
 
 ## Consignes
@@ -250,6 +250,26 @@ Mis à jour le 2026-11-18 (demande `pdfjs-dist` corrigée : GFS porte déjà cet
   un modèle », « Créer », copie du catalogue). **Trouvé en route** : une aire empilée par catégorie restait à plat
   au-delà de 5 000 lignes (DuckDB rend un entier en BigInt, le JS pur un nombre) — corrigé à part, PR #65. Voir la
   ligne « modeles » dans « Demandes à GFS ».
+- 017 · lue · **pas faite** (18/11/2026, rien n'est changé dans `js/vendor/xlsx/`) · SheetJS reste en **0.18.5**.
+  **Ce qui bloque** : les versions corrigées ne sont qu'à `cdn.sheetjs.com`, et la politique réseau de
+  l'environnement où cette app est développée REFUSE cet hôte (réponse 403 à la connexion ; `git.sheetjs.com` ne répond
+  pas et `github.com/SheetJS` est refusé aussi). Le registre npm est joignable mais n'a que la 0.18.5
+  (`dist-tags.latest`, relevé le 18/11). Je n'ai pas pris de copie « miroir » d'un tiers sur npm : sans pouvoir la
+  comparer à l'archive officielle, ce serait changer de provenance pour un correctif de sécurité, sans que le porteur ait
+  tranché. **Exposition relevée dans mon code** (la consigne demande de la confirmer) : `js/export.js` n'appelle que
+  `XLSX.utils.book_new`, `aoa_to_sheet`, `book_append_sheet` et `XLSX.writeFile` ; aucun `XLSX.read`/`readFile` nulle part
+  dans `js/` (hors `js/vendor/`), aucun format de cellule posé, aucune valeur de format venue d'un fichier. Les deux avis
+  visent surtout la LECTURE d'un classeur (pollution de prototype, expression régulière sur les formats) : le chemin
+  d'écriture de cette app, dont les données viennent de la table de la personne, ne les touche pas à ma lecture du code
+  (à confirmer en lisant les avis, pas un audit). **Quatre issues, au choix du porteur** : (1) le porteur dépose
+  l'archive de `cdn.sheetjs.com` (`dist/xlsx.full.min.js` + sa licence), je la vendorise au même nom et au même
+  endroit, je rejoue l'export, et la 017 passe à « faite » ; (2) le porteur autorise `cdn.sheetjs.com` dans le réseau de
+  l'environnement et une prochaine session le fait ; (3) passer à ExcelJS 4.4.0 (celle que GFS sert déjà à
+  Publipostage+, sans avis publié, joignable sur npm) : réécriture de `js/export.js` (écriture asynchrone, tout le
+  classeur reconstruit) — un chantier plus lourd que remplacer le fichier, donc proposé, pas choisi ; (4) attendre en
+  0.18.5. **ECharts** (demandé par la 017) : **6.1.0 est fait**, commit `f6ca386` (fusionné dans `main` par la PR #60,
+  `5d0da98`), `js/vendor/echarts/echarts.min.js` annonce `version:"6.1.0"` ; la 5.6.0 et son avis de niveau moyen
+  (GHSA-fgmj-fm8m-jvvx) ne sont plus dans le dépôt. **pdfmake** : pas étudiée, laissée en 0.2.7.
 
 ## Changements qui touchent GFS
 - 2026-11-18 · ECharts monté de la 5.6.0 à la **6.1.0** (dernière stable du registre npm, 19/05/2026, même version que
@@ -290,7 +310,10 @@ Mis à jour le 2026-11-18 (demande `pdfjs-dist` corrigée : GFS porte déjà cet
   ni `gfs.json`, ni stockage par le courtier.
 
 ## Questions pour GFS
-- aucune
+- **017 · SheetJS** : comment obtenir la dernière version ? `cdn.sheetjs.com` est refusé par la politique réseau
+  de l'environnement de cette app (voir l'entrée 017 plus haut). Si GFS peut déposer l'archive (avec son empreinte
+  SHA-256 relevée chez lui) ou si le porteur la fournit, je la vendorise tout de suite ; sinon le porteur choisit
+  entre autoriser l'hôte, ExcelJS 4.4.0 ou attendre.
 
 ## Demandes à GFS
 - **`modeles`** · `cf889aa` · `modeles/modeles.json` · mes modèles de départ pour « Depuis un modèle » :
