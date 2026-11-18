@@ -2744,15 +2744,56 @@ dans une seule instance de widget, avec ses propres tuiles internes.
   - **Harnais** : `dev-tests/harness.html` n'est plus une copie faite à la main mais REGÉNÉRÉ par
     `node dev-tests/sync-harness.js` ; `test-data.js` échoue s'il diverge d'`index.html` (bug réel
     n°27 de `TEST_PROTOCOL.md`).
-  - **Écran étroit** : sous 760 px, libellés des boutons masqués ; sous 560 px, le compteur de
-    lignes et le libellé « Terminer » disparaissent (le nom accessible reste), pour que le nom de
-    la table reste lisible sur la 1re ligne.
+  - **Largeurs réduites, par paliers** (les onglets de page sont la navigation, ils gardent au moins
+    150 px ; c'est le reste qui s'allège) : ≤ 1100 px la pastille Alpha et le compteur de lignes
+    disparaissent ; ≤ 900 px les libellés des boutons aussi (leur nom reste dans `aria-label`/`title`) ;
+    ≤ 760 px les onglets passent sur une 2e ligne défilable ; ≤ 560 px le libellé « Terminer »
+    disparaît (le nom accessible reste). Corrigé après la 1re version : à 800 px les onglets de page
+    avaient une largeur de 0 (ils cédaient seuls de la place) et le nom de la table était rogné à
+    « V. » à 1000 px — mesuré sur captures, pas à l'œil. La pastille « Alpha » n'est donc visible qu'au-delà
+    de 1100 px ; le panneau de Grist fait souvent moins.
   - **Limites** : (1) les captures de la vitrine GFS (`vitrine/*.webp`) montrent l'ANCIENNE interface
     et sont à refaire avant de les republier ; (2) le panneau latéral « Ajouter une visualisation »
     (lot 2) n'est pas encore là : le formulaire d'ajout est celui d'avant, simplement masqué en
     Lecture ; (3) rien n'a été vu sous une ambiance GFS choisie sur la nouvelle barre, ni dans un
     vrai Grist ; (4) clavier réel et lecteur d'écran non essayés (rôles ARIA et ordre de tabulation
     vérifiés par script seulement).
+
+- **Panneau latéral « Ajouter une visualisation » (Choisir → Régler), conseil branché, formulaires réparés dans
+  GFS** (18/11/2026, lot 2 de l'audit UI/UX en vue de l'alpha — `index.html`, `js/main.js`, `js/i18n.js`,
+  `css/style.css`) : l'audit reprochait au formulaire d'ajout de s'ouvrir au-dessus des tuiles (une bande de
+  ~15 champs qui repousse le tableau de bord), de montrer tous les champs de tous les types, de valider par
+  fenêtres de message et de ne donner aucune idée du résultat avant d'ajouter.
+  - **Disposition** : `#tile-panel` est dans le flux (jamais `position: fixed`, pour ne rien recouvrir dans un panneau
+    Grist étroit) : à droite des tuiles à partir de 900 px (grille `minmax(0,1fr) 400px`, panneau collant sous la
+    barre, dont la hauteur est lue dans `--chrome-h`), au-dessus des tuiles en dessous. Bouton « Ajouter » dans la
+    barre, Édition seulement ; « Modifier » sur une tuile ouvre directement l'étape « Régler ».
+  - **Choisir** : 11 cartes de type (icône, nom, ligne de conseil `advice.adviceForType` calculée sur les VRAIES
+    données : « idéal jusqu'à une douzaine de barres », etc.). **Régler** : seuls les champs essentiels du type
+    sont affichés, préremplis par `advice.defaultsForType` (dimension et mesure différentes, jauge min/max…) ; le
+    reste est dans « Options avancées » (replié) ; titre facultatif (placeholder = titre automatique, vidé =
+    retour au titre automatique).
+  - **Aperçu vivant** : la tuile en cours de saisie est rendue pour de bon par `charts.renderTile` dans le panneau
+    (même code que le tableau de bord, donc ce que l'on voit est ce que l'on obtient), sur un id réservé
+    `__preview__`, sans clic possible (un clic dans l'aperçu ne pose aucun filtre croisé), libéré à la fermeture.
+    Formulaire invalide → pas d'aperçu, message « Complétez… ».
+  - **Conseil** : `advice.adviceForTile` (anneau > 7 parts, radar > 8 axes, courbe sans ordre naturel…) sous les
+    champs, en `warn` ou `tip`. Les cartes d'accueil de la PR 2b (`js/welcome.js`) sont inchangées ; `#welcome-add`
+    ouvre le panneau.
+  - **Validation en ligne** : plus de fenêtre de message ; `readTileForm` pose `aria-invalid`/`aria-describedby` et
+    un message sous le champ fautif (`tileForm.error.*`, bilingue), qui disparaît dès que le champ est corrigé.
+    Cas vérifiés : tableau croisé avec la même colonne en lignes et en colonnes, jauge Min > Max.
+  - **Bug réel n°33, trouvé en testant le panneau dans un cadre isolé** : dans `sandbox="allow-scripts"` (GFS), sans
+    `allow-forms`, l'événement `submit` n'est jamais émis — « Ajouter la tuile » ne faisait donc RIEN dans GFS, et
+    pareil pour les filtres avancés et les commentaires. Reproduit sur le code déjà fusionné (9 tuiles avant, 9
+    après), corrigé par `bindFormSubmit` (clic sur un bouton `type="button"` + Entrée dans un champ texte), vu
+    ensuite dans un cadre isolé pour les trois formulaires.
+  - **Non vérifié** : (1) rien n'a été vu dans un VRAI GFS ni dans un vrai Grist (cadre isolé simulé seulement) ;
+    (2) clavier réel et lecteur d'écran sur le panneau : ordre de tabulation, `aria-describedby` et focus
+    vérifiés par script seulement ; (3) l'aperçu recalcule à chaque changement de champ : sur un très gros tableau
+    (au-delà du seuil DuckDB), la latence réelle n'a pas été mesurée ; (4) les captures de la vitrine GFS
+    (`vitrine/*.webp`) montrent l'ANCIENNE interface et restent à refaire ; (5) les nouveaux types du fil « ECharts 6 »
+    (entonnoir, séries, empilé, palette) ne sont pas dans les cartes : ils les ajouteront eux-mêmes via `TYPE_CARDS`.
 
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
