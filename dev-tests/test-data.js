@@ -2630,7 +2630,7 @@ const SAMPLE_TIME_SERIES = [
       _o: o
     };
   };
-  const SRC = { src: 'https://gfs.example/vendor/d3-cloud/1.0.0/d3-cloud.js', integrite: 'sha384-AAAA', forme: 'module' };
+  const SRC = { src: 'https://gfs.example/vendor/d3-cloud/1.0.0/d3-cloud.js', integrite: 'sha384-' + 'Zm9v'.repeat(16), forme: 'module' };
 
   // état : seule, hébergée sans l'extension, hébergée avec elle ; id inconnu -> seule (jamais « active » par défaut)
   assert.strictEqual(ext.stateFor(null, 'nuage-de-mots'), 'standalone', 'pas de lien -> seule');
@@ -2654,10 +2654,17 @@ const SAMPLE_TIME_SERIES = [
   globalThis.extensionsAsyncTest = async () => {
     const savedDoc = global.document;
     const scripts = [];
-    global.document = {
+    // Le chargement passe par le chargeur unique (js/loader.js), ici branché sur le faux document.
+    const fakeDocument = {
+      baseURI: 'https://widget.example/index.html',
+      readyState: 'complete',
+      addEventListener() {},
       createElement: () => ({}),
-      head: { append(script) { scripts.push(script); setTimeout(() => { global.GfsPaquets = scopeWith.GfsPaquets; script.onload(); }, 0); } }
+      head: { appendChild(script) { scripts.push(script); setTimeout(() => { global.GfsPaquets = scopeWith.GfsPaquets; script.onload(); }, 0); } }
     };
+    global.document = fakeDocument;
+    const savedLoader = globalThis.GristBI.loader;
+    globalThis.GristBI.loader = require('../js/loader.js').create({ document: fakeDocument });
     try {
       // sans lien (hors GFS) : null, rien n'est chargé, aucun abonné réveillé
       let changes = 0;
@@ -2707,6 +2714,7 @@ const SAMPLE_TIME_SERIES = [
       off();
     } finally {
       global.document = savedDoc;
+      globalThis.GristBI.loader = savedLoader;
       delete global.GfsPaquets;
     }
 
@@ -3424,13 +3432,14 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     const vm = require('vm');
     const source = require('fs').readFileSync(require('path').join(__dirname, '..', 'js', 'grist-api.js'), 'utf8');
     assert.ok(!/\[\s*'(RemoveTable|RemoveColumn|BulkRemoveRecord|ApplyUndoActions)'/.test(source), 'aucune action destructrice de table ou de colonne dans le pont Grist');
-    const calls = { actions: [], tokens: [], urls: [] };
+    const calls = { actions: [], tokens: [], urls: [], inits: [] };
     let tokenCount = 0;
-    const sandbox = { console: { error() {}, log() {}, warn() {} }, setTimeout: (fn) => { fn(); return 0; }, encodeURIComponent };
+    const sandbox = { console: { error() {}, log() {}, warn() {} }, setTimeout: (fn) => { fn(); return 0; }, encodeURIComponent, URL };
     sandbox.window = sandbox;
     sandbox.GristBI = { data };
-    sandbox.fetch = async (url) => {
+    sandbox.fetch = async (url, init) => {
       calls.urls.push(url);
+      calls.inits.push(init);
       if (/attachments\/401\//.test(url)) return { ok: false, status: 404, headers: { get: () => null } };
       if (/attachments\/402\//.test(url)) return { ok: true, status: 200, headers: { get: () => String(500 * 1024 * 1024) }, arrayBuffer: async () => new ArrayBuffer(0) };
       if (/attachments\/403\//.test(url) && !calls.retried) { calls.retried = true; return { ok: false, status: 401, headers: { get: () => null } }; }
@@ -3450,6 +3459,15 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     const bytes = await api.getAttachmentBytes(400);
     assert.strictEqual(bytes.byteLength, 4);
     assert.strictEqual(calls.urls[0], 'https://grist.example/api/docs/abc/attachments/400/download?auth=jeton1', 'adresse de téléchargement, sans double barre, jeton réutilisé');
+    assert.strictEqual(JSON.stringify(calls.inits[0]), JSON.stringify({ credentials: 'omit', referrerPolicy: 'no-referrer' }), 'le téléchargement part sans cookie ni Referer');
+    // l'adresse d'API que Grist donne est vérifiée avant d'y envoyer le jeton (audit gwaudit C-EXFIL-02)
+    const safe = api.safeAttachmentBase;
+    assert.strictEqual(safe('https://docs.getgrist.com/o/docs/api/docs/abc/', 'https:'), 'https://docs.getgrist.com/o/docs/api/docs/abc');
+    assert.strictEqual(safe('http://localhost:8484/api/docs/abc', 'https:'), 'http://localhost:8484/api/docs/abc', 'machine locale en http');
+    assert.strictEqual(safe('http://grist.intranet/api/docs/abc', 'http:'), 'http://grist.intranet/api/docs/abc', 'widget servi en http : Grist en http accepté');
+    for (const [bad, why] of [['http://grist.example/api/docs/abc', 'http hors machine locale, page en https'], ['javascript:alert(1)', 'javascript:'], ['data:text/plain,x', 'data:'], ['https://u:p@grist.example/api/docs/abc', 'identifiant'], ['https://grist.example/api/docs/abc?x=1', 'requête'], ['https://grist.example/api/docs/abc#f', 'fragment'], ['pas une adresse', 'texte'], ['/api/docs/abc', 'adresse relative']]) {
+      assert.throws(() => safe(bad, 'https:'), /Grist a donné une adresse d'API/, why);
+    }
     await assert.rejects(api.getAttachmentBytes(401), (e) => e.code === 'ATTACHMENT_HTTP' && /404/.test(e.message));
     await assert.rejects(api.getAttachmentBytes(402), (e) => e.code === 'ATTACHMENT_TOO_LARGE');
     const retried = await api.getAttachmentBytes(403);
@@ -6549,7 +6567,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     assert.ok(!/@latest|pptxgenjs@\d+\//.test(pptxExport.PPTX_LIB_URL.src), 'version complète, jamais @latest ni une version flottante');
     const pptxSource = stripComments(read('js/pptx-export.js'));
     assert.ok(!/cdnjs|pdfmake/i.test(pptxSource), 'plus aucune trace de cdnjs dans l\'export PPTX (la bibliothèque n\'y est pas)');
-    assert.ok(/s\.integrity = lib\.integrity;/.test(pptxSource) && /s\.crossOrigin = 'anonymous';/.test(pptxSource), 'empreinte SRI et crossorigin posés sur le script');
+    assert.ok(/GristBI\.loader\.script\(\{ src: lib\.src, integrity: lib\.integrity, hosts: PPTX_LIB_HOSTS/.test(pptxSource) && /PPTX_LIB_HOSTS = \['cdn\.jsdelivr\.net'\]/.test(pptxSource), 'le chargeur unique reçoit l\'empreinte SRI et l\'hôte permis (il pose integrity et crossorigin : dev-tests/test-loader.js)');
 
     // Placement d'une image dans la diapositive 13,333 x 7,5 pouces (marge 0,3) : centrée, dans les marges, jamais agrandie au-delà de trois fois.
     const inside = (b) => b.x >= 0.3 - 1e-9 && b.y >= 0.3 - 1e-9 && b.x + b.w <= 13.333 - 0.3 + 1e-9 && b.y + b.h <= 7.5 - 0.3 + 1e-9;

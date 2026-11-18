@@ -181,11 +181,41 @@ l'API widget Grist ne proposant pas de niveau intermédiaire entre "une seule ta
 "accès complet". Comme pour l'autre widget, la restriction fine des données doit se faire via les
 **Règles d'accès** natives de Grist, pas dans la configuration du widget.
 
+**Ce que le widget lit et écrit avec cet accès** (rien d'autre) :
+
+- il LIT la table de travail que la personne choisit (la première du document au démarrage), les métadonnées de ses colonnes
+  (`_grist_Tables_column`, pour le type et le format) et, à la demande, les pièces jointes d'une colonne (fenêtre « Mots-clés des publications ») ;
+- il crée et écrit TROIS tables internes, jamais des données de la personne : `BI_Dashboard_Config` (le tableau de bord),
+  `BI_Dashboard_Comments` (les commentaires) et `BI_Dashboard_UserProbe` (une ligne éphémère pour connaître l'adresse de la personne) ;
+- il ne modifie la table de la personne que sur un geste explicite, après une fenêtre de confirmation : l'import d'un fichier
+  Power BI (création d'une table) et l'ajout d'une colonne de mots-clés, puis l'écriture de ses cellules vides. Il n'utilise jamais
+  `RemoveTable`, `RemoveColumn` ni `BulkRemoveRecord`.
+
+**Ce que le widget charge, et quand** (la liste exhaustive : un code qui se charge ne se lit pas ailleurs) :
+
+| Quoi | D'où | Quand |
+|---|---|---|
+| API de widget de Grist (`grist-plugin-api.js`) | `docs.getgrist.com` (balise de `index.html`) | au démarrage |
+| ECharts 6.1.0, DuckDB-WASM 1.32.0, ExcelJS 4.4.0, Apache Arrow, FlatBuffers, tslib | copies dans `js/vendor/` (même site, jamais un CDN ; empreintes dans `js/vendor/SOURCES.md`) | ECharts au démarrage ; DuckDB au premier gros calcul ; ExcelJS au premier export Excel |
+| Kit des apps Grist Factory (`kit/`, sous-module Git) | même site | au démarrage (ambiance, lien avec GFS) et à la première fenêtre de confirmation |
+| PptxGenJS 4.0.1 | `cdn.jsdelivr.net`, version figée et empreinte SRI (sha384) | au premier export PPTX |
+| Extensions de GFS (`d3-cloud`, `pdf.js`) | l'adresse et l'empreinte que GFS donne, seulement quand le widget est dans GFS et que l'extension est ajoutée | à la première tuile nuage de mots ou au premier lot de mots-clés |
+| Pièces jointes d'une publication | l'API du document, à l'adresse que Grist donne avec le jeton (`getAccessToken`, lecture seule) ; adresse refusée si elle n'est pas en https, ou porte un identifiant, une requête ou un fragment | à chaque PDF d'un lot de mots-clés |
+
+Tout code qui se charge à l'exécution passe par UN chargeur : `js/loader.js` (un seul `createElement('script')` du dépôt : https hors du
+site de la page, empreinte `integrity` obligatoire pour tout autre site, hôte de la liste, aucun identifiant dans l'adresse) et `js/modules.js`
+(les modules ES, en chemins littéraux, demandés par nom). Tout balisage écrit dans la page passe par `js/safe-html.js` (liste blanche de
+balises, d'attributs et de styles ; jamais `innerHTML`). Les données de la personne ne quittent jamais le navigateur hors de Grist : aucune
+requête sortante ne les porte (les seules adresses contactées sont celles du tableau ci-dessus).
+
 ## Tests
 
 - `node dev-tests/test-data.js` — logique pure (agrégation, filtrage, store), sans navigateur.
 - `node dev-tests/test-styles.js` — style global des tuiles (registre, passe ECharts, CSS clair/sombre, configuration).
 - `node dev-tests/test-layouts.js` — dispositions de page (plan, ordre affiché, flèches, store par page, configuration, CSS et seuils de largeur).
+- `node dev-tests/test-safe-html.js` — écriture de HTML dans la page (liste blanche) ; `dev-tests/safe-html-test.html` rejoue 51 charges dans un navigateur.
+- `node dev-tests/test-loader.js` — chargeur unique de code (politique, empreintes, modules par nom, garde-fous des sources).
+- `node dev-tests/test-audit.js` — garde-fous de l'audit `gwaudit` (champs étiquetés, empreintes des bibliothèques, ECharts modifié).
 - `dev-tests/harness.html` — rendu visuel dans un navigateur avec un faux `window.grist` et des
   données d'exemple, sans document Grist réel. Détails dans `dev-tests/README.md`.
 

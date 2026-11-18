@@ -39,6 +39,23 @@ navigateur en ouvrant **`dev-tests/safe-html-test.html`** (double-clic, aucun se
 OK ou ÉCHEC dans le titre de l'onglet. Pour ajouter une balise ou un attribut à un gabarit : la liste de `js/safe-html.js` ET un cas
 dans `safe-html-cases.js`.
 
+## Chargeur de code (`js/loader.js`, `js/modules.js`)
+
+```
+node dev-tests/test-loader.js
+```
+
+La politique de `planScript` (pure : https seulement hors du site de la page, empreinte `integrity` obligatoire pour un autre site, liste d'hôtes,
+identifiants refusés, empreinte mal formée refusée — un navigateur l'ignorerait en silence —, `blob:`/`data:`/`javascript:` jamais une source de code),
+l'élément `<script>` qu'il pose (sur un faux document), le registre de modules (nom inconnu refusé, une seule inscription), les garde-fous des sources
+(UN `createElement('script')` dans `js/`, UN fichier avec `import()`, l'ordre des balises d'`index.html` et de `harness.html`) et, dans `echarts.min.js`, ni
+`document.write` ni `.open(` à argument (`windowOpen` est évalué dans un `vm` : `javascript:`, `data:`, `file:` n'ouvrent rien). Le chargement RÉEL
+se vérifie dans un navigateur, dans un `<iframe sandbox="allow-scripts allow-downloads">` servi AVEC `Access-Control-Allow-Origin` (les modules
+sont chargés en CORS depuis l'origine opaque du cadre ; `http-server` sans `--cors` fait échouer `js/modules.js`) : trois exports, une extension à
+bonne et à fausse empreinte, les refus, DuckDB au-delà de 5 000 lignes, la fenêtre du kit. **Pourquoi `js/modules.js` existe** : un `import()` écrit
+dans un script CLASSIQUE n'a pas d'adresse de base dans ce cadre (« The base URL is about:blank »), alors qu'écrit dans un module il se résout ;
+un essai fait seulement dans une page directe ne voit pas ce défaut (`CLAUDE.md` §7 piège n°49).
+
 ## Aides communes aux essais (`dev-tests/lib/helpers.js`)
 
 `test-layouts.js` et `test-styles.js` en tirent ce qu'ils recopiaient à l'identique : lecture d'un fichier du dépôt (`read`), lecteur de

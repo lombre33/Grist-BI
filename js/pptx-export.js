@@ -35,15 +35,17 @@
   const LOAD_ERROR_CODE = 'PPTX_LIB_LOAD';
   let pptxLibPromise = null;
 
+  // Le chargement passe par le chargeur unique (js/loader.js) : https seulement, l'hôte de la liste, l'empreinte posée sur l'élément
+  // (le navigateur refuse un fichier modifié), aucun `Referer` envoyé au CDN. Toute erreur (refus avant chargement comme échec du
+  // réseau) porte le code `PPTX_LIB_LOAD` : c'est celui que `js/main.js` sait annoncer.
+  const PPTX_LIB_HOSTS = ['cdn.jsdelivr.net'];
+
   function loadScriptOnce(lib) {
-    return new Promise((resolve, reject) => {
-      const s = document.createElement('script');
-      s.src = lib.src;
-      s.integrity = lib.integrity;
-      s.crossOrigin = 'anonymous';
-      s.onload = () => resolve();
-      s.onerror = () => { const e = new Error('Échec de chargement du script : ' + lib.src); e.code = LOAD_ERROR_CODE; reject(e); };
-      document.head.appendChild(s);
+    return GristBI.loader.script({ src: lib.src, integrity: lib.integrity, hosts: PPTX_LIB_HOSTS, referrer: 'no-referrer' }).catch((cause) => {
+      const e = new Error('Échec de chargement du script : ' + lib.src);
+      e.code = LOAD_ERROR_CODE;
+      e.cause = cause;
+      throw e;
     });
   }
 

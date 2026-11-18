@@ -164,12 +164,13 @@
     onOptions() {},
     docApi: {
       // Jeton d'accès en lecture (js/grist-api.js:attachmentAuth). La vraie réponse est `{ token, baseUrl, ttlMsecs }`,
-      // `baseUrl` finissant par `/api/docs/<id>` : ici une adresse de la même origine, que les essais navigateur
+      // `baseUrl` finissant par `/api/docs/<id>` : ici une adresse du même site (lue sur `location.href` : dans un cadre isolé,
+      // `location.origin` vaut « null »), que les essais navigateur
       // interceptent (`page.route('**/_stub/**')`) pour servir de vraies pièces jointes. `__gristStubNoToken` simule
       // le refus de GFS quand l'app n'a pas la capacité `jeton`.
       async getAccessToken(options) {
         if (window.__gristStubNoToken) throw new Error('GFS_REFUSE : getAccessToken demande la capacité jeton');
-        return { token: 'stub-token', baseUrl: location.origin + '/_stub/api/docs/stub', ttlMsecs: 600000, readOnly: !!(options && options.readOnly) };
+        return { token: 'stub-token', baseUrl: new URL('/_stub/api/docs/stub', location.href).href, ttlMsecs: 600000, readOnly: !!(options && options.readOnly) };
       },
       async listTables() {
         // Le vrai grist.docApi.listTables() renvoie un tableau de chaînes (les tableId), PAS des

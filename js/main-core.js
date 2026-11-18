@@ -22,14 +22,11 @@
   // avec GFS (contrairement à Publipostage+), donc la version toute prête du kit,
   // `Ambiance.start()`, qui démarre ELLE-MÊME son lien (`kit/js/gfs-link.js`) plutôt que `js/main.js`
   // qui lui donnerait le sien — voir le README du kit, section « L'ambiance de GFS ». `import()`
-  // dynamique plutôt qu'un `<script type="module">` séparé dans index.html : `js/main.js` reste un
-  // script classique (CLAUDE.md §2), et c'est déjà ainsi que ce widget charge un module ES depuis du
-  // code classique (js/duckdb-engine.js:VENDOR_BASE_URL). `document.
-  // currentScript` n'est fiable qu'ICI, à l'exécution synchrone initiale de CE script (jamais dans
-  // du code async) : capturé en tout premier, avant le moindre rendu, pour démarrer l'ambiance aussi
-  // tôt que possible dans ce widget sans module d'entrée propre — et pour que le chemin reste juste
-  // qu'on charge index.html (à la racine) ou dev-tests/harness.html (un sous-dossier, kit/ qui s'y
-  // retrouve via dev-tests/README.md). Seul (hors GFS), `Ambiance.start()` ne pose rien et ne
+  // dynamique plutôt qu'un `<script type="module">` d'entrée dans index.html : `js/main.js` reste un script
+  // classique (CLAUDE.md §2), et le kit se charge par NOM au chargeur unique (js/loader.js ; la table des modules
+  // permis, en chemins littéraux, est js/modules.js — audit `gwaudit` C-EXFIL-06 : aucune adresse n'est calculée
+  // ici). Le chemin du kit est celui de js/modules.js (`../kit/…`), donc juste que l'on charge index.html (à la
+  // racine) ou dev-tests/harness.html (un sous-dossier, kit/ qui s'y retrouve via dev-tests/README.md). Seul (hors GFS), `Ambiance.start()` ne pose rien et ne
   // regarde ni n'envoie rien (kit/js/host.js:hostContract) : aucun risque pour ce widget en dehors
   // de GFS. Un échec de chargement (kit/ absent, réseau) est intercepté plutôt que de faire
   // remonter une exception non gérée — l'ambiance est un embellissement, jamais une dépendance du
@@ -46,9 +43,8 @@
 
   S.gfsLinkReady = Promise.resolve(null);
 
-  if (typeof document !== 'undefined' && document.currentScript) {
-    const ambianceUrl = new URL('../kit/js/ambiance.js', document.currentScript.src).href;
-    import(ambianceUrl).then(({ Ambiance }) => Ambiance.start()).catch((e) => {
+  if (typeof document !== 'undefined' && GristBI.loader) {
+    GristBI.loader.module('kit-ambiance').then(({ Ambiance }) => Ambiance.start()).catch((e) => {
       console.warn('[GristBI] ambiance de GFS indisponible (kit/ absent ou erreur de chargement)', e);
     });
 
@@ -71,8 +67,7 @@
     // Un échec de chargement (kit/ absent, réseau) est intercepté comme pour l'ambiance ci-dessus -
     // `gfsLink` reste `null`, sans abonné le kit répond lui-même GFS_INCONNU à « fermer »/« ouvrir »,
     // comportement d'avant ces consignes.
-    const gfsLinkUrl = new URL('../kit/js/gfs-link.js', document.currentScript.src).href;
-    S.gfsLinkReady = import(gfsLinkUrl).then(({ GfsLink }) => {
+    S.gfsLinkReady = GristBI.loader.module('kit-gfs-link').then(({ GfsLink }) => {
       S.gfsLink = GfsLink;
       GfsLink.onClose(async () => {
         await flushPendingSave();

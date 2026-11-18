@@ -71,22 +71,14 @@
     const def = EXTENSIONS[extensionId];
     const source = link.library(def.library);
     if (!loading.has(extensionId)) {
-      const p = new Promise((resolve) => {
-        const script = document.createElement('script');
-        script.type = 'module';
-        script.src = source.src;
-        script.integrity = source.integrite;
-        script.crossOrigin = 'anonymous';
-        script.onload = () => {
-          const mod = moduleFrom(globalThis, extensionId);
-          if (!mod) console.warn(`[GristBI] ${def.library} : le fichier est chargé mais ne pose pas GfsPaquets.${def.pkg}`);
-          resolve(mod);
-        };
-        script.onerror = () => {
-          console.warn(`[GristBI] ${def.library} : le navigateur a refusé le script (politique de sécurité, réseau ou empreinte)`);
-          resolve(null);
-        };
-        document.head.append(script);
+      // Chargeur unique (js/loader.js) : module ES, empreinte posée sur l'élément, https seulement hors du site de la page.
+      const p = GristBI.loader.script({ src: source.src, integrity: source.integrite, module: true }).then(() => {
+        const mod = moduleFrom(globalThis, extensionId);
+        if (!mod) console.warn(`[GristBI] ${def.library} : le fichier est chargé mais ne pose pas GfsPaquets.${def.pkg}`);
+        return mod;
+      }, () => {
+        console.warn(`[GristBI] ${def.library} : le navigateur a refusé le script (politique de sécurité, réseau, empreinte ou adresse)`);
+        return null;
       });
       loading.set(extensionId, p);
       p.then(() => loading.delete(extensionId));
