@@ -100,7 +100,19 @@
     warning: '<path d="M8 2.2l6.5 11.6H1.5L8 2.2Z"/><path d="M8 6.6v3.2"/><path d="M8 11.9v.01"/>',
     settings: '<circle cx="8" cy="8" r="2.3"/><path d="M8 2v1.6M8 12.4V14M14 8h-1.6M3.6 8H2M12.24 3.76l-1.13 1.13M4.89 11.11l-1.13 1.13M12.24 12.24l-1.13-1.13M4.89 4.89L3.76 3.76"/>',
     comment: '<path d="M2.5 3.5h11a1 1 0 0 1 1 1V10a1 1 0 0 1-1 1H6.5l-2.8 2.5V11H2.5a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z"/>',
-    search: '<circle cx="6.8" cy="6.8" r="4.3"/><path d="M10 10l4 4"/>'
+    search: '<circle cx="6.8" cy="6.8" r="4.3"/><path d="M10 10l4 4"/>',
+    // Une icône par type de visualisation (cartes de l'étape « Choisir » du panneau latéral).
+    'type-bar': '<path d="M3.5 13V8M8 13V3.5M12.5 13V6"/><path d="M2 14h12"/>',
+    'type-line': '<path d="M2 12l3.5-4 3 2.5L14 4"/><path d="M2 14h12"/>',
+    'type-pie': '<circle cx="8" cy="8" r="5.5"/><path d="M8 8V2.5M8 8l4.7 2.9"/>',
+    'type-treemap': '<rect x="2" y="2.5" width="12" height="11" rx="1"/><path d="M8.5 2.5v11M8.5 8H14"/>',
+    'type-scatter': '<circle cx="4.5" cy="10.5" r="1"/><circle cx="8" cy="6" r="1"/><circle cx="11" cy="9" r="1"/><circle cx="12" cy="4.5" r="1"/><path d="M2 14h12"/>',
+    'type-waterfall': '<rect x="2.5" y="3" width="3" height="5" rx=".5"/><rect x="6.5" y="6" width="3" height="4" rx=".5"/><rect x="10.5" y="8" width="3" height="5" rx=".5"/>',
+    'type-radar': '<path d="M8 2l5.5 4-2 6.5h-7L2.5 6 8 2Z"/><path d="M8 5.5l2.8 2-1 3.2H6.2l-1-3.2 2.8-2Z"/>',
+    'type-wordcloud': '<path d="M2 5h6M10 5h4M3 8.5h4M9 8.5h5M2 12h7M11 12h3"/>',
+    'type-kpi': '<rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M5 10l1.8-2.2 1.6 1.4L11 6"/>',
+    'type-gauge': '<path d="M2.5 11.5a5.5 5.5 0 0 1 11 0"/><path d="M8 11.5l2.5-3.5"/>',
+    'type-pivot': '<rect x="2" y="2.5" width="12" height="11" rx="1"/><path d="M2 6.5h12M2 10h12M6 2.5v11"/>'
   };
   function icon(name) {
     return `<svg class="icon icon-${name}" viewBox="0 0 16 16" aria-hidden="true" focusable="false">${ICON_PATHS[name]}</svg>`;
@@ -219,6 +231,23 @@
   const trendDimensionSelect = document.getElementById('tile-trend-dimension');
   const submitTileBtn = document.getElementById('submit-tile');
   const cancelEditBtn = document.getElementById('cancel-edit');
+  // Panneau latéral « Ajouter / Modifier une visualisation » (lot 2 de l'audit UI/UX du 18/11/2026).
+  const workspaceEl = document.getElementById('workspace');
+  const tilePanel = document.getElementById('tile-panel');
+  const tilePanelTitle = document.getElementById('tile-panel-title');
+  const tilePanelCloseBtn = document.getElementById('tile-panel-close');
+  const chooseStepEl = document.getElementById('tile-panel-choose');
+  const configureStepEl = document.getElementById('tile-panel-configure');
+  const typeGridEl = document.getElementById('tile-type-grid');
+  const typeLineNameEl = document.getElementById('tile-type-line-name');
+  const panelBackBtn = document.getElementById('tile-panel-back');
+  const tileTitleInput = document.getElementById('tile-title');
+  const tileAdviceEl = document.getElementById('tile-advice');
+  const tilePreviewEl = document.getElementById('tile-preview');
+  const tilePreviewEmptyEl = document.getElementById('tile-preview-empty');
+  const advancedDetailsEl = document.getElementById('tile-advanced');
+  const addTileOpenBtn = document.getElementById('add-tile-open');
+  const welcomeAddBtn = document.getElementById('welcome-add');
   const clearFilterBtn = document.getElementById('clear-filter');
   const filterBadgesEl = document.getElementById('filter-badges');
   const rowCountEl = document.getElementById('row-count');
@@ -753,7 +782,7 @@
   }
   function setMode(next) {
     mode = next === 'edit' ? 'edit' : 'read';
-    if (mode === 'read' && editingTileId) stopEditTile(); // on ne laisse pas une édition en cours derrière un formulaire masqué
+    if (mode === 'read') closeTilePanel(false); // on ne laisse ni panneau ouvert ni édition en cours derrière un mode qui les masque
     GristBI.appbar.closePopovers();
     applyMode();
   }
@@ -802,6 +831,7 @@
     emptyStateStatusEl.hidden = connected;
     emptyStateStatusEl.textContent = connected ? '' : connectionMessage();
     retryConnectBtn.hidden = connected || connectionState !== 'failed';
+    welcomeAddBtn.hidden = !connected;
   }
   function setConnectionState(next) {
     connectionState = next;
@@ -1066,7 +1096,10 @@
     deleteBookmarkBtn.disabled = !bookmarkSelect.value;
   }
 
-  function buildTileElement(tile) {
+  // `opts.preview` : version de l'aperçu du panneau latéral — même corps (c'est ce que cherchent les
+  // fonctions de rendu de js/charts.js), mais sans les boutons d'action ni les écouteurs du store.
+  function buildTileElement(tile, opts) {
+    const preview = Boolean(opts && opts.preview);
     const el = document.createElement('div');
     el.className = `tile tile-${tile.type}`;
     el.dataset.tileId = tile.id;
@@ -1076,14 +1109,14 @@
     // chaque render(), qui retrouve ces boutons par leurs attributs et les corrige sans
     // reconstruction (voir le commentaire en tête de render()).
     const header = `<div class="tile-header"><span class="tile-title" title="${escapeHtml(GristBI.i18n.tileTitle(tile))}">${escapeHtml(GristBI.i18n.tileTitle(tile))}</span>
-        <span class="tile-actions">
+        ${preview ? '' : `<span class="tile-actions">
           <button class="tile-move-left edit-only" type="button" data-i18n-aria="tile.moveLeft" data-i18n-title="tile.moveLeft" aria-label="${escapeHtml(t('tile.moveLeft'))}" title="${escapeHtml(t('tile.moveLeft'))}">${icon('chevronLeft')}</button>
           <button class="tile-move-right edit-only" type="button" data-i18n-aria="tile.moveRight" data-i18n-title="tile.moveRight" aria-label="${escapeHtml(t('tile.moveRight'))}" title="${escapeHtml(t('tile.moveRight'))}">${icon('chevronRight')}</button>
           <button class="tile-edit edit-only" type="button" data-i18n-aria="tile.edit.aria" data-i18n-title="tile.edit.title" aria-label="${escapeHtml(t('tile.edit.aria'))}" title="${escapeHtml(t('tile.edit.title'))}">${icon('edit')}</button>
           <button class="tile-comments" type="button" data-i18n-aria="tile.comments.aria" data-i18n-title="tile.comments.title" aria-label="${escapeHtml(t('tile.comments.aria'))}" title="${escapeHtml(t('tile.comments.title'))}">${icon('comment')}<span class="tile-comments-count" hidden></span></button>
           <button class="tile-detail" type="button" data-i18n-aria="tile.detail.aria" data-i18n-title="tile.detail.title" aria-label="${escapeHtml(t('tile.detail.aria'))}" title="${escapeHtml(t('tile.detail.title'))}">${icon('search')}</button>
           <button class="tile-remove edit-only" type="button" data-i18n-aria="tile.remove.aria" data-i18n-title="tile.remove.title" aria-label="${escapeHtml(t('tile.remove.aria'))}" title="${escapeHtml(t('tile.remove.title'))}">${icon('close')}</button>
-        </span></div>`;
+        </span>`}</div>`;
     el.innerHTML = tile.type === 'kpi'
       ? `${header}
          <div class="tile-kpi">
@@ -1094,8 +1127,9 @@
       : `${header}
          <div class="tile-breadcrumb" data-tile-id="${tile.id}" hidden></div>
          <div class="tile-chart" data-tile-id="${tile.id}"></div>`;
+    if (preview) return el;
     el.querySelector('.tile-remove').addEventListener('click', () => {
-      if (tile.id === editingTileId) stopEditTile(); // formulaire en cours d'édition sur une tuile qui disparaît
+      if (tile.id === editingTileId) closeTilePanel(false); // formulaire en cours d'édition sur une tuile qui disparaît
       store.removeTile(tile.id);
     });
     // Toujours la tuile VIVE du store, jamais l'objet capturé à la création de cet élément (mis en
@@ -1498,6 +1532,9 @@
     updateDrillLevelsUI();
     updateRadarAxesUI();
     updateSuggestDateHierarchyVisibility();
+    updateAdvancedVisibility();
+    updatePanelTexts();
+    schedulePreview();
   }
 
   // Remplit les niveaux de drill-down du formulaire avec `levels` (noms de colonnes réelles ou
@@ -1569,15 +1606,15 @@
     measureSelect.value = tile.measure;
     aggSelect.value = tile.aggFn;
     trendDimensionSelect.value = tile.trendDimension || '';
-    submitTileBtn.textContent = t('tileForm.submit.edit');
-    cancelEditBtn.hidden = false;
-    addTileForm.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    // Titre : un titre auto-composé (`titleKey`) n'est PAS recopié dans le champ — il resterait figé
+    // dans la langue d'aujourd'hui ; le champ vide + son aperçu en placeholder disent « automatique ».
+    tileTitleInput.value = tile.titleKey ? '' : (tile.title || '');
+    openTilePanel({ step: 'configure', editing: true });
   }
 
   function stopEditTile() {
     editingTileId = null;
-    submitTileBtn.textContent = t('tileForm.submit.add');
-    cancelEditBtn.hidden = true;
+    updatePanelTexts();
   }
 
   tileTypeSelect.addEventListener('change', updateFormFieldsForType);
@@ -1606,8 +1643,37 @@
     updateSuggestDateHierarchyVisibility();
   });
 
-  addTileForm.addEventListener('submit', (evt) => {
-    evt.preventDefault();
+  // `submit` NE SE DÉCLENCHE JAMAIS dans le cadre isolé de GFS (`sandbox="allow-scripts"`, sans
+  // `allow-forms`) : le navigateur bloque l'envoi AVANT de lever l'événement, sans exception ni message
+  // visible (« Blocked form submission… » dans la console seulement) — « + Ajouter la tuile », « + Filtre »
+  // et l'ajout d'un commentaire ne faisaient donc RIEN dans GFS (bug trouvé en jouant le formulaire dans un
+  // <iframe sandbox="allow-scripts">, audit UI/UX du 18/11/2026). On écoute à la place le clic sur le bouton
+  // d'envoi et la touche Entrée dans un champ (comme l'envoi implicite d'un formulaire : sauf si le
+  // composant — combobox — a déjà pris l'Entrée), et on neutralise l'envoi natif.
+  function bindFormSubmit(form, handler) {
+    form.addEventListener('submit', (evt) => evt.preventDefault());
+    form.querySelectorAll('[type="submit"]').forEach((btn) => {
+      btn.type = 'button';
+      btn.addEventListener('click', () => handler());
+    });
+    form.addEventListener('keydown', (evt) => {
+      if (evt.key !== 'Enter' || evt.defaultPrevented || evt.isComposing) return;
+      const target = evt.target;
+      if (!target || target.tagName !== 'INPUT' || ['checkbox', 'radio', 'button', 'submit'].includes(target.type)) return;
+      evt.preventDefault();
+      handler();
+    });
+  }
+
+  // Lit le formulaire sans rien écrire : `{ tileData, errors }`. `errors` liste les champs fautifs
+  // (`field` = id de l'élément, `key`/`vars` = message i18n) — affichés EN LIGNE sous le champ par
+  // showFormErrors, à la place des retours silencieux et des fenêtres de message d'avant (audit
+  // UI/UX du 18/11/2026 : « Ajouter » ne faisait rien, sans un mot, quand la mesure était vide).
+  // `tileData` vaut `null` tant qu'il y a une erreur. Sert aussi à l'aperçu en direct, qui ne montre
+  // rien tant que le formulaire n'est pas valide.
+  function readTileForm() {
+    const errors = [];
+    const fail = (field, key, vars) => { errors.push({ field, key, vars }); };
     const type = tileTypeSelect.value;
     const isKpi = type === 'kpi';
     const isGauge = type === 'gauge';
@@ -1627,48 +1693,41 @@
     // valider (voir isRadarColumnsMode/isWordCloudSplitMode) — ses propres axes (radarAxes
     // ci-dessous) ou le simple compte d'occurrences (js/data.js:wordFrequency) en tiennent lieu. La
     // dimension, elle, reste requise dans les deux cas sauf radar "colonnes" (seul mode sans aucune
-    // dimension unique, voir formHasNoDimension) — vérifiée séparément, plus seulement sous la garde
-    // `!isRadarColumns` d'origine (équivalente ici puisque isRadarColumns implique hasDimension faux).
-    if (!isRadarColumns && !isWordCloudSplit && !measure) return;
-    if (hasDimension && !dimension) return;
-    if (isScatter && !measureYSelect.value) return; // 2e mesure obligatoire pour un nuage de points
-    if (measureMode && !dateColumn) { showNotice(t('tileForm.alert.dateColumnRequired')); return; }
-    if (isPivot && !columnDimension) return; // 2e dimension obligatoire pour un tableau croisé
-    if (isPivot && columnDimension === dimension) {
-      showNotice(t('tileForm.alert.pivotDimsDiffer'));
-      return;
-    }
+    // dimension unique, voir formHasNoDimension).
+    if (!isRadarColumns && !isWordCloudSplit && !measure) fail('tile-measure', 'tileForm.error.measureRequired');
+    if (hasDimension && !dimension) fail('tile-dimension', 'tileForm.error.dimensionRequired');
+    if (isScatter && !measureYSelect.value) fail('tile-measure-y', 'tileForm.error.measureYRequired'); // 2e mesure obligatoire pour un nuage de points
+    if (measureMode && !dateColumn) fail('tile-date-column', 'tileForm.alert.dateColumnRequired');
+    if (isPivot && !columnDimension) fail('tile-column-dimension', 'tileForm.error.columnDimensionRequired'); // 2e dimension obligatoire pour un tableau croisé
+    else if (isPivot && columnDimension === dimension) fail('tile-column-dimension', 'tileForm.alert.pivotDimsDiffer');
     const radarAxes = isRadarColumns ? radarAxisSelects.map((s) => s.value).filter(Boolean) : [];
-    if (isRadarColumns && !radarAxes.length) return; // au moins un axe requis
-    if (isRadarColumns && new Set(radarAxes).size !== radarAxes.length) {
-      showNotice(t('tileForm.alert.radarAxesDuplicate'));
-      return;
-    }
+    if (isRadarColumns && !radarAxes.length) fail('tile-radar-axis-1', 'tileForm.error.radarAxisRequired'); // au moins un axe requis
+    else if (isRadarColumns && new Set(radarAxes).size !== radarAxes.length) fail('tile-radar-axis-1', 'tileForm.alert.radarAxesDuplicate');
     let gaugeMin, gaugeMax;
     if (isGauge) {
       gaugeMin = parseFloat(gaugeMinInput.value);
       gaugeMax = parseFloat(gaugeMaxInput.value);
-      if (!Number.isFinite(gaugeMin) || !Number.isFinite(gaugeMax) || gaugeMax <= gaugeMin) {
-        showNotice(t('tileForm.alert.gaugeMinMax'));
-        return;
-      }
+      if (!Number.isFinite(gaugeMin) || !Number.isFinite(gaugeMax) || gaugeMax <= gaugeMin) fail('tile-gauge-max', 'tileForm.alert.gaugeMinMax');
     }
     const drillDimensions = (supportsDrillDown(type) && !isWordCloudSplit) ? drillLevelSelects.map((s) => s.value).filter(Boolean) : [];
     // Garde-fou : une même colonne ne peut pas apparaître deux fois dans le chemin de drill (ni
     // reprendre la dimension racine) — un cas non gardé auparavant, repéré en généralisant à N
     // niveaux (voir ROADMAP.md, cluster "Hiérarchies & drill-down").
     const allDims = hasDimension ? [dimension].concat(drillDimensions) : [];
-    if (new Set(allDims).size !== allDims.length) {
-      showNotice(t('tileForm.alert.drillDuplicate'));
-      return;
-    }
-    // Titre auto-composé : stocké EN CLAIR (`title`, repli et exports) ET avec sa clé de traduction
-    // (`titleKey`/`titleVars`, voir i18n.js:tileTitle) pour que l'en-tête de tuile suive la langue
-    // de l'interface au lieu de rester figé dans celle de sa création.
-    const { title, titleKey, titleVars } = autoTileTitle({
+    if (new Set(allDims).size !== allDims.length) fail('tile-drill-dimension-1', 'tileForm.alert.drillDuplicate');
+    if (errors.length) return { tileData: null, errors };
+    // Titre : celui que la personne a saisi (alors figé, sans clé de traduction), sinon auto-composé,
+    // stocké EN CLAIR (`title`, repli et exports) ET avec sa clé de traduction (`titleKey`/`titleVars`,
+    // voir i18n.js:tileTitle) pour que l'en-tête de tuile suive la langue de l'interface au lieu de
+    // rester figé dans celle de sa création.
+    const auto = autoTileTitle({
       isPivot, isRadarColumns, isWordCloudSplit, hasDimension, measureMode,
       measure, dimension, columnDimension, aggFn, radarAxes
     });
+    const customTitle = tileTitleInput.value.trim();
+    const title = customTitle || auto.title;
+    const titleKey = customTitle ? undefined : auto.titleKey;
+    const titleVars = customTitle ? undefined : auto.titleVars;
     const tileData = { type, dimension, measure, aggFn, title, titleKey, titleVars };
     // Nuage de mots "découpage de cellule" : mesure/agrégat ignorés par le rendu (voir
     // js/charts.js), effacés ici plutôt que laissés à une valeur fantôme du formulaire — même
@@ -1707,16 +1766,322 @@
     tileData.areaFill = (type === 'line' && areaCheckbox.checked) ? true : undefined;
     tileData.donut = (type === 'pie' && donutCheckbox.checked) ? true : undefined;
     tileData.showPct = (type === 'pie' && showPctCheckbox.checked) ? true : undefined;
+    return { tileData, errors: [], autoTitle: auto.title };
+  }
+
+  // --- Erreurs de saisie en ligne -------------------------------------------------------------
+  // Un message sous chaque champ fautif (`role="alert"`, relié par `aria-describedby`), jamais une
+  // fenêtre ni un retour silencieux. Affichées seulement après une 1re tentative d'envoi
+  // (`submitAttempted`) : pas de rouge sur un formulaire que la personne n'a pas fini de remplir.
+  let submitAttempted = false;
+  function clearFormErrors() {
+    addTileForm.querySelectorAll('.field-error').forEach((n) => n.remove());
+    addTileForm.querySelectorAll('[aria-invalid]').forEach((n) => { n.removeAttribute('aria-invalid'); n.removeAttribute('aria-describedby'); });
+  }
+  function showFormErrors(errors, focusFirst) {
+    clearFormErrors();
+    let first = null;
+    errors.forEach((err) => {
+      const input = document.getElementById(err.field);
+      const wrap = input && input.closest('.field');
+      if (!input || !wrap) return;
+      const msg = document.createElement('p');
+      msg.className = 'field-error';
+      msg.id = `${err.field}-error`;
+      msg.setAttribute('role', 'alert');
+      msg.textContent = t(err.key, err.vars);
+      wrap.appendChild(msg);
+      input.setAttribute('aria-invalid', 'true');
+      input.setAttribute('aria-describedby', msg.id);
+      if (!first) first = input;
+    });
+    if (first && focusFirst) {
+      const details = first.closest('details');
+      if (details) details.open = true; // un champ fautif ne reste jamais caché dans « Options avancées »
+      first.focus();
+      // Un combobox ouvre sa liste au focus : elle recouvrirait le message d'erreur et les champs
+      // suivants. On la referme tout de suite (Échap, sans effet sur la valeur : elle est valide).
+      if (first.classList.contains('combobox-input')) first.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    }
+  }
+
+  function submitTileForm() {
+    submitAttempted = true;
+    const { tileData, errors } = readTileForm();
+    if (errors.length) { showFormErrors(errors, true); return; }
+    clearFormErrors();
+    let savedId;
     if (editingTileId) {
+      savedId = editingTileId;
       store.updateTile(editingTileId, tileData);
       stopEditTile();
     } else {
       tileData.id = genTileId();
+      savedId = tileData.id;
       store.addTile(tileData);
     }
-  });
+    closeTilePanel(true);
+    flashTile(savedId);
+  }
+  bindFormSubmit(addTileForm, submitTileForm);
 
-  cancelEditBtn.addEventListener('click', stopEditTile);
+  cancelEditBtn.addEventListener('click', () => closeTilePanel(true));
+
+  // =============================================================================================
+  // Panneau latéral « Ajouter / Modifier une visualisation » (audit UI/UX du 18/11/2026, lot 2)
+  // ---------------------------------------------------------------------------------------------
+  // Deux étapes dans un même panneau : « Choisir » (une carte par type, avec la ligne de
+  // js/advice.js:adviceForType) puis « Régler » (le formulaire d'avant, mêmes ids, options avancées
+  // repliées, aperçu en direct, conseil en direct). Le panneau est en flux normal (voir css/style.css) :
+  // il ne recouvre jamais la barre. Toute la lecture du formulaire passe par readTileForm() ci-dessus.
+  // =============================================================================================
+  const TYPE_CARDS = ['bar', 'line', 'pie', 'treemap', 'scatter', 'waterfall', 'radar', 'wordcloud', 'kpi', 'gauge', 'pivot'];
+  const PREVIEW_TILE_ID = '__preview__';
+  let panelOpener = null;
+  let previewTimer = null;
+
+  function updatePanelTexts() {
+    const editing = Boolean(editingTileId);
+    tilePanelTitle.textContent = t(editing ? 'tilePanel.title.edit' : 'tilePanel.title.add');
+    submitTileBtn.textContent = t(editing ? 'tileForm.submit.edit' : 'tileForm.submit.add');
+    const type = tileTypeSelect.value;
+    typeLineNameEl.innerHTML = `${icon('type-' + type)}<span>${escapeHtml(t('tileForm.type.' + type))}</span>`;
+  }
+
+  // Une carte par type. La ligne sous le nom vient de js/advice.js (avertissement propre à CES
+  // données, sinon « quand l'utiliser ») ; sans lui, la carte n'a que son nom — jamais de texte en dur.
+  function renderTypeCards() {
+    const rows = store.getState().rows;
+    const columns = availableColumns(rows);
+    typeGridEl.innerHTML = '';
+    TYPE_CARDS.forEach((type) => {
+      const advice = GristBI.advice ? GristBI.advice.adviceForType(type, rows, columns) : null;
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'type-card';
+      card.dataset.type = type;
+      card.innerHTML = `${icon('type-' + type)}<span class="type-card-name">${escapeHtml(t('tileForm.type.' + type))}</span>`
+        + `<span class="type-card-advice" data-level="${advice ? advice.level : ''}">${advice ? escapeHtml(t(advice.key, advice.vars)) : ''}</span>`;
+      card.addEventListener('click', () => chooseType(type));
+      typeGridEl.appendChild(card);
+    });
+  }
+
+  // Remet le formulaire à blanc (les valeurs du dernier ajout ne doivent pas fuiter dans le suivant).
+  function resetTileForm() {
+    dimensionSelect.value = '';
+    measureSelect.value = '';
+    aggSelect.value = 'sum';
+    measureYSelect.value = '';
+    columnDimensionSelect.value = '';
+    resetDrillLevels();
+    drillCrossFilterCheckbox.checked = false;
+    measureModeSelect.value = 'brut';
+    dateColumnSelect.value = '';
+    trendDimensionSelect.value = '';
+    radarModeSelect.value = 'dimension';
+    resetRadarAxes();
+    radarEntityColumnSelect.value = '';
+    radarEntityValueSelect.value = '';
+    radarCompareAverageCheckbox.checked = false;
+    wordCloudSplitCheckbox.checked = false;
+    sortSelect.value = '';
+    horizontalCheckbox.checked = false;
+    areaCheckbox.checked = false;
+    donutCheckbox.checked = false;
+    showPctCheckbox.checked = false;
+    gaugeMinInput.value = 0;
+    gaugeMaxInput.value = 100;
+    tileTitleInput.value = '';
+    advancedDetailsEl.open = false;
+  }
+
+  // Préremplit le formulaire avec les valeurs que js/advice.js propose pour ce type et CES données
+  // (vraie catégorie en dimension, vraie colonne numérique en mesure — jamais « Région / Région »).
+  // Même ordre que startEditTile : ce qui commande la visibilité des champs d'abord, puis
+  // updateFormFieldsForType(), puis mesure/agrégat/tendance.
+  function applyTypeDefaults(type) {
+    resetTileForm();
+    tileTypeSelect.value = type;
+    const rows = store.getState().rows;
+    const d = GristBI.advice ? GristBI.advice.defaultsForType(type, rows, availableColumns(rows)) : null;
+    if (d) {
+      if (d.dimension) dimensionSelect.value = d.dimension;
+      columnDimensionSelect.value = d.columnDimension || '';
+      measureYSelect.value = d.measureY || '';
+      if (d.drillDimensions) setDrillLevels(d.drillDimensions);
+      if (Number.isFinite(d.gaugeMin)) gaugeMinInput.value = d.gaugeMin;
+      if (Number.isFinite(d.gaugeMax)) gaugeMaxInput.value = d.gaugeMax;
+      radarModeSelect.value = d.radarAxisMode === 'columns' ? 'columns' : 'dimension';
+      if (d.radarAxisMode === 'columns') setRadarAxes(d.radarAxes);
+      wordCloudSplitCheckbox.checked = !!d.wordCloudSplit;
+      sortSelect.value = d.sortMode || '';
+      horizontalCheckbox.checked = !!d.horizontal;
+      areaCheckbox.checked = !!d.areaFill;
+      donutCheckbox.checked = !!d.donut;
+      showPctCheckbox.checked = !!d.showPct;
+    }
+    updateFormFieldsForType();
+    if (d) {
+      measureSelect.value = d.measure || '';
+      aggSelect.value = d.aggFn || 'sum';
+      trendDimensionSelect.value = d.trendDimension || '';
+    }
+  }
+
+  function chooseType(type) {
+    applyTypeDefaults(type);
+    submitAttempted = false;
+    clearFormErrors();
+    setPanelStep('configure');
+  }
+
+  function setPanelStep(step) {
+    chooseStepEl.hidden = step !== 'choose';
+    configureStepEl.hidden = step !== 'configure';
+    if (step === 'choose') {
+      disposePreview();
+      const first = typeGridEl.querySelector('.type-card');
+      (first || tilePanelCloseBtn).focus();
+    } else {
+      updatePanelTexts();
+      renderPreview();
+      // Le focus va à l'étape elle-même, jamais dans un champ : un combobox ouvre sa liste au focus (voir
+      // js/appbar.js) et la liste d'une dimension recouvrirait le reste du formulaire dès l'ouverture.
+      // Tab mène au 1er champ.
+      configureStepEl.focus({ preventScroll: true });
+    }
+  }
+
+  function updateAdvancedVisibility() {
+    advancedDetailsEl.hidden = !Array.from(advancedDetailsEl.querySelectorAll('.field')).some((f) => !f.hidden);
+  }
+
+  function openTilePanel(opts) {
+    opts = opts || {};
+    if (mode !== 'edit') setMode('edit'); // l'API publique peut être appelée depuis le mode Lecture
+    const opener = document.activeElement;
+    panelOpener = (opener && opener !== document.body && opener.id !== 'tile-panel-close') ? opener : addTileOpenBtn;
+    const wasOpen = !tilePanel.hidden;
+    if (!opts.editing) { stopEditTile(); resetTileForm(); }
+    tilePanel.hidden = false;
+    workspaceEl.classList.add('panel-open');
+    addTileOpenBtn.setAttribute('aria-expanded', 'true');
+    submitAttempted = false;
+    clearFormErrors();
+    renderTypeCards();
+    updatePanelTexts();
+    if (opts.type && !opts.editing) chooseType(opts.type);
+    else setPanelStep(opts.step || 'choose');
+    requestAnimationFrame(() => {
+      GristBI.charts.resizeAll();
+      if (!wasOpen) tilePanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+  }
+
+  function closeTilePanel(returnFocus) {
+    if (tilePanel.hidden) { if (editingTileId) stopEditTile(); return; }
+    if (editingTileId) stopEditTile();
+    tilePanel.hidden = true;
+    workspaceEl.classList.remove('panel-open');
+    addTileOpenBtn.setAttribute('aria-expanded', 'false');
+    clearTimeout(previewTimer);
+    disposePreview();
+    clearFormErrors();
+    submitAttempted = false;
+    requestAnimationFrame(() => GristBI.charts.resizeAll());
+    if (returnFocus) {
+      const target = (panelOpener && document.body.contains(panelOpener) && panelOpener.getClientRects().length) ? panelOpener : addTileOpenBtn;
+      target.focus();
+    }
+  }
+  GristBI.openTilePanel = openTilePanel;
+  GristBI.closeTilePanel = closeTilePanel;
+
+  // --- Aperçu et conseil en direct ---------------------------------------------------------------
+  function disposePreview() {
+    GristBI.charts.disposeTile(PREVIEW_TILE_ID);
+    tilePreviewEl.innerHTML = '';
+  }
+  function schedulePreview() {
+    if (tilePanel.hidden || configureStepEl.hidden) return;
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(renderPreview, 200);
+  }
+  function renderPreview() {
+    if (tilePanel.hidden || configureStepEl.hidden) return;
+    const { tileData, errors, autoTitle } = readTileForm();
+    tileTitleInput.placeholder = autoTitle || t('tilePanel.titleField.placeholder');
+    refreshTileAdvice(tileData);
+    disposePreview();
+    tilePreviewEmptyEl.hidden = !errors.length;
+    if (errors.length) return;
+    const previewTile = Object.assign({}, tileData, { id: PREVIEW_TILE_ID });
+    tilePreviewEl.appendChild(buildTileElement(previewTile, { preview: true }));
+    GristBI.charts.renderTile(previewTile, store.getState(), tilePreviewEl);
+  }
+  // Un seul conseil à la fois (voir js/advice.js:adviceForTile), recalculé sur toutes les lignes.
+  function refreshTileAdvice(tileData) {
+    const advice = (GristBI.advice && tileData) ? GristBI.advice.adviceForTile(tileData, store.getState().rows) : null;
+    tileAdviceEl.hidden = !advice;
+    if (advice) { tileAdviceEl.textContent = t(advice.key, advice.vars); tileAdviceEl.dataset.level = advice.level; }
+    else tileAdviceEl.textContent = '';
+  }
+  // Après un changement de langue : les textes écrits par JS (titre, type, cartes, erreurs, aperçu).
+  function refreshTilePanelTexts() {
+    updatePanelTexts();
+    if (tilePanel.hidden) return;
+    renderTypeCards();
+    if (!configureStepEl.hidden) {
+      renderPreview();
+      if (submitAttempted) showFormErrors(readTileForm().errors, false);
+    }
+  }
+
+  // Un tuile qui vient d'être ajoutée ou modifiée clignote une fois : on voit où elle est tombée.
+  function flashTile(id) {
+    requestAnimationFrame(() => {
+      const el = tilesContainer.querySelector(`.tile[data-tile-id="${id}"]`);
+      if (!el) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      el.classList.add('tile-flash');
+      setTimeout(() => el.classList.remove('tile-flash'), 1600);
+    });
+  }
+
+  function onFormActivity(evt) {
+    // Pendant la frappe dans un combobox, la valeur n'est pas encore choisie : on attend son `change`.
+    if (evt.type === 'input' && evt.target.classList && evt.target.classList.contains('combobox-input')) return;
+    schedulePreview();
+    if (submitAttempted) showFormErrors(readTileForm().errors, false);
+  }
+  addTileForm.addEventListener('input', onFormActivity);
+  addTileForm.addEventListener('change', onFormActivity);
+  addTileOpenBtn.addEventListener('click', () => {
+    if (!tilePanel.hidden && !editingTileId) closeTilePanel(true);
+    else openTilePanel();
+  });
+  welcomeAddBtn.addEventListener('click', () => openTilePanel());
+  tilePanelCloseBtn.addEventListener('click', () => closeTilePanel(true));
+  panelBackBtn.addEventListener('click', () => setPanelStep('choose'));
+  // Échap ferme le panneau — sauf si la liste d'un combobox est ouverte : c'est elle qui le prend
+  // d'abord (phase de capture, pour lire l'état AVANT que combobox.js ne la ferme ; même règle que
+  // js/appbar.js).
+  tilePanel.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (tilePanel.querySelector('.combobox-list:not([hidden])')) return;
+    e.preventDefault();
+    closeTilePanel(true);
+  }, true);
+
+  // La barre collante change de hauteur (2 lignes en étroit, rangée de pastilles de filtre) : le
+  // panneau collant et les ancres de défilement en ont besoin (`--chrome-h`, voir css/style.css).
+  const chromeEl = document.getElementById('chrome');
+  function syncChromeHeight() {
+    document.documentElement.style.setProperty('--chrome-h', `${Math.round(chromeEl.getBoundingClientRect().height)}px`);
+  }
+  syncChromeHeight();
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(syncChromeHeight).observe(chromeEl);
 
   // Appelées SANS argument (via une flèche plutôt qu'en passant la fonction directement en callback)
   // : un `addEventListener` passe l'Event en 1er argument, qui satisferait silencieusement le
@@ -1726,8 +2091,7 @@
   filterColumnSelect.addEventListener('change', () => updateAdvancedFilterFieldsForColumn());
   filterDateModeSelect.addEventListener('change', () => updateAdvancedFilterFieldsForColumn());
 
-  advancedFilterForm.addEventListener('submit', (evt) => {
-    evt.preventDefault();
+  function submitAdvancedFilter() {
     const column = filterColumnSelect.value;
     if (!column) return;
     const kind = inferColumnKind(column);
@@ -1763,7 +2127,8 @@
     filterDateEndInput.value = '';
     filterTextInput.value = '';
     GristBI.appbar.closePopovers(); // le filtre est posé : sa pastille apparaît sous la barre
-  });
+  }
+  bindFormSubmit(advancedFilterForm, submitAdvancedFilter);
 
   bookmarkSelect.addEventListener('change', () => {
     deleteBookmarkBtn.disabled = !bookmarkSelect.value;
@@ -1891,8 +2256,7 @@
   // déclenche notify(). Le nom est mémorisé pour la prochaine fois, le texte est vidé mais le
   // panneau reste ouvert (plusieurs commentaires à la suite sans le rouvrir).
   if (commentForm) {
-    commentForm.addEventListener('submit', async (evt) => {
-      evt.preventDefault();
+    async function submitComment() {
       if (!commentsModalTileId) return;
       const author = commentAuthorInput.value.trim();
       const text = commentTextInput.value.trim();
@@ -1910,7 +2274,8 @@
         console.error('[GristBI] échec de l\'ajout du commentaire', e);
         showError(t('comments.addFailed'));
       }
-    });
+    }
+    bindFormSubmit(commentForm, submitComment);
   }
 
   window.addEventListener('resize', () => GristBI.charts.resizeAll());
@@ -2040,7 +2405,7 @@
       renderConnectionStatus(store.getState());
       store.clearFilter();
       store.clearAdvancedFilter();
-      if (editingTileId) stopEditTile(); // le formulaire en cours d'édition référence une tuile de l'ancienne table
+      closeTilePanel(false); // le panneau (colonnes, édition en cours) référence l'ancienne table
       const saved = report ? report.config : await GristBI.api.loadConfig(tableId);
       currentReportId = report ? report.id : null;
       // Consigne GFS 009 : CHARGER un rapport (y compris vierge, "Nouveau" dans GFS) ne doit jamais,
@@ -2373,7 +2738,7 @@
     // (currentBlend/currentPrimaryRows inchangés), ne relance aucune jointure.
     refreshBlendPicker();
     updateFormFieldsForType();
-    submitTileBtn.textContent = t(editingTileId ? 'tileForm.submit.edit' : 'tileForm.submit.add');
+    refreshTilePanelTexts();
     render(store.getState());
   });
   // Consigne GFS 007, point 3 : dans GFS, `gristbi_lang` passe par `GfsLink.storageSet` plutôt que

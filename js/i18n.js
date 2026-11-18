@@ -190,8 +190,8 @@
     'tileForm.measureMode.yoy': { fr: 'Comparaison N-1', en: 'Year-over-year' },
     'tileForm.dateColumn.label': { fr: 'Colonne date', en: 'Date column' },
     'tileForm.trend.label': { fr: 'Tendance vs', en: 'Trend vs' },
-    'tileForm.submit.add': { fr: '+ Ajouter la tuile', en: '+ Add tile' },
-    'tileForm.submit.edit': { fr: 'Modifier la tuile', en: 'Edit tile' },
+    'tileForm.submit.add': { fr: 'Ajouter la visualisation', en: 'Add visualization' },
+    'tileForm.submit.edit': { fr: 'Enregistrer', en: 'Save' },
     'tileForm.cancel': { fr: 'Annuler', en: 'Cancel' },
     'tileForm.none.m': { fr: '(aucun)', en: '(none)' },
     'tileForm.none.f': { fr: '(aucune)', en: '(none)' },
@@ -308,10 +308,33 @@
     },
     'pbixImport.csvCreateFailed': { fr: 'Échec de la création de la table — voir la console (F12).', en: 'Failed to create the table — see the console (F12).' },
 
+
+    // --- Panneau latéral « Ajouter / Modifier une visualisation » (js/main.js ; audit UI/UX du
+    // 18/11/2026, lot 2). Les noms de type viennent de `tileForm.type.*`, les lignes des cartes de
+    // `advice.*` (js/advice.js). ---
+    'tilePanel.open': { fr: 'Ajouter', en: 'Add' },
+    'tilePanel.open.aria': { fr: 'Ajouter une visualisation', en: 'Add a visualization' },
+    'tilePanel.welcomeAdd': { fr: 'Ajouter une visualisation', en: 'Add a visualization' },
+    'tilePanel.title.add': { fr: 'Ajouter une visualisation', en: 'Add a visualization' },
+    'tilePanel.title.edit': { fr: 'Modifier la visualisation', en: 'Edit the visualization' },
+    'tilePanel.close': { fr: 'Fermer', en: 'Close' },
+    'tilePanel.choose.lead': { fr: 'Quelle question voulez-vous poser à vos données ?', en: 'What question do you want to ask your data?' },
+    'tilePanel.back': { fr: 'Changer de type', en: 'Change type' },
+    'tilePanel.titleField.label': { fr: 'Titre (facultatif)', en: 'Title (optional)' },
+    'tilePanel.titleField.placeholder': { fr: 'Titre automatique', en: 'Automatic title' },
+    'tilePanel.preview.title': { fr: 'Aperçu', en: 'Preview' },
+    'tilePanel.preview.empty': { fr: "Complétez les champs obligatoires pour voir l'aperçu.", en: 'Fill in the required fields to see the preview.' },
+    'tilePanel.advanced': { fr: 'Options avancées', en: 'Advanced options' },
+    'tileForm.error.measureRequired': { fr: 'Choisissez la colonne à mesurer.', en: 'Choose the column to measure.' },
+    'tileForm.error.dimensionRequired': { fr: 'Choisissez la colonne de regroupement.', en: 'Choose the column to group by.' },
+    'tileForm.error.measureYRequired': { fr: "Choisissez la colonne de l'axe Y.", en: 'Choose the Y-axis column.' },
+    'tileForm.error.columnDimensionRequired': { fr: 'Choisissez la colonne qui forme les colonnes du tableau.', en: "Choose the column that forms the table's columns." },
+    'tileForm.error.radarAxisRequired': { fr: 'Ajoutez au moins un axe.', en: 'Add at least one axis.' },
+
     // --- État vide ---
     'emptyState.hint': {
-      fr: "Aucune tuile pour l'instant. Ajoutez-en une ci-dessus. Cliquer sur une barre/part filtre les autres tuiles (cumulable entre colonnes différentes ; recliquer retire le filtre). Une tuile avec un « Drill-down » se détaille au clic ; une carte KPI avec une « Tendance vs » affiche l'évolution par rapport à la période précédente.",
-      en: 'No tile yet. Add one above. Clicking a bar/slice filters the other tiles (stackable across different columns; click again to remove the filter). A tile with a “Drill-down” expands on click; a KPI card with a “Trend vs” shows the change compared to the previous period.',
+      fr: "Aucune tuile pour l'instant. Utilisez « Ajouter une visualisation » pour en créer une. Cliquer sur une barre/part filtre les autres tuiles (cumulable entre colonnes différentes ; recliquer retire le filtre). Une tuile avec un « Drill-down » se détaille au clic ; une carte KPI avec une « Tendance vs » affiche l'évolution par rapport à la période précédente.",
+      en: 'No tile yet. Use “Add a visualization” to create one. Clicking a bar/slice filters the other tiles (stackable across different columns; click again to remove the filter). A tile with a “Drill-down” expands on click; a KPI card with a “Trend vs” shows the change compared to the previous period.',
     },
     // --- Connexion / statut (js/main.js:bootstrap) ---
     'status.connecting': { fr: 'Connexion…', en: 'Connecting…' },
