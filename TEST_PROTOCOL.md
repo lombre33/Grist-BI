@@ -889,6 +889,18 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 - [x] 6 000 lignes (DuckDB, `BigInt`) dans un cadre isolé : valeur 60 000, 600 % partout, aucune erreur 🌐 (le serveur de test doit envoyer les en-têtes CORS : un module ES chargé depuis une origine `null` est refusé sans eux)
 - [ ] Rendu dans un vrai Grist / un vrai GFS ⬜ **[NON TESTABLE ICI]**
 
+### `js/data.js` + `js/charts.js` + panneau — combo barres + courbe, Pareto (18/11/2026 ; Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`)
+
+- [x] Pareto : tri décroissant sans toucher aux groupes d'origine, parts cumulées, 3 × 1/3 -> dernier point exactement 100, négatif/absent compté pour 0, total nul -> 0 (jamais NaN), liste vide/null ✅
+- [x] Alignement de la courbe PAR NOM (catégorie absente -> `null`, catégorie `BigInt` face à un nombre), sans 2e agrégation -> courbe vide sans exception ✅
+- [x] Tri réglable seulement hors Pareto ; palette et format des nombres oui ; colonne Séries non ✅
+- [x] Export Excel : mêmes valeurs et même ordre que l'écran (2e mesure alignée / `% cumulé`), Pareto trié quoi que dise `sortMode` ✅ ; PDF/PPTX = image du graphique ⬜ (CDN non joignable ici)
+- [x] Valeurs par défaut : 2 vraies mesures -> courbe sur la 2e ; une seule -> Pareto en Somme ; conseils (Pareto sur une moyenne, négatifs, courbe identique aux barres) ✅
+- [x] Formulaire : champs (mode, mesure de la courbe, agrégat de la courbe) visibles selon le mode, ordre barres > agrégat > courbe > agrégat de la courbe, ordre historique du nuage de points et des barres retrouvé en changeant de type, libellés en anglais, erreur sous le champ si la courbe n'a pas de mesure 🌐
+- [x] Rendu : 2 axes Y, 2 séries, légende, clic sur une barre = filtre croisé (autres catégories à 0,3), Pareto : axe droit 0-100, cumul croissant terminé à 100, repère à 80 %, retour en mode mesure 🌐
+- [x] 6 000 lignes (DuckDB) dans un cadre isolé : barres et courbe alignées, aucun trou, aucune erreur 🌐
+- [ ] Rendu dans un vrai Grist / un vrai GFS ⬜ **[NON TESTABLE ICI]**
+
 ### CSS — classe de bug à systématiquement re-vérifier
 
 - [x] `.field[hidden]` masque réellement l'élément (pas seulement `display:flex` de `.field` qui gagne à spécificité égale) [BUG RÉEL, trouvé 2 fois sur des champs différents] ✅ (règle en place)

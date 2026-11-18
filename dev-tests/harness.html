@@ -410,6 +410,7 @@
       <select id="tile-type">
         <option value="bar" data-i18n="tileForm.type.bar">Barres</option>
         <option value="line" data-i18n="tileForm.type.line">Courbe / aire</option>
+        <option value="combo" data-i18n="tileForm.type.combo">Barres + courbe</option>
         <option value="pie" data-i18n="tileForm.type.pie">Camembert</option>
         <option value="treemap" data-i18n="tileForm.type.treemap">Treemap</option>
         <option value="funnel" data-i18n="tileForm.type.funnel">Entonnoir</option>
@@ -430,6 +431,13 @@
         <select id="tile-radar-mode">
           <option value="dimension" data-i18n="tileForm.radarMode.dimension">Une colonne catégorielle (classique)</option>
           <option value="columns" data-i18n="tileForm.radarMode.columns">Plusieurs colonnes numériques (compétences)</option>
+        </select>
+      </div>
+      <div class="field" id="tile-combo-mode-field" hidden>
+        <label for="tile-combo-mode" data-i18n="tileForm.comboMode.label">Courbe</label>
+        <select id="tile-combo-mode">
+          <option value="measure" data-i18n="tileForm.comboMode.measure">Une autre mesure (2e axe)</option>
+          <option value="pareto" data-i18n="tileForm.comboMode.pareto">Pareto : part cumulée en %</option>
         </select>
       </div>
       <div class="field" id="tile-dimension-field">
@@ -466,14 +474,24 @@
         </div>
       </div>
       <div class="field" id="tile-measure-y-field" hidden>
-        <label for="tile-measure-y" data-i18n="tileForm.measureY.label">Mesure Y</label>
+        <label for="tile-measure-y" id="tile-measure-y-label" data-i18n="tileForm.measureY.label">Mesure Y</label>
         <div class="combobox">
           <input type="text" id="tile-measure-y" class="combobox-input" />
           <ul class="combobox-list" hidden></ul>
         </div>
       </div>
+      <div class="field" id="tile-agg-y-field" hidden>
+        <label for="tile-agg-y" data-i18n="tileForm.aggY.label">Agrégat de la courbe</label>
+        <select id="tile-agg-y">
+          <option value="sum" data-i18n="tileForm.agg.sum">Somme</option>
+          <option value="avg" data-i18n="tileForm.agg.avg">Moyenne</option>
+          <option value="count" data-i18n="tileForm.agg.count">Comptage</option>
+          <option value="min" data-i18n="tileForm.agg.min">Min</option>
+          <option value="max" data-i18n="tileForm.agg.max">Max</option>
+        </select>
+      </div>
       <div class="field" id="tile-agg-field">
-        <label for="tile-agg" data-i18n="tileForm.agg.label">Agrégat</label>
+        <label for="tile-agg" id="tile-agg-label" data-i18n="tileForm.agg.label">Agrégat</label>
         <select id="tile-agg">
           <option value="sum" data-i18n="tileForm.agg.sum">Somme</option>
           <option value="avg" data-i18n="tileForm.agg.avg">Moyenne</option>

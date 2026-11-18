@@ -381,10 +381,12 @@
   // Entonnoir : `sort: 'none'` côté ECharts (js/charts.js), c'est ce tri-ci qui décide de l'ordre des
   // étapes — « Ordre des données » reste donc possible pour un parcours dont les étapes sont déjà
   // rangées dans la table (Visite, Inscription, Achat).
-  const SORTABLE_TILE_TYPES = ['bar', 'line', 'pie', 'funnel'];
+  const SORTABLE_TILE_TYPES = ['bar', 'line', 'pie', 'funnel', 'combo'];
 
   function isSortableTile(tile) {
     if (!tile || SORTABLE_TILE_TYPES.indexOf(tile.type) === -1) return false;
+    // Pareto : l'ordre est celui de la méthode (du plus grand au plus petit), jamais un réglage.
+    if (tile.type === 'combo' && tile.comboMode === 'pareto') return false;
     return !(tile.type === 'bar' && tile.measureMode && tile.measureMode !== 'brut');
   }
 
@@ -422,6 +424,53 @@
     return tile.type === 'bar' && !(tile.measureMode && tile.measureMode !== 'brut');
   }
 
+  // --- Combo barres + courbe (`type: 'combo'`, double axe) ---------------------------------------
+  // Deux lectures d'une même catégorie : des barres (axe de gauche, `measure`/`aggFn`) et une courbe (axe de
+  // droite). Deux modes :
+  //   - 'measure' (défaut) : la courbe est une AUTRE mesure (`measureY`, `aggFnY`, par défaut l'agrégat des
+  //     barres), p. ex. le montant en barres et le nombre de commandes en courbe ;
+  //   - 'pareto' : barres triées du plus grand au plus petit, courbe = part CUMULÉE du total en % (0 à 100),
+  //     qui répond à « quelles catégories font 80 % du total ? ». Pas de seconde mesure.
+  // Fonctions pures : le rendu (js/charts.js) y passe des groupes obtenus par JS ou par DuckDB.
+  function comboModeOf(tile) {
+    return tile && tile.comboMode === 'pareto' ? 'pareto' : 'measure';
+  }
+
+  // `groups` = [{dimension, value}] dans l'ordre d'apparition. Rend les groupes TRIÉS par valeur décroissante
+  // (copie, jamais en place) et la part cumulée de chacun en % du total. Une valeur négative ou absente compte
+  // pour 0 : une part de total n'a de sens que pour des quantités positives. Total nul -> parts à 0, jamais NaN.
+  // Le dernier point vaut 100 exactement (sinon 99,99999999999999 s'afficherait « 100,0 % » sans l'être).
+  function paretoSeries(groups) {
+    const sorted = sortGroups(groups || [], 'value-desc');
+    const part = (d) => { const v = Number(d.value); return Number.isFinite(v) && v > 0 ? v : 0; };
+    const total = sorted.reduce((sum, d) => sum + part(d), 0);
+    let running = 0;
+    const cumulative = sorted.map((d, i) => {
+      running += part(d);
+      if (!(total > 0)) return 0;
+      return i === sorted.length - 1 ? 100 : (running * 100) / total;
+    });
+    return { groups: sorted, cumulative, total };
+  }
+
+  // Aligne la courbe sur les barres PAR NOM de catégorie (jamais par position : les deux agrégations peuvent ne
+  // pas couvrir les mêmes catégories — DuckDB rend aussi des BigInt, d'où `String`). Rend ce que le rendu et
+  // l'export affichent : `categories`, `bars`, `line` (null là où la courbe n'a pas de valeur : trou, jamais 0).
+  function comboSeries(tile, groups, groupsY) {
+    if (comboModeOf(tile) === 'pareto') {
+      const p = paretoSeries(groups);
+      return { mode: 'pareto', categories: p.groups.map((d) => d.dimension), bars: p.groups.map((d) => d.value), line: p.cumulative, total: p.total };
+    }
+    const byName = new Map((groupsY || []).map((d) => [String(d.dimension), d.value]));
+    return {
+      mode: 'measure',
+      categories: groups.map((d) => d.dimension),
+      bars: groups.map((d) => d.value),
+      line: groups.map((d) => (byName.has(String(d.dimension)) ? byName.get(String(d.dimension)) : null)),
+      total: null
+    };
+  }
+
   // --- Palettes de couleurs (`tile.palette`) -----------------------------------------------------
   // Six palettes au choix par tuile ; `standard` est la palette historique du tableau de bord (elle ne
   // change JAMAIS : une tuile sans `palette` doit rester identique). Toutes ont été passées au
@@ -450,7 +499,7 @@
   }
   // Types dont les couleurs viennent de la palette. Hors liste : la cascade (vert = hausse, rouge =
   // baisse : un sens, pas une identité), le KPI et le tableau croisé (aucune couleur de série).
-  const PALETTE_TILE_TYPES = ['bar', 'line', 'pie', 'funnel', 'treemap', 'scatter', 'radar', 'gauge', 'wordcloud'];
+  const PALETTE_TILE_TYPES = ['bar', 'line', 'pie', 'funnel', 'treemap', 'scatter', 'radar', 'gauge', 'wordcloud', 'combo'];
   function supportsPalette(tile) {
     return !!tile && PALETTE_TILE_TYPES.indexOf(tile.type) !== -1;
   }
@@ -458,7 +507,7 @@
   // Types qui AFFICHENT une valeur numérique (donc concernés par `tile.numberFormat`, voir js/format.js) :
   // tout type de tuile nouveau qui montre un nombre s'ajoute ici, pour que le champ « Format des nombres »
   // du panneau apparaisse. Le nuage de mots n'y est que pour la valeur de son infobulle ; la table plate l'applique à chacune de ses colonnes numériques (`format.cellNumber`).
-  const NUMBER_FORMAT_TILE_TYPES = ['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress'];
+  const NUMBER_FORMAT_TILE_TYPES = ['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo'];
   function supportsNumberFormat(tile) {
     return !!tile && NUMBER_FORMAT_TILE_TYPES.indexOf(tile.type) !== -1;
   }
@@ -875,6 +924,19 @@
       const freq = wordFrequency(rows, dimension, true).slice().sort((a, b) => b.value - a.value);
       return { name: title, header: [dimension, 'Occurrences'], rows: freq.map((d) => [d.dimension, d.value]) };
     }
+    // Combo barres + courbe : le même alignement que le rendu (`comboSeries`), pour que le fichier montre ce qui
+    // est affiché — barres, puis la 2e mesure OU la part cumulée en % (Pareto, en nombre de 0 à 100).
+    if (tile.type === 'combo') {
+      const barsAgg = groupByAggregate(rows, dimension, tile.measure, tile.aggFn);
+      const lineAgg = comboModeOf(tile) === 'pareto' ? null : groupByAggregate(rows, dimension, tile.measureY, tile.aggFnY || tile.aggFn);
+      const combo = comboSeries(tile, isSortableTile(tile) ? sortGroups(barsAgg, tile.sortMode) : barsAgg, lineAgg);
+      const lineHeader = combo.mode === 'pareto' ? '% cumulé' : tile.measureY;
+      return {
+        name: title,
+        header: [dimension, tile.measure, lineHeader],
+        rows: combo.categories.map((c, i) => [c, combo.bars[i], combo.line[i] == null ? '' : combo.line[i]])
+      };
+    }
     // Séries multiples (barres/courbe/aire avec `seriesColumn`) : une colonne par série, dans le même
     // ordre de catégories que le rendu ; une cellule vide (pas 0) là où la série n'a aucune ligne.
     if (isSeriesTile(tile)) {
@@ -1104,7 +1166,7 @@
     tableToRows, epochSecondsToIsoDate, applyFilters, matchesFilter, sameValue, parseDateValue,
     relativeDateRange, RELATIVE_DATE_PRESETS, groupByAggregate, aggregateSingle, wordFrequency, pivotTable,
     distinctColumnValues, computeTrend, trendFromGroups, periodLabel, measureSeriesForTile,
-    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, isStackedTile, splitBySeries, assembleSeries, PALETTES, PALETTE_KEYS, paletteColors, supportsPalette, supportsNumberFormat, NUMBER_FORMAT_TILE_TYPES, escapeHtml,
+    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, comboModeOf, paretoSeries, comboSeries, isStackedTile, splitBySeries, assembleSeries, PALETTES, PALETTE_KEYS, paletteColors, supportsPalette, supportsNumberFormat, NUMBER_FORMAT_TILE_TYPES, escapeHtml,
     tileDrillLevels, currentDimension, rowsForTile, tileExportSheet, tileExportKind, renderTextHtml, plainTextOf, TEXT_TILE_MAX,
     DEFAULT_GOOD_PCT, DEFAULT_WARN_PCT, targetProgress, progressRows, sparklineValues, sparklineGeometry,
     TABLE_TILE_MAX_ROWS, TABLE_EXPORT_MAX_ROWS, tableColumnsOf, cellText, compareCells, sortRowsBy, moveInOrder, nextSortDir, tableSheet,

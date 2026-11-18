@@ -2186,13 +2186,13 @@ const SAMPLE_TIME_SERIES = [
   const format = require('../js/format.js');
 
   // types concernés : ceux qui affichent un nombre ; pas de réglage pour un type inconnu ni null
-  for (const type of ['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress']) {
+  for (const type of ['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo']) {
     assert.strictEqual(data.supportsNumberFormat({ type }), true, type);
   }
   assert.strictEqual(data.supportsNumberFormat({ type: 'text' }), false, 'la tuile Texte ne montre aucun nombre');
   assert.strictEqual(data.supportsNumberFormat({ type: 'inconnu' }), false);
   assert.strictEqual(data.supportsNumberFormat(null), false);
-  assert.deepStrictEqual(data.NUMBER_FORMAT_TILE_TYPES.filter((ty) => !['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress'].includes(ty)), []);
+  assert.deepStrictEqual(data.NUMBER_FORMAT_TILE_TYPES.filter((ty) => !['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo'].includes(ty)), []);
 
   // verdict de « Comme dans la colonne » : sert l'explication affichée sous le réglage
   format.setColumnInfo({
@@ -3821,6 +3821,81 @@ const SAMPLE_TIME_SERIES = [
         assert.ok(/tile\.type === 'progress'\) \{\s*renderProgress\(/.test(chartsSrc3), 'renderTile aiguille vers renderProgress');
         assert.ok(/setProperty\('--kpi-chars'/.test(chartsSrc3), 'la police de la valeur KPI s\'ajuste toujours (lot jauge/KPI)');
         console.log('OK objectif KPI, courbe, Progression — niveaux et seuils, lignes par catégorie, courbe SVG, exports, conseil et i18n');
+        // Combo barres + courbe (lot 2 de l'étude, 18/11/2026) : Pareto, alignement par nom, export, conseil, câblage.
+        {
+          assert.strictEqual(data.comboModeOf({ type: 'combo' }), 'measure');
+          assert.strictEqual(data.comboModeOf({ type: 'combo', comboMode: 'pareto' }), 'pareto');
+          assert.strictEqual(data.comboModeOf({ type: 'combo', comboMode: 'inconnu' }), 'measure', 'mode inconnu -> défaut');
+          assert.strictEqual(data.comboModeOf(null), 'measure');
+          // Pareto : tri décroissant (copie), parts cumulées, dernier point = 100 exactement.
+          const gs = [{ dimension: 'A', value: 10 }, { dimension: 'B', value: 50 }, { dimension: 'C', value: 30 }, { dimension: 'D', value: 10 }];
+          const p = data.paretoSeries(gs);
+          assert.deepStrictEqual(p.groups.map((g) => g.dimension), ['B', 'C', 'A', 'D'], 'tri décroissant, ex æquo dans l\'ordre d\'apparition');
+          assert.deepStrictEqual(p.cumulative, [50, 80, 90, 100]);
+          assert.strictEqual(p.total, 100);
+          assert.deepStrictEqual(gs.map((g) => g.dimension), ['A', 'B', 'C', 'D'], 'les groupes d\'origine ne sont jamais triés en place');
+          assert.strictEqual(data.paretoSeries([{ dimension: 'a', value: 1 }, { dimension: 'b', value: 1 }, { dimension: 'c', value: 1 }]).cumulative[2], 100, '3 x 1/3 : exactement 100, pas 99,99999999999999');
+          assert.deepStrictEqual(data.paretoSeries([{ dimension: 'x', value: -5 }, { dimension: 'y', value: 20 }, { dimension: 'z', value: null }]).cumulative, [100, 100, 100], 'négatif et absent comptent pour 0');
+          assert.deepStrictEqual(data.paretoSeries([{ dimension: 'x', value: 0 }, { dimension: 'y', value: 0 }]).cumulative, [0, 0], 'total nul : 0, jamais NaN');
+          assert.deepStrictEqual(data.paretoSeries([]), { groups: [], cumulative: [], total: 0 });
+          assert.deepStrictEqual(data.paretoSeries(null), { groups: [], cumulative: [], total: 0 });
+          // Mode « autre mesure » : la courbe est alignée sur les barres PAR NOM (catégorie absente -> null, jamais 0 ni décalage),
+          // y compris une catégorie BigInt (DuckDB) face à un nombre (JS).
+          const bars = [{ dimension: 'N', value: 10 }, { dimension: 'S', value: 20 }, { dimension: 2024n, value: 5 }];
+          const line = [{ dimension: 2024, value: 7 }, { dimension: 'S', value: 4 }];
+          const cs = data.comboSeries({ type: 'combo' }, bars, line);
+          assert.deepStrictEqual(cs.categories, ['N', 'S', 2024n]);
+          assert.deepStrictEqual(cs.bars, [10, 20, 5]);
+          assert.deepStrictEqual(cs.line, [null, 4, 7], 'alignement par nom, trou = null');
+          assert.strictEqual(cs.mode, 'measure');
+          const csP = data.comboSeries({ type: 'combo', comboMode: 'pareto' }, gs, null);
+          assert.deepStrictEqual([csP.mode, csP.categories, csP.bars, csP.line], ['pareto', ['B', 'C', 'A', 'D'], [50, 30, 10, 10], [50, 80, 90, 100]]);
+          assert.deepStrictEqual(data.comboSeries({ type: 'combo' }, bars, null).line, [null, null, null], 'sans 2e agrégation : courbe vide, jamais une exception');
+          // Tri : réglable en mode « autre mesure », jamais en Pareto (l'ordre fait la méthode) ; palette et format des nombres.
+          assert.strictEqual(data.isSortableTile({ type: 'combo' }), true);
+          assert.strictEqual(data.isSortableTile({ type: 'combo', comboMode: 'pareto' }), false);
+          assert.strictEqual(data.supportsPalette({ type: 'combo' }), true);
+          assert.strictEqual(data.supportsNumberFormat({ type: 'combo' }), true);
+          assert.strictEqual(data.isSeriesTile({ type: 'combo', seriesColumn: 'R' }), false, 'pas de colonne Séries sur un combo');
+          // Export Excel : mêmes valeurs que l'écran (barres, 2e mesure alignée / % cumulé), même ordre ; image pour PDF/PPTX.
+          const cRows = [{ R: 'A', M: 10, Q: 1 }, { R: 'B', M: 50, Q: 2 }, { R: 'B', M: 0, Q: 4 }, { R: 'C', M: 30, Q: 3 }, { R: 'D', M: 10, Q: 0 }];
+          const cState = { rows: cRows, activeFilters: [], advancedFilters: [], drillIns: {}, comments: [], pages: [] };
+          const cTile = { id: 'cb', type: 'combo', title: 'Combo', dimension: 'R', measure: 'M', aggFn: 'sum', measureY: 'Q', aggFnY: 'avg' };
+          assert.strictEqual(data.tileExportKind(cTile), 'image');
+          assert.deepStrictEqual(data.tileExportSheet(cTile, cState), { name: 'Combo', header: ['R', 'M', 'Q'], rows: [['A', 10, 1], ['B', 50, 3], ['C', 30, 3], ['D', 10, 0]] });
+          assert.deepStrictEqual(data.tileExportSheet(Object.assign({}, cTile, { sortMode: 'value-desc' }), cState).rows.map((r) => r[0]), ['B', 'C', 'A', 'D'], 'le fichier suit le tri affiché');
+          assert.deepStrictEqual(data.tileExportSheet({ id: 'pa', type: 'combo', title: 'Par', dimension: 'R', measure: 'M', aggFn: 'sum', comboMode: 'pareto', sortMode: 'label' }, cState),
+            { name: 'Par', header: ['R', 'M', '% cumulé'], rows: [['B', 50, 50], ['C', 30, 80], ['A', 10, 90], ['D', 10, 100]] }, 'Pareto : trié du plus grand au plus petit quoi que dise sortMode');
+          // Formulaire : valeurs par défaut (2 mesures -> courbe ; 1 seule -> Pareto en somme) et avertissements.
+          const two = [{ Region: 'N', Montant: 100, Quantite: 3 }, { Region: 'S', Montant: 50, Quantite: 2 }, { Region: 'E', Montant: 20, Quantite: 9 }, { Region: 'O', Montant: 5, Quantite: 1 }];
+          const d2 = advice.defaultsForType('combo', two, ['Region', 'Montant', 'Quantite']);
+          assert.deepStrictEqual([d2.dimension, d2.measure, d2.measureY, d2.comboMode], ['Region', 'Montant', 'Quantite', undefined]);
+          const one = [{ Region: 'N', Montant: 100 }, { Region: 'S', Montant: 50 }, { Region: 'E', Montant: 20 }];
+          const d1 = advice.defaultsForType('combo', one, ['Region', 'Montant']);
+          assert.deepStrictEqual([d1.dimension, d1.measure, d1.aggFn, d1.comboMode, d1.measureY], ['Region', 'Montant', 'sum', 'pareto', undefined]);
+          assert.strictEqual(advice.TILE_TYPES.includes('combo'), false, 'jamais proposé à l\'accueil (suggestTiles)');
+          assert.deepStrictEqual(advice.suggestTiles(two, Object.keys(two[0]), { limit: 20, t: (k) => k }).filter((c) => c.type === 'combo'), []);
+          assert.strictEqual(advice.adviceForTile({ type: 'combo', dimension: 'Region', measure: 'Montant', aggFn: 'avg', comboMode: 'pareto' }, two).key, 'advice.combo.paretoAgg');
+          assert.strictEqual(advice.adviceForTile({ type: 'combo', dimension: 'Region', measure: 'Montant', aggFn: 'sum', measureY: 'Montant' }, two).key, 'advice.combo.sameSeries');
+          assert.strictEqual(advice.adviceForTile({ type: 'combo', dimension: 'Region', measure: 'Montant', aggFn: 'sum', measureY: 'Montant', aggFnY: 'avg' }, two), null, 'même colonne, autre agrégat : légitime');
+          assert.strictEqual(advice.adviceForTile({ type: 'combo', dimension: 'Region', measure: 'Montant', aggFn: 'sum', measureY: 'Quantite' }, two), null);
+          const negs = [{ Region: 'N', Montant: 100 }, { Region: 'S', Montant: -50 }];
+          assert.strictEqual(advice.adviceForTile({ type: 'combo', dimension: 'Region', measure: 'Montant', aggFn: 'sum', comboMode: 'pareto' }, negs).key, 'advice.combo.paretoNegative');
+          assert.strictEqual(advice.adviceForType('combo', two, ['Region', 'Montant', 'Quantite']).key, 'advice.use.combo');
+          ['tileForm.type.combo', 'tileForm.comboMode.label', 'tileForm.comboMode.measure', 'tileForm.comboMode.pareto', 'tileForm.measure.labelBars', 'tileForm.measureY.labelLine',
+            'tileForm.aggY.label', 'tileForm.agg.labelBars', 'tileForm.error.comboMeasureRequired', 'tileTitle.combo', 'tileTitle.pareto', 'chart.combo.cumulative', 'advice.use.combo', 'advice.combo.paretoAgg',
+            'advice.combo.paretoNegative', 'advice.combo.sameSeries', 'advice.combo.manyBars']
+            .forEach((k) => assert.ok(i18n.STRINGS[k] && i18n.STRINGS[k].fr && i18n.STRINGS[k].en, 'traduction fr/en : ' + k));
+          // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
+          const mainSrc4 = fs.readFileSync(path.join(root, 'js', 'main.js'), 'utf8');
+          const chartsSrc4 = fs.readFileSync(path.join(root, 'js', 'charts.js'), 'utf8');
+          const indexSrc4 = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+          assert.ok(/const TYPE_CARDS = \[[^\]]*'combo'/.test(mainSrc4) && /<option value="combo"/.test(indexSrc4) && /id="tile-combo-mode"/.test(indexSrc4) && /id="tile-agg-y"/.test(indexSrc4));
+          assert.ok(/tile\.type === 'combo'\) \{\s*\/\/ Combo barres/.test(chartsSrc4) && /yAxisIndex: 1/.test(chartsSrc4), 'branche combo de renderChart : 2 axes Y');
+          assert.ok(/fmtFor\(\{ \.\.\.tile, aggFn: tile\.aggFnY \|\| tile\.aggFn \}, tile\.measureY\)/.test(chartsSrc4), 'format de la courbe : celui de SA colonne, un comptage jamais comme la colonne');
+          assert.ok(!/Intl\.NumberFormat|toFixed/.test(chartsSrc4), 'aucun format de nombre en dur dans charts.js');
+          console.log('OK combo barres + courbe — Pareto (cumul, 100 exact, négatifs), alignement par nom, tri, export, valeurs par défaut, conseil et i18n');
+        }
       }
     }
   }
