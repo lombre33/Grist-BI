@@ -121,6 +121,7 @@
     'type-bar': '<path d="M3.5 13V8M8 13V3.5M12.5 13V6"/><path d="M2 14h12"/>',
     'type-line': '<path d="M2 12l3.5-4 3 2.5L14 4"/><path d="M2 14h12"/>',
     'type-histogram': '<path d="M2 14v-4h2.6v4M4.6 14V6h2.6v8M7.2 14V3h2.6v11M9.8 14V7h2.6v7M12.4 14v-3H14v3"/><path d="M2 14h12"/>',
+    'type-gantt': '<path d="M2.5 3.5h5.5M5 8h6M8.5 12.5h5"/><path d="M2.5 2v12"/>',
     'type-calendar': '<rect x="2.5" y="3" width="11" height="10" rx="1.2"/><path d="M2.5 6.5h11M5.5 2v2.5M10.5 2v2.5"/><path d="M5 9h1M7.5 9h1M10 9h1M5 11h1M7.5 11h1"/>',
     'type-sankey': '<path d="M2.5 3v4.5M2.5 9v4M13.5 3v10"/><path d="M3 4.5c4 0 6 1 10 1.5M3 6.5c4 0 6 2.2 10 3.5M3 11c4 0 6-1.2 10-1.5"/>',
     'type-box': '<path d="M5 3v2.5M5 10.5V13M3.5 3h3M3.5 13h3"/><rect x="3" y="5.5" width="4" height="5" rx=".5"/><path d="M3 8h4"/><path d="M11.5 4.5v1.5M11.5 11v2M10 4.5h3M10 13h3"/><rect x="9.5" y="6" width="4" height="5" rx=".5"/><path d="M9.5 8.5h4"/>',
@@ -261,6 +262,10 @@
   const aggYField = document.getElementById('tile-agg-y-field');
   const aggYSelect = document.getElementById('tile-agg-y');
   // Bulles (nuage de points) : 3e mesure = taille, avec son propre agrégat ; la colonne « Séries » devient la couleur.
+  const startColumnField = document.getElementById('tile-start-column-field');
+  const startColumnSelect = document.getElementById('tile-start-column');
+  const endColumnField = document.getElementById('tile-end-column-field');
+  const endColumnSelect = document.getElementById('tile-end-column');
   const measureSizeField = document.getElementById('tile-measure-size-field');
   const measureSizeSelect = document.getElementById('tile-measure-size');
   const aggSizeField = document.getElementById('tile-agg-size-field');
@@ -442,7 +447,7 @@
   // (demande explicite de l'utilisateur, voir js/combobox.js) — en mode strict : la valeur doit
   // rester l'une des colonnes réellement chargées, comme un <select>. `.nextElementSibling` est le
   // <ul class="combobox-list"> voisin dans le même wrapper `.combobox` (voir index.html/harness.html).
-  [dimensionSelect, columnDimensionSelect, seriesSelect, measureSelect, measureYSelect, measureSizeSelect, trendDimensionSelect, dateColumnSelect,
+  [dimensionSelect, columnDimensionSelect, startColumnSelect, endColumnSelect, seriesSelect, measureSelect, measureYSelect, measureSizeSelect, trendDimensionSelect, dateColumnSelect,
    radarEntityColumnSelect, radarEntityValueSelect, targetColumnSelect].forEach((input) => {
     GristBI.combobox.attach(input, input.nextElementSibling, { strict: true });
   });
@@ -534,6 +539,8 @@
     const cols = availableColumns(rows);
     fillCombobox(dimensionSelect, cols);
     fillCombobox(columnDimensionSelect, cols);
+    fillCombobox(startColumnSelect, cols);
+    fillCombobox(endColumnSelect, cols);
     fillCombobox(seriesSelect, cols, { blankLabel: t('tileForm.none.f') });
     fillCombobox(measureSelect, cols);
     fillCombobox(measureYSelect, cols);
@@ -779,6 +786,7 @@
     let vars;
     if (p.isText) { key = 'tileTitle.text'; vars = undefined; }
     else if (p.isHistogram) { key = 'tileTitle.histogram'; vars = { measure: p.measure }; }
+    else if (p.isGantt) { key = 'tileTitle.gantt'; vars = { dimension: p.dimension }; }
     else if (p.isCalendar) { key = 'tileTitle.calendar'; vars = { measure: p.measure, dimension: p.dimension }; }
     else if (p.isSankey) { key = 'tileTitle.sankey'; vars = { measure: p.measure, dimension: p.dimension, columnDimension: p.columnDimension }; }
     else if (p.isBox) { key = 'tileTitle.box'; vars = { measure: p.measure, dimension: p.dimension }; }
@@ -835,7 +843,7 @@
   // générique l'ignore explicitement (voir le garde dans getOrCreateChartInstance). Masquer le
   // formulaire de configuration du drill-down pour ce type plutôt que de laisser l'utilisateur
   // configurer des niveaux qui ne se déclencheront jamais au clic.
-  function supportsDrillDown(type) { return !typeHasNoDimension(type) && type !== 'pivot' && type !== 'heatmap' && type !== 'radar' && type !== 'progress' && type !== 'box' && type !== 'sankey' && type !== 'calendar'; }
+  function supportsDrillDown(type) { return !typeHasNoDimension(type) && type !== 'pivot' && type !== 'heatmap' && type !== 'radar' && type !== 'progress' && type !== 'box' && type !== 'sankey' && type !== 'calendar' && type !== 'gantt'; }
 
   // Drill-down à N niveaux : un combobox par niveau, créé dynamiquement ("+ Niveau") plutôt que des
   // champs figés dans le HTML — data.js/state.js/charts.js gèrent déjà un tableau drillDimensions
@@ -1962,6 +1970,7 @@
     const isComboPareto = isCombo && comboModeSelect.value === 'pareto';
     const isHistogram = type === 'histogram';
     const isBox = type === 'box';
+    const isGantt = type === 'gantt';
     // KPI/jauge/tuile "Barres" en mode de calcul temporel : pas de dimension de regroupement ni de
     // drill-down, juste un agrégat sur toute la sélection (le KPI peut en plus le comparer à une
     // période via "Tendance vs", la jauge le positionne sur un cadran Min/Max, la tuile Barres en
@@ -1969,9 +1978,11 @@
     // une 2e mesure (axe Y). Le pivot et le radar ajoutent une 2e dimension/un axe par valeur mais
     // n'ont pas de drill-down (voir supportsDrillDown).
     dimensionField.hidden = formHasNoDimension();
-    dimensionLabel.textContent = t(isSankey ? 'tileForm.dimension.labelSource' : (isGrid ? 'tileForm.dimension.labelRows' : (type === 'calendar' ? 'tileForm.dimension.labelDate' : 'tileForm.dimension.label')));
+    dimensionLabel.textContent = t(isSankey ? 'tileForm.dimension.labelSource' : (isGrid ? 'tileForm.dimension.labelRows' : (type === 'calendar' ? 'tileForm.dimension.labelDate' : (isGantt ? 'tileForm.dimension.labelTask' : 'tileForm.dimension.label'))));
     columnDimensionLabel.textContent = t(isSankey ? 'tileForm.columnDimension.labelTarget' : 'tileForm.columnDimension.label');
     columnDimensionField.hidden = !isGrid;
+    startColumnField.hidden = !isGantt;
+    endColumnField.hidden = !isGantt;
     pivotHeatField.hidden = !isPivot;
     wordCloudSplitField.hidden = !isWordCloud;
     // Radar "compétences en colonnes" ET nuage de mots "découpage de cellule" : mesure/agrégat n'ont
@@ -1980,10 +1991,10 @@
     // comme dimensionField/drillField ci-dessus plutôt que laissés visibles mais ignorés.
     radarModeField.hidden = !isRadar;
     radarAxesField.hidden = !isRadarColumns;
-    measureField.hidden = isRadarColumns || isWordCloudSplit || isText || isTable;
+    measureField.hidden = isRadarColumns || isWordCloudSplit || isText || isTable || isGantt; // Gantt : une barre est une tâche, aucune mesure
     // Histogramme : une colonne numérique et un nombre de classes, jamais d'agrégat (on compte des lignes).
     // Boîte à moustaches : les valeurs brutes de chaque ligne, jamais un agrégat.
-    aggField.hidden = isRadarColumns || isWordCloudSplit || isText || isTable || isHistogram || isBox;
+    aggField.hidden = isRadarColumns || isWordCloudSplit || isText || isTable || isHistogram || isBox || isGantt;
     binsField.hidden = !isHistogram;
     tileTextField.hidden = !isText;
     tileColumnsField.hidden = !isTable;
@@ -2012,8 +2023,8 @@
     sortField.hidden = !GristBI.data.isSortableTile({ type, measureMode: measureModeSelect.value, comboMode: comboModeSelect.value });
     // Séries multiples : barres (hors mode mesure temporelle) et courbe/aire seulement (voir
     // GristBI.data.isSeriesTile) — les autres types n'ont qu'une série par nature.
-    seriesField.hidden = !(isBarBrut || type === 'line' || isScatter); // nuage de points : la colonne devient la couleur des bulles
-    seriesLabel.textContent = t(isScatter ? 'tileForm.series.labelColor' : 'tileForm.series.label');
+    seriesField.hidden = !(isBarBrut || type === 'line' || isScatter || isGantt); // nuage de points : la colonne devient la couleur des bulles ; Gantt : le statut
+    seriesLabel.textContent = t(isGantt ? 'tileForm.series.labelStatus' : (isScatter ? 'tileForm.series.labelColor' : 'tileForm.series.label'));
     horizontalField.hidden = !isBarBrut;
     areaField.hidden = type !== 'line';
     // Empilé : seulement avec une colonne Séries (sinon une seule série, rien à empiler), pour les barres
@@ -2105,6 +2116,8 @@
     setDrillLevels(tileDrillLevels(tile));
     drillCrossFilterCheckbox.checked = !!tile.drillCrossFilter;
     columnDimensionSelect.value = tile.columnDimension || '';
+    startColumnSelect.value = tile.startColumn || '';
+    endColumnSelect.value = tile.endColumn || '';
     seriesSelect.value = tile.seriesColumn || '';
     measureYSelect.value = tile.measureY || '';
     measureSizeSelect.value = tile.measureSize || '';
@@ -2251,6 +2264,7 @@
     const comboPareto = isCombo && comboModeSelect.value === 'pareto';
     const isHistogram = type === 'histogram';
     const isBox = type === 'box';
+    const isGantt = type === 'gantt';
     const binsRaw = isHistogram ? binsInput.value.trim() : '';
     const binsValue = binsRaw === '' ? undefined : Number(binsRaw);
     const tableColumns = isTable ? readColumnsPicker() : [];
@@ -2277,10 +2291,17 @@
     if (usesTarget && target !== undefined && !(Number.isFinite(target) && target > 0)) fail('tile-target', 'tileForm.error.targetPositive');
     else if (isProgress && target === undefined && !targetColumn) fail('tile-target', 'tileForm.error.targetRequired');
     if (usesTarget && (target !== undefined || targetColumn) && !(Number.isFinite(goodPct) && Number.isFinite(warnPct) && warnPct >= 0 && goodPct > warnPct)) fail('tile-good-pct', 'tileForm.error.thresholds');
-    if (!isRadarColumns && !isWordCloudSplit && !isText && !isTable && !measure) fail('tile-measure', 'tileForm.error.measureRequired');
+    if (!isRadarColumns && !isWordCloudSplit && !isText && !isTable && !isGantt && !measure) fail('tile-measure', 'tileForm.error.measureRequired');
     if (hasDimension && !dimension) fail('tile-dimension', 'tileForm.error.dimensionRequired');
     // Calendrier : une case = un jour, la colonne doit contenir de vraies dates (format ISO, comme toutes les colonnes Date).
     else if (type === 'calendar' && dimension && inferColumnKind(dimension) !== 'date') fail('tile-dimension', 'tileForm.error.calendarNotDate');
+    // Gantt : début et fin sont deux colonnes de vraies dates (format ISO) ; une barre va de l'une à l'autre.
+    if (isGantt) {
+      if (!startColumnSelect.value) fail('tile-start-column', 'tileForm.error.ganttStartRequired');
+      else if (inferColumnKind(startColumnSelect.value) !== 'date') fail('tile-start-column', 'tileForm.error.calendarNotDate');
+      if (!endColumnSelect.value) fail('tile-end-column', 'tileForm.error.ganttEndRequired');
+      else if (inferColumnKind(endColumnSelect.value) !== 'date') fail('tile-end-column', 'tileForm.error.calendarNotDate');
+    }
     if (isScatter && !measureYSelect.value) fail('tile-measure-y', 'tileForm.error.measureYRequired'); // 2e mesure obligatoire pour un nuage de points
     if (isHistogram && binsValue !== undefined && !(Number.isInteger(binsValue) && binsValue >= 2 && binsValue <= GristBI.data.HISTOGRAM_MAX_BINS)) fail('tile-bins', 'tileForm.error.binsRange');
     // Ligne de repère : une valeur fixe demande un nombre.
@@ -2295,7 +2316,7 @@
     else if (isGrid && columnDimension === dimension) fail('tile-column-dimension', isSankey ? 'tileForm.alert.sankeyDimsDiffer' : 'tileForm.alert.pivotDimsDiffer');
     // Séries multiples : seulement pour les barres (hors mode mesure) et la courbe/aire ; jamais la
     // dimension elle-même (chaque catégorie n'aurait qu'une série).
-    const seriesColumn = ((isBar && !measureMode) || type === 'line' || isScatter) ? seriesSelect.value : '';
+    const seriesColumn = ((isBar && !measureMode) || type === 'line' || isScatter || isGantt) ? seriesSelect.value : '';
     if (seriesColumn && seriesColumn === dimension) fail('tile-series', 'tileForm.error.seriesSameAsDimension');
     const radarAxes = isRadarColumns ? radarAxisSelects.map((s) => s.value).filter(Boolean) : [];
     if (isRadarColumns && !radarAxes.length) fail('tile-radar-axis-1', 'tileForm.error.radarAxisRequired'); // au moins un axe requis
@@ -2318,7 +2339,7 @@
     // voir i18n.js:tileTitle) pour que l'en-tête de tuile suive la langue de l'interface au lieu de
     // rester figé dans celle de sa création.
     const auto = autoTileTitle({
-      isText, isTable, isProgress, isCombo, comboPareto, isHistogram, isBox, isSankey, isCalendar: type === 'calendar', isBubble: isScatter && !!measureSizeSelect.value, measureSize: measureSizeSelect.value, measureY: measureYSelect.value, tableColumns, isPivot, isHeatmap, isRadarColumns, isWordCloudSplit, hasDimension, measureMode,
+      isText, isTable, isProgress, isCombo, comboPareto, isHistogram, isBox, isSankey, isGantt, isCalendar: type === 'calendar', isBubble: isScatter && !!measureSizeSelect.value, measureSize: measureSizeSelect.value, measureY: measureYSelect.value, tableColumns, isPivot, isHeatmap, isRadarColumns, isWordCloudSplit, hasDimension, measureMode,
       measure, dimension, columnDimension, aggFn, radarAxes, seriesColumn
     });
     const customTitle = tileTitleInput.value.trim();
@@ -2333,6 +2354,10 @@
     if (isHistogram) { tileData.dimension = undefined; tileData.aggFn = undefined; }
     // Boîte à moustaches : dimension = les groupes, mesure = la colonne numérique ; pas d'agrégat (valeurs brutes).
     if (isBox) tileData.aggFn = undefined;
+    // Gantt : dimension = le libellé de la tâche ; ni mesure ni agrégat (une barre n'est pas un total), début et fin = deux colonnes de dates.
+    if (isGantt) { tileData.measure = undefined; tileData.aggFn = undefined; }
+    tileData.startColumn = isGantt ? startColumnSelect.value : undefined;
+    tileData.endColumn = isGantt ? endColumnSelect.value : undefined;
     tileData.bins = isHistogram ? binsValue : undefined;
     tileData.text = isText ? textValue : undefined;
     tileData.columns = isTable ? tableColumns : undefined;
@@ -2469,7 +2494,7 @@
   // repliées, aperçu en direct, conseil en direct). Le panneau est en flux normal (voir css/style.css) :
   // il ne recouvre jamais la barre. Toute la lecture du formulaire passe par readTileForm() ci-dessus.
   // =============================================================================================
-  const TYPE_CARDS = ['bar', 'histogram', 'box', 'line', 'combo', 'pie', 'treemap', 'funnel', 'sankey', 'calendar', 'scatter', 'waterfall', 'radar', 'wordcloud', 'kpi', 'gauge', 'progress', 'pivot', 'heatmap', 'table', 'text'];
+  const TYPE_CARDS = ['bar', 'histogram', 'box', 'line', 'combo', 'pie', 'treemap', 'funnel', 'sankey', 'calendar', 'gantt', 'scatter', 'waterfall', 'radar', 'wordcloud', 'kpi', 'gauge', 'progress', 'pivot', 'heatmap', 'table', 'text'];
   const PREVIEW_TILE_ID = '__preview__';
   // Types de tuile portés par une extension de GFS (js/extensions.js:EXTENSIONS).
   const TYPE_EXTENSION = { wordcloud: 'nuage-de-mots' };
@@ -2523,6 +2548,8 @@
     comboModeSelect.value = 'measure';
     binsInput.value = '';
     columnDimensionSelect.value = '';
+    startColumnSelect.value = '';
+    endColumnSelect.value = '';
     seriesSelect.value = '';
     resetDrillLevels();
     drillCrossFilterCheckbox.checked = false;
@@ -2574,6 +2601,9 @@
     if (d) {
       if (d.dimension) dimensionSelect.value = d.dimension;
       columnDimensionSelect.value = d.columnDimension || '';
+      startColumnSelect.value = d.startColumn || '';
+      endColumnSelect.value = d.endColumn || '';
+      seriesSelect.value = d.seriesColumn || '';
       measureYSelect.value = d.measureY || '';
       comboModeSelect.value = d.comboMode === 'pareto' ? 'pareto' : 'measure';
       if (d.drillDimensions) setDrillLevels(d.drillDimensions);

@@ -1227,6 +1227,43 @@ td.pivot-cell:not(.pivot-cell-empty):not(.pivot-total-cell):hover { background: 
 .prog-legend { margin: 4px 0 0; font-size: 10.5px; color: var(--text-muted); }
 .tile-zoomed .prog-row { font-size: 14px; }
 
+/* Gantt : une ligne par tâche, une barre posée en pourcentages de l'axe du temps (js/charts.js:renderGantt). L'axe est collant en haut
+   de la tuile (elle défile quand il y a beaucoup de tâches) ; la colonne des libellés fait --gantt-label de la largeur. */
+.gantt { --gantt-label: 28%; --gantt-gap: 8px; font-size: 12px; position: relative; }
+.gantt-axis, .gantt-row { display: grid; grid-template-columns: var(--gantt-label) 1fr; column-gap: var(--gantt-gap); align-items: center; }
+.gantt-axis { position: sticky; top: 0; z-index: 2; height: 18px; background: var(--surface); border-bottom: 1px solid var(--border); }
+.gantt-year { padding-left: 2px; overflow: hidden; white-space: nowrap; font-size: 10.5px; font-weight: 600; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.gantt-ticks { position: relative; height: 100%; }
+.gantt-tick { position: absolute; top: 0; bottom: 0; box-sizing: border-box; padding-left: 3px; overflow: hidden; text-overflow: ellipsis; font-size: 10.5px; line-height: 18px; color: var(--text-muted); border-left: 1px solid var(--border); white-space: nowrap; }
+.gantt-body { position: relative; padding: 2px 0; }
+.gantt-lines { position: absolute; top: 0; bottom: 0; left: calc(var(--gantt-label) + var(--gantt-gap)); right: 0; pointer-events: none; }
+.gantt-line { position: absolute; top: 0; bottom: 0; border-left: 1px dotted var(--border); }
+.gantt-today { position: absolute; top: 0; bottom: 0; z-index: 1; pointer-events: none; border-left: 2px solid var(--critical);
+  left: calc(var(--gantt-label) + var(--gantt-gap) + (100% - var(--gantt-label) - var(--gantt-gap)) * var(--t)); }
+.gantt-row { position: relative; height: 22px; border-radius: 4px; cursor: pointer; transition: opacity 0.12s var(--ease); }
+.gantt-row:hover { background: var(--surface-sunken); }
+.gantt-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.gantt-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-left: 2px; color: var(--text); }
+.gantt-track { position: relative; height: 12px; }
+.gantt-bar { position: absolute; top: 0; bottom: 0; min-width: 3px; border-radius: 3px; }
+.gantt-active { background: var(--accent-soft-strong); }
+.gantt-dimmed { opacity: 0.35; }
+/* Pied collant : la légende reste visible quand la liste des tâches défile. */
+.gantt-foot { position: sticky; bottom: 0; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; margin-top: 4px; padding: 3px 0 1px; background: var(--surface); border-top: 1px solid var(--border); font-size: 10.5px; color: var(--text-muted); }
+.gantt-note { margin: 4px 0 0; font-size: 10.5px; color: var(--text-muted); }
+.gantt-chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 4px; border: 0; border-radius: 4px; background: none; font: inherit; color: var(--text); cursor: pointer; }
+.gantt-chip:hover { background: var(--surface-sunken); }
+.gantt-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.gantt-chip[disabled] { cursor: default; }
+.gantt-chip-on { background: var(--accent-soft-strong); }
+.gantt-chip-off { opacity: 0.45; }
+.gantt-chip-swatch { width: 9px; height: 9px; border-radius: 2px; }
+.gantt-chip-today { display: inline-flex; align-items: center; gap: 4px; }
+.gantt-today-swatch { width: 0; height: 11px; border-left: 2px solid var(--critical); }
+.tile-zoomed .gantt { font-size: 14px; }
+.tile-zoomed .gantt-row { height: 28px; }
+.tile-zoomed .gantt-track { height: 16px; }
+
 /* Table plate (type 'table') : une table HTML dans `.tile-chart` (qui défile, voir plus haut), en-tête collé en haut,
    un bouton par en-tête pour trier. Les nombres s'alignent à droite en chiffres de largeur fixe. */
 .data-table { width: 100%; border-collapse: collapse; font-size: 11.5px; font-variant-numeric: tabular-nums; }
