@@ -2367,6 +2367,65 @@ const SAMPLE_TIME_SERIES = [
   console.log('OK nuage de mots — carte proposée seulement si d3-cloud est dans l\'importmap (importMapHas), tuile existante conservée');
 }
 
+// Assistant de démarrage : un montant passe avant un prix unitaire (18/11/2026, constaté sur la table de démo où PrixUnitaire précédait Montant)
+{
+  // le nom, coupé en mots (camelCase, `_`, espaces, accents), décide ce qui est un prix par unité
+  for (const name of ['Prix', 'PrixUnitaire', 'Prix_unitaire', 'prix unitaire', 'unit_price', 'UnitPrice', 'Price', 'Tarif', 'PU', 'Prix HT', 'Prix de vente', 'Sales price', 'Coût unitaire', 'UnitCost']) {
+    assert.strictEqual(advice.isUnitPriceName(name), true, name + ' est un prix unitaire');
+  }
+  for (const name of ['Montant', 'Total', 'CA', 'Quantité', 'Unités vendues', 'Prix total', 'PrixTotal', 'Prix de vente total', 'Montant HT', 'Coût', 'Note', 'Priorité', 'Puissance', 'Prime', 'Surprise', '', null, undefined, 42]) {
+    assert.strictEqual(advice.isUnitPriceName(name), false, String(name) + ' n\'est pas un prix unitaire');
+  }
+  const regions = ['Nord', 'Sud', 'Est', 'Ouest'];
+  const produits = ['A', 'B', 'C', 'D', 'E'];
+  const table = (order, over) => {
+    const make = Object.assign({
+      Region: (i) => regions[i % 4],
+      Produit: (i) => produits[i % 5],
+      Quantite: (i) => 10 + (i * 7) % 23,
+      PrixUnitaire: (i) => 9.5 + (i % 5) * 3.25,
+      Montant: (i) => (10 + (i * 7) % 23) * (9.5 + (i % 5) * 3.25)
+    }, over || {});
+    return Array.from({ length: 60 }, (_, i) => Object.fromEntries([['id', i + 1]].concat(order.map((c) => [c, make[c](i)]))));
+  };
+  const measureOrder = (order, over) => advice.analyzeColumns(table(order, over)).measures.map((p) => p.id);
+  // quel que soit l'ordre des colonnes, le prix passe après le montant
+  assert.deepStrictEqual(measureOrder(['Region', 'Produit', 'PrixUnitaire', 'Montant']), ['Montant', 'PrixUnitaire']);
+  assert.deepStrictEqual(measureOrder(['Region', 'Produit', 'Montant', 'PrixUnitaire']), ['Montant', 'PrixUnitaire']);
+  assert.deepStrictEqual(measureOrder(['Region', 'Produit', 'PrixUnitaire', 'Quantite', 'Montant']), ['Quantite', 'Montant', 'PrixUnitaire']);
+  assert.deepStrictEqual(measureOrder(['Region', 'Produit', 'Quantite', 'PrixUnitaire', 'Montant']), ['Quantite', 'Montant', 'PrixUnitaire']);
+  // un montant avec des retours (négatifs) et des cases vides passe encore avant le prix
+  assert.deepStrictEqual(measureOrder(['Region', 'Produit', 'PrixUnitaire', 'Montant'], { Montant: (i) => (i % 7 === 0 ? -50 : 100 + i) }), ['Montant', 'PrixUnitaire']);
+  assert.deepStrictEqual(measureOrder(['Region', 'Produit', 'PrixUnitaire', 'Montant'], { Montant: (i) => (i % 10 === 0 ? '' : 100.5 + i * 1.7) }), ['Montant', 'PrixUnitaire']);
+  // « Prix total » est un montant : il garde son rang d'origine (colonne d'avant)
+  assert.deepStrictEqual(measureOrder(['Region', 'Produit', 'Prix total', 'Prix unitaire'], { 'Prix total': (i) => 100.5 + i * 3.1, 'Prix unitaire': (i) => 9.5 + (i % 5) }), ['Prix total', 'Prix unitaire']);
+  assert.deepStrictEqual(measureOrder(['Region', 'Produit', 'Prix unitaire', 'Prix total'], { 'Prix total': (i) => 100.5 + i * 3.1, 'Prix unitaire': (i) => 9.5 + (i % 5) }), ['Prix total', 'Prix unitaire']);
+  // les suggestions de l'accueil et le préremplissage du formulaire suivent : le montant, additionné
+  for (const order of [['Region', 'Produit', 'PrixUnitaire', 'Montant'], ['Region', 'Produit', 'Quantite', 'PrixUnitaire', 'Montant']]) {
+    const rows = table(order);
+    const first = order.indexOf('Quantite') === -1 ? 'Montant' : 'Quantite';
+    const sugg = advice.suggestTiles(rows, order);
+    assert.ok(sugg.length >= 3);
+    sugg.forEach((x) => assert.notStrictEqual(x.tileData.measure, 'PrixUnitaire', x.type + ' : jamais le prix unitaire en vedette'));
+    assert.ok(sugg.some((x) => x.tileData.measure === first && x.tileData.aggFn === 'sum'), 'la mesure vedette est additionnée');
+    const d = advice.defaultsForType('bar', rows, order);
+    assert.strictEqual(d.measure, first);
+    assert.strictEqual(d.aggFn, 'sum');
+  }
+  assert.strictEqual(advice.defaultsForType('kpi', table(['Region', 'Produit', 'PrixUnitaire', 'Montant']), ['Region', 'Produit', 'PrixUnitaire', 'Montant']).measure, 'Montant');
+  // un prix qui reste la seule mesure est proposé, mais jamais additionné
+  {
+    const rows = table(['Region', 'Produit', 'PrixUnitaire']);
+    const sugg = advice.suggestTiles(rows, ['Region', 'Produit', 'PrixUnitaire']);
+    assert.ok(sugg.length >= 1);
+    sugg.forEach((x) => { assert.strictEqual(x.tileData.measure, 'PrixUnitaire'); assert.strictEqual(x.tileData.aggFn, 'avg', x.type + ' : prix moyenné'); });
+    assert.strictEqual(advice.defaultsForType('bar', rows, ['Region', 'Produit', 'PrixUnitaire']).aggFn, 'avg');
+  }
+  // les noms déjà moyennés (note, taux…) et les autres colonnes ne changent pas
+  assert.strictEqual(advice.defaultsForType('bar', table(['Region', 'Produit', 'Montant']), ['Region', 'Produit', 'Montant']).aggFn, 'sum');
+  console.log('OK assistant de démarrage — un montant passe avant un prix unitaire (ordre des colonnes, négatifs, cases vides), « Prix total » épargné, prix seul moyenné');
+}
+
 // measureExportSheet / buildWorkbookSheetsAsync : export Excel RÉEL (plus un simple message) pour
 // une tuile Barres en mode de calcul temporel (Cumul/YTD/N-1) — voir js/export.js. `computeMeasureSeries`
 // est ici FACTICE (une Promise résolue avec un timeSeries écrit à la main), jamais le vrai

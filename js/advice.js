@@ -105,7 +105,34 @@
   // Simple indice tiré du nom, en français ou en anglais : la somme reste le choix par défaut, et la
   // personne garde la main sur l'agrégat dans le formulaire.
   const AVERAGE_NAME_RE = /(^|[^a-zà-ÿ])(notes?|score|taux|rate|ratio|pct|percent|percentage|pourcentage|moyenne|average|avg|satisfaction|age|âge)([^a-zà-ÿ]|$)|%/i;
-  function aggFor(p) { return AVERAGE_NAME_RE.test(p.id) ? 'avg' : 'sum'; }
+
+  // Prix unitaire (Prix, PrixUnitaire, unit_price, Tarif, PU…) : un montant PAR unité, qu'on ne somme jamais (la somme des prix de
+  // 5 000 lignes n'est rien) et qu'on ne choisit pas comme mesure vedette quand la table a aussi un vrai montant (Montant, Total, CA…).
+  // Indice tiré du nom comme AVERAGE_NAME_RE (les valeurs seules ne distinguent pas un prix d'un montant) : le nom est coupé en mots
+  // (camelCase, `_`, espaces) et un mot de montant (« Prix total ») annule l'indice. Seul le CLASSEMENT change : un prix reste mesure,
+  // et s'il est la seule colonne numérique c'est lui qui est proposé (moyenne).
+  const PRICE_WORDS = new Set(['prix', 'price', 'prices', 'tarif', 'tarifs', 'pu', 'puht', 'puttc']);
+  const UNIT_WORDS = new Set(['unit', 'unite', 'unitaire', 'unitary']);
+  const COST_WORDS = new Set(['cout', 'cost']);
+  const AMOUNT_WORDS = new Set(['total', 'montant', 'amount', 'revenue', 'revenu', 'ca', 'chiffre', 'somme', 'sum', 'subtotal']);
+  function nameWords(name) {
+    return String(name == null ? '' : name)
+      .replace(/([a-zà-ÿ])([A-ZÀ-Þ])/g, '$1 $2')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .split(/[^a-z]+/)
+      .filter(Boolean);
+  }
+  function isUnitPriceName(name) {
+    const words = nameWords(name);
+    if (words.some((w) => AMOUNT_WORDS.has(w))) return false;
+    if (words.some((w) => PRICE_WORDS.has(w))) return true;
+    return words.some((w) => UNIT_WORDS.has(w)) && words.some((w) => COST_WORDS.has(w));
+  }
+  // Pénalité de classement d'un prix unitaire parmi les mesures : assez forte pour passer derrière un montant qui aurait des
+  // négatifs (retours, avoirs : -1 point) ou quelques cases vides, pas assez pour passer derrière une colonne ambiguë (petit entier).
+  const UNIT_PRICE_RANK_PENALTY = 3;
+  function aggFor(p) { return (AVERAGE_NAME_RE.test(p.id) || isUnitPriceName(p.id)) ? 'avg' : 'sum'; }
 
   function looksLikeIdName(name) {
     return /(^|[^A-Za-z])(id|uuid|ref)([^A-Za-z]|$)/i.test(name) || /[a-z](Id|ID)$/.test(name);
@@ -319,11 +346,11 @@
     const byOrder = (a, b) => order.get(a.id) - order.get(b.id);
 
     // Mesures : vraies colonnes numériques d'abord (sans négatif, peu de cases vides), les petits
-    // entiers ambigus en dernier ; l'ordre des colonnes départage (les chiffres clés sont d'ordinaire
+    // entiers ambigus en dernier, un prix unitaire derrière tout vrai montant ; l'ordre des colonnes départage (les chiffres clés sont d'ordinaire
     // à droite des axes, mais la première colonne numérique reste le meilleur pari).
     const measures = profiles
       .filter((p) => p.role === 'measure')
-      .map((p) => ({ p, score: (p.lowCardinality ? (p.ordinal ? -2 : 0) : 10) + (p.negatives === 0 ? 1 : 0) - p.emptyRatio * 5 }))
+      .map((p) => ({ p, score: (p.lowCardinality ? (p.ordinal ? -2 : 0) : 10) + (p.negatives === 0 ? 1 : 0) - p.emptyRatio * 5 - (isUnitPriceName(p.id) ? UNIT_PRICE_RANK_PENALTY : 0) }))
       .sort((a, b) => (b.score - a.score) || byOrder(a.p, b.p))
       .map((x) => x.p);
 
@@ -1019,6 +1046,6 @@
     TILE_TYPES, USE_KEYS, previewFor,
     profileColumns, analyzeColumns, columnKind,
     suggestTiles, defaultsForType, adviceForTile, adviceForType,
-    appearsAscending
+    appearsAscending, isUnitPriceName
   };
 });

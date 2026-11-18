@@ -3295,6 +3295,20 @@ Dernier lot de l'audit : tout ce qui, hors des nombres eux-mêmes, rendait une t
 - **Testé** : Node (`importMapHas` : présent/absent/illisible, câblage lu dans la source, importmap réel d'index.html) ; Playwright contre le vrai `index.html` +
   `grist-stub.js` : 15 cartes sans d3-cloud, 16 avec une entrée d'importmap ajoutée à la volée, carte conservée en modifiant une tuile Nuage de mots. **Pas testé dans un vrai Grist.**
 
+### Correctifs avant l'alpha — l'assistant préfère un montant à un prix unitaire (18/11/2026)
+
+- **Défaut** (bug réel n°47, TEST_PROTOCOL.md) : sur la table de démo, les cartes d'accueil, le préremplissage du formulaire et le KPI prenaient `PrixUnitaire` en somme au
+  lieu de `Montant`. Cause : le classement des mesures de `js/advice.js:analyzeColumns` ne regarde que les valeurs (type, négatifs, cases vides) puis l'ordre des colonnes.
+- **Décision** : un nom de colonne dit « prix par unité » (`isUnitPriceName` : Prix, PrixUnitaire, unit_price, Tarif, PU, Prix HT, Prix de vente, Coût unitaire…) -> -3 points
+  de classement ET moyenne au lieu de somme (`aggFor`). Un mot de montant dans le nom (« Prix total », « Montant ») annule l'indice. Même famille que `AVERAGE_NAME_RE`
+  (note, taux…) : un indice tiré du nom, jamais une certitude ; la personne garde la main dans le formulaire.
+- **Ce qui ne change pas** : un prix reste une mesure (seul, il est proposé, en moyenne) ; une quantité garde son rang (« Quantité » avant « Montant » si elle vient
+  en premier et n'est pas un petit entier ambigu) — on ne préfère PAS un montant à tout, seulement à un prix par unité.
+- **Pas fait, à décider** : repérer un montant par son nom (bonus à Montant/Total/CA) ; repérer `Montant ≈ Quantité × Prix` dans les valeurs ; autres noms de prix
+  (langues autres que fr/en).
+- **Testé** : Node (noms reconnus/épargnés, ordre des mesures pour 4 ordres de colonnes, montant à retours/cases vides, « Prix total », prix seul moyenné, suggestions et
+  préremplissage) ; Playwright contre le vrai `index.html` + `grist-stub.js` sur la démo v3 anonymisée. **Pas testé dans un vrai Grist.**
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée
