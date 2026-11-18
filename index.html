@@ -468,6 +468,7 @@
         <option value="kpi" data-i18n="tileForm.type.kpi">Carte KPI</option>
         <option value="gauge" data-i18n="tileForm.type.gauge">Jauge</option>
         <option value="pivot" data-i18n="tileForm.type.pivot">Tableau croisé</option>
+        <option value="table" data-i18n="tileForm.type.table">Table</option>
         <option value="text" data-i18n="tileForm.type.text">Texte</option>
       </select>
     </div>
@@ -536,6 +537,11 @@
         <label for="tile-gauge-max" data-i18n="tileForm.gaugeMax.label">Max</label>
         <input type="number" id="tile-gauge-max" value="100" />
       </div>
+        <div class="field" id="tile-columns-field" hidden>
+          <label id="tile-columns-label" data-i18n="tileForm.columns.label">Colonnes à afficher</label>
+          <ul id="tile-columns" class="columns-list" tabindex="-1" aria-labelledby="tile-columns-label"></ul>
+          <p class="field-hint" data-i18n="tileForm.columns.hint">Cochez les colonnes ; les flèches changent leur ordre.</p>
+        </div>
         <div class="field" id="tile-text-field" hidden>
           <label for="tile-text" data-i18n="tileForm.text.label">Texte</label>
           <textarea id="tile-text" rows="6" maxlength="2000" autocomplete="off"></textarea>
@@ -635,6 +641,32 @@
                 <option value="gray" data-i18n="tileForm.palette.gray">Dégradé gris (impression noir et blanc)</option>
               </select>
               <div class="palette-swatch" id="tile-palette-swatch" aria-hidden="true"></div>
+            </div>
+            <div class="field" id="tile-numfmt-field" hidden>
+              <label for="tile-numfmt" data-i18n="tileForm.numFormat.label">Format des nombres</label>
+              <select id="tile-numfmt">
+                <option value="auto" data-i18n="tileForm.numFormat.auto">Automatique (lisible)</option>
+                <option value="column" data-i18n="tileForm.numFormat.column">Comme dans la colonne</option>
+                <option value="custom" data-i18n="tileForm.numFormat.custom">Personnalisé</option>
+              </select>
+              <div class="numfmt-custom" id="tile-numfmt-custom" hidden>
+                <label for="tile-numfmt-decimals" data-i18n="tileForm.numFormat.decimals">Décimales</label>
+                <select id="tile-numfmt-decimals">
+                  <option value="auto" data-i18n="tileForm.numFormat.decimalsAuto">Selon la valeur</option>
+                  <option value="0">0</option>
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                  <option value="4">4</option>
+                  <option value="5">5</option>
+                  <option value="6">6</option>
+                </select>
+                <label class="numfmt-compact" for="tile-numfmt-compact">
+                  <input type="checkbox" id="tile-numfmt-compact" />
+                  <span data-i18n="tileForm.numFormat.compact">Notation compacte (1,2 M)</span>
+                </label>
+              </div>
+              <p class="field-hint" id="tile-numfmt-hint" hidden></p>
             </div>
             <div class="field field-checkbox" id="tile-horizontal-field" hidden>
               <label for="tile-horizontal">

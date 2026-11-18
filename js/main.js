@@ -115,6 +115,7 @@
     'type-treemap': '<rect x="2" y="2.5" width="12" height="11" rx="1"/><path d="M8.5 2.5v11M8.5 8H14"/>',
     'type-funnel': '<path d="M2 3h12l-3.5 4.5v4.5L5.5 14V7.5L2 3Z"/>',
     'type-text': '<path d="M2.5 4h11M2.5 8h11M2.5 12h6.5"/>',
+    'type-table': '<rect x="2" y="2.5" width="12" height="11" rx="1"/><path d="M2 6.2h12M2 9.9h12"/>',
     'type-scatter': '<circle cx="4.5" cy="10.5" r="1"/><circle cx="8" cy="6" r="1"/><circle cx="11" cy="9" r="1"/><circle cx="12" cy="4.5" r="1"/><path d="M2 14h12"/>',
     'type-waterfall': '<rect x="2.5" y="3" width="3" height="5" rx=".5"/><rect x="6.5" y="6" width="3" height="4" rx=".5"/><rect x="10.5" y="8" width="3" height="5" rx=".5"/>',
     'type-radar': '<path d="M8 2l5.5 4-2 6.5h-7L2.5 6 8 2Z"/><path d="M8 5.5l2.8 2-1 3.2H6.2l-1-3.2 2.8-2Z"/>',
@@ -220,6 +221,8 @@
   const drillCrossFilterField = document.getElementById('tile-drill-crossfilter-field');
   const drillCrossFilterCheckbox = document.getElementById('tile-drill-crossfilter');
   const measureField = document.getElementById('tile-measure-field');
+  const tileColumnsField = document.getElementById('tile-columns-field');
+  const tileColumnsList = document.getElementById('tile-columns');
   const tileTextField = document.getElementById('tile-text-field');
   const tileTextInput = document.getElementById('tile-text');
   const measureLabel = document.getElementById('tile-measure-label');
@@ -239,6 +242,14 @@
   const paletteField = document.getElementById('tile-palette-field');
   const paletteSelect = document.getElementById('tile-palette');
   const paletteSwatch = document.getElementById('tile-palette-swatch');
+  // Format des nombres de la tuile (`tile.numberFormat`, js/format.js) : liste Automatique / Comme dans la colonne /
+  // Personnalisé, + (décimales, notation compacte) visibles seulement en « Personnalisé » et une ligne d'explication.
+  const numFmtField = document.getElementById('tile-numfmt-field');
+  const numFmtSelect = document.getElementById('tile-numfmt');
+  const numFmtCustom = document.getElementById('tile-numfmt-custom');
+  const numFmtDecimals = document.getElementById('tile-numfmt-decimals');
+  const numFmtCompact = document.getElementById('tile-numfmt-compact');
+  const numFmtHint = document.getElementById('tile-numfmt-hint');
   const stackField = document.getElementById('tile-stack-field');
   const stackedCheckbox = document.getElementById('tile-stacked');
   const donutField = document.getElementById('tile-donut-field');
@@ -476,6 +487,7 @@
     fillCombobox(radarEntityColumnSelect, cols, { blankLabel: t('tileForm.none.f') });
     updateRadarEntityValueOptions(rows);
     fillCombobox(dateColumnSelect, cols);
+    refreshColumnsPicker(cols);
     renderFilterColumns(rows);
     updateAdvancedFilterFieldsForColumn(rows);
     updateSuggestDateHierarchyVisibility(rows);
@@ -684,7 +696,7 @@
 
   // KPI et jauge : une seule valeur agrégée, pas de dimension de regroupement ni de drill-down. Texte : aucune
   // donnée du tout (ni mesure, ni dimension, voir updateFormFieldsForType).
-  function typeHasNoDimension(type) { return type === 'kpi' || type === 'gauge' || type === 'text'; }
+  function typeHasNoDimension(type) { return type === 'kpi' || type === 'gauge' || type === 'text' || type === 'table'; }
 
   // Titres de tuile auto-composés (ex. "YTD : sum(Montant)") : du CONTENU généré à partir de noms
   // de colonnes, pas de la chrome — même périmètre volontairement laissé de côté que les titres
@@ -707,6 +719,7 @@
     let key;
     let vars;
     if (p.isText) { key = 'tileTitle.text'; vars = undefined; }
+    else if (p.isTable) { key = 'tileTitle.table'; vars = { columns: p.tableColumns.slice(0, 3).join(', ') + (p.tableColumns.length > 3 ? '…' : '') }; }
     else if (p.isPivot) { key = 'tileTitle.pivot'; vars = { measure: p.measure, dimension: p.dimension, columnDimension: p.columnDimension }; }
     else if (p.isRadarColumns) { key = 'tileTitle.radarColumns'; vars = { axes: p.radarAxes.join(', ') }; }
     else if (p.isWordCloudSplit) { key = 'tileTitle.wordCloud'; vars = { dimension: p.dimension }; }
@@ -1020,6 +1033,15 @@
     let previousFocusEl = null;
     state.tiles.forEach((tile, index) => {
       let el = existingEls.get(tile.id);
+      // Une tuile dont le TYPE a changé (Modifier > Changer de type) ne peut pas garder son élément : le balisage
+      // (KPI, texte, graphique), la classe `tile-<type>` et l'instance ECharts attachée sont ceux de l'ancien type
+      // (un graphique ne se dessinerait plus, un bouton Détail resterait masqué...). On le recrée.
+      if (el && el.dataset.tileType !== tile.type) {
+        GristBI.charts.disposeTile(tile.id);
+        el.remove();
+        existingEls.delete(tile.id);
+        el = null;
+      }
       if (!el) {
         el = buildTileElement(tile);
         existingEls.set(tile.id, el);
@@ -1309,6 +1331,7 @@
     const el = document.createElement('div');
     el.className = `tile tile-${tile.type}`;
     el.dataset.tileId = tile.id;
+    el.dataset.tileType = tile.type;
     // data-i18n-aria/-title (en plus du texte déjà traduit ci-dessous) : cette tuile est mise en
     // cache et jamais reconstruite tant qu'elle existe (voir render()), donc un changement de
     // langue seul ne repasserait jamais ici — c'est GristBI.i18n.applyTranslations(), appelé à
@@ -1701,6 +1724,101 @@
     });
   }
 
+  // Affiche/masque le réglage « Personnalisé » et écrit l'explication du mode choisi. Appelée par
+  // updateFormFieldsForType et à chaque activité du formulaire (changer de mesure ou d'agrégation change le
+  // verdict de « Comme dans la colonne »).
+  function updateNumberFormatUI() {
+    const mode = numFmtSelect.value;
+    numFmtCustom.hidden = mode !== 'custom';
+    let key = null;
+    let vars = {};
+    if (mode === 'auto') key = 'tileForm.numFormat.hint.auto';
+    else if (mode === 'column' && tileTypeSelect.value === 'table') {
+      key = 'tileForm.numFormat.hint.columnEach'; // pas de mesure : chaque colonne numérique reprend son propre format
+    } else if (mode === 'column') {
+      const state = GristBI.format.columnModeState({ aggFn: aggSelect.value }, measureSelect.value);
+      key = `tileForm.numFormat.hint.column${state.charAt(0).toUpperCase()}${state.slice(1)}`;
+      vars = { column: measureSelect.value };
+    }
+    numFmtHint.hidden = !key;
+    numFmtHint.textContent = key ? t(key, vars) : '';
+  }
+
+  // Lecture/écriture du réglage dans le formulaire (jamais « auto » dans la configuration : une tuile sans
+  // `numberFormat` est déjà en Automatique, voir readTileForm).
+  function setNumberFormatForm(spec) {
+    const s = GristBI.format.normalizeSpec(spec);
+    numFmtSelect.value = s.mode;
+    numFmtDecimals.value = s.mode === 'custom' ? String(s.decimals) : 'auto';
+    numFmtCompact.checked = s.mode === 'custom' && s.notation === 'compact';
+    updateNumberFormatUI();
+  }
+  function numberFormatFromForm() {
+    const mode = numFmtSelect.value;
+    if (mode === 'column') return { mode: 'column' };
+    if (mode === 'custom') {
+      const d = numFmtDecimals.value;
+      return { mode: 'custom', decimals: d === 'auto' ? 'auto' : Number(d), notation: numFmtCompact.checked ? 'compact' : 'standard' };
+    }
+    return undefined;
+  }
+  // --- Table plate : colonnes à afficher (cases à cocher + flèches d'ordre) -----------------------------------
+  // `tile.columns` = les colonnes COCHÉES, dans l'ordre de la liste. Les colonnes non cochées suivent, dans
+  // l'ordre de la table. L'état vit dans le DOM (une ligne `li[data-col]` par colonne) : la lecture
+  // (`readColumnsPicker`) ne mémorise rien, donc rien à resynchroniser quand la table change.
+  function readColumnsOrder() { return Array.from(tileColumnsList.querySelectorAll('li')).map((li) => li.dataset.col); }
+  function readColumnsPicker() {
+    return Array.from(tileColumnsList.querySelectorAll('li')).filter((li) => li.querySelector('input').checked).map((li) => li.dataset.col);
+  }
+  function renderColumnsPicker(order, checkedSet, focusCol, focusDir) {
+    tileColumnsList.innerHTML = '';
+    order.forEach((col, i) => {
+      const li = document.createElement('li');
+      li.dataset.col = col;
+      li.innerHTML = `<label><input type="checkbox"> <span></span></label>`
+        + `<button type="button" class="col-move" data-dir="-1" aria-label="${escapeHtml(t('tileForm.columns.up', { column: col }))}">▲</button>`
+        + `<button type="button" class="col-move" data-dir="1" aria-label="${escapeHtml(t('tileForm.columns.down', { column: col }))}">▼</button>`;
+      li.querySelector('span').textContent = col;
+      li.querySelector('input').checked = checkedSet.has(col);
+      li.querySelector('[data-dir="-1"]').disabled = i === 0;
+      li.querySelector('[data-dir="1"]').disabled = i === order.length - 1;
+      tileColumnsList.appendChild(li);
+    });
+    if (focusCol) {
+      const li = Array.from(tileColumnsList.children).find((n) => n.dataset.col === focusCol);
+      const btn = li && li.querySelector(`[data-dir="${focusDir}"]:not(:disabled)`) || (li && li.querySelector('.col-move:not(:disabled)'));
+      if (btn) btn.focus({ preventScroll: true });
+    }
+  }
+  // `selected` : colonnes à cocher (dans l'ordre voulu) ; les autres colonnes de `cols` suivent, décochées.
+  function setColumnsPicker(selected, cols) {
+    cols = cols || availableColumns(store.getState().rows);
+    const sel = (selected || []).filter((c) => cols.includes(c));
+    renderColumnsPicker(sel.concat(cols.filter((c) => !sel.includes(c))), new Set(sel));
+  }
+  function defaultTableColumns(cols) {
+    const d = GristBI.advice ? GristBI.advice.defaultsForType('table', [], cols) : null;
+    return d && d.columns ? d.columns : cols.slice(0, 6);
+  }
+  // Changement de table/de lignes : garde les cases cochées qui existent encore, sinon recoche les premières.
+  function refreshColumnsPicker(cols) {
+    const keep = readColumnsPicker().filter((c) => cols.includes(c));
+    const order = readColumnsOrder().filter((c) => cols.includes(c));
+    if (!keep.length && !order.length) { setColumnsPicker(defaultTableColumns(cols), cols); return; }
+    const rest = cols.filter((c) => !order.includes(c));
+    renderColumnsPicker(order.concat(rest), new Set(keep));
+  }
+  tileColumnsList.addEventListener('click', (e) => {
+    const btn = e.target.closest && e.target.closest('.col-move');
+    if (!btn) return;
+    const col = btn.closest('li').dataset.col;
+    const dir = Number(btn.dataset.dir);
+    const checked = new Set(readColumnsPicker());
+    renderColumnsPicker(GristBI.data.moveInOrder(readColumnsOrder(), col, dir), checked, col, String(dir));
+    schedulePreview();
+  });
+  tileColumnsList.addEventListener('change', () => schedulePreview());
+
   function updateFormFieldsForType() {
     const type = tileTypeSelect.value;
     const isKpi = type === 'kpi';
@@ -1714,6 +1832,7 @@
     const isWordCloud = type === 'wordcloud';
     const isWordCloudSplit = isWordCloudSplitMode();
     const isText = type === 'text';
+    const isTable = type === 'table';
     // KPI/jauge/tuile "Barres" en mode de calcul temporel : pas de dimension de regroupement ni de
     // drill-down, juste un agrégat sur toute la sélection (le KPI peut en plus le comparer à une
     // période via "Tendance vs", la jauge le positionne sur un cadran Min/Max, la tuile Barres en
@@ -1730,9 +1849,10 @@
     // comme dimensionField/drillField ci-dessus plutôt que laissés visibles mais ignorés.
     radarModeField.hidden = !isRadar;
     radarAxesField.hidden = !isRadarColumns;
-    measureField.hidden = isRadarColumns || isWordCloudSplit || isText;
-    aggField.hidden = isRadarColumns || isWordCloudSplit || isText;
+    measureField.hidden = isRadarColumns || isWordCloudSplit || isText || isTable;
+    aggField.hidden = isRadarColumns || isWordCloudSplit || isText || isTable;
     tileTextField.hidden = !isText;
+    tileColumnsField.hidden = !isTable;
     // Comparaison élève/moyenne du groupe filtré : valable dans les DEUX modes d'axes (dimension ET
     // columns), voir ROADMAP.md — contrairement au bloc ci-dessus, pas de dépendance à isRadarColumns.
     radarEntityColumnField.hidden = !isRadar;
@@ -1761,6 +1881,8 @@
     // Palette : tous les types qui colorent leurs marques (pas la cascade, le KPI ni le tableau croisé).
     paletteField.hidden = !GristBI.data.supportsPalette({ type });
     updatePaletteSwatch();
+    numFmtField.hidden = !GristBI.data.supportsNumberFormat({ type });
+    updateNumberFormatUI();
     stackField.hidden = !(seriesSelect.value && (isBarBrut || (type === 'line' && areaCheckbox.checked)));
     donutField.hidden = type !== 'pie';
     showPctField.hidden = type !== 'pie';
@@ -1836,6 +1958,7 @@
     areaCheckbox.checked = !!tile.areaFill;
     stackedCheckbox.checked = !!tile.stacked;
     paletteSelect.value = GristBI.data.PALETTE_KEYS.includes(tile.palette) ? tile.palette : 'standard';
+    setNumberFormatForm(tile.numberFormat);
     donutCheckbox.checked = !!tile.donut;
     showPctCheckbox.checked = !!tile.showPct;
     radarEntityColumnSelect.value = tile.radarEntityColumn || '';
@@ -1845,6 +1968,7 @@
     updateFormFieldsForType();
     measureSelect.value = tile.measure || '';
     tileTextInput.value = tile.text || '';
+    if (tile.type === 'table') setColumnsPicker(tile.columns);
     aggSelect.value = tile.aggFn;
     trendDimensionSelect.value = tile.trendDimension || '';
     // Titre : un titre auto-composé (`titleKey`) n'est PAS recopié dans le champ — il resterait figé
@@ -1930,6 +2054,8 @@
     const isRadarColumns = isRadarColumnsMode();
     const isWordCloudSplit = isWordCloudSplitMode();
     const isText = type === 'text';
+    const isTable = type === 'table';
+    const tableColumns = isTable ? readColumnsPicker() : [];
     const textValue = isText ? tileTextInput.value.slice(0, GristBI.data.TEXT_TILE_MAX) : '';
     const hasDimension = !formHasNoDimension();
     const dimension = dimensionSelect.value;
@@ -1942,7 +2068,8 @@
     // dimension, elle, reste requise dans les deux cas sauf radar "colonnes" (seul mode sans aucune
     // dimension unique, voir formHasNoDimension).
     if (isText && !textValue.trim()) fail('tile-text', 'tileForm.error.textRequired');
-    if (!isRadarColumns && !isWordCloudSplit && !isText && !measure) fail('tile-measure', 'tileForm.error.measureRequired');
+    if (isTable && !tableColumns.length) fail('tile-columns', 'tileForm.error.columnsRequired');
+    if (!isRadarColumns && !isWordCloudSplit && !isText && !isTable && !measure) fail('tile-measure', 'tileForm.error.measureRequired');
     if (hasDimension && !dimension) fail('tile-dimension', 'tileForm.error.dimensionRequired');
     if (isScatter && !measureYSelect.value) fail('tile-measure-y', 'tileForm.error.measureYRequired'); // 2e mesure obligatoire pour un nuage de points
     if (measureMode && !dateColumn) fail('tile-date-column', 'tileForm.alert.dateColumnRequired');
@@ -1973,7 +2100,7 @@
     // voir i18n.js:tileTitle) pour que l'en-tête de tuile suive la langue de l'interface au lieu de
     // rester figé dans celle de sa création.
     const auto = autoTileTitle({
-      isText, isPivot, isRadarColumns, isWordCloudSplit, hasDimension, measureMode,
+      isText, isTable, tableColumns, isPivot, isRadarColumns, isWordCloudSplit, hasDimension, measureMode,
       measure, dimension, columnDimension, aggFn, radarAxes, seriesColumn
     });
     const customTitle = tileTitleInput.value.trim();
@@ -1983,8 +2110,9 @@
     const tileData = { type, dimension, measure, aggFn, title, titleKey, titleVars };
     // Tuile Texte : aucune donnée. Les champs de données sont effacés (`undefined`) plutôt que laissés à la
     // valeur fantôme du formulaire, et `text` n'existe que sur ce type.
-    if (isText) { tileData.dimension = undefined; tileData.measure = undefined; tileData.aggFn = undefined; }
+    if (isText || isTable) { tileData.dimension = undefined; tileData.measure = undefined; tileData.aggFn = undefined; }
     tileData.text = isText ? textValue : undefined;
+    tileData.columns = isTable ? tableColumns : undefined;
     // Nuage de mots "découpage de cellule" : mesure/agrégat ignorés par le rendu (voir
     // js/charts.js), effacés ici plutôt que laissés à une valeur fantôme du formulaire — même
     // principe que les champs spécifiques à un type plus bas.
@@ -2023,6 +2151,8 @@
     tileData.areaFill = (type === 'line' && areaCheckbox.checked) ? true : undefined;
     // `standard` n'est jamais écrit : une tuile sans choix de palette garde exactement sa configuration d'avant.
     tileData.palette = (GristBI.data.supportsPalette({ type }) && paletteSelect.value !== 'standard' && GristBI.data.PALETTE_KEYS.includes(paletteSelect.value)) ? paletteSelect.value : undefined;
+    // Format des nombres : `undefined` = Automatique (jamais écrit), comme `palette` ci-dessus.
+    tileData.numberFormat = GristBI.data.supportsNumberFormat({ type }) ? numberFormatFromForm() : undefined;
     tileData.stacked = (seriesColumn && stackedCheckbox.checked && ((isBar && !measureMode) || (type === 'line' && areaCheckbox.checked))) ? true : undefined;
     tileData.donut = (type === 'pie' && donutCheckbox.checked) ? true : undefined;
     tileData.showPct = (type === 'pie' && showPctCheckbox.checked) ? true : undefined;
@@ -2095,7 +2225,7 @@
   // repliées, aperçu en direct, conseil en direct). Le panneau est en flux normal (voir css/style.css) :
   // il ne recouvre jamais la barre. Toute la lecture du formulaire passe par readTileForm() ci-dessus.
   // =============================================================================================
-  const TYPE_CARDS = ['bar', 'line', 'pie', 'treemap', 'funnel', 'scatter', 'waterfall', 'radar', 'wordcloud', 'kpi', 'gauge', 'pivot', 'text'];
+  const TYPE_CARDS = ['bar', 'line', 'pie', 'treemap', 'funnel', 'scatter', 'waterfall', 'radar', 'wordcloud', 'kpi', 'gauge', 'pivot', 'table', 'text'];
   const PREVIEW_TILE_ID = '__preview__';
   let panelOpener = null;
   let previewTimer = null;
@@ -2151,12 +2281,14 @@
     areaCheckbox.checked = false;
     stackedCheckbox.checked = false;
     paletteSelect.value = 'standard';
+    setNumberFormatForm(null);
     donutCheckbox.checked = false;
     showPctCheckbox.checked = false;
     gaugeMinInput.value = 0;
     gaugeMaxInput.value = 100;
     tileTitleInput.value = '';
     tileTextInput.value = '';
+    setColumnsPicker([]);
     advancedDetailsEl.open = false;
   }
 
@@ -2185,6 +2317,7 @@
       stackedCheckbox.checked = !!d.stacked;
       donutCheckbox.checked = !!d.donut;
       showPctCheckbox.checked = !!d.showPct;
+      if (d.columns) setColumnsPicker(d.columns);
     }
     updateFormFieldsForType();
     if (d) {
@@ -2317,6 +2450,7 @@
   function onFormActivity(evt) {
     // Pendant la frappe dans un combobox, la valeur n'est pas encore choisie : on attend son `change`.
     if (evt.type === 'input' && evt.target.classList && evt.target.classList.contains('combobox-input')) return;
+    updateNumberFormatUI();
     schedulePreview();
     if (submitAttempted) showFormErrors(readTileForm().errors, false);
   }
@@ -2711,11 +2845,28 @@
   // openBlankReport plus bas. Sa seule présence force une (re)prise en compte même si `tableId` ne
   // change pas (un deuxième rapport sur la MÊME table de travail doit quand même recharger ses
   // propres pages/bookmarks/blend, jamais ceux du rapport précédent).
+  // Format des colonnes de la table de travail (type + options d'affichage Grist), pour « Comme dans la colonne »
+  // (js/format.js:setColumnInfo). Lu à CHAQUE changement/rechargement de table ; vidé avant, pour que le format d'une
+  // colonne de l'ancienne table ne s'applique jamais à une colonne de même nom d'une autre. Un échec de lecture
+  // laisse le registre vide (Automatique partout) sans jamais bloquer l'affichage.
+  async function refreshColumnFormats(tableId, clearFirst) {
+    if (clearFirst) GristBI.format.setColumnInfo({}, null);
+    if (!GristBI.api.readColumnFormats) return;
+    try {
+      const info = await GristBI.api.readColumnFormats(tableId);
+      if (tableId !== currentTableId) return; // l'utilisateur a changé de table pendant la lecture
+      GristBI.format.setColumnInfo(info.columns, info.docSettings);
+    } catch (e) {
+      console.warn('[GristBI] format des colonnes illisible, format des nombres Automatique', e);
+    }
+  }
+
   async function switchTable(tableId, rows, report) {
     await flushPendingSave();
     const isNewTable = tableId !== currentTableId || Boolean(report);
     currentTableId = tableId;
     currentPrimaryRows = rows;
+    await refreshColumnFormats(tableId, isNewTable);
     if (isNewTable) {
       dashboardReady = false;
       connectionState = 'connecting';

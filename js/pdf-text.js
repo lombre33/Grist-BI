@@ -1,22 +1,59 @@
 /*
  * Extraction du texte d'un PDF (déposé en pièce jointe Grist) pour alimenter l'extraction de
  * mots-clés (js/keywords.js). Nécessite PDF.js, qui n'est PAS ajouté par ce module ni par aucun
- * autre fichier de ce dépôt : depuis la décision d'Antoine du 2026-11-03 (fil "Importer des
- * fichiers Power BI"), toute bibliothèque passe par GFS (lombre33/grist-widget-GFS), qui vérifie
- * seul qu'elle est sûre/documentée/maintenue puis l'ajoute lui-même (balise CDN, hash SRI ou
- * vendoring, CSP). Ce fichier est donc écrit CONTRE L'API DE PDF.js sans jamais la charger : tant
- * que GFS n'a pas traité la demande inscrite dans GFS-ETAT.md (section "Demandes à GFS", id
- * `pdfjs-dist`), `window.pdfjsLib` est absent et `isAvailable()` renvoie false — jamais un échec
- * silencieux, voir `extractTextFromPdf`.
+ * autre fichier de ce dépôt : depuis la décision d'Antoine du 2026-11-03, toute bibliothèque passe
+ * par GFS (lombre33/grist-widget-GFS), qui l'ajoute lui-même (copie vendorisée, empreinte, CSP).
+ * Ce fichier est écrit CONTRE ce que GFS fournit pour `pdfjs` (relevé le 2026-11-18 : bibliothèque
+ * `pdfjs` 1.0.0, forme `module`, pdfjs-dist 6.5.438) : GFS donne à l'app `{ src, integrite, forme }`
+ * (`contexte.bibliotheques.pdfjs`), l'app charge `src` par `<script type="module" integrity
+ * crossorigin="anonymous">` (jamais `import()`), et le module est alors posé dans
+ * `globalThis.GfsPaquets.pdfjs.modules['pdfjs-dist/build/pdf.min.mjs']` (le worker est dans le même
+ * fichier). `loadLibrary(source)` fait ce chargement quand l'appelant lui donne la source ; tant
+ * qu'elle n'existe pas, `isAvailable()` renvoie false — jamais un échec silencieux.
  *
- * `joinTextItems` est pure et testable sous Node (dev-tests/test-data.js) ; le reste a besoin d'un
- * vrai `window.pdfjsLib` donc d'un navigateur, comme le moteur SQL de duckdb-engine.js.
+ * `joinTextItems`/`joinPages`/`libraryFrom` sont pures et testables sous Node
+ * (dev-tests/test-data.js) ; le chargement réel a besoin d'un navigateur et de GFS, comme le moteur
+ * SQL de duckdb-engine.js.
  */
 (function (global) {
   const GristBI = global.GristBI || (global.GristBI = {});
 
+  const MODULE_KEY = 'pdfjs-dist/build/pdf.min.mjs';
+
+  // Le module pdf.js posé par GFS dans `GfsPaquets`, ou null. Relu à chaque appel (jamais figé).
+  function libraryFrom(scope) {
+    const set = scope && scope.GfsPaquets && scope.GfsPaquets.pdfjs;
+    return (set && set.modules && set.modules[MODULE_KEY]) || null;
+  }
+
   function isAvailable() {
-    return typeof global !== 'undefined' && !!global.pdfjsLib;
+    return !!libraryFrom(globalThis);
+  }
+
+  // Charge pdf.js par la source que GFS donne (`{ src, integrite }`). Rend le module ou rejette avec
+  // un message clair (réseau, politique de sécurité, empreinte, fichier qui ne pose pas GfsPaquets.pdfjs).
+  function loadLibrary(source) {
+    const ready = libraryFrom(globalThis);
+    if (ready) return Promise.resolve(ready);
+    if (!source || !source.src || !source.integrite) {
+      const err = new Error('GFS ne donne pas pdf.js : l\'extension n\'est pas active (voir GFS-ETAT.md).');
+      err.code = 'PDFJS_NOT_AVAILABLE';
+      return Promise.reject(err);
+    }
+    return new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.type = 'module';
+      script.src = source.src;
+      script.integrity = source.integrite;
+      script.crossOrigin = 'anonymous';
+      script.onload = () => {
+        const lib = libraryFrom(globalThis);
+        if (lib) resolve(lib);
+        else reject(new Error('Le fichier est chargé mais ne pose pas GfsPaquets.pdfjs.'));
+      };
+      script.onerror = () => reject(new Error('Le navigateur a refusé le script pdf.js (politique de sécurité, réseau ou empreinte).'));
+      document.head.append(script);
+    });
   }
 
   // `getTextContent()` de PDF.js renvoie `{ items: [{ str, hasEOL, ... }, ...] }` par page : on
@@ -43,7 +80,8 @@
       err.code = 'PDFJS_NOT_AVAILABLE';
       throw err;
     }
-    const doc = await global.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    const pdfjs = libraryFrom(globalThis);
+    const doc = await pdfjs.getDocument({ data: new Uint8Array(arrayBuffer), isEvalSupported: false, verbosity: 0 }).promise;
     const pageTexts = [];
     for (let pageNum = 1; pageNum <= doc.numPages; pageNum++) {
       const page = await doc.getPage(pageNum);
@@ -53,7 +91,7 @@
     return joinPages(pageTexts);
   }
 
-  GristBI.pdfText = { isAvailable, extractTextFromPdf, joinTextItems, joinPages };
+  GristBI.pdfText = { isAvailable, loadLibrary, libraryFrom, extractTextFromPdf, joinTextItems, joinPages };
 
   if (typeof module === 'object' && module.exports) {
     module.exports = GristBI.pdfText;

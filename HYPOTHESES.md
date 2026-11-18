@@ -3122,6 +3122,16 @@ Point de départ : la capture d'une jauge illisible envoyée par Antoine (gradua
 
 **Vérifié** : voir TEST_PROTOCOL.md (tailles normale, étroite, agrandie, thème sombre). **Non vérifié** : rendu dans un vrai Grist/GFS ; lecteur d'écran sur la jauge (aucun libellé accessible n'a été ajouté).
 
+### Lisibilité des valeurs sur les tuiles — lot 3 : réglage « Format des nombres » et « Comme dans la colonne » (18/11/2026)
+
+Demande d'Antoine : « par défaut les chiffres ont beaucoup de chiffres significatifs » (infobulle de treemap « 600,688.2299999992 ») ; il veut un réglage, et une option « comme dans la colonne » qui reprend le formatage de la colonne Grist. Le défaut lui-même avait été corrigé au lot 1 (Automatique) ; ce lot ajoute le réglage.
+
+**Fait** : champ « Format des nombres » dans « Options avancées » du panneau (tous les types qui montrent un nombre, `data.supportsNumberFormat` : liste `NUMBER_FORMAT_TILE_TYPES`, à compléter pour tout nouveau type) avec trois choix : **Automatique** (défaut, jamais écrit dans la configuration), **Comme dans la colonne**, **Personnalisé** (décimales 0 à 6 ou « selon la valeur » + notation compacte). L'aperçu vivant suit le réglage ; une ligne d'explication dit ce que donnerait « Comme dans la colonne » pour la mesure choisie (`format.columnModeState` : `ok` / `none` / `unknown` / `count`). La configuration porte `tile.numberFormat = {mode: 'column'}` ou `{mode: 'custom', decimals, notation}`. Lecture des options : `GristBI.api.readColumnFormats(tableId)` (`js/grist-api.js`) lit le type et `widgetOptions` de chaque colonne dans `_grist_Tables_column` et `documentSettings` dans `_grist_DocInfo` ; `js/main.js:refreshColumnFormats` l'appelle à chaque `switchTable` (registre vidé au changement de table, pour qu'une colonne de même nom d'une autre table ne reprenne pas son format) puis `GristBI.format.setColumnInfo`.
+
+**Choix assumés** : (1) « Comme dans la colonne » reprend aussi la **locale du document** (séparateurs de Grist) et non celle de l'interface — c'est ce que « comme dans la colonne » veut dire ; Automatique et Personnalisé suivent la langue de l'interface. (2) Une colonne sans réglage de décimales dans Grist reste en Automatique (sinon Grist afficherait jusqu'à 10 décimales, le défaut que ce lot corrige) ; ses autres options (devise, %) sont reprises. (3) Un comptage n'a jamais le format d'une colonne. (4) Une mesure fusionnée par data blending (`Table.colonne`), une colonne dérivée (`Date.Annee`) ou une table sans lecture possible : Automatique, sans erreur. (5) Les libellés d'axe restent compacts (3 chiffres significatifs) quel que soit le mode : la précision se lit dans l'infobulle et la valeur. (6) La table plate (autre fil, `format.cellNumber`) a le même champ : « Comme dans la colonne » y donne à CHAQUE colonne numérique son propre format (vérifié : « 100 000,23 € », « 10 », « 10,0 % » sur trois colonnes), « Personnalisé » s'applique à toutes.
+
+**Non vérifié** : la forme exacte de `_grist_Tables_column.widgetOptions` et de `_grist_DocInfo.documentSettings` dans un vrai Grist (JSON texte, clés `numMode`/`currency`/`decimals`/`maxDecimals`/`numSign`, `locale`/`currency`) est celle de la documentation et du comportement connu du moteur, jamais confirmée sur un document ouvert ; le mock (`dev-tests/grist-stub.js`) a reçu `widgetOptions` et `_grist_DocInfo` d'après cette même hypothèse. À confirmer à la console d'un vrai widget : `JSON.stringify(await grist.docApi.fetchTable('_grist_DocInfo'))` et `fetchTable('_grist_Tables_column')`. Si la forme diffère, la lecture retombe sur Automatique sans erreur (vérifié contre un mock qui lève).
+
 ### Tuiles usuelles des outils BI — lot 1, tuile Texte (18/11/2026)
 
 Étude de départ : `etudes/tuiles-usuelles-dashboard-2026-11-18.md` (fil « Lister les tuiles usuelles de
@@ -3173,6 +3183,29 @@ des nombres étant laissé au fil « Rendre les valeurs lisibles sur chaque tuil
     `allow-scripts allow-forms allow-popups allow-modals allow-downloads` (`prototype/js/broker/frames.js:8`, `docs/cahier-des-charges-gfs.md:185`, lus) : le
     téléchargement devrait donc partir dans GFS, **non rejoué dans le vrai GFS**. **Non vérifié** : un vrai Grist ; l'ouverture du classeur dans Excel/LibreOffice
     (relu seulement par ExcelJS et par inspection du XML) ; les exports PDF/PPTX dans un cadre sans `allow-downloads` (même mécanisme, non essayé).
+
+### Tuiles usuelles des outils BI — lot 1, table plate (18/11/2026)
+
+- **Ce que c'est** : type `table`, `tile.columns` (au moins une) = les colonnes cochées dans le formulaire, dans l'ordre des
+  flèches ▲▼ ; une ligne par ligne de la table de travail après les mêmes filtres que le bouton « Détail » (`rowsForTile`) ;
+  aucune agrégation, ni dimension, ni mesure.
+- **Tri** : un clic sur l'en-tête (croissant, décroissant, ordre d'origine) est un état de LECTURE, gardé par id de tuile dans
+  `js/charts.js` et jamais écrit dans la configuration : une personne qui lit le tableau de bord ne modifie pas la tuile des
+  autres, comme pour le chemin de drill-down. Il s'applique à TOUTES les lignes avant la coupe d'affichage (500).
+- **Choix de format des nombres** : Automatique = la donnée brute (`GristBI.format.cellNumber`), parce que le format Automatique
+  des chiffres clés (« 2 024 », milliers dès 1 000) serait faux pour une année, un code postal ou un identifiant. Un format
+  choisi pour la tuile (`custom`, ou « comme dans la colonne ») s'applique, avec le lot du fil « valeurs lisibles ».
+- **Pas de cross-filtre au clic d'une ligne** (décision de départ, à rouvrir si Antoine le veut) : une ligne n'est pas une catégorie,
+  et un clic de cellule qui poserait un filtre `=` sur n'importe quelle colonne numérique serait surprenant ; le filtre avancé couvre
+  ce besoin.
+- **Exports** : Excel jusqu'à 100 000 lignes dans l'ordre des colonnes de la tuile ; PDF 200 lignes, PowerPoint 12 (une
+  diapositive), avec une ligne « … N lignes de plus (voir l'export Excel) ».
+- **Bug réel trouvé en chemin** (voir TEST_PROTOCOL.md n°41, CLAUDE.md §7 n°24) : changer le TYPE d'une tuile en édition gardait
+  l'élément DOM de l'ancien type. Corrigé pour tous les types (`render()` recrée l'élément quand `dataset.tileType` diffère).
+- **Testé** : Node (bloc « tuile Table » de `dev-tests/test-data.js`) ; Playwright contre le vrai `index.html` + `grist-stub.js`,
+  page directe et `<iframe sandbox="allow-scripts">` (clics réels : carte Table, cases, flèches, tri, plafond à 1 200 lignes,
+  édition, Excel, anglais). **Pas testé dans un vrai Grist ni un vrai GFS ; types Grist exotiques (Attachments, Reference
+  résolue, ChoiceList) vus seulement par leur forme supposée** (`cellText`).
 
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 

@@ -804,7 +804,7 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 - [x] Chaque infobulle (barre, courbe, aire, camembert, anneau, treemap, entonnoir, cascade, radar, nuage de points, empilé) affiche le format de la langue, jamais « 1,542,980.8799999997 » 🌐
 - [x] KPI : variation en % aux séparateurs de la langue (« 12,8 % » / « 12.8% ») ; valeur minuscule lisible (« 0,00056 ») 🌐
 - [x] 6 000 lignes (DuckDB, `BigInt`) : KPI, infobulle de barre, libellé d'axe formatés 🌐
-- [ ] Lecture des options de colonne dans un vrai Grist ⬜ **[NON TESTABLE ICI]** (réglage de tuile et lecture de `_grist_Tables_column` : lot suivant)
+- [ ] Lecture des options de colonne dans un vrai Grist ⬜ **[NON TESTABLE ICI]** (réglage de tuile et lecture de `_grist_Tables_column` : voir le lot 3 ci-dessous, vérifié contre le mock seulement)
 
 ### `js/format.js` + `js/charts.js` + `css/style.css` — jauge et carte KPI (audit de lisibilité, lot 2, 18/11/2026 ; Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`)
 
@@ -814,6 +814,20 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 - [x] Carte KPI : valeur courte à 30 px, valeur de 20 caractères réduite à ~20 px sans sortir de la tuile, valeur agrandie jusqu'à 84 px 🌐
 - [x] `niceCeil`, `gaugeLayout` (arc, bornes et valeur dans la zone à 7 tailles), `fitFont` ✅
 - [ ] Rendu dans un vrai Grist ⬜ **[NON TESTABLE ICI]**
+
+### `js/format.js` + `js/grist-api.js` + `js/main.js` + `index.html` — réglage « Format des nombres » et « Comme dans la colonne » (audit de lisibilité, lot 3, 18/11/2026 ; Node ; Playwright contre `dev-tests/harness.html` et le vrai `index.html` + faux Grist avec `widgetOptions`)
+
+- [x] `supportsNumberFormat` (types concernés, type inconnu, `null`) ✅
+- [x] `columnModeState` : `ok` (devise, décimales), `none` (mode « decimal » sans décimales, `widgetOptions` vide), `unknown` (colonne absente ou non numérique), `count` ✅
+- [x] La même valeur dans les trois modes (Automatique entier dès 1 000, Comme dans la colonne en euros, Personnalisé 2 décimales fixes / compact 1 décimale) ✅
+- [x] `readColumnFormats` : colonnes de LA bonne table seulement, colonnes d'aide exclues, réglages du document ; table inconnue, tables système illisibles (avertissement, pas d'exception), `_grist_DocInfo` illisible, `widgetOptions` absent, `documentSettings` vide/invalide ✅ (faux `grist` dans un `vm`)
+- [x] Panneau : ajouter une carte en « Comme dans la colonne » (KPI « 2 748 150,84 € »), la rouvrir (le formulaire relit le mode), passer en Personnalisé 0 décimale compact (« 3 M »), revenir en Automatique (la clé disparaît de la configuration) 🌐
+- [x] Infobulles de barres dans les trois modes (« 581 482 » / « 581 482,16 € » / « 581 482,2 »), KPI pourcentage (« 17,15 % »), entier (« 186 »), comptage jamais formaté comme la colonne (« 12 ») 🌐
+- [x] Langue anglaise : Automatique aux séparateurs anglais (« 2,748,151 »), mode colonne aux séparateurs de la locale du document 🌐
+- [x] Le vrai `index.html` charge sans erreur (champ présent, aucune erreur de console) 🌐
+- [x] Table plate : le champ apparaît, « Comme dans la colonne » donne « 100 000,23 € » / « 10 » / « 10,0 % » à trois colonnes de formats différents, ligne d'explication « chaque colonne numérique… » 🌐
+- [x] Champ « Format des nombres » dans `<iframe sandbox="allow-scripts">` (serveur avec CORS, sinon le kit est bloqué) : bloc Personnalisé affiché, ajout d'une carte, `numberFormat` écrit, KPI « 9 350,000 » 🌐 (sans préremplissage `widgetOptions` : seul le réglage Personnalisé y est rejoué)
+- [ ] Lecture de `_grist_Tables_column.widgetOptions` / `_grist_DocInfo.documentSettings` dans un vrai Grist ⬜ **[NON TESTABLE ICI]**
 
 ### `js/data.js` + `js/charts.js` + `js/advice.js` + panneau — tuile Texte (18/11/2026 ; Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`)
 
@@ -836,6 +850,19 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 - [x] 🌐 Navigateur (`index.html` + faux Grist, 5 760 lignes) : aucune requête vers ExcelJS avant le clic, une après ; téléchargement `dashboard-bi.xlsx` ; relu : une feuille par tuile (aire, séries, barres par mois, KPI), tuile en mode mesure YTD avec ses 60 valeurs DuckDB, tuile Texte exclue ; aucune erreur de page ✅
 - [x] 🌐 `<iframe sandbox="allow-scripts">` : AUCUN téléchargement (comme avec SheetJS sur `origin/main`) ; `sandbox="allow-scripts allow-downloads"` : téléchargement reçu ✅ — constat, pas un défaut de l'app ; le cadre de GFS déclare `allow-downloads` (lu)
 - [ ] **[NON TESTABLE ICI]** le vrai GFS (le téléchargement dans son cadre), un vrai Grist, l'ouverture du `.xlsx` dans Excel/LibreOffice, les exports PDF/PPTX dans un cadre sans `allow-downloads`
+
+### `js/data.js` + `js/format.js` + `js/charts.js` + panneau — table plate (18/11/2026 ; Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`)
+
+- [x] Colonnes : celles de `tile.columns` qui existent encore, dans l'ordre choisi ; sans ligne, la liste choisie telle quelle ✅
+- [x] Tri : nombres numériques, texte « naturel » (Lot 2 avant Lot 10) sans casse, dates, vides TOUJOURS à la fin, stable, `BigInt`, copie (le tableau partagé n'est jamais trié) ✅
+- [x] Cycle d'en-tête croissant -> décroissant -> origine (`aria-sort`, focus gardé sur l'en-tête), tri non enregistré dans la configuration 🌐
+- [x] Nombres Automatique = donnée (2024, 1542980,88 / 1542980.88, `-0`, `BigInt`), format choisi respecté ✅
+- [x] Formulaire : champs de données masqués, tout décoché -> erreur sous la liste sans tuile ajoutée, flèches ▲▼ (focus gardé, bornes désactivées), aperçu vivant, édition recharge l'ordre et les cases 🌐
+- [x] Filtre croisé d'une autre tuile : les lignes suivent ; 1 200 lignes -> 500 affichées + message de troncature ; retour à 8 lignes 🌐
+- [x] Exports : feuille Excel avec les colonnes dans l'ordre, `maxRows`/`truncated` pour PDF/PPTX ✅ (CDN pdfmake/PptxGenJS non joignable ici : seuls les blocs sont testés) ⬜
+- [x] **[BUG RÉEL n°41]** Barres -> Table -> Barres par « Changer de type » : l'élément est recréé, la table s'affiche, le graphique revient avec un canvas non vide 🌐
+- [x] `<iframe sandbox="allow-scripts">` : parcours au clic, aucune erreur ni boîte de dialogue 🌐
+- [ ] Rendu avec de vrais types Grist (ChoiceList, Reference, Attachments) ⬜ **[NON TESTABLE ICI]**
 
 ### CSS — classe de bug à systématiquement re-vérifier
 
@@ -1048,6 +1075,7 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 38. **Infobulles en format anglais avec le bruit de flottant, langue de l'interface ignorée** [BUG RÉEL, remonté par Antoine sur un treemap, « 600,688.2299999992 », puis confirmé sur barres/courbe/camembert/cascade par l'audit de lisibilité du 18/11/2026] — `js/charts.js` ne formatait que KPI/radar/entonnoir/empilé/nuage de points (`fr-FR` figé, quelle que soit la langue), les infobulles par défaut d'ECharts affichaient la valeur brute (« 1,542,980.8799999997 », « 0.20472679998130852 »). Corrigé par `js/format.js` : un formateur par tuile, séparateurs de la langue, `valueFormatter` sur toutes les infobulles, Cascade avec une seule ligne signée (« Hausse : 172 597 » au lieu de « Baisse 0 » en plus). Test : `test-data.js` (module de format, absence de `Intl.NumberFormat`/`toFixed` dans `js/charts.js`) + survol de chaque type de tuile dans le vrai `index.html` (clair, sombre, fr/en, 6 000 lignes pour DuckDB/BigInt).
 39. **Une valeur minuscule s'affichait « 0 » et des graduations d'axe se répétaient** [BUG RÉEL, audit de lisibilité du 18/11/2026] — la moyenne de 0,0006 d'une carte KPI valait « 0 » (2 décimales maximum, quelle que soit la valeur) ; l'axe d'une barre de 0,0001 à 0,0007 affichait sept fois « 0 », et 0,05 d'écart donnait « 0,1 » « 0,1 » (compact à 1 décimale). Corrigé : Automatique = 2 chiffres significatifs sous 0,1, `axis` à 3 chiffres significatifs. Test : `test-data.js` (graduations 0 -> 0,3 par 0,05 et 0 -> 0,0007 par 0,0001 toutes distinctes ; 0,000618 -> « 0,00062 »).
 40. **Jauge illisible : libellés superposés, aiguille sur les libellés, valeur qui déborde** [BUG RÉEL, remonté par Antoine avec une capture, 18/11/2026] — arc de 270° d'environ 60 px de rayon portant 5 libellés et 5 traits, aiguille de 75 % du rayon par-dessus, valeur de 18 px fixes sous l'arc (« 3 266 234,27 » plus large que la jauge, coupée à gauche pour « -725 150,73 »). Reproduit à l'identique sur le jeu d'audit (clair, sombre, anglais). Corrigé : demi-cercle à géométrie calculée (`gaugeLayout`), bornes sous l'arc, valeur ajustée, `__refit` au redimensionnement. Test : `test-data.js` (invariants de géométrie sur 7 tailles de tuile, `niceCeil`, `fitFont`, câblage) + rendu aux tailles normale, étroite (330 px), agrandie, thème sombre, valeur de 20 caractères.
+41. **Une tuile dont le type change en édition gardait l'élément (balisage, classe, instance ECharts) de l'ancien type** [BUG RÉEL, trouvé en testant la table plate dans un `<iframe sandbox="allow-scripts">`, 18/11/2026] — Modifier > Changer de type > Table sur une tuile Barres affichait bien la table, mais l'élément restait `tile-bar` et son instance ECharts restait attachée au conteneur dont le contenu venait d'être remplacé : le retour à un graphique se rattachait à un canvas détaché (vide, sans erreur) ; une tuile Texte devenue graphique n'avait plus de `.tile-chart`. Corrigé : `render()` compare `el.dataset.tileType` à `tile.type` et recrée l'élément. Test : bloc « tuile Table » de `dev-tests/test-data.js` (garde lue dans la source) + Playwright (Barres -> Table -> Barres, canvas non vide).
 
 ## Fragilité de test connue (PAS un bug produit — investiguée en profondeur, à ne pas re-diagnostiquer)
 

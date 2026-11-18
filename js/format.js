@@ -258,6 +258,19 @@
     registryVersion += 1;
   }
   function getColumnInfo(columnId) { return columnRegistry[columnId] || null; }
+
+  // Ce que « Comme dans la colonne » donnerait pour `columnId` — sert à l'explication affichée sous le réglage :
+  // 'count' (un comptage n'est la valeur d'aucune colonne), 'unknown' (colonne absente du registre : calculée,
+  // fusionnée, lecture impossible, ou non numérique), 'none' (colonne connue mais sans décimales ni mode
+  // monétaire/pourcentage/scientifique réglés : rendu Automatique), 'ok' (au moins un réglage repris).
+  function columnModeState(tile, columnId) {
+    if (tile && tile.aggFn === 'count') return 'count';
+    const col = columnRegistry[columnId];
+    if (!col || !['Numeric', 'Int', 'Any'].includes(col.type)) return 'unknown';
+    const o = parseWidgetOptions(col.widgetOptions);
+    const hasMode = typeof o.numMode === 'string' && o.numMode !== '' && o.numMode !== 'decimal';
+    return (hasMode || isIntegerOption(o.decimals) || isIntegerOption(o.maxDecimals)) ? 'ok' : 'none';
+  }
   function getDocSettings() { return docSettingsRegistry; }
 
   const formatterCache = new Map();
@@ -276,6 +289,21 @@
       formatterCache.set(key, f);
     }
     return f;
+  }
+
+  // Texte d'un nombre dans une TABLE PLATE (tuile `table`) : la donnée telle quelle, pas un chiffre clé. Automatique =
+  // les chiffres de la colonne, sans séparateur de milliers (une année reste « 2024 », un code « 75012 », jamais
+  // « 2 024 » ni « 75 012 ») et sans bruit de flottant ; décimales à la virgule ou au point selon la langue. Un format
+  // CHOISI (`custom`, ou `column` = celui de la colonne dans Grist) s'applique comme partout ailleurs.
+  function cellNumber(tile, columnId, v, lang) {
+    const n = toNumber(v);
+    if (n == null) return '';
+    const spec = normalizeSpec(tile && tile.numberFormat);
+    if (spec.mode !== 'auto') {
+      const formatted = forTile(tile, columnId, lang).format(n);
+      if (formatted) return formatted;
+    }
+    return intl(localeForLang(lang), { useGrouping: false, maximumFractionDigits: 10 }).format(n === 0 ? 0 : cleanFloat(n));
   }
 
   // --- Échelle et géométrie de la jauge (pures : testées sous Node, ECharts n'y est pour rien) ------------
@@ -324,8 +352,8 @@
   }
 
   return {
-    niceCeil, gaugeLayout, fitFont,
+    niceCeil, gaugeLayout, fitFont, cellNumber,
     MODES, MAX_CUSTOM_DECIMALS, localeForLang, normalizeSpec, parseWidgetOptions, parseDocSettings,
-    styleFromColumn, resolveStyle, makeFormatter, forTile, setColumnInfo, getColumnInfo, getDocSettings
+    styleFromColumn, resolveStyle, makeFormatter, forTile, setColumnInfo, getColumnInfo, getDocSettings, columnModeState
   };
 });
