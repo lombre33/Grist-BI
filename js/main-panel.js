@@ -55,7 +55,7 @@
     tilePanelTitle.textContent = t(editing ? 'tilePanel.title.edit' : 'tilePanel.title.add');
     submitTileBtn.textContent = t(editing ? 'tileForm.submit.edit' : 'tileForm.submit.add');
     const type = tileTypeSelect.value;
-    typeLineNameEl.innerHTML = `${icon('type-' + type)}<span>${escapeHtml(t('tileForm.type.' + type))}</span>`;
+    GristBI.safeHtml.setHtml(typeLineNameEl, `${icon('type-' + type)}<span>${escapeHtml(t('tileForm.type.' + type))}</span>`);
   }
 
   // Une carte par type. La ligne sous le nom vient de js/advice.js (avertissement propre à CES
@@ -77,8 +77,8 @@
       const adviceText = locked
         ? t(GristBI.extensions.stateOf(extensionId) === 'inactive' ? 'ext.pending.hosted' : 'ext.pending.standalone', { extension: t('ext.name.' + extensionId) })
         : (advice ? t(advice.key, advice.vars) : '');
-      card.innerHTML = `${icon('type-' + type)}<span class="type-card-name">${escapeHtml(t('tileForm.type.' + type))}</span>`
-        + `<span class="type-card-advice" data-level="${locked ? 'locked' : (advice ? advice.level : '')}">${escapeHtml(adviceText)}</span>`;
+      GristBI.safeHtml.setHtml(card, `${icon('type-' + type)}<span class="type-card-name">${escapeHtml(t('tileForm.type.' + type))}</span>`
+        + `<span class="type-card-advice" data-level="${locked ? 'locked' : (advice ? advice.level : '')}">${escapeHtml(adviceText)}</span>`);
       if (locked) { card.classList.add('type-card-locked'); card.setAttribute('aria-disabled', 'true'); }
       card.addEventListener('click', () => chooseType(type));
       typeGridEl.appendChild(card);

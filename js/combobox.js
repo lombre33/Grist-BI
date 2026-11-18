@@ -80,7 +80,7 @@
         const html = `${escapeHtml(h.before)}${h.match ? `<mark>${escapeHtml(h.match)}</mark>` : ''}${escapeHtml(h.after)}`;
         rows.push(`<li class="combobox-option" data-value="${escapeHtml(m)}" role="option">${html}</li>`);
       });
-      listEl.innerHTML = rows.join('');
+      GristBI.safeHtml.setHtml(listEl, rows.join(''));
       updateActiveHighlight();
     }
 

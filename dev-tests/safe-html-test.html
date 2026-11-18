@@ -1,0 +1,121 @@
+<!doctype html>
+<!--
+  Essai de js/safe-html.js dans un vrai navigateur (la reconstruction touche le DOM, un essai Node ne la voit pas).
+  Ouvrir ce fichier directement (double-clic) : aucun serveur, aucune dépendance. Chaque cas de dev-tests/safe-html-cases.js
+  est écrit par GristBI.safeHtml.setHtml dans un conteneur de la page, puis on vérifie ce qui reste dans le DOM.
+  Le titre de l'onglet dit « OK » ou « ÉCHEC » ; le détail est dans la page et, pour un essai automatisé, dans window.__result.
+-->
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Essai de safe-html…</title>
+<style>
+  body { font: 14px/1.4 system-ui, sans-serif; margin: 16px; }
+  .ok { color: #0a6b2b; } .ko { color: #b00020; font-weight: 600; }
+  #sandbox { position: absolute; left: -9999px; top: 0; }
+</style>
+</head>
+<body>
+<h1>js/safe-html.js — charges hostiles et gabarits légitimes</h1>
+<p id="summary">En cours…</p>
+<ul id="report"></ul>
+<div id="sandbox"></div>
+<script src="../js/safe-html.js"></script>
+<script src="safe-html-cases.js"></script>
+<script>
+(function () {
+  const safe = GristBI.safeHtml;
+  const sandbox = document.getElementById('sandbox');
+  const report = document.getElementById('report');
+  const results = [];
+
+  const hasAttribute = (root, name) => Array.from(root.querySelectorAll('*')).some((el) => el.hasAttribute(name));
+  const styleOf = (root) => Array.from(root.querySelectorAll('[style]')).map((el) => el.getAttribute('style')).join(' ; ');
+
+  // Ce qui doit être vrai de TOUT résultat, quel que soit le cas.
+  function invariants(root) {
+    const problems = [];
+    const allowedHtml = new Set(safe.HTML_TAGS);
+    const allowedSvg = new Set(safe.SVG_TAGS);
+    root.querySelectorAll('*').forEach((el) => {
+      const svg = el.namespaceURI === 'http://www.w3.org/2000/svg';
+      const html = el.namespaceURI === 'http://www.w3.org/1999/xhtml';
+      if (!svg && !html) problems.push('élément hors HTML et SVG : ' + el.localName);
+      else if (svg && !allowedSvg.has(el.localName.toLowerCase())) problems.push('balise SVG hors liste : ' + el.localName);
+      else if (html && !allowedHtml.has(el.localName)) problems.push('balise hors liste : ' + el.localName);
+      Array.from(el.attributes).forEach((a) => {
+        if (/^on/i.test(a.name)) problems.push('attribut ' + a.name);
+        if (/javascript:|vbscript:/i.test(a.value)) problems.push('schéma exécutable dans ' + a.name);
+        if (/^(href|src|action|formaction|srcdoc|xlink:href|id|name|for)$/i.test(a.name)) problems.push('attribut interdit ' + a.name);
+        if (a.name === 'style' && /url\s*\(|expression|@import|fixed|sticky|\\/i.test(a.value)) problems.push('style dangereux : ' + a.value);
+      });
+    });
+    return problems;
+  }
+
+  function runCase(kind, c) {
+    const problems = [];
+    window.__pwned = 0;
+    sandbox.textContent = '';
+    try { safe.setHtml(sandbox, c.html); } catch (e) { problems.push('exception : ' + e.message); }
+    (c.absent || []).forEach((sel) => { if (sandbox.querySelector(sel)) problems.push('« ' + sel + ' » ne devait pas survivre'); });
+    (c.present || []).forEach((sel) => { if (!sandbox.querySelector(sel)) problems.push('« ' + sel + ' » devait survivre'); });
+    (c.absentAttrs || []).forEach((name) => { if (hasAttribute(sandbox, name)) problems.push('l\'attribut « ' + name + ' » ne devait pas survivre'); });
+    (c.styleAbsent || []).forEach((frag) => { if (styleOf(sandbox).toLowerCase().includes(frag.toLowerCase())) problems.push('le style garde « ' + frag + ' »'); });
+    (c.styleKept || []).forEach((prop) => { if (!new RegExp('(^|;)\\s*' + prop + '\\s*:').test(styleOf(sandbox))) problems.push('le style a perdu « ' + prop + ' »'); });
+    if (c.styleOn) {
+      const el = sandbox.querySelector(c.styleOn.selector);
+      const style = el ? el.getAttribute('style') || '' : '';
+      c.styleOn.kept.forEach((prop) => { if (!new RegExp('(^|;)\\s*' + prop + '\\s*:').test(style)) problems.push('« ' + c.styleOn.selector + ' » a perdu le style « ' + prop + ' »'); });
+    }
+    if (c.text !== undefined && sandbox.textContent !== c.text) problems.push('texte « ' + sandbox.textContent + ' » au lieu de « ' + c.text + ' »');
+    problems.push(...invariants(sandbox));
+    if (window.__pwned) problems.push('du code de la charge s\'est exécuté (' + window.__pwned + ')');
+    results.push({ kind, name: c.name, problems });
+  }
+
+  SafeHtmlCases.HOSTILE.forEach((c) => runCase('hostile', c));
+  SafeHtmlCases.LEGITIMATE.forEach((c) => runCase('légitime', c));
+
+  // Cas à part : des valeurs qui ne sont pas du texte, un contexte SVG, un contenu énorme.
+  (function () {
+    const problems = [];
+    sandbox.textContent = '';
+    safe.setHtml(sandbox, null); if (sandbox.childNodes.length) problems.push('null doit vider l\'élément');
+    safe.setHtml(sandbox, undefined); if (sandbox.childNodes.length) problems.push('undefined doit vider l\'élément');
+    safe.setHtml(sandbox, 42); if (sandbox.textContent !== '42') problems.push('un nombre s\'écrit comme texte');
+    safe.setHtml(sandbox, '<b>a</b>'); safe.setHtml(sandbox, '<i>b</i>');
+    if (sandbox.innerHTML !== '<i>b</i>') problems.push('l\'ancien contenu est remplacé, pas complété : ' + sandbox.innerHTML);
+    const svgHost = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    sandbox.appendChild(svgHost);
+    safe.setHtml(svgHost, '<g><path d="M0 0L1 1" onclick="window.__pwned=1"/></g><script>window.__pwned=1<\/script>');
+    if (!svgHost.querySelector('path') || svgHost.querySelector('path').namespaceURI !== 'http://www.w3.org/2000/svg') problems.push('un contenu SVG écrit dans un <svg> reste du SVG');
+    if (svgHost.querySelector('script') || svgHost.querySelector('path').hasAttribute('onclick')) problems.push('contexte SVG : script ou gestionnaire conservé');
+    const started = performance.now();
+    let rows = ''; for (let i = 0; i < 5000; i++) rows += '<tr><td class="c" data-i="' + i + '" style="background:#abc">' + i + '</td><td>x</td><td>y</td></tr>';
+    sandbox.textContent = ''; safe.setHtml(sandbox, '<table><tbody>' + rows + '</tbody></table>');
+    if (sandbox.querySelectorAll('tr').length !== 5000) problems.push('5 000 lignes de tableau : ' + sandbox.querySelectorAll('tr').length);
+    const elapsed = Math.round(performance.now() - started);
+    if (elapsed > 1500) problems.push('5 000 lignes de tableau en ' + elapsed + ' ms (trop lent)');
+    results.push({ kind: 'limites', name: 'valeurs non textuelles, contexte SVG, 5 000 lignes (' + elapsed + ' ms)', problems });
+  })();
+
+  // Une requête réseau qu'une charge aurait lancée (image, feuille de style) laisse une trace dans les mesures de ressources.
+  setTimeout(() => {
+    const leaks = performance.getEntriesByType('resource').filter((e) => /evil\.invalid/.test(e.name)).map((e) => e.name);
+    results.push({ kind: 'réseau', name: 'aucune requête vers evil.invalid', problems: leaks.map((u) => 'requête vers ' + u) });
+    const failed = results.filter((r) => r.problems.length);
+    results.forEach((r) => {
+      const li = document.createElement('li');
+      li.className = r.problems.length ? 'ko' : 'ok';
+      li.textContent = (r.problems.length ? '✗ ' : '✓ ') + r.kind + ' — ' + r.name + (r.problems.length ? ' : ' + r.problems.join(' ; ') : '');
+      report.appendChild(li);
+    });
+    document.getElementById('summary').textContent = failed.length ? failed.length + ' cas en échec sur ' + results.length : 'Tous les ' + results.length + ' cas passent.';
+    document.title = (failed.length ? 'ÉCHEC' : 'OK') + ' — safe-html (' + results.length + ' cas)';
+    window.__result = { total: results.length, failed: failed.map((r) => ({ name: r.name, problems: r.problems })) };
+  }, 600);
+})();
+</script>
+</body>
+</html>

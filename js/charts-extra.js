@@ -643,8 +643,8 @@
     }
     el.hidden = false;
     if (!drillPath.length) {
-      el.innerHTML = `<span>${escapeHtml(tile.dimension)}</span>
-        <span class="breadcrumb-hint">${escapeHtml(t('chart.breadcrumb.hint', { column: levels[0] }))}</span>`;
+      GristBI.safeHtml.setHtml(el, `<span>${escapeHtml(tile.dimension)}</span>
+        <span class="breadcrumb-hint">${escapeHtml(t('chart.breadcrumb.hint', { column: levels[0] }))}</span>`);
       return;
     }
     const rootCrumb = `<button type="button" class="breadcrumb-link" data-depth="0">${escapeHtml(tile.dimension)}</button>`;
@@ -654,7 +654,7 @@
       return depth === drillPath.length ? `<span>${label}</span>`
         : `<button type="button" class="breadcrumb-link" data-depth="${depth}">${label}</button>`;
     });
-    el.innerHTML = [rootCrumb].concat(pathCrumbs).join(' <span class="breadcrumb-sep">▸</span> ');
+    GristBI.safeHtml.setHtml(el, [rootCrumb].concat(pathCrumbs).join(' <span class="breadcrumb-sep">▸</span> '));
     el.querySelectorAll('.breadcrumb-link').forEach((btn) => {
       btn.addEventListener('click', () => GristBI.store.drillUp(tile.id, Number(btn.dataset.depth)));
     });

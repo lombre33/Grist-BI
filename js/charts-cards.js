@@ -18,7 +18,7 @@
     const el = container.querySelector(`[data-tile-id="${tile.id}"] .tile-text-body`);
     if (!el) return;
     const html = GristBI.data.renderTextHtml(tile.text);
-    if (el.dataset.html !== html) { el.innerHTML = html; el.dataset.html = html; }
+    if (el.dataset.html !== html) { GristBI.safeHtml.setHtml(el, html); el.dataset.html = html; }
   }
 
   // Table plate (type 'table') : une table HTML dans `.tile-chart` (comme le tableau croisé), colonnes choisies dans
@@ -66,7 +66,7 @@
     // innerHTML identique ferait perdre la position de défilement et le focus d'un en-tête.
     if (el.dataset.html !== html) {
       const scroll = el.scrollTop;
-      el.innerHTML = html;
+      GristBI.safeHtml.setHtml(el, html);
       el.dataset.html = html;
       el.scrollTop = scroll;
     }
@@ -137,9 +137,9 @@
         sparkEl.innerHTML = '';
       } else {
         sparkEl.hidden = false;
-        sparkEl.innerHTML = '<svg viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true" focusable="false">'
+        GristBI.safeHtml.setHtml(sparkEl, '<svg viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true" focusable="false">'
           + `<path class="spark-area" d="${geo.area}"/><path class="spark-line" d="${geo.line}" vector-effect="non-scaling-stroke"/></svg>`
-          + `<span class="spark-dot" style="left:${geo.last.x}%;top:${geo.last.y}%"></span>`;
+          + `<span class="spark-dot" style="left:${geo.last.x}%;top:${geo.last.y}%"></span>`);
       }
     }
 
@@ -209,7 +209,7 @@
     }
     if (el.dataset.html !== html) {
       const scroll = el.scrollTop;
-      el.innerHTML = html;
+      GristBI.safeHtml.setHtml(el, html);
       el.dataset.html = html;
       el.scrollTop = scroll;
     }
@@ -308,7 +308,7 @@
     }
     if (el.dataset.html !== html) {
       const scroll = el.scrollTop;
-      el.innerHTML = html;
+      GristBI.safeHtml.setHtml(el, html);
       el.dataset.html = html;
       el.scrollTop = scroll;
     }
@@ -477,7 +477,7 @@
     const el = container.querySelector(`[data-tile-id="${tile.id}"] .tile-chart`);
     if (!el) return;
     if (!pivot.rowKeys.length || !pivot.colKeys.length) {
-      el.innerHTML = '<p class="pivot-empty">Aucune donnée à afficher.</p>';
+      GristBI.safeHtml.setHtml(el, '<p class="pivot-empty">Aucune donnée à afficher.</p>');
       return;
     }
     const rowFilter = state.activeFilters.find((f) => f.column === tile.dimension);
@@ -527,10 +527,10 @@
       <td class="pivot-cell pivot-total-cell pivot-grand-total">${fmt(pivot.grandTotal)}</td>
     </tr>`;
 
-    el.innerHTML = `<table class="pivot-table${heat ? ' pivot-heat' : ''}">
+    GristBI.safeHtml.setHtml(el, `<table class="pivot-table${heat ? ' pivot-heat' : ''}">
       <thead><tr><th class="pivot-corner"></th>${headCells}<th class="pivot-col-header pivot-total-label">${totalLabel}</th></tr></thead>
       <tbody>${bodyRows}${totalRow}</tbody>
-    </table>`;
+    </table>`);
 
     el.querySelectorAll('th[data-axis="row"]').forEach((th) => {
       th.addEventListener('click', () => GristBI.store.toggleFilter(tile.dimension, th.dataset.value, tile.id));

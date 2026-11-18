@@ -233,14 +233,14 @@
     const isFree = (row, col, span, rows) => {
       if (col < 0 || col + span > columns) return false;
       for (let r = row; r < row + rows; r++) {
-        for (let c = col; c < col + span; c++) if (occupied[r] && occupied[r][c]) return false;
+        for (let track = col; track < col + span; track++) if (occupied[r] && occupied[r][track]) return false;
       }
       return true;
     };
     const take = (row, col, span, rows) => {
       for (let r = row; r < row + rows; r++) {
         occupied[r] = occupied[r] || [];
-        for (let c = col; c < col + span; c++) occupied[r][c] = true;
+        for (let track = col; track < col + span; track++) occupied[r][track] = true;
       }
     };
     return items.map((item) => {
@@ -253,8 +253,8 @@
         while (!isFree(row, col, span, rows)) row += 1;
       } else {
         search: for (;;) {
-          for (let c = 0; c + span <= columns; c++) {
-            if (isFree(row, c, span, rows)) { col = c; break search; }
+          for (let track = 0; track + span <= columns; track++) {
+            if (isFree(row, track, span, rows)) { col = track; break search; }
           }
           row += 1;
         }
@@ -307,10 +307,10 @@
       const trackLeft = [];
       const trackSize = [];
       let left = 0;
-      for (let c = 0; c < columns; c++) {
+      for (let track = 0; track < columns; track++) {
         trackLeft.push(left);
-        trackSize.push(p.hasRail && c === 0 ? RAIL_COLUMN_W : fr);
-        left += trackSize[c] + gapX;
+        trackSize.push(p.hasRail && track === 0 ? RAIL_COLUMN_W : fr);
+        left += trackSize[track] + gapX;
       }
       const placed = placeOnGrid(p.order.map((tid) => ({ id: tid, span: p.items[tid].span, rows: p.items[tid].rows, start: p.items[tid].start })), columns);
       let lastRow = 0;

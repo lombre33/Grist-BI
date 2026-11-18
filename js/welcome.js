@@ -244,7 +244,7 @@
     if (shown.rows === state.rows && shown.lang === lang) return;
     const suggestions = G.advice.suggestTiles(state.rows, undefined, { t: G.i18n.t });
     shown = { rows: state.rows, lang, suggestions };
-    document.getElementById('welcome-cards').innerHTML = suggestions.map((s, i) => cardHtml(s, i, state.rows, lang)).join('');
+    G.safeHtml.setHtml(document.getElementById('welcome-cards'), suggestions.map((s, i) => cardHtml(s, i, state.rows, lang)).join(''));
     const addAll = document.getElementById('welcome-add-all');
     addAll.hidden = suggestions.length < 2;
     addAll.textContent = G.i18n.t('welcome.addAll', { n: suggestions.length });

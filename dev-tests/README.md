@@ -24,6 +24,21 @@ Ce que l'outil d'audit mesure et qu'une modification peut défaire sans bruit (v
 `index.html` a une étiquette, aucun bouton n'est vide, un seul `<main>`, `SECURITY.md` existe, et `js/vendor/SOURCES.md` dit
 vrai (empreintes SHA-256 des bibliothèques embarquées).
 
+## Écriture de HTML dans le DOM (`js/safe-html.js`)
+
+```
+node dev-tests/test-safe-html.js
+```
+
+La politique de la liste blanche (balises, attributs, style en ligne ; pure, sans DOM), plus les garde-fous des sources : aucun
+`innerHTML`/`outerHTML`/`insertAdjacentHTML`/`document.write` dynamique dans `js/` ni dans `echarts.min.js` (ses sept affectations
+passent par `__gristBiSetHtml`, voir `dev-tests/patch-echarts.js`). La RECONSTRUCTION de l'arbre touche le DOM : elle se vérifie dans un
+navigateur en ouvrant **`dev-tests/safe-html-test.html`** (double-clic, aucun serveur) qui rejoue la batterie de
+`dev-tests/safe-html-cases.js` (charges hostiles : `onerror`, `script`, `svg onload`, `foreignObject`, `javascript:`, mutation par
+`math`/`noscript`, `url()` dans un style, `position: fixed`, `id`/`name`… ; gabarits légitimes du widget, qui doivent survivre) et dit
+OK ou ÉCHEC dans le titre de l'onglet. Pour ajouter une balise ou un attribut à un gabarit : la liste de `js/safe-html.js` ET un cas
+dans `safe-html-cases.js`.
+
 ## Aides communes aux essais (`dev-tests/lib/helpers.js`)
 
 `test-layouts.js` et `test-styles.js` en tirent ce qu'ils recopiaient à l'identique : lecture d'un fichier du dépôt (`read`), lecteur de
