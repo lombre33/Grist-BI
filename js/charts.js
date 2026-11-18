@@ -157,7 +157,10 @@
     const valueEl = container.querySelector(`[data-tile-id="${tile.id}"] .tile-kpi-value`);
     if (!valueEl) return;
     const kpiFmt = fmtFor(tile, tile.measure);
-    valueEl.textContent = kpiFmt.format(value);
+    const kpiText = kpiFmt.format(value) || '–';
+    valueEl.textContent = kpiText;
+    // Le CSS réduit la police pour que la valeur tienne dans la tuile (voir `.tile-kpi-value`) : il lui faut la longueur.
+    valueEl.style.setProperty('--kpi-chars', String(Math.max(kpiText.length, 4)));
 
     const trendEl = container.querySelector(`[data-tile-id="${tile.id}"] .tile-kpi-trend`);
     if (!trendEl) return;
@@ -202,28 +205,101 @@
     instance.hideLoading();
     const gaugeFmt = fmtFor(tile, tile.measure);
     const min = Number.isFinite(tile.gaugeMin) ? tile.gaugeMin : 0;
-    const max = Number.isFinite(tile.gaugeMax) ? tile.gaugeMax : Math.max(value * 1.5, 1);
-    instance.setOption({
+    // Sans borne haute (tuile importée) : un « beau » nombre au-dessus de la valeur, pas 1,5 x la valeur (« 4 118 723 »).
+    const shown = Number.isFinite(Number(value)) ? Number(value) : 0;
+    const max = Number.isFinite(tile.gaugeMax) ? tile.gaugeMax : GristBI.format.niceCeil(Math.max(shown * 1.2, 1));
+    // La jauge se redessine à la taille de SA zone (demi-cercle, voir GristBI.format.gaugeLayout) : à chaque rendu
+    // et à chaque redimensionnement (resizeAll appelle `__refit`, ECharts ne sait pas refaire une géométrie en px).
+    const draw = () => instance.setOption(gaugeOption(tile, { value: shown, hasValue: value != null, min, max, fmt: gaugeFmt, w: instance.getWidth(), h: instance.getHeight() }), true);
+    draw();
+    instance.__refit = draw;
+  }
+
+  // Texte d'un canvas hors écran pour MESURER une chaîne (ajustement de la valeur centrale de la jauge).
+  let _measureCtx = null;
+  function measureText(text, size, weight, family) {
+    if (!_measureCtx) _measureCtx = document.createElement('canvas').getContext('2d');
+    _measureCtx.font = `${weight} ${size}px ${family}`;
+    return _measureCtx.measureText(text).width;
+  }
+
+  // Option ECharts d'une jauge en demi-cercle. Éléments : arc de fond + arc de progression arrondi, aiguille fine
+  // (elle ne dépasse pas 66 % du rayon, donc jamais sur l'anneau) et moyeu, bornes min/max en `graphic` sous les
+  // extrémités de l'arc (pas de graduations intermédiaires : sur 250 px elles se chevauchaient entre elles et avec
+  // l'aiguille, « 825,5 k » sur « 1,7 M »), valeur sous le moyeu, police réduite jusqu'à ce qu'elle tienne,
+  // sinon compacte (« 5,43 Bn » plutôt qu'un nombre coupé).
+  function gaugeOption(tile, g) {
+    const th = chartTheme();
+    const L = GristBI.format.gaugeLayout(g.w, g.h);
+    const family = th.font;
+    const bound = (v) => g.fmt.axis(v);
+    let text = g.hasValue ? (g.fmt.format(g.value) || '–') : '–';
+    let fs = GristBI.format.fitFont(text, L.valueMaxWidth, L.valueMaxFont, L.valueMinFont, (s, px) => measureText(s, px, 700, family));
+    if (fs <= L.valueMinFont && measureText(text, fs, 700, family) > L.valueMaxWidth) {
+      text = g.fmt.axis(g.value) || text;
+      fs = GristBI.format.fitFont(text, L.valueMaxWidth, L.valueMaxFont, L.valueMinFont, (s, px) => measureText(s, px, 700, family));
+    }
+    const endX = L.r - L.ringW / 2;
+    const labelY = L.ringW / 2 + 4; // sous le bout arrondi de l'arc, qui dépasse de la moitié de son épaisseur
+    const labelStyle = { fill: th.muted, font: `${L.labelFont}px ${family}`, textAlign: 'center', textVerticalAlign: 'top' };
+    return {
       series: [{
         type: 'gauge',
-        min,
-        max,
-        // splitNumber par défaut d'ECharts (10, donc 11 libellés) se chevauche systématiquement à
-        // la taille d'une tuile [BUG RÉEL trouvé en capturant un screenshot] : 4 divisions (5
-        // libellés : min, 1/4, 1/2, 3/4, max) restent lisibles à n'importe quelle taille de jauge.
-        splitNumber: 4,
+        min: g.min,
+        max: g.max,
+        startAngle: 180,
+        endAngle: 0,
+        center: [L.cx, L.cy],
+        radius: L.r,
         itemStyle: { color: paletteColors(tile.palette)[0] },
-        progress: { show: true, width: 12 },
-        axisLine: { lineStyle: { width: 12 } },
+        progress: { show: true, width: L.ringW, roundCap: true },
+        axisLine: { roundCap: true, lineStyle: { width: L.ringW, color: [[1, th.track]] } },
         axisTick: { show: false },
-        splitLine: { length: 12 },
-        axisLabel: { distance: 14, fontSize: 10, formatter: gaugeFmt.axis },
-        pointer: { show: true },
+        splitLine: { show: false },
+        axisLabel: { show: false },
+        pointer: { show: true, length: '74%', width: clamp(L.r * 0.04, 3, 8), itemStyle: { color: th.text } },
+        anchor: { show: true, showAbove: true, size: clamp(L.r * 0.09, 7, 16), itemStyle: { color: th.text } },
         title: { show: false },
-        detail: { valueAnimation: true, formatter: (v) => gaugeFmt.format(v), fontSize: 18, offsetCenter: [0, '70%'] },
-        data: [{ value }]
-      }]
-    }, true);
+        detail: {
+          valueAnimation: false,
+          formatter: () => text,
+          fontSize: fs,
+          fontWeight: 700,
+          fontFamily: family,
+          color: th.text,
+          offsetCenter: [0, 12 + fs * 0.62]
+        },
+        data: [{ value: g.value }]
+      }],
+      graphic: {
+        elements: [
+          { type: 'text', silent: true, x: L.cx - endX, y: L.cy + labelY, style: Object.assign({ text: bound(g.min) }, labelStyle) },
+          { type: 'text', silent: true, x: L.cx + endX, y: L.cy + labelY, style: Object.assign({ text: bound(g.max) }, labelStyle) }
+        ]
+      }
+    };
+  }
+
+  function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
+
+  // Couleurs lues sur les jetons CSS de la page (clair/sombre, ambiance GFS) : ECharts ne les lit pas tout seul, il
+  // dessine en gris foncé sur n'importe quel fond. Relues à chaque rendu : un changement de thème est repris au
+  // prochain rendu sans rien recréer.
+  function cssVar(name, fallback) {
+    try {
+      const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+      return v || fallback;
+    } catch (e) { return fallback; }
+  }
+  function chartTheme() {
+    let font = 'sans-serif';
+    try { font = getComputedStyle(document.body).fontFamily || font; } catch (e) { /* hors navigateur */ }
+    return {
+      text: cssVar('--text', '#0b0b0b'),
+      muted: cssVar('--text-muted', '#6b6a64'),
+      track: 'rgba(128, 128, 128, 0.22)', // visible sur fond clair comme sombre
+      font
+    };
   }
 
   // Logique de clic (drill-down vs filtre croisé) PARTAGÉE par l'instance ECharts générique
@@ -1147,7 +1223,14 @@
     if (option && option.tooltip) option.tooltip = Object.assign({ confine: true }, option.tooltip);
   }
 
-  function resizeAll() { chartInstances.forEach((inst) => !inst.isDisposed() && inst.resize()); }
+  // `__refit` : une jauge dont la géométrie est calculée en pixels se redessine à la nouvelle taille (voir renderGauge).
+  function resizeAll() {
+    chartInstances.forEach((inst) => {
+      if (inst.isDisposed()) return;
+      inst.resize();
+      if (typeof inst.__refit === 'function') inst.__refit();
+    });
+  }
 
   function disposeTile(tileId) {
     const inst = chartInstances.get(tileId);
