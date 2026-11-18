@@ -73,6 +73,7 @@
     histogram: 'advice.use.histogram',
     box: 'advice.use.box',
     sankey: 'advice.use.sankey',
+    calendar: 'advice.use.calendar',
     pie: 'advice.use.pie',
     treemap: 'advice.use.treemap',
     funnel: 'advice.use.funnel',
@@ -723,6 +724,14 @@
         delete out.aggFn;
         break;
       }
+      case 'calendar': {
+        // Une vraie colonne de DATES (jamais une année ou un mois dérivés : une case = un jour), de préférence avec plusieurs jours distincts.
+        const dates = ctx.profiles.filter((p) => p.role === 'time');
+        const best = dates.find((p) => p.distinct >= 7) || dates[0];
+        if (!best) return null;
+        out.dimension = best.id;
+        break;
+      }
       case 'combo': {
         // Barres = la mesure principale ; courbe = une AUTRE vraie mesure s'il y en a une. Sinon (une seule
         // mesure) un Pareto, qui n'en demande pas d'autre : barres triées + part cumulée.
@@ -871,6 +880,14 @@
       const colCount = new Set(rows.map((r) => r[tile.columnDimension])).size;
       if (n > HEATMAP_MAX_AXIS || colCount > HEATMAP_MAX_AXIS) return warn('advice.heatmap.tooBig', { rows: n, columns: colCount });
     }
+    if (type === 'calendar' && tile.dimension && tile.measure) {
+      // Une case par jour : la colonne doit contenir de vraies dates, il en faut assez pour que le calendrier dise quelque chose,
+      // et au-delà d'un an seule la dernière année est dessinée.
+      const cal = data.calendarDays(rows, tile.dimension, tile.measure, tile.aggFn);
+      if (!cal.total) return warn('advice.calendar.notDate', { dimension: tile.dimension });
+      if (cal.total < 7) return warn('advice.calendar.fewDays', { n: cal.total });
+      if (cal.hidden > 0) return tip('advice.calendar.truncated', { days: data.CALENDAR_MAX_DAYS, hidden: cal.hidden });
+    }
     if (type === 'sankey' && tile.dimension && tile.columnDimension && tile.measure) {
       // Un flux s'additionne ; au-delà d'une quinzaine de nœuds ce n'est plus qu'un écheveau ; un flux nul ou négatif n'a pas d'épaisseur.
       if (tile.aggFn === 'avg' || tile.aggFn === 'min' || tile.aggFn === 'max') return warn('advice.sankey.notAdditive');
@@ -991,6 +1008,8 @@
         return ctx.profiles.some((p) => p.kind === 'text' && p.role !== 'constant') ? null : 'advice.fit.needText';
       case 'line':
         return ctx.time ? null : 'advice.fit.noTime';
+      case 'calendar':
+        return ctx.profiles.some((p) => p.role === 'time') ? null : 'advice.fit.noDate';
       case 'kpi':
       case 'gauge':
       case 'histogram':

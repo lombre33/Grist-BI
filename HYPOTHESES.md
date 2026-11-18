@@ -3517,6 +3517,25 @@ Constat (en testant le style global des tuiles) : sur une courbe ou des barres v
   recalculées ; feuille Excel ; taille négative = bulle absente + conseil ; nuage de points simple inchangé ; nuage de points -> barres -> bulles sans reliquat ; aucune erreur console). **Pas testé dans un vrai Grist ni un
   vrai GFS.**
 
+### Tuiles usuelles des outils BI — lot 3, calendrier (18/11/2026)
+
+- **Ce qui est livré** (PR 11 du plan, §5.6 de `etudes/tuiles-usuelles-dashboard-2026-11-18.md`) : un type `calendar` (« Calendrier (activité par jour) »). Une colonne de DATES + une mesure et son agrégat ; une case par
+  jour, semaines en colonnes, lundi en haut, mois en en-tête, même rampe de couleur que la carte de chaleur avec sa légende. Comptage = nombre de lignes par jour (« activité »), Somme = un montant par jour. Clic sur un
+  jour = filtre d'égalité sur la colonne de dates (la tuile reste entière, les autres jours s'estompent, 2e clic = filtre retiré). Pas de drill-down.
+- **Choix** : fenêtre d'UN an (les 366 derniers jours depuis le dernier jour qui a une valeur) : au-delà, les cases deviendraient des points de 3 px ; les jours plus anciens sont comptés (« n plus anciens restent dans
+  l'export »), jamais perdus. Un jour sans ligne garde la trame neutre : « aucune ligne » n'est pas « la valeur la plus basse ». Composant `calendar` d'ECharts (et pas une grille HTML) : même thème, infobulle et
+  légende que la carte de chaleur, rien à réécrire. Calcul en JS pur à tout volume (une passe, un agrégat par jour). Le formulaire refuse une colonne qui n'est pas de dates (format AAAA-MM-JJ, celui de toutes les
+  colonnes Date du widget).
+- **Pas fait, à décider** : plusieurs années côte à côte (une bande par année), choix du premier jour de la semaine, case carrée (les cases s'étirent avec la tuile), plage réglable, regroupement par semaine ou par
+  mois, clic-glisser pour filtrer une période (aujourd'hui un jour à la fois ; le filtre « plage de dates » du menu Filtre existe), jours fériés.
+- **Conseils** : colonne sans date valide, moins d'une semaine de données, plus d'un an (la dernière année seulement). Jamais proposé à l'écran d'accueil.
+- **Testé** : Node (bloc « calendrier » : décalage de jours, agrégation par jour pour les 5 agrégats, tri, dates invalides ignorées, fenêtre d'un an et plafonds, trou != 0, store, export, défauts, conseils, i18n
+  dont 7 jours et 12 mois par langue, câblage dont l'absence de composant `calendar` dans l'état vide) ; Playwright contre le vrai `index.html` + `grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`,
+  400 et 6 000 lignes, clair et sombre (formulaire : libellé « Colonne de dates », champs masqués, colonne non date refusée, préremplissage ; option ECharts = calcul pur, plage de mois entiers ; **pixel** de la case du
+  maximum = dernier arrêt de la rampe, **pixel** d'un jour sans ligne = hors rampe ; infobulle survolée ; **clic réel de souris** sur un jour = filtre, autres jours à 0,3, tuile entière, 2e clic = filtre retiré, clic sur
+  un jour sans ligne = rien ; filtre d'une autre tuile = jours recalculés ; agrandissement = cases plus larges ; feuille Excel ; 500 jours = 366 dessinés + 500 exportés + conseil ; aucune date = message ; calendrier ->
+  barres -> calendrier ; valeurs toutes égales ; aucune erreur console). **Pas testé dans un vrai Grist ni un vrai GFS.**
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée
