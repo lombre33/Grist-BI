@@ -2623,6 +2623,55 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     `dev-tests/grist-stub.js` : `GristBI.advice` chargé, 3 suggestions cohérentes (courbe `Date.Annee` avec
     drill-down Trimestre/Mois/jour, KPI avec tendance). Durée : ~25 ms de profilage pour 47 040 lignes
     (limité aux 20 000 premières lignes par colonne).
+
+- **Écran d'accueil à suggestions — `js/welcome.js` (18/11/2026, PR 2b de l'onboarding)** : branche
+  `js/advice.js` sur `#welcome`, l'écran d'un tableau de bord sans tuile. Périmètre convenu avec le fil
+  UI/UX (qui refond la barre d'outils et le formulaire) : CETTE PR ne livre que les cartes d'accueil ; le
+  fil UI/UX branche lui-même `adviceForType` (étape « Choisir »), `defaultsForType` (préremplissage),
+  `adviceForTile` (`#tile-advice`) et le bouton « Créer une visualisation » (`#welcome-add`) dans son
+  lot 2, parce que c'est son formulaire. D'où : le bouton « Créer une visualisation » prévu au départ a
+  été RETIRÉ de cette PR (deux boutons pour la même action n'auraient pas survécu à la fusion).
+  - **Cartes** : jusqu'à 3 (`suggestTiles`), chacune avec une miniature SVG de 120 × 64, un titre, la raison
+    (clé `advice.reason.*`) et « Ajouter ». « Ajouter » pose exactement `tileData` (titre résolu dans la
+    langue courante, enregistré tel quel dans la configuration comme n'importe quel titre saisi) avec un
+    identifiant de tuile neuf. « Ajouter ces N visualisations » pose toutes les cartes affichées en un coup.
+    Les tuiles posées sont des tuiles ordinaires : modifiables, supprimables, exportables.
+  - **Miniature sans ECharts** : `advice.previewFor(tileData, rows)` agrège sur les VRAIES lignes (mêmes
+    `groupByAggregate`/`sortGroups`/`computeTrend` que la tuile) et renvoie des nombres normalisés ;
+    `welcome.previewSvg` les dessine en quelques traits (barres, courbe/aire, anneau/camembert, treemap,
+    nombre avec tendance, nuage de points, radar, jauge, grille). Une vraie instance ECharts par carte
+    aurait coûté un graphique complet (plus ses gestionnaires de clic branchés sur le store) pour une
+    vignette. `previewFor` renvoie `null` plutôt que de dessiner faux : barres toutes nulles, courbe à moins
+    de 2 points, radar à moins de 3 axes, jauge sans étendue, type inconnu.
+  - **Quand l'accueil s'affiche** : mode Édition ET table connectée avec sa configuration chargée
+    (`dashboardReady`, même règle que la pastille — piège n°19-b) ET aucune tuile sur la page. Supprimer
+    la dernière tuile le fait revenir ; en Lecture il disparaît et l'indication de lecture reste. Table
+    sans ligne : message explicite (`welcome.emptyTable`) à la place des cartes — jamais de suggestion
+    inventée sur du vide ; « Importer un fichier Power BI… » reste proposé.
+  - **Coût** : les suggestions ne sont recalculées que si la référence de `state.rows` ou la langue change
+    (`render()` est appelé à chaque clic de filtre ailleurs ; relancer le profilage d'une grosse table
+    à chaque fois se verrait). Vérifié : les éléments de carte sont conservés tant que ni la table ni la
+    langue ne changent.
+  - **Piège évité (test)** : le Playwright de cette PR a d'abord échoué sur « accueil invisible » alors que
+    le code était juste — le mode (Lecture/Édition) est posé par `autoMode()` UNE FOIS la configuration
+    chargée, donc un test qui bascule trop tôt inverse le mode. Attendre que l'accueil soit visible avant
+    d'agir, ne cliquer sur « Édition » que si le mode est encore « Lecture ». Idem : une fenêtre en
+    `position: fixed` a `offsetParent === null` même quand elle est visible — tester `hidden` et
+    `getComputedStyle().display`, pas `offsetParent`.
+  - **Vérifié** : `node dev-tests/test-data.js` (une miniature finie et sans `NaN` pour chaque type suggéré
+    sur le banc de 47 040 lignes ; barres horizontales triées et normalisées ; parts de camembert de somme 1 ;
+    jauge bornée à 1 ; `null` pour tableau vide, type inconnu, jauge sans étendue, radar à 2 axes, barres
+    nulles ; flèche ▲/▼ selon le signe, nombre « 3,7 k » en français / « 3.7K » en anglais) ; contre le VRAI
+    `index.html` servi en HTTP local avec `dev-tests/grist-stub.js` : 15 contrôles — accueil visible en
+    Édition, 3 cartes (Montant par Region, Montant par Date.Annee, Total Montant), « Ajouter » pose
+    la bonne tuile, accueil masqué puis de retour après suppression, « Ajouter ces 3 » = 3 tuiles de types
+    distincts qui se rendent toutes, aucune erreur JS, masqué en Lecture, textes anglais, bascule de langue
+    à chaud, « Importer Power BI » ouvre la fenêtre, table vide, éléments conservés. Captures regardées
+    (français, anglais, table vide, tuiles posées).
+  - **Reste non vérifié** : un VRAI document Grist (colonnes `Date` en secondes, `Reference`, très grandes
+    tables — le profilage porte sur les 20 000 premières lignes) ; mobile ; lecteurs d'écran (les miniatures
+    sont `aria-hidden`, le titre et la raison portent le sens, le bouton « Ajouter » nomme la visualisation
+    via `aria-label`).
   - **Non vérifié / limites** : jamais essayé sur un VRAI document Grist (vraies colonnes `Date` renvoyées
     en secondes — la conversion en `AAAA-MM-JJ` précède ce module, voir CLAUDE.md §7 piège n°16 — vraies
     colonnes `Reference`, tables de milliers de colonnes) ; les seuils (7 parts, 8 axes, 14 caractères) sont

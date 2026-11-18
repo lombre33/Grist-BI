@@ -434,6 +434,15 @@
     'advice.bar.longLabels': { fr: 'Libellés longs (jusqu’à {maxLen} caractères) : des barres horizontales les affichent en entier.', en: 'Long labels (up to {maxLen} characters): horizontal bars show them in full.' },
     'advice.bar.unsorted': { fr: 'Triez par valeur pour repérer d’un coup d’œil le plus grand et le plus petit.', en: 'Sort by value to spot the largest and smallest at a glance.' },
 
+    // --- Écran d'accueil d'un tableau de bord sans tuile (js/welcome.js) ---
+    'welcome.title': { fr: 'Pour commencer', en: 'Get started' },
+    'welcome.subtitle': { fr: 'Des visualisations adaptées à vos données : un clic suffit, vous pourrez les modifier ensuite.', en: 'Visualizations that fit your data: one click is enough, and you can edit them afterwards.' },
+    'welcome.add': { fr: 'Ajouter', en: 'Add' },
+    'welcome.addAria': { fr: 'Ajouter la visualisation « {title} »', en: 'Add the visualization “{title}”' },
+    'welcome.addAll': { fr: '{n|Ajouter cette visualisation|Ajouter ces {n} visualisations}', en: '{n|Add this visualization|Add these {n} visualizations}' },
+    'welcome.importPbix': { fr: 'Importer un fichier Power BI…', en: 'Import a Power BI file…' },
+    'welcome.emptyTable': { fr: 'La table « {table} » ne contient encore aucune ligne : ajoutez-en dans Grist, des suggestions apparaîtront ici.', en: 'Table “{table}” has no rows yet: add some in Grist and suggestions will appear here.' },
+
     // --- Graphiques (js/charts.js) ---
     'chart.unavailable': { fr: 'ECharts indisponible — voir le bandeau en haut de page.', en: 'ECharts unavailable — see the banner at the top of the page.' },
     'chart.wordCloudUnavailable': { fr: 'Nuage de mots indisponible pour le moment (extension en attente d’ajout).', en: 'Word cloud unavailable for now (extension pending approval).' },

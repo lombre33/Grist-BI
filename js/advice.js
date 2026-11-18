@@ -832,8 +832,100 @@
     return warning || generic;
   }
 
+  // ---------------------------------------------------------------------------------------------
+  // Aperçu d'une suggestion
+  // ---------------------------------------------------------------------------------------------
+
+  // Plus grand nombre de points tracés dans une miniature : au-delà, on ne voit qu'une tendance.
+  const PREVIEW_MAX_POINTS = 24;
+  const PREVIEW_MAX_BARS = 6;
+
+  function topShares(groups, max) {
+    const positive = groups.filter((g) => Number.isFinite(g.value) && g.value > 0)
+      .sort((a, b) => b.value - a.value).slice(0, max);
+    const total = positive.reduce((sum, g) => sum + g.value, 0);
+    return total > 0 ? positive.map((g) => g.value / total) : null;
+  }
+
+  function evenSample(values, max) {
+    if (values.length <= max) return values;
+    return Array.from({ length: max }, (_, i) => values[Math.round(i * (values.length - 1) / (max - 1))]);
+  }
+
+  // Miniature d'une tuile à partir des vraies données, SANS ECharts : des nombres normalisés (0 à 1)
+  // qu'une fonction de dessin SVG (js/welcome.js:previewSvg) transforme en quelques traits. Une
+  // vraie instance ECharts par carte d'accueil coûterait un graphique complet (et ses gestionnaires
+  // de clic, branchés sur le store) pour une vignette de 120 pixels. `null` si le type n'a pas de
+  // miniature ou si les données n'en donnent aucune.
+  function previewFor(tileData, rows) {
+    if (!tileData || !Array.isArray(rows) || !rows.length) return null;
+    const type = tileData.type;
+    const aggFn = tileData.aggFn || 'sum';
+    const grouped = () => {
+      const groups = data.groupByAggregate(rows, tileData.dimension, tileData.measure, aggFn);
+      return data.isSortableTile(tileData) ? data.sortGroups(groups, tileData.sortMode) : groups;
+    };
+    switch (type) {
+      case 'kpi': {
+        const trend = tileData.trendDimension
+          ? data.computeTrend(rows, tileData.trendDimension, tileData.measure, aggFn) : null;
+        return { kind: 'value', value: data.aggregateSingle(rows, tileData.measure, aggFn), trendPct: trend ? trend.deltaPct : null };
+      }
+      case 'bar': {
+        const values = grouped().slice(0, PREVIEW_MAX_BARS).map((g) => Math.abs(Number(g.value)) || 0);
+        const top = Math.max.apply(null, values);
+        return top > 0 ? { kind: 'bars', values: values.map((v) => v / top), horizontal: !!tileData.horizontal } : null;
+      }
+      case 'line': {
+        const values = evenSample(grouped().map((g) => Number(g.value) || 0), PREVIEW_MAX_POINTS);
+        if (values.length < 2) return null;
+        const lo = Math.min.apply(null, values);
+        const hi = Math.max.apply(null, values);
+        return { kind: 'line', values: values.map((v) => (hi === lo ? 0.5 : (v - lo) / (hi - lo))), area: !!tileData.areaFill };
+      }
+      case 'pie': {
+        const values = topShares(grouped(), PREVIEW_MAX_BARS);
+        return values ? { kind: 'pie', values, donut: !!tileData.donut } : null;
+      }
+      case 'treemap': {
+        const values = topShares(grouped(), PREVIEW_MAX_BARS);
+        return values ? { kind: 'treemap', values } : null;
+      }
+      case 'scatter': {
+        const xs = data.groupByAggregate(rows, tileData.dimension, tileData.measure, aggFn).map((g) => Number(g.value) || 0);
+        const ys = data.groupByAggregate(rows, tileData.dimension, tileData.measureY, aggFn).map((g) => Number(g.value) || 0);
+        const n = Math.min(xs.length, ys.length, 20);
+        if (n < 2) return null;
+        const norm = (arr) => {
+          const lo = Math.min.apply(null, arr);
+          const hi = Math.max.apply(null, arr);
+          return arr.map((v) => (hi === lo ? 0.5 : (v - lo) / (hi - lo)));
+        };
+        const nx = norm(xs.slice(0, n));
+        const ny = norm(ys.slice(0, n));
+        return { kind: 'points', points: nx.map((x, i) => ({ x, y: ny[i] })) };
+      }
+      case 'radar': {
+        const values = tileData.radarAxisMode === 'columns'
+          ? (tileData.radarAxes || []).map((col) => data.aggregateSingle(rows, col, 'avg'))
+          : grouped().map((g) => Number(g.value) || 0);
+        const top = Math.max.apply(null, values.map(Math.abs));
+        return (values.length >= 3 && top > 0) ? { kind: 'radar', values: values.map((v) => Math.abs(v) / top) } : null;
+      }
+      case 'gauge': {
+        const value = data.aggregateSingle(rows, tileData.measure, aggFn);
+        const span = tileData.gaugeMax - tileData.gaugeMin;
+        return span > 0 ? { kind: 'gauge', ratio: Math.max(0, Math.min(1, (value - tileData.gaugeMin) / span)) } : null;
+      }
+      case 'pivot':
+        return { kind: 'grid' };
+      default:
+        return null;
+    }
+  }
+
   return {
-    TILE_TYPES, USE_KEYS,
+    TILE_TYPES, USE_KEYS, previewFor,
     profileColumns, analyzeColumns, columnKind,
     suggestTiles, defaultsForType, adviceForTile, adviceForType,
     appearsAscending
