@@ -8,7 +8,7 @@
   const GristBI = global.GristBI || (global.GristBI = {});
   const {
     groupByAggregate, sameValue, aggregateSingle, pivotTable, trendFromGroups, targetProgress, progressRows, sparklineValues, sparklineGeometry, measureSeriesForTile,
-    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, comboSeries, comboModeOf, histogramBins, histogramFilter, histogramBinIsActive, filterSelects, cellFilterToggles, heatStops, heatRange, heatCellColors, heatTextColor, isStackedTile, splitBySeries, assembleSeries, paletteColors, PALETTES, escapeHtml,
+    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, comboSeries, comboModeOf, histogramBins, histogramFilter, histogramBinIsActive, filterSelects, refLineKind, refLineValue, cellFilterToggles, heatStops, heatRange, heatCellColors, heatTextColor, isStackedTile, splitBySeries, assembleSeries, paletteColors, PALETTES, escapeHtml,
     tileDrillLevels, currentDimension, rowsForTile, wordFrequency
   } = GristBI.data;
   const { t } = GristBI.i18n;
@@ -1467,8 +1467,47 @@
         }))
       };
     }
+    // Ligne de repère (`tile.refLine`, barres et courbe) : moyenne des valeurs affichées ou objectif saisi.
+    if (option.series && option.series.length && (tile.type === 'bar' || tile.type === 'line')) {
+      const ref = refLineValue(tile, groups.map((g) => g.value));
+      if (ref !== null) addRefLine(option, tile, ref, f);
+    }
     finalizeOption(option, instance);
     instance.setOption(option, true);
+  }
+
+  // Trait de repère (ECharts `markLine`, sur la 1re série) + axe des valeurs élargi pour qu'il soit toujours dans le cadre : sans cela,
+  // un objectif à 100 k sur des barres de 20 k serait tracé hors de la zone et on ne verrait rien. `max`/`min` en fonctions : ECharts
+  // garde ses graduations rondes, et les barres commencent toujours à 0. Le libellé dit CE que c'est (« Moyenne 12,4 k », « Objectif
+  // 100 k ») au format de la mesure ; texte canvas, jamais interprété comme du HTML. Silencieux : ni survol ni clic.
+  function addRefLine(option, tile, ref, f) {
+    const th = chartTheme();
+    const horizontal = tile.type === 'bar' && !!tile.horizontal; // barres horizontales : l'axe des valeurs est X
+    const kind = refLineKind(tile);
+    const text = `${t(kind === 'average' ? 'chart.refLine.average' : 'chart.refLine.value')} ${f.format(ref) || String(ref)}`;
+    option.series[0].markLine = {
+      silent: true,
+      symbol: 'none',
+      animation: false,
+      data: [horizontal ? { xAxis: ref } : { yAxis: ref }],
+      lineStyle: { color: th.text, type: 'dashed', width: 1.5 },
+      label: {
+        show: true,
+        formatter: text,
+        // Barres horizontales : le trait est vertical, son libellé va en HAUT (marge du cadre) ; au bout (en bas) il recouvrait les graduations.
+        position: horizontal ? 'start' : 'insideEndTop',
+        color: th.text,
+        fontSize: 11,
+        backgroundColor: th.surface,
+        padding: [1, 4],
+        borderRadius: 3
+      }
+    };
+    const axis = option[horizontal ? 'xAxis' : 'yAxis'];
+    if (axis && !Array.isArray(axis)) {
+      if (ref > 0) axis.max = (v) => Math.max(v.max, ref);
+      else if (ref < 0) axis.min = (v) => Math.min(v.min, ref);
+    }
   }
 
   // Carte de chaleur (type 'heatmap') : le MÊME calcul que le tableau croisé (`computePivot`, DuckDB au-delà du seuil), dessiné en cases

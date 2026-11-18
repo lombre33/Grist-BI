@@ -4431,6 +4431,65 @@ const SAMPLE_TIME_SERIES = [
     console.log('OK carte de chaleur et tableau croisé coloré — rampes, contraste du texte (min ' + worst.toFixed(1) + ':1), grille, clic de case, export, défauts, conseil et i18n');
   }
 
+  // Ligne de repère (`tile.refLine` / `tile.refValue`) : moyenne des valeurs affichées ou objectif saisi, sur barres et courbe.
+  {
+    const fsR = require('fs');
+    const pathR = require('path');
+    const rootR = pathR.join(__dirname, '..');
+    assert.deepStrictEqual(data.REF_LINE_KINDS, ['average', 'value']);
+    // Types : barres (hors mode mesure temporelle) et courbe seulement.
+    for (const tile of [{ type: 'bar' }, { type: 'bar', measureMode: 'brut' }, { type: 'bar', measureMode: undefined }, { type: 'line' }, { type: 'line', areaFill: true }]) assert.strictEqual(data.supportsRefLine(tile), true, JSON.stringify(tile));
+    for (const tile of [{ type: 'bar', measureMode: 'ytd' }, { type: 'bar', measureMode: 'cumulative' }, { type: 'pie' }, { type: 'kpi' }, { type: 'combo' }, { type: 'histogram' }, { type: 'heatmap' }, { type: 'pivot' }, { type: 'radar' }, null, undefined]) assert.strictEqual(data.supportsRefLine(tile), false, JSON.stringify(tile));
+    // Genre tracé : une clé inconnue, un objectif sans nombre valide, un type qui n'en porte pas -> aucune ligne.
+    assert.strictEqual(data.refLineKind({ type: 'bar', refLine: 'average' }), 'average');
+    assert.strictEqual(data.refLineKind({ type: 'line', refLine: 'average', refValue: 'abc' }), 'average', 'la moyenne ignore refValue');
+    assert.strictEqual(data.refLineKind({ type: 'bar', refLine: 'value', refValue: 100 }), 'value');
+    assert.strictEqual(data.refLineKind({ type: 'bar', refLine: 'value', refValue: 0 }), 'value', 'zéro est un objectif valide');
+    assert.strictEqual(data.refLineKind({ type: 'bar', refLine: 'value', refValue: '12,5' }), '', 'texte non numérique');
+    assert.strictEqual(data.refLineKind({ type: 'bar', refLine: 'value', refValue: '12.5' }), 'value', 'chaîne numérique');
+    for (const refValue of [undefined, null, '', 'abc', NaN, Infinity, true, false]) assert.strictEqual(data.refLineKind({ type: 'bar', refLine: 'value', refValue }), '', String(refValue));
+    for (const refLine of [undefined, '', 'median', 'constructor', '__proto__', 1]) assert.strictEqual(data.refLineKind({ type: 'bar', refLine, refValue: 5 }), '', String(refLine));
+    assert.strictEqual(data.refLineKind({ type: 'pie', refLine: 'average' }), '');
+    assert.strictEqual(data.refLineKind({ type: 'bar', measureMode: 'ytd', refLine: 'average' }), '');
+    // Valeur : l'objectif saisi, ou la moyenne des valeurs affichées (vides ignorés, jamais comptés comme 0).
+    const bar = { type: 'bar', refLine: 'average' };
+    assert.strictEqual(data.refLineValue(bar, [10, null, 20, '', 30]), 20);
+    assert.strictEqual(data.refLineValue(bar, [10, 20, 30, 0]), 15, 'un vrai zéro compte');
+    assert.strictEqual(data.refLineValue(bar, [-10, 10, 30]), 10);
+    assert.strictEqual(data.refLineValue(bar, [4n, 6n]), 5, 'BigInt de DuckDB');
+    assert.strictEqual(data.refLineValue(bar, ['4', 6]), 5, 'chaîne numérique');
+    assert.strictEqual(data.refLineValue(bar, [true, 'x', null]), null, 'aucune valeur numérique : pas de ligne');
+    assert.strictEqual(data.refLineValue(bar, []), null); assert.strictEqual(data.refLineValue(bar, undefined), null);
+    assert.strictEqual(data.refLineValue({ type: 'bar', refLine: 'value', refValue: 7.5 }, []), 7.5, 'objectif : indépendant des valeurs');
+    assert.strictEqual(data.refLineValue({ type: 'bar', refLine: 'value', refValue: -3 }, [1, 2]), -3);
+    assert.strictEqual(data.refLineValue({ type: 'bar' }, [1, 2]), null); assert.strictEqual(data.refLineValue({ type: 'pie', refLine: 'average' }, [1, 2]), null);
+    // Moyenne sans bruit de flottant visible : l'affichage passe par js/format.js (« 0,2 »), pas par la valeur brute.
+    assert.ok(Math.abs(data.refLineValue(bar, [0.1, 0.2, 0.3]) - 0.2) < 1e-12);
+    // Le store garde et efface les deux champs ; l'export Excel n'en dépend pas.
+    {
+      const st = state.createStore();
+      st.setRows([{ R: 'A', M: 1 }, { R: 'B', M: 3 }]);
+      st.addTile({ id: 'r1', type: 'bar', dimension: 'R', measure: 'M', aggFn: 'sum', title: 'T', refLine: 'value', refValue: 2 });
+      assert.deepStrictEqual([st.getState().tiles[0].refLine, st.getState().tiles[0].refValue], ['value', 2]);
+      const rState = { rows: [{ R: 'A', M: 1 }, { R: 'B', M: 3 }], activeFilters: [], advancedFilters: [], drillIns: {}, comments: [], pages: [] };
+      const withRef = data.tileExportSheet(st.getState().tiles[0], rState);
+      st.updateTile('r1', { refLine: undefined, refValue: undefined });
+      assert.strictEqual(st.getState().tiles[0].refLine, undefined);
+      assert.deepStrictEqual(data.tileExportSheet(st.getState().tiles[0], rState), withRef, 'la ligne de repère n\'est pas exportée : même feuille');
+    }
+    ['tileForm.refLine.label', 'tileForm.refLine.none', 'tileForm.refLine.average', 'tileForm.refLine.value', 'tileForm.refValue.label', 'tileForm.error.refValueRequired', 'chart.refLine.average', 'chart.refLine.value']
+      .forEach((k) => assert.ok(i18n.STRINGS[k] && i18n.STRINGS[k].fr && i18n.STRINGS[k].en, 'traduction fr/en : ' + k));
+    // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
+    const mainR = fsR.readFileSync(pathR.join(rootR, 'js', 'main.js'), 'utf8');
+    const chartsR = fsR.readFileSync(pathR.join(rootR, 'js', 'charts.js'), 'utf8');
+    const indexR = fsR.readFileSync(pathR.join(rootR, 'index.html'), 'utf8');
+    assert.ok(/id="tile-refline"/.test(indexR) && /id="tile-refvalue"/.test(indexR) && /<label for="tile-refvalue"/.test(indexR), 'champs étiquetés');
+    assert.ok(/supportsRefLine\(\{ type, measureMode/.test(mainR) && /tileData\.refLine = refKind \|\| undefined/.test(mainR));
+    assert.ok(/markLine/.test(chartsR) && /function addRefLine/.test(chartsR) && /refLineValue\(tile, groups\.map/.test(chartsR), 'la moyenne se calcule sur les valeurs AFFICHÉES (groupes triés/drillés)');
+    assert.ok(!/Intl\.NumberFormat|toFixed/.test(chartsR), 'aucun format de nombre en dur dans charts.js');
+    console.log('OK ligne de repère — types, genre tracé, objectif invalide, moyenne (vides, BigInt), store, export inchangé, i18n, câblage');
+  }
+
   // Export Excel avec ExcelJS 4.4.0 (consigne GFS 017, 18/11/2026) : le VRAI paquet vendorisé, exécuté sous Node
   // (js/export.js se charge sous Node : mise en forme des cellules et construction du classeur, sans DOM). Ce que ces
   // essais ne voient pas : le chargement paresseux dans un navigateur et le déclenchement du téléchargement.

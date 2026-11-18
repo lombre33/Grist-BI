@@ -160,6 +160,40 @@
     return filter.type && filter.type !== 'eq' ? matchesFilter(value, filter) : sameValue(filter.value, value);
   }
 
+  // --- Ligne de repère (`tile.refLine`) -------------------------------------------------------------
+  // Un trait horizontal (vertical sur des barres horizontales) tracé à une valeur : la MOYENNE des valeurs affichées (`'average'`) ou un
+  // objectif saisi (`'value'`, `tile.refValue`). Barres et courbe seulement (pas la tuile Barres en mode mesure temporelle : son axe est un
+  // mois calculé, pas une catégorie), jamais deux lignes. Pur : le rendu (js/charts.js) ne fait que le tracer.
+  const REF_LINE_KINDS = ['average', 'value'];
+  function supportsRefLine(tile) {
+    return !!tile && ((tile.type === 'bar' && (!tile.measureMode || tile.measureMode === 'brut')) || tile.type === 'line');
+  }
+  // Nombre fini représenté par `v` (nombre ou chaîne numérique), sinon null — une cellule vide n'est jamais 0.
+  function finiteOrNull(v) {
+    if (v === null || v === undefined || v === '' || typeof v === 'boolean') return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  // Genre de ligne réellement tracé pour cette tuile (`'average'`, `'value'` ou `''`) : une clé inconnue, un type qui n'en porte pas ou
+  // un objectif sans nombre valide donnent `''`.
+  function refLineKind(tile) {
+    if (!supportsRefLine(tile)) return '';
+    if (tile.refLine === 'average') return 'average';
+    if (tile.refLine === 'value' && finiteOrNull(tile.refValue) !== null) return 'value';
+    return '';
+  }
+  // Valeur où tracer la ligne, ou null : l'objectif saisi, ou la moyenne des `values` (les valeurs affichées, une par catégorie : cellules
+  // vides ignorées, `BigInt` accepté). Aucune valeur affichée -> pas de moyenne, donc pas de ligne.
+  function refLineValue(tile, values) {
+    const kind = refLineKind(tile);
+    if (kind === 'value') return finiteOrNull(tile.refValue);
+    if (kind === 'average') {
+      const nums = (values || []).map((v) => finiteOrNull(typeof v === 'bigint' ? Number(v) : v)).filter((n) => n !== null);
+      return nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : null;
+    }
+    return null;
+  }
+
   // Clic sur une case (carte de chaleur) : quels `toggleFilter(colonne, valeur)` appeler pour que les filtres de la LIGNE et de la
   // COLONNE soient posés ? Si cette case est déjà la sélection (les deux filtres d'égalité posés), les deux appels les retirent ;
   // sinon seulement ceux qui manquent — un clic sur une autre case de la même ligne ne doit pas lever le filtre de la ligne, ce
@@ -1387,7 +1421,7 @@
     importMapHas, tableToRows, epochSecondsToIsoDate, applyFilters, matchesFilter, sameValue, parseDateValue,
     relativeDateRange, RELATIVE_DATE_PRESETS, groupByAggregate, aggregateSingle, wordFrequency, pivotTable,
     distinctColumnValues, computeTrend, trendFromGroups, periodLabel, measureSeriesForTile,
-    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, comboModeOf, paretoSeries, comboSeries, niceStep, histogramBins, histogramFilter, histogramBinIsActive, HISTOGRAM_MAX_BINS, filterSelects, cellFilterToggles, HEAT_RAMPS, heatStops, heatColor, heatTextColor, heatRange, heatCellColors, isStackedTile, splitBySeries, assembleSeries, PALETTES, PALETTE_KEYS, paletteColors, supportsPalette, supportsNumberFormat, NUMBER_FORMAT_TILE_TYPES, escapeHtml,
+    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, comboModeOf, paretoSeries, comboSeries, niceStep, histogramBins, histogramFilter, histogramBinIsActive, HISTOGRAM_MAX_BINS, filterSelects, REF_LINE_KINDS, supportsRefLine, refLineKind, refLineValue, cellFilterToggles, HEAT_RAMPS, heatStops, heatColor, heatTextColor, heatRange, heatCellColors, isStackedTile, splitBySeries, assembleSeries, PALETTES, PALETTE_KEYS, paletteColors, supportsPalette, supportsNumberFormat, NUMBER_FORMAT_TILE_TYPES, escapeHtml,
     tileDrillLevels, currentDimension, rowsForTile, tileExportSheet, tileExportKind, renderTextHtml, plainTextOf, TEXT_TILE_MAX,
     DEFAULT_GOOD_PCT, DEFAULT_WARN_PCT, targetProgress, progressRows, sparklineValues, sparklineGeometry,
     TABLE_TILE_MAX_ROWS, TABLE_EXPORT_MAX_ROWS, tableColumnsOf, cellText, compareCells, sortRowsBy, moveInOrder, nextSortDir, tableSheet,
