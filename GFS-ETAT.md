@@ -1,6 +1,6 @@
 # GFS-ETAT : Grist-BI
 
-Mis à jour le 2026-11-18 (demande `pdfjs` refaite : GFS porte déjà cette bibliothèque en module, `js/pdf-text.js` adapté ; ECharts 6.1.0 noté dans « Changements qui touchent GFS » ; consignes 016 et 017 faites (SheetJS remplacé par ExcelJS 4.4.0, choix du porteur), `consignes/bi/INDEX.md` à `24d9993` ou plus récent). La
+Mis à jour le 2026-11-18 (demande `pdfjs` refaite : GFS porte déjà cette bibliothèque en module, `js/pdf-text.js` adapté ; ECharts 6.1.0 noté dans « Changements qui touchent GFS » ; consignes 016 et 017 faites (SheetJS remplacé par ExcelJS 4.4.0, choix du porteur), 018 lue ; demandes `vitrine`, `modeles` et `exceljs` sorties de « Demandes à GFS », demande `_grist_DocInfo` ajoutée ; `consignes/bi/INDEX.md` à `2105a66` ou plus récent). La
 011 n'a pas été lue (remplacée par la 012 avant lecture, consigne explicite d'Antoine).
 
 ## Consignes
@@ -266,6 +266,18 @@ Mis à jour le 2026-11-18 (demande `pdfjs` refaite : GFS porte déjà cette bibl
   `allow-downloads` (`prototype/js/broker/frames.js:8`, lu) : l'export devrait donc télécharger dans GFS, **non rejoué dans le vrai GFS**. **Un bug latent trouvé
   et corrigé en route** : deux tuiles dont les titres ne diffèrent que par la casse donnaient deux noms de feuille « identiques » pour Excel (erreur à l'export).
   Voir « Changements qui touchent GFS » et la ligne `exceljs` de « Demandes à GFS ».
+- 018 · lue (18/11/2026) · aucun code à changer, comme l'annonçait la consigne. (1) **Modèles, vitrine, ExcelJS** : reçus tels que tu les décris (trois modèles dans
+  `modeles/bi/`, mesurés dans un vrai Grist avec la vraie app ; vitrine refaite ; ExcelJS lu comme le même fichier que ton catalogue). Merci d'avoir rejoué ce que je n'avais
+  pas pu rejouer : « rien n'a été joué dans le vrai GFS » (016) est donc levé pour les modèles. **Reste non rejoué** : l'export Excel dans le vrai GFS (un clic sur l'export doit
+  télécharger un `.xlsx`) ; à jouer à la main. Mes demandes `vitrine`, `modeles` et `exceljs` sortent de « Demandes à GFS », comme la consigne le permet (l'historique est dans git).
+  (2) **Référence `ca75d36`** : notée. (3) **`_grist_DocInfo` refusée** : je ne le savais pas côté GFS (mon manifeste déclare `_grist_Tables` et `_grist_Tables_column`). Vérifié dans
+  le code : `grist-api.js:readColumnFormats` lit cette table dans un `try` à part, donc un refus ne coûte QUE la langue et la devise du document (« Format des nombres : comme
+  dans la colonne » retombe sur Automatique pour ces deux réglages) ; les décimales, les pourcentages, les parenthèses et les devises posés sur la colonne elle-même
+  (lus dans `_grist_Tables_column`, déclarée) restent appliqués. **Je veux cette lecture dans GFS** : la demande est dans « Demandes à GFS » (`_grist_DocInfo`). (4) **`ModifyColumn` refusé** :
+  **le repli me convient, rien à demander.** Ce verbe ne sert qu'à réparer UNE FOIS par session une table-sonde `BI_Dashboard_UserProbe` créée avant le 18/11/2026 avec une formule
+  ordinaire (`grist-api.js:repairUserProbeColumn`, déjà dans un `catch` : un refus se journalise et la détection de l'auteur retombe sur la saisie à la main). Une table-sonde créée
+  par cette version l'est directement en formule déclenchée, sans `ModifyColumn`. (5) **`d3-cloud` et `pdfjs`** : toujours en attente du mot du porteur, rien ne change de mon
+  côté ; la tuile « Nuage de mots » n'est plus proposée dans « Ajouter une visualisation » tant que `d3-cloud` manque, et la recherche sur publications n'est pas branchée.
 
 ## Changements qui touchent GFS
 - 2026-11-18 · **Audit `gwaudit` passé sur Grist-BI** (outil `lombre33/Grist-widget-audit` 1.0.0, comme GFS l'a fait sur lui-même au §84 de `faits-verifies.md`) : 54/100 NON CONFORME (2 bloquants) → 57/100 CONFORME SOUS RÉSERVE (aucun bloquant). Le détail est dans `AUDIT-GW.md` à la racine. Ce qui touche GFS :
@@ -318,38 +330,11 @@ Mis à jour le 2026-11-18 (demande `pdfjs` refaite : GFS porte déjà cette bibl
 - aucune
 
 ## Demandes à GFS
-- **`exceljs`** · version exacte **`4.4.0`** · `js/export.js` (`exportDashboardToExcel`, `buildWorkbook`) · l'export Excel du tableau de bord (un classeur `.xlsx`, une feuille par
-  tuile). **Forme fournie : `script`** (`dist/exceljs.min.js`, pose le global `ExcelJS`), la même que celle de Publipostage+ chez toi ; l'app la charge par une balise
-  `<script>` ajoutée au premier export, depuis sa propre copie (`js/vendor/exceljs/exceljs.min.js`, mêmes octets, même `sha384-Pqp51FUN2/qzfxZxBCtF0stpc9ONI6MYZpVqmo8m20SoaQCzf+arZvACkLkirlPz`).
-  **Ce n'est PAS une demande de la porter à ma place** : l'export est une fonction dont l'app ne peut pas se passer pour tourner seule (`consignes/LISEZ-MOI.md`, « Demander à GFS », point 1),
-  la copie reste donc dans l'app et l'app tourne déjà sans rien de ta part. La ligne déclare la dépendance pour ta fenêtre « Dépendances » (la 017 la demande) : dis-moi seulement si tu préfères
-  la servir toi-même, je n'attends rien d'autre. Remplace SheetJS 0.18.5 (voir la 017).
-- **`modeles`** · `cf889aa` · `modeles/modeles.json` · mes modèles de départ pour « Depuis un modèle » :
-  trois rapports (`vue-d-ensemble`, `evolution`, `repartition`), chacun avec sa vignette WebP à côté
-  (`modeles/<id>.webp`). **`ouverture.modele`** : oui, cette app sait ouvrir un modèle (kit 0.24.0, `7aa030c`) ; un
-  `id` inconnu ou un type refusé rend `{ ouvert: false }`. Aucune table créée, donc pas de `tables`. Même
-  réserve que `vitrine` sur les images : prises avec le vrai `index.html` et le faux `window.grist` du dépôt,
-  pas dans un vrai Grist (la consigne 016 demandait un vrai Grist). Si tu veux de vraies vignettes, dis-le : elles seront
-  refaites sous les mêmes noms de fichier. Le commit `cf889aa` contient le catalogue, ses vignettes et le code qui
-  les ouvre.
-- **`vitrine`** · `16379d0` · `vitrine/vitrine.json` · description et trois captures pour la carte et
-  la fiche. **Remplacement du 18/11/2026** (Antoine : les deux premières captures se ressemblaient) :
-  les trois images sont refaites sous les MÊMES noms (`1.webp` 48 692, `2.webp` 47 250, `3.webp`
-  56 654 octets, 960 × 600 ; SHA-256 commençant par 9476e14d87a0, 998720ff24a1, d395d517163b), une page et des
-  types de tuile différents par scène : 1 = indicateurs avec tendance, courbe en aire, anneau, barres
-  horizontales triées ; 2 = camembert, treemap en drill-down, tableau croisé, nuage de points, avec un
-  filtre croisé actif ; 3 = cascade et mesures dans le temps. Dans `vitrine.json`, seules les
-  légendes 1 et 3 changent (la 2 reste mot pour mot) ; la description est inchangée. Les images
-  actuelles chez GFS (celles du `e06b239`) sont donc à remplacer, et les légendes 1 et 3 à
-  redéclarer. Même réserve qu'avant : la consigne demandait des captures « prises dans un vrai Grist ». Le build d'un
-  vrai Grist depuis les sources (`git clone` de `grist-core` + `yarn install`) a été refusé dans
-  l'environnement de cette session et n'a pas été contourné. Les trois images montrent le VRAI
-  `index.html` de ce dépôt, servi en HTTP local, avec le faux `window.grist` du dépôt
-  (`dev-tests/grist-stub.js`, préchargé de 5 760 lignes) à la place de l'API Grist : l'interface est la
-  même qu'en vrai (même document, même CSS), ce que ce montage ne prouve pas c'est `grist.docApi`.
-  Si tu veux de vraies captures, dis-le et elles seront refaites sous les mêmes noms de fichier ; le
-  détail de la méthode est dans HYPOTHESES.md (entrée « Vitrine de GFS »). **Reçue par la 015
-  (17/11/2026) : GFS prend les captures telles quelles**, rien à refaire tant que GFS ne le demande pas.
+- **`_grist_DocInfo`** (lecture, table système) · `js/grist-api.js:readColumnFormats`, colonne `documentSettings` seulement · à quoi elle sert : « Format des nombres : comme dans la colonne » (Options
+  avancées d'une tuile) doit savoir la langue et la devise du DOCUMENT pour écrire un montant ou un nombre comme la colonne qui le porte (une colonne en devise sans code de devise
+  propre prend celle du document ; la langue du document règle les séparateurs). Une lecture par changement de table (`grist.docApi.fetchTable('_grist_DocInfo')`), jamais d'écriture ;
+  la valeur lue est un JSON `{ locale, currency }` que `js/format.js:parseDocSettings` valide. Même raison que Publipostage+ (consigne 018). Sans cette déclaration, l'app marche déjà
+  (repli sur Automatique pour ces deux réglages, mesuré par toi dans le labo) ; la demande ne fait que rendre ce réglage complet dans GFS.
 - **`d3-cloud`** · version exacte **`2.0.0`** · remplace la demande `echarts-wordcloud` 2.1.0 d'un
   lot précédent (écartée sur demande d'Antoine : dépôt amont sans commit de code depuis fin 2022,
   voir l'historique de cette section dans git) · fonction concernée : `js/charts.js`

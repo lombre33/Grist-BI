@@ -221,6 +221,12 @@ body[data-mode="edit"] .read-only { display: none !important; }
 .bar-btn[data-view-active="true"] .icon-bookmark { fill: currentColor; color: var(--accent-ink); }
 .bar-view-name { max-width: 150px; overflow: hidden; text-overflow: ellipsis; color: var(--accent-ink); font-weight: 600; }
 .bar-view-name[hidden], .bar-dot[hidden] { display: none; }
+/* Posés par js/main.js:fitPageTabs quand la barre rognerait un onglet de page (les onglets passent avant) : d'abord le nom de la vue suivie,
+   puis — seulement si cela suffit — les libellés des boutons, comme au-dessous de 900 px (leur nom reste dans `aria-label`/`title`). */
+.appbar.bar-names-hidden .bar-view-name, .appbar.bar-labels-hidden .bar-view-name { display: none; }
+.appbar.bar-labels-hidden .bar-label { display: none; }
+.appbar.bar-labels-hidden .bar-btn { padding: 0 8px; }
+.appbar.bar-labels-hidden .bar-btn-mode .bar-label { display: inline; }
 .bar-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--warning-text); box-shadow: 0 0 0 2px var(--warning-bg); }
 /* « Modifier » est un bouton à contour (action principale du mode lecture) ; en édition il devient
    « Terminer », plein. L'icône change avec l'état (crayon / coche). */
@@ -1138,6 +1144,10 @@ td.pivot-cell:not(.pivot-cell-empty):not(.pivot-total-cell):hover { background: 
 .pivot-cell-empty { color: var(--text-muted); cursor: default; }
 .pivot-active { background: var(--accent-soft-strong); color: var(--accent-ink); }
 .pivot-dimmed { opacity: 0.45; }
+/* Tableau croisé coloré (`tile.pivotHeat`) : le fond de chaque cellule est posé en ligne (js/charts.js, dégradé calculé), donc il
+   écrase le survol et la sélection ci-dessus : un contour les remplace, lisible sur n'importe quelle couleur de la rampe. */
+.pivot-heat td.pivot-cell:not(.pivot-cell-empty):not(.pivot-total-cell):hover { outline: 2px solid var(--border-strong); outline-offset: -2px; }
+.pivot-heat .pivot-cell.pivot-active { outline: 2px solid var(--accent); outline-offset: -2px; font-weight: 700; }
 .pivot-total-row, .pivot-total-label, .pivot-total-cell {
   font-weight: 700;
   background: var(--surface-sunken);

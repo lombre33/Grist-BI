@@ -37,7 +37,7 @@
   //  barPill          barres horizontales arrondies aux DEUX bouts (pilule) ; verticales : seul le haut
   //  barMaxWidth      épaisseur maximale d'une barre (px)
   //  barGap           écart entre catégories (`barCategoryGap`), sauf si le rendu en a déjà posé un (histogramme : classes contiguës)
-  //  barLabels        la valeur au bout de chaque barre, quand il n'y a qu'une série et pas plus de `barLabelsMax` barres ; l'axe des
+  //  barLabels        la valeur au bout de chaque barre, quand il n'y a qu'une série, pas de ligne de repère et pas plus de `barLabelsMax` barres ; l'axe des
   //                   valeurs, devenu redondant, est alors masqué
   //  soft             { amount, toward, darkToward?, darkAmount? } : une couleur UNIQUE (barres d'une seule série) est mélangée à `surface`
   //                   ou `text` (sur carte sombre : `darkToward`/`darkAmount`, voir softColor) ; la couleur pleine revient au survol
@@ -45,7 +45,8 @@
   //  axisLine         { category, value } : trait d'axe affiché ou non
   //  axisTick         graduations (petits traits) de l'axe des catégories
   //  labelSize        taille (px) des libellés d'axe
-  //  lineWidth        épaisseur des courbes ; lineSmooth courbe lissée ; symbol/symbolSize repère de chaque point (jamais masqué : un
+  //  lineWidth        épaisseur des courbes (JAMAIS leur forme : lissé/escalier est un choix de la tuile, `tile.lineShape`, et un lissage dessine
+  //                   des valeurs qui n'existent pas) ; symbol/symbolSize repère de chaque point (jamais masqué : un
   //                   point cliquable sert au filtre croisé et au drill-down) ; symbolRing anneau de la couleur de la carte autour
   //  areaOpacity      opacité d'une aire non empilée
   //  sliceGap         trait (px) de la couleur de la carte entre les parts d'un camembert, d'un entonnoir ou d'une carte proportionnelle
@@ -70,7 +71,7 @@
         barLabels: true, barLabelsMax: 14,
         soft: { amount: 0.5, toward: 'surface', darkToward: 'text', darkAmount: 0.3 },
         grid: 'none', axisLine: { category: false, value: false }, axisTick: false, labelSize: 11,
-        lineWidth: 3, lineSmooth: true, symbol: 'circle', symbolSize: 8, symbolRing: 2, areaOpacity: 0.16,
+        lineWidth: 3, symbol: 'circle', symbolSize: 8, symbolRing: 2, areaOpacity: 0.16,
         sliceGap: 3, sliceRadius: 5, legendIcon: 'circle', tooltipRadius: 12
       }
     },
@@ -190,7 +191,10 @@
     const cat = categoryAxis(option);
     const count = cat && Array.isArray(cat.data) ? cat.data.length : 0;
     const contiguous = bars.some((s) => s.barCategoryGap != null); // histogramme : le rendu a décidé de l'écart
-    const labels = !!c.barLabels && alone && !contiguous && count > 0 && count <= (c.barLabelsMax || 12);
+    // Une ligne de repère (moyenne, objectif) se lit CONTRE l'axe des valeurs et son libellé recouvre les valeurs du bout des barres :
+    // le style n'écrit alors pas de valeurs et laisse l'axe (celles que la tuile a réglées elle-même, `tile.valueLabels`, restent).
+    const hasRef = seriesList(option).some((s) => s && s.markLine);
+    const labels = !!c.barLabels && alone && !contiguous && !hasRef && count > 0 && count <= (c.barLabelsMax || 12);
     const valAx = valueAxis(option);
     const fmt = valAx && valAx.axisLabel && typeof valAx.axisLabel.formatter === 'function' ? valAx.axisLabel.formatter : null;
 
@@ -234,7 +238,6 @@
   function styleLines(option, c, th) {
     seriesList(option).forEach((sr) => {
       if (!sr || sr.type !== 'line') return;
-      if (c.lineSmooth != null) sr.smooth = !!c.lineSmooth;
       if (c.lineWidth) sr.lineStyle = Object.assign({ width: c.lineWidth }, sr.lineStyle);
       if (c.symbol) sr.symbol = c.symbol;
       if (c.symbolSize) sr.symbolSize = c.symbolSize;

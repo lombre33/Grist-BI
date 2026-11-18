@@ -430,6 +430,7 @@
         <option value="gauge" data-i18n="tileForm.type.gauge">Jauge</option>
         <option value="progress" data-i18n="tileForm.type.progress">Progression</option>
         <option value="pivot" data-i18n="tileForm.type.pivot">Tableau croisé</option>
+        <option value="heatmap" data-i18n="tileForm.type.heatmap">Carte de chaleur</option>
         <option value="table" data-i18n="tileForm.type.table">Table</option>
         <option value="text" data-i18n="tileForm.type.text">Texte</option>
       </select>
@@ -638,6 +639,24 @@
                 <option value="label" data-i18n="tileForm.sort.byLabel">Libellé (A→Z, 1→9)</option>
               </select>
             </div>
+            <div class="field field-checkbox" id="tile-pivot-heat-field" hidden>
+              <label for="tile-pivot-heat">
+                <input type="checkbox" id="tile-pivot-heat" />
+                <span data-i18n="tileForm.pivotHeat.label">Colorer les cellules selon leur valeur</span>
+              </label>
+            </div>
+            <div class="field" id="tile-refline-field" hidden>
+              <label for="tile-refline" data-i18n="tileForm.refLine.label">Ligne de repère</label>
+              <select id="tile-refline">
+                <option value="" data-i18n="tileForm.refLine.none">Aucune</option>
+                <option value="average" data-i18n="tileForm.refLine.average">Moyenne des valeurs affichées</option>
+                <option value="value" data-i18n="tileForm.refLine.value">Valeur fixe (objectif)</option>
+              </select>
+            </div>
+            <div class="field" id="tile-refvalue-field" hidden>
+              <label for="tile-refvalue" data-i18n="tileForm.refValue.label">Valeur de la ligne</label>
+              <input type="number" id="tile-refvalue" step="any" />
+            </div>
             <div class="field" id="tile-palette-field" hidden>
               <label for="tile-palette" data-i18n="tileForm.palette.label">Palette de couleurs</label>
               <select id="tile-palette">
@@ -649,6 +668,7 @@
                 <option value="gray" data-i18n="tileForm.palette.gray">Dégradé gris (impression noir et blanc)</option>
               </select>
               <div class="palette-swatch" id="tile-palette-swatch" aria-hidden="true"></div>
+              <p class="field-hint" id="tile-palette-hint" data-i18n="tileForm.palette.heatHint" hidden>Un dégradé d'une seule teinte : clair = petite valeur, foncé = grande. « Standard » et « Okabe-Ito » donnent le bleu.</p>
             </div>
             <div class="field" id="tile-numfmt-field" hidden>
               <label for="tile-numfmt" data-i18n="tileForm.numFormat.label">Format des nombres</label>
@@ -692,6 +712,26 @@
               <label for="tile-stacked">
                 <input type="checkbox" id="tile-stacked" />
                 <span data-i18n="tileForm.stacked.label">Empiler les séries (le total de chaque catégorie)</span>
+              </label>
+            </div>
+            <div class="field field-checkbox" id="tile-stack-percent-field" hidden>
+              <label for="tile-stack-percent">
+                <input type="checkbox" id="tile-stack-percent" />
+                <span data-i18n="tileForm.stackPercent.label">En 100 % : la part de chaque série dans la catégorie</span>
+              </label>
+            </div>
+            <div class="field" id="tile-line-shape-field" hidden>
+              <label for="tile-line-shape" data-i18n="tileForm.lineShape.label">Tracé de la courbe</label>
+              <select id="tile-line-shape">
+                <option value="" data-i18n="tileForm.lineShape.straight">Droit (point à point)</option>
+                <option value="smooth" data-i18n="tileForm.lineShape.smooth">Lissé</option>
+                <option value="step" data-i18n="tileForm.lineShape.step">En escalier</option>
+              </select>
+            </div>
+            <div class="field field-checkbox" id="tile-value-labels-field" hidden>
+              <label for="tile-value-labels">
+                <input type="checkbox" id="tile-value-labels" />
+                <span data-i18n="tileForm.valueLabels.label">Écrire les valeurs sur le graphique</span>
               </label>
             </div>
             <div class="field field-checkbox" id="tile-donut-field" hidden>

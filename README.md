@@ -28,9 +28,9 @@ réellement (voir HYPOTHESES.md).
 
 ## Fonctionnalités du POC
 
-- 17 types de tuiles : barres (verticales ou horizontales, avec tri), histogramme (clic = filtre par plage), courbe / aire, barres + courbe à double axe (ou Pareto), camembert (ou
+- 18 types de tuiles : barres (verticales ou horizontales, avec tri), histogramme (clic = filtre par plage), courbe / aire, barres + courbe à double axe (ou Pareto), camembert (ou
   anneau, avec pourcentages), treemap, entonnoir, nuage de points, cascade, radar, nuage de mots (rendu en
-  attente d'une bibliothèque, voir GFS-ETAT.md ; **absent de « Ajouter une visualisation » tant que d3-cloud n'est pas fourni**), carte KPI (avec courbe de tendance, objectif et seuils de couleur), jauge, progression (une barre par catégorie, en % de l'objectif), tableau croisé, table plate (colonnes au choix, tri d'un clic sur l'en-tête, 500 lignes affichées), texte (une note sans donnée : titre, liste, gras, jamais d'HTML brut). Ajout, édition
+  attente d'une bibliothèque, voir GFS-ETAT.md ; **absent de « Ajouter une visualisation » tant que d3-cloud n'est pas fourni**), carte KPI (avec courbe de tendance, objectif et seuils de couleur), jauge, progression (une barre par catégorie, en % de l'objectif), tableau croisé (cellules colorables selon leur valeur), carte de chaleur (le même calcul en cases colorées, clic = filtre ligne + colonne), table plate (colonnes au choix, tri d'un clic sur l'en-tête, 500 lignes affichées), texte (une note sans donnée : titre, liste, gras, jamais d'HTML brut). Ajout, édition
   (bouton crayon) et **réorganisation** (◂ ▸, modifie l'ordre sans perdre les autres réglages de la
   tuile). Le nuage de points est une version **agrégée** (un point par catégorie, deux mesures en
   X/Y), pas ligne-à-ligne. La jauge compare une valeur agrégée à un Min/Max défini dans son

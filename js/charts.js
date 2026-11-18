@@ -8,7 +8,7 @@
   const GristBI = global.GristBI || (global.GristBI = {});
   const {
     groupByAggregate, sameValue, aggregateSingle, pivotTable, trendFromGroups, targetProgress, progressRows, sparklineValues, sparklineGeometry, measureSeriesForTile,
-    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, comboSeries, comboModeOf, histogramBins, histogramFilter, histogramBinIsActive, filterSelects, isStackedTile, splitBySeries, assembleSeries, paletteColors, PALETTES, escapeHtml,
+    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, comboSeries, comboModeOf, histogramBins, histogramFilter, histogramBinIsActive, filterSelects, lineShapeOf, isStackedPercentTile, stackShares, supportsValueLabels, refLineKind, refLineValue, cellFilterToggles, heatStops, heatRange, heatCellColors, heatTextColor, isStackedTile, splitBySeries, assembleSeries, paletteColors, PALETTES, escapeHtml,
     tileDrillLevels, currentDimension, rowsForTile, wordFrequency
   } = GristBI.data;
   const { t } = GristBI.i18n;
@@ -417,7 +417,10 @@
     const th = chartTheme();
     const F = GristBI.format;
     const family = th.font;
-    const bound = (v) => g.fmt.axis(v);
+    // Libellés de l'échelle entière : une échelle d'entiers de moins de 5 chiffres (des années, une colonne entière) n'est
+    // jamais compactée (« 1990, 2000 », pas « 1,99 k, 2 k ») — voir GristBI.format.plainScale.
+    const scale = g.fmt.forScale(g.min, g.max);
+    const bound = scale.axis;
     // Graduations : le plus grand nombre que la place permet, des valeurs rondes (1 M, 2 M, 3 M).
     const base = F.gaugeLayout(g.w, g.h);
     let L = base;
@@ -431,7 +434,7 @@
         ticks = items;
       }
     }
-    let text = g.hasValue ? (g.fmt.format(g.value) || '–') : '–';
+    let text = g.hasValue ? (scale.format(g.value) || '–') : '–';
     let fs = F.fitFont(text, L.valueMaxWidth, L.valueMaxFont, L.valueMinFont, (s, px) => measureText(s, px, 700, family));
     if (fs <= L.valueMinFont && measureText(text, fs, 700, family) > L.valueMaxWidth) {
       text = g.fmt.axis(g.value) || text;
@@ -531,6 +534,18 @@
       if (bin) GristBI.store.toggleRangeFilter(currentTile.measure, histogramFilter(bin), currentTile.id);
       return;
     }
+    // Carte de chaleur : une case = UNE ligne ET UNE colonne du tableau croisé, le clic pose les deux filtres (comme une cellule du
+    // tableau croisé). Les valeurs des deux axes viennent du dernier rendu (`instance.__grid`), retrouvées par rang : jamais
+    // `params.name`, qui ne donne que l'abscisse. Pas de drill-down (comme le tableau croisé).
+    if (currentTile.type === 'heatmap') {
+      const inst = chartInstances.get(tileId);
+      const grid = inst && inst.__grid;
+      const v = params && Array.isArray(params.value) ? params.value : null;
+      if (grid && v && grid.colKeys[v[0]] !== undefined && grid.rowKeys[v[1]] !== undefined) {
+        toggleCellFilters(currentTile, String(grid.rowKeys[v[1]]), String(grid.colKeys[v[0]]));
+      }
+      return;
+    }
     // Mode mesure temporelle (voir renderMeasureChart) : un point est un mois CALCULÉ (bucket
     // DuckDB), pas une vraie valeur de la dimension d'origine — rien de cohérent à filtrer/driller.
     if (currentTile.type === 'bar' && currentTile.measureMode && currentTile.measureMode !== 'brut') return;
@@ -561,6 +576,12 @@
     } else {
       GristBI.store.toggleFilter(dim, name, currentTile.id);
     }
+  }
+
+  // Clic sur une case de la carte de chaleur : filtre de la ligne ET de la colonne (js/data.js:cellFilterToggles décide lesquels).
+  function toggleCellFilters(tile, rowValue, colValue) {
+    cellFilterToggles(GristBI.store.getState().activeFilters, tile.dimension, rowValue, tile.columnDimension, colValue)
+      .forEach((c) => GristBI.store.toggleFilter(c.column, c.value, tile.id));
   }
 
   // Instance ECharts partagée par renderChart/renderMeasureChart pour une même tuile : une tuile
@@ -879,6 +900,14 @@
       return `<th class="${cls}" data-axis="col" data-value="${escapeHtml(String(ck))}">${escapeHtml(String(ck))}</th>`;
     }).join('');
 
+    // Tableau croisé coloré (`tile.pivotHeat`) : fond de chaque cellule de données d'un dégradé séquentiel (js/data.js:heatCellColors),
+    // texte blanc ou noir selon le contraste ; le nombre reste écrit, la couleur n'est jamais seule. Totaux jamais colorés
+    // (une somme de ligne écraserait l'échelle des cellules). Couleurs CALCULÉES (hex), jamais une chaîne de la configuration.
+    const heat = tile.pivotHeat ? heatCellColors(pivot.cells, heatStops(tile.palette)) : null;
+    const heatStyle = (ri, ci) => {
+      const c = heat && heat[ri] && heat[ri][ci];
+      return c ? ` style="background:${c.bg};color:${c.fg}"` : '';
+    };
     const bodyRows = pivot.rowKeys.map((rk, ri) => {
       const rowActive = rowFilter && filterSelects(rowFilter, rk);
       const rowDimmed = rowFilter && !rowActive;
@@ -890,7 +919,7 @@
         const cellActive = rowActive && colActive;
         const cellDimmed = !cellActive && (rowDimmed || colDimmed);
         const cls = `pivot-cell${cellActive ? ' pivot-active' : ''}${cellDimmed ? ' pivot-dimmed' : ''}${v == null ? ' pivot-cell-empty' : ''}`;
-        return `<td class="${cls}" data-axis="cell" data-row="${escapeHtml(String(rk))}" data-col="${escapeHtml(String(ck))}">${fmt(v)}</td>`;
+        return `<td class="${cls}" data-axis="cell" data-row="${escapeHtml(String(rk))}" data-col="${escapeHtml(String(ck))}"${heatStyle(ri, ci)}>${fmt(v)}</td>`;
       }).join('');
       return `<tr>
         <th class="${rowHeaderCls}" data-axis="row" data-value="${escapeHtml(String(rk))}">${escapeHtml(String(rk))}</th>
@@ -906,7 +935,7 @@
       <td class="pivot-cell pivot-total-cell pivot-grand-total">${fmt(pivot.grandTotal)}</td>
     </tr>`;
 
-    el.innerHTML = `<table class="pivot-table">
+    el.innerHTML = `<table class="pivot-table${heat ? ' pivot-heat' : ''}">
       <thead><tr><th class="pivot-corner"></th>${headCells}<th class="pivot-col-header pivot-total-label">${totalLabel}</th></tr></thead>
       <tbody>${bodyRows}${totalRow}</tbody>
     </table>`;
@@ -968,6 +997,9 @@
       instance.hideLoading();
       renderHistogram(tile, rows, state, instance);
       return;
+    }
+    if (tile.type === 'heatmap') {
+      return renderHeatmap(tile, rows, state, instance);
     }
     // Formateur de la mesure (axe Y, infobulles, étiquettes) ; nuage de points : l'axe X porte `measure`,
     // l'axe Y `measureY`, chacun avec le format de SA colonne.
@@ -1060,6 +1092,49 @@
 
     // Palette choisie sur la tuile (`tile.palette`, js/data.js:PALETTES) ; `standard` sans choix.
     const palette = paletteColors(tile.palette);
+    // 100 % empilé : chaque catégorie ramenée à ses parts, la valeur brute gardée (`raw`) pour l'infobulle. La pile somme à 100, l'axe va de
+    // 0 à 100 et ses graduations s'écrivent en %.
+    const stackPct = stacked && isStackedPercentTile(tile);
+    const pctTooltip = {
+      trigger: 'axis',
+      formatter: (params) => {
+        const list = Array.isArray(params) ? params : [params];
+        if (!list.length) return '';
+        let total = 0;
+        const lines = list.map((p) => {
+          const raw = p.data && p.data.raw;
+          if (Number.isFinite(Number(raw))) total += Number(raw);
+          return `${p.marker}${escapeHtml(String(p.seriesName))} : ${f.percent(Number(p.value))}${raw != null ? ` (${f.format(raw) || '–'})` : ''}`;
+        });
+        const head = escapeHtml(String(list[0].axisValueLabel != null ? list[0].axisValueLabel : list[0].name));
+        return `${head}<br/>${lines.join('<br/>')}<br/><b>${escapeHtml(t('chart.stacked.total'))} : ${f.format(total)}</b>`;
+      }
+    };
+    const valueAxisPct = { type: 'value', min: 0, max: 100, axisLabel: { formatter: (v) => f.percent(v) } };
+    // Étiquettes de valeur (`tile.valueLabels`, barres et courbe) : au-dessus de la barre ou du point (à droite d'une barre horizontale),
+    // DANS le segment d'une pile avec le texte noir ou blanc qui contraste avec sa couleur ; compactes (`f.axis`) ou en % en 100 % empilé ;
+    // une valeur absente ou nulle d'une pile n'écrit rien, et celles qui se recouvrent sont masquées (`labelLayout.hideOverlap`).
+    const labelsOn = !!tile.valueLabels && supportsValueLabels(tile);
+    const thLabel = chartTheme();
+    const seriesLabelOptions = (index) => {
+      if (!labelsOn) return {};
+      const color = palette[index % palette.length];
+      return {
+        label: {
+          show: true,
+          position: stacked ? 'inside' : (tile.type === 'bar' && tile.horizontal ? 'right' : 'top'),
+          color: stacked ? heatTextColor(color) : thLabel.text,
+          fontSize: 10,
+          formatter: (p) => {
+            const raw = p.value;
+            const v = Number(raw);
+            if (raw == null || !Number.isFinite(v) || (stacked && v === 0)) return '';
+            return stackPct ? f.percent(v) : (f.axis(v) || '');
+          }
+        },
+        labelLayout: { hideOverlap: true }
+      };
+    };
     let option;
     if (tile.type === 'pie') {
       // `tile.donut` : même série `pie` qu'un camembert plein, seul le rayon change (un tableau
@@ -1301,7 +1376,11 @@
               + axisNames.map((n, i) => `${escapeHtml(String(n))} : ${axisFmts[i].format(values[i]) || '–'}`).join('<br/>');
           }
         },
-        legend: series.length > 1 ? { top: 0, data: series.map((s) => s.name) } : undefined,
+        // Légende compacte et défilante : deux noms longs ne passent pas sur deux lignes (elle recouvrirait le polygone), ils se
+        // parcourent par des flèches. Sa place est réservée en haut par `finalizeOption` (GristBI.format.radarLayout).
+        legend: series.length > 1
+          ? { top: 2, type: 'scroll', itemWidth: 14, itemHeight: 8, itemGap: 14, textStyle: { fontSize: 11 }, data: series.map((s) => s.name) }
+          : undefined,
         radar: {
           // ECharts 6 a réduit le rayon par défaut (75 % -> 50 %) mais affiche désormais les noms
           // d'axes en entier : 62 % garde un polygone lisible dans une tuile de 224 px sans les couper.
@@ -1386,24 +1465,30 @@
       const lineSeries = multi
         ? multi.series.map((sr) => ({ name: sr.name, values: sr.values }))
         : [{ name: undefined, values: groups.map((d) => d.value) }];
+      const lineShares = stackPct ? stackShares(lineSeries.map((sr) => sr.values)) : null;
       option = {
         color: palette,
         grid: seriesGrid,
         legend: seriesLegend,
-        tooltip: stacked ? stackedTooltip : { trigger: 'axis', valueFormatter: tipValue },
+        tooltip: stackPct ? pctTooltip : (stacked ? stackedTooltip : { trigger: 'axis', valueFormatter: tipValue }),
         xAxis: { type: 'category', data: lineCategories },
-        yAxis: { type: 'value', axisLabel: { formatter: f.axis } },
-        series: lineSeries.map((sr) => ({
+        yAxis: stackPct ? valueAxisPct : { type: 'value', axisLabel: { formatter: f.axis } },
+        series: lineSeries.map((sr, si) => ({
           type: 'line',
           name: sr.name,
           symbolSize: 8,
+          // Tracé : lissé (courbe de Bézier adoucie, jamais l'arrondi maximal) ou en escalier centré sur chaque catégorie.
+          ...(lineShapeOf(tile) === 'smooth' ? { smooth: 0.35 } : (lineShapeOf(tile) === 'step' ? { step: 'middle' } : {})),
+          ...seriesLabelOptions(si),
           // Aire empilée : bandes plus opaques (à 0,25 deux bandes voisines se confondent) ; aire
           // non empilée : les séries se recouvrent, donc très transparentes.
           ...(tile.areaFill ? { areaStyle: { opacity: stacked ? 0.65 : 0.25 } } : {}),
           ...(stacked ? { stack: 'total' } : {}),
           // Une combinaison absente vaut 0 dans une pile : ECharts empile sur la valeur de la série du
           // dessous, et un `null` y rompt la bande de TOUTES les séries au-dessus.
-          data: sr.values.map((v, i) => ({ value: (stacked && v == null) ? 0 : v, itemStyle: dim(lineCategories[i]) }))
+          data: sr.values.map((v, i) => (stackPct
+            ? { value: lineShares[si][i] == null ? 0 : lineShares[si][i], raw: v, itemStyle: dim(lineCategories[i]) }
+            : { value: (stacked && v == null) ? 0 : v, itemStyle: dim(lineCategories[i]) }))
         }))
       };
     } else {
@@ -1415,12 +1500,13 @@
       const barSeries = multi
         ? multi.series.map((sr) => ({ name: sr.name, values: sr.values }))
         : [{ name: undefined, values: groups.map((d) => d.value) }];
-      const valueAxis = { type: 'value', axisLabel: { formatter: f.axis } };
+      const valueAxis = stackPct ? valueAxisPct : { type: 'value', axisLabel: { formatter: f.axis } };
+      const barShares = stackPct ? stackShares(barSeries.map((sr) => sr.values)) : null;
       option = {
         color: palette,
         grid: seriesGrid,
         legend: seriesLegend,
-        tooltip: stacked ? stackedTooltip : { trigger: 'axis', valueFormatter: tipValue },
+        tooltip: stackPct ? pctTooltip : (stacked ? stackedTooltip : { trigger: 'axis', valueFormatter: tipValue }),
         ...(tile.horizontal
           ? {
             xAxis: valueAxis,
@@ -1430,14 +1516,132 @@
             xAxis: { type: 'category', data: categoryLabels },
             yAxis: valueAxis
           }),
-        series: barSeries.map((sr) => ({
+        series: barSeries.map((sr, si) => ({
           type: 'bar',
           name: sr.name,
           ...(stacked ? { stack: 'total' } : {}),
-          data: sr.values.map((v, i) => ({ value: v, itemStyle: dim(categoryLabels[i]) }))
+          ...seriesLabelOptions(si),
+          data: sr.values.map((v, i) => (stackPct
+            ? { value: barShares[si][i] == null ? 0 : barShares[si][i], raw: v, itemStyle: dim(categoryLabels[i]) }
+            : { value: v, itemStyle: dim(categoryLabels[i]) }))
         }))
       };
     }
+    // Ligne de repère (`tile.refLine`, barres et courbe) : moyenne des valeurs affichées ou objectif saisi.
+    // Pas en 100 % empilé : l'axe y est en parts, un objectif ou une moyenne en valeur brute n'y est pas comparable.
+    if (!stackPct && option.series && option.series.length && (tile.type === 'bar' || tile.type === 'line')) {
+      const ref = refLineValue(tile, groups.map((g) => g.value));
+      if (ref !== null) addRefLine(option, tile, ref, f);
+    }
+    finalizeOption(option, instance);
+    instance.setOption(option, true);
+  }
+
+  // Trait de repère (ECharts `markLine`, sur la 1re série) + axe des valeurs élargi pour qu'il soit toujours dans le cadre : sans cela,
+  // un objectif à 100 k sur des barres de 20 k serait tracé hors de la zone et on ne verrait rien. `max`/`min` en fonctions : ECharts
+  // garde ses graduations rondes, et les barres commencent toujours à 0. Le libellé dit CE que c'est (« Moyenne 12,4 k », « Objectif
+  // 100 k ») au format de la mesure ; texte canvas, jamais interprété comme du HTML. Silencieux : ni survol ni clic.
+  function addRefLine(option, tile, ref, f) {
+    const th = chartTheme();
+    const horizontal = tile.type === 'bar' && !!tile.horizontal; // barres horizontales : l'axe des valeurs est X
+    const kind = refLineKind(tile);
+    const text = `${t(kind === 'average' ? 'chart.refLine.average' : 'chart.refLine.value')} ${f.format(ref) || String(ref)}`;
+    option.series[0].markLine = {
+      silent: true,
+      symbol: 'none',
+      animation: false,
+      data: [horizontal ? { xAxis: ref } : { yAxis: ref }],
+      lineStyle: { color: th.text, type: 'dashed', width: 1.5 },
+      label: {
+        show: true,
+        formatter: text,
+        // Barres horizontales : le trait est vertical, son libellé va en HAUT (marge du cadre) ; au bout (en bas) il recouvrait les graduations.
+        position: horizontal ? 'start' : 'insideEndTop',
+        color: th.text,
+        fontSize: 11,
+        backgroundColor: th.surface,
+        padding: [1, 4],
+        borderRadius: 3
+      }
+    };
+    const axis = option[horizontal ? 'xAxis' : 'yAxis'];
+    if (axis && !Array.isArray(axis)) {
+      if (ref > 0) axis.max = (v) => Math.max(v.max, ref);
+      else if (ref < 0) axis.min = (v) => Math.min(v.min, ref);
+    }
+  }
+
+  // Carte de chaleur (type 'heatmap') : le MÊME calcul que le tableau croisé (`computePivot`, DuckDB au-delà du seuil), dessiné en cases
+  // colorées plutôt qu'en chiffres — pour repérer d'un coup d'œil où une mesure se concentre (jour × heure, région × produit).
+  // Une case = (ligne, colonne) ; une intersection sans donnée reste VIDE (jamais la couleur du minimum : « pas de ligne » n'est pas
+  // « la plus petite valeur »). Dégradé séquentiel d'une seule teinte (`tile.palette` : bleu/orange/vert/gris, sinon bleu), légende
+  // continue dessous. Le nombre est écrit dans la case seulement quand elle est assez grande pour qu'il se lise ; sinon il est dans
+  // l'infobulle — la couleur n'est jamais le seul porteur de la valeur. Clic = filtre sur la ligne ET la colonne (handleTileClick).
+  async function renderHeatmap(tile, rows, state, instance) {
+    const seq = bumpSeq(tile.id);
+    const usingDuckDb = rows.length >= DUCKDB_ROW_THRESHOLD;
+    if (usingDuckDb) instance.showLoading('default', { text: t('chart.computing'), color: CATEGORICAL_PALETTE[0], maskColor: 'rgba(255, 255, 255, 0.6)' });
+    const pivot = await computePivot(rows, tile.dimension, tile.columnDimension, tile.measure, tile.aggFn);
+    if (isStale(tile.id, seq) || instance.isDisposed()) return; // rendu plus récent pour cette tuile entre-temps
+    instance.hideLoading();
+    const range = heatRange(pivot.cells);
+    instance.__grid = { rowKeys: pivot.rowKeys, colKeys: pivot.colKeys };
+    if (!pivot.rowKeys.length || !pivot.colKeys.length || !range) {
+      instance.setOption({ title: { text: t('chart.heatmap.empty'), left: 'center', top: 'middle', textStyle: { fontSize: 12, fontWeight: 'normal', color: chartTheme().muted } }, series: [], xAxis: { show: false }, yAxis: { show: false }, visualMap: [], grid: {}, tooltip: { show: false } }, true);
+      return;
+    }
+    const f = fmtFor(tile, tile.measure);
+    const th = chartTheme();
+    const stops = heatStops(tile.palette);
+    const colors = heatCellColors(pivot.cells, stops);
+    const rowFilter = state.activeFilters.find((af) => af.column === tile.dimension);
+    const colFilter = state.activeFilters.find((af) => af.column === tile.columnDimension);
+    const width = instance.getWidth() || 330;
+    const height = instance.getHeight() || 190;
+    const nRows = pivot.rowKeys.length;
+    const nCols = pivot.colKeys.length;
+    // Place réelle d'une case (grille moins axes et légende) : le nombre n'est écrit que si elle le contient.
+    const labelRoom = Math.max(0, width - 96) / nCols >= 40 && Math.max(0, height - 74) / nRows >= 17;
+    const data = [];
+    pivot.cells.forEach((line, ri) => line.forEach((v, ci) => {
+      if (!colors[ri][ci]) return; // intersection sans donnée : case vide
+      const selected = (!rowFilter || filterSelects(rowFilter, pivot.rowKeys[ri])) && (!colFilter || filterSelects(colFilter, pivot.colKeys[ci]));
+      data.push({
+        value: [ci, ri, Number(v)],
+        itemStyle: selected ? undefined : { opacity: 0.3 },
+        label: labelRoom ? { show: true, color: colors[ri][ci].fg, fontSize: 10, formatter: () => f.axis(Number(v)) } : undefined
+      });
+    }));
+    // Toutes les valeurs égales : l'échelle de la légende s'ouvre autour d'elles (couleur du milieu, comme heatCellColors).
+    const lo = range.min === range.max ? range.min - 1 : range.min;
+    const hi = range.min === range.max ? range.max + 1 : range.max;
+    const option = {
+      grid: { containLabel: true, left: 8, right: 12, top: 8, bottom: 36 },
+      tooltip: {
+        trigger: 'item',
+        // Texte HTML : clés échappées (valeurs de cellules), valeur formatée par js/format.js.
+        formatter: (p) => {
+          const v = p && p.value;
+          if (!Array.isArray(v)) return '';
+          return `${escapeHtml(String(pivot.rowKeys[v[1]]))} × ${escapeHtml(String(pivot.colKeys[v[0]]))}<br/>${escapeHtml(f.format(v[2]) || '–')}`;
+        }
+      },
+      xAxis: { type: 'category', data: pivot.colKeys.map(String), splitArea: { show: false }, axisLabel: { interval: 'auto' } },
+      yAxis: { type: 'category', data: pivot.rowKeys.map(String), inverse: true, splitArea: { show: false }, axisLabel: { interval: 0, width: 72, overflow: 'truncate', ellipsis: '…' } },
+      visualMap: {
+        type: 'continuous', min: lo, max: hi, calculable: false, orient: 'horizontal', left: 'center', bottom: 2,
+        itemWidth: 8, itemHeight: Math.max(60, Math.min(170, Math.round(width * 0.5))),
+        text: [f.axis(range.max), f.axis(range.min)], textGap: 6,
+        inRange: { color: stops }, textStyle: { fontSize: 10 }
+      },
+      series: [{
+        type: 'heatmap',
+        data,
+        itemStyle: { borderColor: th.surface, borderWidth: 1 },
+        emphasis: { itemStyle: { borderColor: th.text, borderWidth: 1 } },
+        progressive: 0
+      }]
+    };
     finalizeOption(option, instance);
     instance.setOption(option, true);
   }
@@ -1458,9 +1662,11 @@
     const fCount = fmtFor({ ...tile, aggFn: 'count' }, tile.measure);
     const palette = paletteColors(tile.palette);
     const mine = state.activeFilters.find((af) => af.column === tile.measure && af.sourceTileId === tile.id);
-    const bound = (v) => (f.axis(v) || String(v));
+    // Les bornes des classes forment UNE échelle : des années (1990 – 2000) ne sont jamais compactées (« 1,99 k – 2 k »).
+    const scale = f.forScale(hist.bins[0].lo, hist.bins[hist.bins.length - 1].hi);
+    const bound = (v) => (scale.axis(v) || String(v));
     const label = (b) => (b.lo === b.hi ? bound(b.lo) : `${bound(b.lo)} – ${bound(b.hi)}`);
-    const fullLabel = (b) => (b.lo === b.hi ? (f.format(b.lo) || String(b.lo)) : `${f.format(b.lo) || b.lo} – ${f.format(b.hi) || b.hi}`);
+    const fullLabel = (b) => (b.lo === b.hi ? (scale.format(b.lo) || String(b.lo)) : `${scale.format(b.lo) || b.lo} – ${scale.format(b.hi) || b.hi}`);
     const option = {
       color: palette,
       grid: { ...numericGrid },
@@ -1476,7 +1682,10 @@
           return `${escapeHtml(fullLabel(b))}<br/>${t('chart.histogram.rows', { n: fCount.format(b.count) || b.count, count: b.count })}${share}`;
         }
       },
-      xAxis: { type: 'category', data: hist.bins.map(label), axisLabel: { interval: 'auto' } },
+      // Largeur de libellé FIXÉE : un libellé de classe (« 1998 – 2003 », « 1 200 – 1 400 ») est deux nombres, bien plus large que
+      // la barre ; sans cela finalizeOption le tronquerait à la largeur d'une barre (« 199… »). Les libellés qui se touchent sont
+      // omis par ECharts (intervalle automatique), chacun s'écrit en entier.
+      xAxis: { type: 'category', data: hist.bins.map(label), axisLabel: { interval: 'auto', width: 84, overflow: 'truncate', ellipsis: '…' } },
       yAxis: { type: 'value', minInterval: 1, axisLabel: { formatter: fCount.axis } },
       series: [{
         type: 'bar',
@@ -1606,7 +1815,11 @@
         extraCssText: 'max-width: 85%; white-space: normal; overflow-wrap: anywhere;'
       }, option.tooltip);
     }
-    if (option.legend) option.legend = Object.assign({ textStyle: { color: th.secondary } }, option.legend);
+    if (option.legend) option.legend = Object.assign({}, option.legend, { textStyle: Object.assign({ color: th.secondary }, option.legend.textStyle) });
+    // Légende de dégradé (carte de chaleur) : ses libellés aux jetons, sinon noirs sur fond sombre.
+    if (option.visualMap && !Array.isArray(option.visualMap)) {
+      option.visualMap = Object.assign({}, option.visualMap, { textStyle: Object.assign({ color: th.muted }, option.visualMap.textStyle) });
+    }
     const styleAxis = (axis, isX) => {
       if (!axis) return axis;
       const one = (a) => {
@@ -1654,7 +1867,20 @@
       });
     }
     if (option.radar) {
-      option.radar = Object.assign({}, option.radar, {
+      // Avec une légende, le polygone se place dans la place qu'elle laisse (centre et rayon en PIXELS, comme la jauge : ils ne
+      // suivent donc pas un redimensionnement, `__refit` les recalcule — voir resizeAll). Sans légende : réglage d'origine (62 %).
+      const placeRadar = () => {
+        const h = instance.getHeight();
+        const w = instance.getWidth();
+        if (!w || !h) return null;
+        const L = GristBI.format.radarLayout(w, h, true);
+        return { center: [L.cx, L.cy], radius: L.r, axisNameGap: L.gap };
+      };
+      const placed = (instance && option.legend && typeof instance.getHeight === 'function') ? placeRadar() : null;
+      if (instance) {
+        instance.__refit = placed ? () => { const p = placeRadar(); if (p) instance.setOption({ radar: p }); } : undefined;
+      }
+      option.radar = Object.assign({}, option.radar, placed || {}, {
         // Noms d'axe tronqués à un tiers de la tuile (`overflow` n'agit pas sur les noms d'axe d'un radar : on coupe nous-mêmes) :
         // « Station d'accueil USB-C » sortait de la carte à droite.
         axisName: Object.assign({

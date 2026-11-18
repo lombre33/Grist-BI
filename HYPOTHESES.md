@@ -3331,19 +3331,116 @@ Dernier lot de l'audit : tout ce qui, hors des nombres eux-mêmes, rendait une t
 - **Testé** : Node (noms reconnus/épargnés, ordre des mesures pour 4 ordres de colonnes, montant à retours/cases vides, « Prix total », prix seul moyenné, suggestions et
   préremplissage) ; Playwright contre le vrai `index.html` + `grist-stub.js` sur la démo v3 anonymisée. **Pas testé dans un vrai Grist.**
 
+### Correctifs avant l'alpha — onglets de page rognés avec une vue suivie (18/11/2026)
+
+- **Défaut** (bug réel n°51, TEST_PROTOCOL.md) : quand une vue est suivie, son nom s'écrit dans le bouton Vues (186 px au lieu de 52). Les onglets de page sont le seul élément de la barre qui
+  rétrécit : « Segments » était coupé à 1100 et 1200 px (3 pages), et réduit à une lettre avec 4 pages. En plus, le fondu de bord qui dit « il y a d'autres onglets » restait faux, car
+  `renderPageTabs` le calculait AVANT que `renderBookmarks` ne pose le nom de la vue.
+- **Décision** : les onglets sont la navigation, le reste de la barre s'allège avant eux. Deux paliers, essayés dans l'ordre : (1) le nom de la vue disparaît du bouton (rien n'est perdu : la
+  pastille « Vue » de la rangée des filtres, le point « modifiée » du bouton et son nom accessible le disent aussi) ; (2) les libellés des boutons disparaissent (icônes seules, comme sous 900 px),
+  seulement si les onglets tiennent alors. Un palier qui ne suffit pas est abandonné : avec beaucoup de pages les boutons gardent leur texte et les onglets défilent, avec le fondu, maintenant juste.
+  Le choix est une fonction pure (`GristBI.appbar.fitTabsLevel`) qui part toujours de la barre complète : le résultat ne dépend que des largeurs, jamais de l'état précédent (pas de
+  clignotement entre deux paliers).
+- **Mesuré** (démo v3, vue « Focus En ligne » suivie) : onglets entiers à 1000, 1100, 1200 et 1400 px, en Lecture comme en Édition, en français comme en anglais, y compris en redimensionnant
+  la fenêtre en direct ; le nom de la vue revient à 1400 px. Cas qui reste rogné, mais signalé par le fondu : 4 pages en mode Édition à 1200 px (231 px de place pour 431).
+- **Pas fait, à décider** : un menu « … » pour les pages en trop (comme les onglets d'un navigateur) ; réduire la pastille de la table connectée (223 px à 1200 px) avant les libellés.
+- **Testé** : Node (paliers, 2 x 41 besoins de largeur, ordre dans `render()`) ; Playwright contre le vrai `index.html` + `grist-stub.js`. **Pas testé dans un vrai Grist** (la largeur réelle du
+  panneau d'un widget Grist n'est pas celle d'une fenêtre : le redimensionnement passe par l'événement `resize` de l'iframe, supposé).
+
+### Correctifs avant l'alpha — légende du radar (18/11/2026)
+
+- **Défaut** (bug réel n°50, TEST_PROTOCOL.md) : un radar à deux séries (élève et moyenne du groupe) a une légende ; dans une tuile normale (zone de dessin 283 x 162 px) elle recouvrait
+  le nom de l'axe du haut et le polygone était minuscule. Vu en préparant les captures de l'annonce forum (qui utilisaient la tuile agrandie pour l'éviter).
+- **Décision** : même méthode que la jauge, une géométrie pure en pixels (`GristBI.format.radarLayout`) plutôt qu'un réglage en pourcentages qu'ECharts ne sait pas tenir : la légende
+  prend une bande de 24 px en haut, le polygone se centre dans le reste, son rayon laisse 8 px + 16 px pour le nom de l'axe du haut (sous la légende) et celui du bas. Le polygone d'une
+  tuile normale passe de 50 à 45 px de rayon (il ne peut pas être plus grand si le nom de l'axe du haut doit tenir sous la légende), celui d'une tuile agrandie ne change pas
+  (plafond historique de 62 %). La légende devient compacte et défilante (`type: 'scroll'`) : un nom d'élève long se parcourt par flèches au lieu de recouvrir le polygone.
+- **Ce qui ne change pas** : un radar à une seule série n'a pas de légende et garde son réglage d'origine (centre 50 %, rayon 62 %).
+- **Pas fait, à décider** : afficher le nom de l'élève tronqué par « … » plutôt que coupé net par le défilement ; une tuile de moins de 150 px de haut (non proposée par l'interface).
+- **Testé** : Node (bloc « radar avec légende ») ; Playwright contre le vrai `index.html` + `grist-stub.js` sur le radar d'orientation de démo (400 élèves) : tuile normale, agrandie, réduite
+  (le centre et le rayon suivent), tuile étroite avec un nom d'élève très long. **Pas testé dans un vrai Grist.**
+
 ### Jauge : graduations à l'extérieur de l'arc (18/11/2026)
 
 Point de départ : sur la capture « après » du lot 2 de l'audit de lisibilité, Antoine remarque que la jauge « semble perdre les graduations intermédiaires » et propose de les rajouter, « peut-être à l'extérieur ».
 
 **Fait** : un trait de 4 à 8 px puis un libellé, SOUS FORME DE `graphic` ECharts, hors de l'arc (jamais dedans : c'est là qu'elles se chevauchaient entre elles et avec l'aiguille). Les valeurs sont des multiples d'un pas rond (1, 2, 2,5, 5 x 10^k : « 1 M, 2 M, 3 M » plutôt que « 825,5 k, 1,65 M »), jamais à moins de 8 % d'une extrémité (`GristBI.format.gaugeTicks`), libellées par `fmt.axis` comme les bornes (donc au format de la tuile, 3 chiffres significatifs, thème clair/sombre, fr/en). Leur place est réservée AVANT de dimensionner l'arc (`gaugeLayout(w, h, ticks)` : plus grand rayon pour lequel le libellé le plus haut et le plus déporté restent dans la zone, par dichotomie) : l'arc rétrécit d'environ 20 % (rayon 113 -> 87 px dans une tuile de 250 px) ; `gaugeTickBudget(r)` fixe le nombre maximal (0 sous 46 px, 5 au plus), et `gaugeOption` en retire (moins, puis aucune) plutôt que de faire descendre l'arc sous 72 % de sa taille sans graduations ou de laisser un libellé sortir de la tuile (`overflow`). `gaugeTickPlacement` (pure) donne le trait, l'ancre et l'alignement de chaque repère : charts.js et les tests partagent donc la même géométrie.
 
-**Vérifié** : Node (valeurs rondes sur 10 plages x 5 plafonds, jamais plus que demandé, jamais -0 ni bruit de flottant, 7 tailles de tuile x 4 plages x 3 plafonds : libellés dans la zone, au-dessus de la ligne de base, hors de l'arc, sans recouvrement entre voisins, l'arc ne grandit jamais ; sans graduation la géométrie est exactement celle d'avant) ; rendu réel dans `index.html`/harnais : six jauges (somme, négative, 0-100, sans borne, valeurs minuscules, années) en clair, en sombre + anglais, à 340 px, agrandie. **Non vérifié** : rendu dans un vrai Grist/GFS. **Limite connue** : une jauge dont les bornes sont des années (1990-2030) affiche « 2 k, 2,01 k, 2,02 k » parce que `axis` est compact dès 1 000 — même défaut que pour n'importe quel axe de valeurs ; pas traité ici (rare, et le format de la tuile « Personnalisé : standard » donne « 2 010 »).
+**Vérifié** : Node (valeurs rondes sur 10 plages x 5 plafonds, jamais plus que demandé, jamais -0 ni bruit de flottant, 7 tailles de tuile x 4 plages x 3 plafonds : libellés dans la zone, au-dessus de la ligne de base, hors de l'arc, sans recouvrement entre voisins, l'arc ne grandit jamais ; sans graduation la géométrie est exactement celle d'avant) ; rendu réel dans `index.html`/harnais : six jauges (somme, négative, 0-100, sans borne, valeurs minuscules, années) en clair, en sombre + anglais, à 340 px, agrandie. **Non vérifié** : rendu dans un vrai Grist/GFS. **Limite connue** (traitée ensuite, voir « Échelles d'entiers jamais compactées ») : une jauge dont les bornes sont des années (1990-2030) affichait « 2 k, 2,01 k, 2,02 k » parce que `axis` est compact dès 1 000.
+
+### Échelles d'entiers jamais compactées : années, colonnes entières (18/11/2026)
+
+Point de départ : la limite notée à la fin du lot « graduations de la jauge » (bornes 1990-2030 -> « 2 k, 2,01 k »), reprise sur consigne du coordinateur : « une valeur qui ressemble à une année, ou une colonne entière sans format, ne doit pas être compactée ».
+
+**Cause** : `axis` est toujours compact (3 chiffres significatifs, `k`/`M` dès 1 000) — voulu pour les axes de valeurs d'ECharts, qui partent de 0 (vérifié : `scale: true` n'est utilisé nulle part, une échelle de 1990 à 2030 n'existe donc pas sur un axe ECharts) mais faux pour une échelle dont les bornes sont des années ou de petits entiers.
+
+**Règle** (`GristBI.format.plainScale(lo, hi)`, pure) : une ÉCHELLE dont les deux bouts sont des entiers de moins de 5 chiffres (|valeur| < 10 000) s'écrit en toutes lettres : « 1990, 2000, 2010 », « 0, 1000, 2000, 3000 ». Le compact ne gagne que deux caractères sous 10 000 et fait perdre la lecture exacte ; au-delà (« 3,3 M ») il reste. **La décision porte sur l'échelle entière, jamais sur une valeur isolée** : sur un même axe « 1000 » à côté de « 1,5 k » se lirait comme deux unités. Pas de test « ressemble à une année » : la règle des 5 chiffres couvre les années (1000-9999) ET les colonnes entières sans format, sans seuil arbitraire. `f.forScale(lo, hi)` rend `{ axis, format }` : entiers sans compact ni séparateur de milliers (une année n'est jamais « 2 010 »), un non-entier garde `axis` (jamais arrondi à l'entier) ; `format` ne change que pour l'Automatique (devise, pourcentage, décimales choisies, parenthèses : inchangés).
+
+**Branché** : jauge (bornes, graduations ET valeur lues sur la même échelle) et histogramme (les bornes de classes forment une échelle : « 1995 – 2000 » et plus « 2 k… »).
+
+**Corrigé au passage** : les libellés de classes d'un histogramme (« 1998 – 2003 », deux nombres) étaient tronqués par `finalizeOption` à la largeur d'une barre (« 199… »), quel que soit le format ; ils ont maintenant une largeur fixée à 84 px, ECharts omet ceux qui se touchent.
+
+**Non traité, volontairement** : une valeur isolée (carte KPI, infobulle) qui ressemble à une année reste « 2 010 » en Automatique — impossible de distinguer une année d'un compte à partir d'un seul nombre ; le réglage « Format des nombres » de la tuile (Comme dans la colonne, ou Personnalisé sans séparateur) existe pour ce cas. **Non vérifié** : rendu dans un vrai Grist/GFS.
+
+### Tuiles usuelles des outils BI — lot 2, carte de chaleur et tableau croisé coloré (18/11/2026)
+
+- **Tuile « Carte de chaleur »** (`type: 'heatmap'`, PR 6 du plan de l'étude, §4.5) : le MÊME calcul que le tableau croisé (`pivotTable`, DuckDB au-delà de 5 000 lignes), dessiné en
+  cases colorées plutôt qu'en chiffres. Mêmes champs (dimension lignes, dimension colonnes, mesure, agrégat), même clic (filtre sur la ligne ET la colonne), pas de drill-down.
+- **Couleur** : un dégradé séquentiel d'une seule teinte (`tile.palette` : bleu / orange / vert / gris ; « Standard » et « Okabe-Ito » donnent le bleu, dit sous la liste), 4 arrêts
+  (blanc teinté, puis trois crans des dégradés déjà validés de `PALETTES`). Jamais l'arc-en-ciel. Légende continue sous la carte (bornes min et max, au format de la mesure).
+  Une intersection sans donnée reste vide (pas la couleur du minimum) ; toutes les valeurs égales -> couleur du milieu.
+- **Nombre dans la case** seulement quand elle mesure au moins 40 x 17 px (une tuile standard de 24 cases n'en écrit pas, la tuile agrandie oui) ; sinon dans l'infobulle. Texte noir pur
+  ou blanc par case (contraste >= 4,5:1 sur toute la rampe : `#1a1a1a` tombait à 4,2:1 au pire cas, noir pur à 4,6:1).
+- **Clic** : écart avec le tableau croisé existant, volontaire — deux `toggleFilter` consécutifs lèvent le filtre de la LIGNE quand on clique une autre case de la même ligne. La carte
+  passe par `cellFilterToggles` (une case déjà sélectionnée retire ses deux filtres, sinon seuls ceux qui manquent sont posés). Le tableau croisé garde son comportement d'origine : à
+  décider s'il doit adopter le même (changement visible pour qui s'en sert déjà).
+- **Tableau croisé coloré** (`tile.pivotHeat`) : case à cocher « Colorer les cellules selon leur valeur » ; fond des cellules de DONNÉES seulement (ni totaux ni cases vides, un total
+  écraserait l'échelle), même rampe, même texte noir/blanc, le nombre reste écrit. Sélection et survol deviennent des contours (le fond posé en ligne écrase ceux de la feuille).
+  Une tuile sans la case garde exactement son rendu d'avant.
+- **Pas fait, à décider** : échelle divergente (valeurs négatives autour d'un zéro), échelle par ligne ou par colonne, légende cliquable, étiquettes d'axe de toutes les cases quand
+  elles sont étroites (ECharts en masque un libellé sur deux), carte « jour × heure » directe depuis une colonne de dates (ce sera la tuile Calendrier), couleur dans l'export
+  Excel (la grille y est celle du tableau croisé, sans mise en forme).
+- **Testé** : Node (bloc « carte de chaleur » : rampes, luminance monotone, contraste du texte balayé sur toute la rampe, grille, cellule sans valeur, `cellFilterToggles` + store, export,
+  défauts, conseil, i18n, câblage) ; Playwright contre le vrai `index.html` + `grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">` (formulaire, pixel de chaque case lu
+  dans le graphique = couleur calculée à 0 près, clic de case, 2e clic sur la même ligne, 3e clic qui retire, tableau croisé coloré, contour de la cellule active, retour au rendu
+  d'avant, édition, thème sombre, 6 000 lignes servies avec CORS). **Pas testé dans un vrai Grist ni un vrai GFS.**
+
+### Tuiles usuelles des outils BI — lot 2, ligne de repère (18/11/2026)
+
+- **Option « Ligne de repère »** (`tile.refLine`, PR 7a du plan, §4.7) sur les **barres** (hors mode mesure temporelle) et la **courbe/aire** : un trait pointillé à une valeur, avec son libellé
+  (« Moyenne 12,4 k » ou « Objectif 100 k », au format de la mesure). Deux genres : `average` = moyenne des valeurs AFFICHÉES (une par catégorie, après tri, drill-down et filtres croisés :
+  elle bouge quand on filtre ailleurs) ; `value` = un objectif saisi (`tile.refValue`, zéro et négatifs admis ; sans nombre valide, le formulaire refuse et une configuration relue sans
+  valeur ne trace rien).
+- **Séries multiples et pile** : le repère se calcule sur la valeur agrégée par catégorie (le total pour une somme), pas par série — sur une pile, c'est la hauteur de la pile qui se compare
+  à l'objectif. Pour une moyenne (`aggFn: 'avg'`) c'est donc la moyenne des moyennes de catégorie : à décider si on veut mieux.
+- **Pas fait, à décider** : une ligne par série, une 2e ligne (objectif ET moyenne), repère sur le combo, l'histogramme ou la tuile Barres en mode mesure, une zone d'objectif (bande), un repère
+  tiré d'une colonne (la Progression et la carte KPI ont déjà `targetColumn`), la médiane ; le repère n'est pas exporté dans Excel (le fichier garde les valeurs seules).
+- **Testé** : Node (bloc « ligne de repère » : types, genre tracé, objectif invalide, moyenne avec vides/`BigInt`/chaînes, store, export inchangé, i18n, câblage) ; Playwright contre le vrai
+  `index.html` + `grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">` (formulaire : champ de valeur seulement pour « Valeur fixe », erreur sous le champ, relecture à l'édition ;
+  objectif hors de la plage des données = axe élargi et ligne dans le cadre ; barres horizontales, courbe, pile, repère négatif, objectif invalide, camembert sans ligne ; moyenne qui suit un filtre croisé).
+  **Pas testé dans un vrai Grist ni un vrai GFS.**
+
+### Tuiles usuelles des outils BI — lot 2, étiquettes de valeur, courbe lissée, 100 % empilé (18/11/2026)
+
+- **Trois options d'affichage** (PR 7b du plan, §4.7), dans « Options avancées », sans nouveau type de tuile :
+  - **Écrire les valeurs sur le graphique** (`tile.valueLabels`, barres hors mode mesure et courbe/aire) : au-dessus de la barre ou du point, à droite d'une barre horizontale, dans le segment d'une
+    pile (texte noir ou blanc selon la couleur de la série) ; compactes (`1,5 k`), les étiquettes qui se recouvrent sont masquées (pas de nombre illisible), une valeur absente ou nulle d'une pile n'écrit rien.
+  - **Tracé de la courbe** (`tile.lineShape`, courbe/aire) : droit (défaut), lissé (`smooth: 0.35`, volontairement discret) ou en escalier centré (`step: 'middle'` : chaque valeur couvre sa catégorie).
+  - **En 100 %** (`tile.stackPercent`, barres ou aire empilées avec une colonne Séries) : chaque catégorie ramenée à ses parts, axe 0-100 %, infobulle « Série : 25 % (1 000) » + total brut.
+- **Choix à confirmer** : le lissage peut dessiner des valeurs qui n'existent pas (passer sous zéro) — pas de conseil automatique pour l'instant ; l'escalier est « centré » (autres choix : avant/après) ;
+  la ligne de repère est **désactivée en 100 %** (l'axe est en parts) ; des valeurs négatives dans une pile 100 % donnent le conseil `advice.stackedPercent.negative`, pas de correction automatique.
+- **Pas fait, à décider** : étiquettes sur le combo, l'histogramme, la cascade ; position d'étiquette au choix ; étiquettes en % ET en valeur ; zoom sur une période (curseur sous la courbe — l'étude demande de
+  le tester avec le filtre croisé avant de le promettre : laissé de côté volontairement) ; une option « Pile » à 100 % pour les barres horizontales a le même rendu (axe X en %), à regarder dans un vrai GFS.
+- **Testé** : Node (bloc « options d'affichage » : tracé, types, `isStackedPercentTile`, `shareOfTotal`/`stackShares` — colonnes à 100, absents, négatifs, `BigInt`, longueurs inégales —, export inchangé, conseil,
+  i18n, câblage) ; Playwright contre le vrai `index.html` + `grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`, 120 et 6 000 lignes (formulaire : champs visibles selon les cases, repère
+  masqué en 100 %, édition qui relit les trois options, décocher « Empiler » efface le 100 % ; pile à 100 sur chaque catégorie, valeurs brutes gardées, infobulle, aire 100 %, camembert et forme inconnue sans effet).
+  **Pas testé dans un vrai Grist ni un vrai GFS.**
 
 ### Style global des tuiles — cinq entrées, un réglage du tableau de bord (18/11/2026)
 
 Point de départ : Antoine, avec la capture d'un tableau de bord fluide/moderne : « un paramètre pour changer le style global des cartes, avec plusieurs options, notamment une plus proche de la DA de Grist Factory, une fluide/moderne comme le screen... 4 DA différentes qui affectent toutes les cartes ».
 
-**Fait** : un réglage du TABLEAU DE BORD (Réglages > « Style des tuiles », visible en Édition seulement), enregistré dans `BI_Dashboard_Config` avec le reste du rapport (champ `style`, écrit seulement s'il diffère de `standard` : une configuration d'avant ce réglage reste identique octet pour octet, un id inconnu mais bien formé traverse la sauvegarde, une valeur mal formée est ignorée). Cinq entrées : **Standard** (le rendu d'origine, jamais modifié, défaut), **Grist Factory** (jetons de `kit/css/tokens.css`, un seul bleu d'accent, coins de 8 px ; pas de Manrope, décision d'Antoine), **Fluide** (cartes très arrondies, ombres douces, gros chiffres, barres pastel en pilule avec la valeur au bout et sans axe des valeurs, courbes lissées), **Classique dense** (façon Power BI : coins presque droits, bordures fines, texte compact, quadrillage et traits d'axe), **Éditorial** (fond papier, un filet en tête de carte, titres et chiffres à empattements, quadrillage en tirets). Deux couches : `css/dash-styles.css` (jetons `--dash-*` + couleurs de la charte, un bloc clair et un bloc sombre par style, lus aussi par les graphiques via `chartTheme()`) et `js/styles.js:applyToOption`, une passe appelée EN DERNIER par `finalizeOption` (barres arrondies, valeurs au bout des barres, quadrillage, tracé des courbes, bord des parts, infobulle). La palette reste celle de la tuile (`tile.palette`) : le style la transforme (pastel d'une couleur unique) sans la remplacer ; les formats de nombres sont ceux de la tuile (les valeurs au bout des barres réutilisent le formateur d'axe) ; les couleurs d'état et les couleurs des séries ne sont jamais redites.
+**Fait** : un réglage du TABLEAU DE BORD (Réglages > « Style des tuiles », visible en Édition seulement), enregistré dans `BI_Dashboard_Config` avec le reste du rapport (champ `style`, écrit seulement s'il diffère de `standard` : une configuration d'avant ce réglage reste identique octet pour octet, un id inconnu mais bien formé traverse la sauvegarde, une valeur mal formée est ignorée). Cinq entrées : **Standard** (le rendu d'origine, jamais modifié, défaut), **Grist Factory** (jetons de `kit/css/tokens.css`, un seul bleu d'accent, coins de 8 px ; pas de Manrope, décision d'Antoine), **Fluide** (cartes très arrondies, ombres douces, gros chiffres, barres pastel en pilule avec la valeur au bout et sans axe des valeurs, courbes plus épaisses à repères cerclés), **Classique dense** (façon Power BI : coins presque droits, bordures fines, texte compact, quadrillage et traits d'axe), **Éditorial** (fond papier, un filet en tête de carte, titres et chiffres à empattements, quadrillage en tirets). Deux couches : `css/dash-styles.css` (jetons `--dash-*` + couleurs de la charte, un bloc clair et un bloc sombre par style, lus aussi par les graphiques via `chartTheme()`) et `js/styles.js:applyToOption`, une passe appelée EN DERNIER par `finalizeOption` (barres arrondies, valeurs au bout des barres, quadrillage, tracé des courbes, bord des parts, infobulle). Le style ne change JAMAIS la forme d'une courbe (lissé, escalier ou droit restent le choix de la tuile, `tile.lineShape` : un lissage dessine des valeurs qui n'existent pas, piège n°33) et ne retire pas les étiquettes de valeur qu'une tuile a réglées elle-même (`tile.valueLabels` gagne sur celles du style). La palette reste celle de la tuile (`tile.palette`) : le style la transforme (pastel d'une couleur unique) sans la remplacer ; les formats de nombres sont ceux de la tuile (les valeurs au bout des barres réutilisent le formateur d'axe) ; les couleurs d'état et les couleurs des séries ne sont jamais redites.
 
 **Choix à connaître** : (1) « Standard » et « Grist Factory » se ressemblent à dessein de loin (même famille sobre) ; Grist Factory se reconnaît à ses jetons (gris bleuté, accent bleu unique, ombre nette) et à ses barres arrondies. (2) Une **ambiance de GFS** pose ses jetons en ligne sur `<html>` : ils l'emportent sur les couleurs d'un style (comme sur celles du rendu standard) ; le style garde alors sa géométrie, ses ombres, sa densité et le traitement de ses graphiques. (3) Une carte au repos garde sa hauteur FIXE (224 px, piège n°8) quel que soit le style : le chiffre KPI se règle par `--kpi-max`, jamais par une hauteur. (4) Le style n'est PAS dans une vue sauvegardée (un bookmark ne porte que filtres, page, drill-down) : c'est un réglage du rapport.
 

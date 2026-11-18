@@ -160,6 +160,55 @@
     return filter.type && filter.type !== 'eq' ? matchesFilter(value, filter) : sameValue(filter.value, value);
   }
 
+  // --- Ligne de repère (`tile.refLine`) -------------------------------------------------------------
+  // Un trait horizontal (vertical sur des barres horizontales) tracé à une valeur : la MOYENNE des valeurs affichées (`'average'`) ou un
+  // objectif saisi (`'value'`, `tile.refValue`). Barres et courbe seulement (pas la tuile Barres en mode mesure temporelle : son axe est un
+  // mois calculé, pas une catégorie), jamais deux lignes. Pur : le rendu (js/charts.js) ne fait que le tracer.
+  const REF_LINE_KINDS = ['average', 'value'];
+  function supportsRefLine(tile) {
+    return !!tile && ((tile.type === 'bar' && (!tile.measureMode || tile.measureMode === 'brut')) || tile.type === 'line');
+  }
+  // Nombre fini représenté par `v` (nombre ou chaîne numérique), sinon null — une cellule vide n'est jamais 0.
+  function finiteOrNull(v) {
+    if (v === null || v === undefined || v === '' || typeof v === 'boolean') return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  // Genre de ligne réellement tracé pour cette tuile (`'average'`, `'value'` ou `''`) : une clé inconnue, un type qui n'en porte pas ou
+  // un objectif sans nombre valide donnent `''`.
+  function refLineKind(tile) {
+    if (!supportsRefLine(tile)) return '';
+    if (tile.refLine === 'average') return 'average';
+    if (tile.refLine === 'value' && finiteOrNull(tile.refValue) !== null) return 'value';
+    return '';
+  }
+  // Valeur où tracer la ligne, ou null : l'objectif saisi, ou la moyenne des `values` (les valeurs affichées, une par catégorie : cellules
+  // vides ignorées, `BigInt` accepté). Aucune valeur affichée -> pas de moyenne, donc pas de ligne.
+  function refLineValue(tile, values) {
+    const kind = refLineKind(tile);
+    if (kind === 'value') return finiteOrNull(tile.refValue);
+    if (kind === 'average') {
+      const nums = (values || []).map((v) => finiteOrNull(typeof v === 'bigint' ? Number(v) : v)).filter((n) => n !== null);
+      return nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : null;
+    }
+    return null;
+  }
+
+  // Clic sur une case (carte de chaleur) : quels `toggleFilter(colonne, valeur)` appeler pour que les filtres de la LIGNE et de la
+  // COLONNE soient posés ? Si cette case est déjà la sélection (les deux filtres d'égalité posés), les deux appels les retirent ;
+  // sinon seulement ceux qui manquent — un clic sur une autre case de la même ligne ne doit pas lever le filtre de la ligne, ce
+  // que feraient deux `toggleFilter` aveugles (le 2e clic sur « Nord » le retire). Un filtre de plage posé par un histogramme sur
+  // la même colonne n'est pas une égalité : il est remplacé par `toggleFilter`.
+  function cellFilterToggles(activeFilters, rowColumn, rowValue, colColumn, colValue) {
+    const on = (column, value) => (activeFilters || []).some((f) => f.column === column && (f.type === undefined || f.type === 'eq') && sameValue(f.value, value));
+    const rowOn = on(rowColumn, rowValue);
+    const colOn = on(colColumn, colValue);
+    const row = { column: rowColumn, value: String(rowValue) };
+    const col = { column: colColumn, value: String(colValue) };
+    if (rowOn && colOn) return [row, col];
+    return [].concat(rowOn ? [] : [row], colOn ? [] : [col]);
+  }
+
   function applyFilters(rows, filters) {
     if (!filters || !filters.length) return rows;
     return rows.filter((row) => filters.every((f) => matchesFilter(row[f.column], f)));
@@ -610,15 +659,90 @@
   }
   // Types dont les couleurs viennent de la palette. Hors liste : la cascade (vert = hausse, rouge =
   // baisse : un sens, pas une identité), le KPI et le tableau croisé (aucune couleur de série).
-  const PALETTE_TILE_TYPES = ['bar', 'line', 'pie', 'funnel', 'treemap', 'scatter', 'radar', 'gauge', 'wordcloud', 'combo', 'histogram'];
+  const PALETTE_TILE_TYPES = ['bar', 'line', 'pie', 'funnel', 'treemap', 'scatter', 'radar', 'gauge', 'wordcloud', 'combo', 'histogram', 'heatmap'];
   function supportsPalette(tile) {
-    return !!tile && PALETTE_TILE_TYPES.indexOf(tile.type) !== -1;
+    if (!tile) return false;
+    // Tableau croisé : une palette n'a de sens que si ses cellules sont colorées (`pivotHeat`).
+    if (tile.type === 'pivot') return !!tile.pivotHeat;
+    return PALETTE_TILE_TYPES.indexOf(tile.type) !== -1;
   }
+
+  // --- Carte de chaleur et tableau croisé coloré (`type: 'heatmap'`, `tile.pivotHeat`) ---------------
+  // Une valeur -> une couleur d'un DÉGRADÉ SÉQUENTIEL d'une seule teinte (jamais l'arc-en-ciel) : clair = petit, foncé = grand. Les
+  // rampes reprennent les dégradés validés de PALETTES (bleu, orange, vert, gris), précédés d'un blanc teinté pour que la plus petite
+  // valeur ne soit pas déjà « chaude » ; une palette catégorielle (standard, Okabe-Ito) n'est pas un dégradé : le bleu la remplace.
+  // La couleur du TEXTE est choisie pour le meilleur contraste avec le fond de la cellule (blanc ou noir) : un nombre ne
+  // devient jamais illisible. La couleur n'est jamais seule : le nombre reste écrit dans la cellule (tableau croisé) ou au survol.
+  const HEAT_RAMPS = {
+    blue: ['#eef4fc', PALETTES.blue[5], PALETTES.blue[3], PALETTES.blue[0]],
+    orange: ['#fdf3ec', PALETTES.orange[5], PALETTES.orange[3], PALETTES.orange[0]],
+    green: ['#eef8f0', PALETTES.green[5], PALETTES.green[3], PALETTES.green[0]],
+    gray: ['#f4f4f4', PALETTES.gray[5], PALETTES.gray[3], PALETTES.gray[0]]
+  };
+  function heatStops(paletteKey) {
+    return Object.prototype.hasOwnProperty.call(HEAT_RAMPS, paletteKey) ? HEAT_RAMPS[paletteKey] : HEAT_RAMPS.blue;
+  }
+  function hexToRgb(hex) {
+    const h = String(hex).replace('#', '');
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+  }
+  function rgbToHex(rgb) {
+    return '#' + rgb.map((c) => Math.max(0, Math.min(255, Math.round(c))).toString(16).padStart(2, '0')).join('');
+  }
+  // Couleur à la position `t` (0 = premier arrêt, 1 = dernier), arrêts régulièrement espacés, interpolation linéaire en RVB — la
+  // même que celle d'ECharts pour `visualMap.inRange.color` : la légende de la carte de chaleur et les couleurs calculées ici concordent.
+  function heatColor(t, stops) {
+    const x = Math.max(0, Math.min(1, Number.isFinite(t) ? t : 0)) * (stops.length - 1);
+    const i = Math.min(stops.length - 2, Math.floor(x));
+    const f = x - i;
+    const a = hexToRgb(stops[i]);
+    const b = hexToRgb(stops[i + 1]);
+    return rgbToHex(a.map((c, k) => c + (b[k] - c) * f));
+  }
+  function relativeLuminance(hex) {
+    const [r, g, b] = hexToRgb(hex).map((c) => {
+      const v = c / 255;
+      return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  }
+  const HEAT_TEXT_DARK = '#000000'; // noir pur : avec un gris plus doux, le pire cas (fond de luminance moyenne) tombe sous 4,5:1 (4,2 avec #1a1a1a)
+  const HEAT_TEXT_LIGHT = '#ffffff';
+  // Texte blanc ou noir : celui des deux qui contraste le plus avec `bgHex` (rapport WCAG).
+  function heatTextColor(bgHex) {
+    const l = relativeLuminance(bgHex);
+    const contrastLight = 1.05 / (l + 0.05);
+    const contrastDark = (l + 0.05) / (relativeLuminance(HEAT_TEXT_DARK) + 0.05);
+    return contrastDark >= contrastLight ? HEAT_TEXT_DARK : HEAT_TEXT_LIGHT;
+  }
+  // Bornes des valeurs d'une grille (matrice de lignes, cellules `null` possibles) ; `null` si aucune valeur numérique.
+  function heatRange(matrix) {
+    let min = Infinity;
+    let max = -Infinity;
+    (matrix || []).forEach((line) => (line || []).forEach((v) => {
+      const n = v == null || v === '' || typeof v === 'boolean' ? NaN : Number(v);
+      if (Number.isFinite(n)) { if (n < min) min = n; if (n > max) max = n; }
+    }));
+    return min <= max ? { min, max } : null;
+  }
+  // Fond et texte de chaque cellule d'une grille : `{bg, fg}` ou `null` (cellule sans valeur : aucune couleur, jamais « la plus claire »).
+  // Toutes les valeurs égales : couleur du milieu de la rampe.
+  function heatCellColors(matrix, stops) {
+    const range = heatRange(matrix);
+    return (matrix || []).map((line) => (line || []).map((v) => {
+      const n = v == null || v === '' || typeof v === 'boolean' ? NaN : Number(v);
+      if (!range || !Number.isFinite(n)) return null;
+      const t = range.max === range.min ? 0.5 : (n - range.min) / (range.max - range.min);
+      const bg = heatColor(t, stops);
+      return { bg, fg: heatTextColor(bg) };
+    }));
+  }
+
 
   // Types qui AFFICHENT une valeur numérique (donc concernés par `tile.numberFormat`, voir js/format.js) :
   // tout type de tuile nouveau qui montre un nombre s'ajoute ici, pour que le champ « Format des nombres »
   // du panneau apparaisse. Le nuage de mots n'y est que pour la valeur de son infobulle ; la table plate l'applique à chacune de ses colonnes numériques (`format.cellNumber`).
-  const NUMBER_FORMAT_TILE_TYPES = ['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo', 'histogram'];
+  const NUMBER_FORMAT_TILE_TYPES = ['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo', 'histogram', 'heatmap'];
   function supportsNumberFormat(tile) {
     return !!tile && NUMBER_FORMAT_TILE_TYPES.indexOf(tile.type) !== -1;
   }
@@ -630,6 +754,34 @@
     if (!tile || !tile.stacked || !isSeriesTile(tile)) return false;
     return tile.type === 'bar' || (tile.type === 'line' && !!tile.areaFill);
   }
+
+  // 100 % empilé (`tile.stackPercent`, en plus de `stacked`) : chaque catégorie ramenée à ses parts (en %), pour comparer la COMPOSITION
+  // plutôt que la hauteur. Une catégorie dont le total n'est pas positif n'a aucune part (`null`, jamais un 0 % trompeur) ; une cellule
+  // absente reste `null`. Des valeurs négatives dans une pile n'ont pas de part lisible : le conseil (js/advice.js) le dit.
+  function isStackedPercentTile(tile) { return isStackedTile(tile) && !!tile.stackPercent; }
+  // Parts en % de `values` (une catégorie, une valeur par série).
+  function shareOfTotal(values) {
+    const nums = (values || []).map((v) => finiteOrNull(typeof v === 'bigint' ? Number(v) : v));
+    const total = nums.reduce((a, v) => a + (v === null ? 0 : v), 0);
+    return nums.map((v) => ((v === null || !(total > 0)) ? null : (v / total) * 100));
+  }
+  // Même chose pour tout le graphique : `seriesValues[s][c]` -> `parts[s][c]` (chaque colonne `c` somme à 100 quand elle a un total positif).
+  function stackShares(seriesValues) {
+    const list = seriesValues || [];
+    const nCat = list.reduce((m, v) => Math.max(m, (v || []).length), 0);
+    const out = list.map(() => new Array(nCat).fill(null));
+    for (let c = 0; c < nCat; c++) shareOfTotal(list.map((v) => (v || [])[c])).forEach((x, s) => { out[s][c] = x; });
+    return out;
+  }
+
+  // Tracé de la courbe (`tile.lineShape`) : droit (absent), lissé ou en escalier. Courbe/aire seulement. Un lissage dessine des valeurs
+  // qui n'existent pas entre deux points (il peut passer sous zéro) : à réserver aux tendances ; l'escalier dit « valable jusqu'au suivant ».
+  const LINE_SHAPES = ['smooth', 'step'];
+  function lineShapeOf(tile) {
+    return tile && tile.type === 'line' && LINE_SHAPES.indexOf(tile.lineShape) !== -1 ? tile.lineShape : '';
+  }
+  // Étiquettes de valeur (`tile.valueLabels`) : barres (hors mode mesure temporelle) et courbe, comme la ligne de repère.
+  function supportsValueLabels(tile) { return supportsRefLine(tile); }
 
   // Lignes de `rows` rangées par valeur de `seriesColumn` : `[{ key, name, rows }]`. `name` est le
   // libellé affiché (la valeur en texte, ou `emptyLabel` pour une cellule vide).
@@ -948,7 +1100,7 @@
       }
       return { name: title, header: ['Mesure', 'Valeur'], rows: [row] };
     }
-    if (tile.type === 'pivot') {
+    if (tile.type === 'pivot' || tile.type === 'heatmap') {
       // Même grille que le rendu (js/charts.js:renderPivot) : une ligne "Total" et une colonne
       // "Total" ajoutées à la fin, cellule vide (pas 0) quand pivotTable renvoie `null` (aucune
       // ligne à cette intersection) — cohérent avec l'affichage "–" du rendu.
@@ -1297,7 +1449,7 @@
     importMapHas, tableToRows, epochSecondsToIsoDate, applyFilters, matchesFilter, sameValue, parseDateValue,
     relativeDateRange, RELATIVE_DATE_PRESETS, groupByAggregate, aggregateSingle, wordFrequency, pivotTable,
     distinctColumnValues, computeTrend, trendFromGroups, periodLabel, measureSeriesForTile,
-    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, comboModeOf, paretoSeries, comboSeries, niceStep, histogramBins, histogramFilter, histogramBinIsActive, HISTOGRAM_MAX_BINS, filterSelects, isStackedTile, splitBySeries, assembleSeries, PALETTES, PALETTE_KEYS, paletteColors, supportsPalette, supportsNumberFormat, NUMBER_FORMAT_TILE_TYPES, escapeHtml,
+    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, comboModeOf, paretoSeries, comboSeries, niceStep, histogramBins, histogramFilter, histogramBinIsActive, HISTOGRAM_MAX_BINS, filterSelects, LINE_SHAPES, lineShapeOf, supportsValueLabels, isStackedPercentTile, shareOfTotal, stackShares, REF_LINE_KINDS, supportsRefLine, refLineKind, refLineValue, cellFilterToggles, HEAT_RAMPS, heatStops, heatColor, heatTextColor, heatRange, heatCellColors, isStackedTile, splitBySeries, assembleSeries, PALETTES, PALETTE_KEYS, paletteColors, supportsPalette, supportsNumberFormat, NUMBER_FORMAT_TILE_TYPES, escapeHtml,
     tileDrillLevels, currentDimension, rowsForTile, tileExportSheet, tileExportKind, renderTextHtml, plainTextOf, TEXT_TILE_MAX,
     DEFAULT_GOOD_PCT, DEFAULT_WARN_PCT, targetProgress, progressRows, sparklineValues, sparklineGeometry,
     TABLE_TILE_MAX_ROWS, TABLE_EXPORT_MAX_ROWS, tableColumnsOf, cellText, compareCells, sortRowsBy, moveInOrder, nextSortDir, tableSheet,

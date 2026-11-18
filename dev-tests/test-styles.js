@@ -199,6 +199,20 @@ const ALL = ['standard'].concat(NEW_STYLES);
     assert.strictEqual(dense.yAxis[1].splitLine.show, false, 'quadrillage que le rendu a masqué : reste masqué');
     assert.strictEqual(dense.yAxis[0].splitLine.show, true);
 
+    // Ligne de repère (markLine) : le style n'ajoute pas de valeurs au bout des barres et garde l'axe qu'elle se lit contre.
+    const ref = barOption(5);
+    ref.series[0].markLine = { data: [{ yAxis: 3000 }] };
+    const r = styles.applyToOption(ref, styles.STYLES.fluid, TH);
+    assert.strictEqual(r.series[0].label, undefined, 'ligne de repère : pas de valeurs ajoutées par le style');
+    assert.notStrictEqual(r.yAxis.axisLabel.show, false, '... et l\'axe des valeurs reste');
+    assert.deepStrictEqual(r.series[0].itemStyle.borderRadius, [8, 8, 0, 0], '... mais barres arrondies et pastel');
+    // Étiquettes réglées par la tuile (`tile.valueLabels`) : gardées telles quelles, le style ne les remplace pas.
+    const tileLabels = barOption(5);
+    tileLabels.series[0].label = { show: true, position: 'top', fontSize: 10, formatter: () => 'x' };
+    const tl = styles.applyToOption(tileLabels, styles.STYLES.fluid, TH);
+    assert.strictEqual(tl.series[0].label.fontSize, 10);
+    assert.strictEqual(tl.series[0].label.formatter({ value: 1 }), 'x');
+
     const own = barOption(5);
     own.series[0].itemStyle = { color: '#123456' };
     assert.strictEqual(styles.applyToOption(own, styles.STYLES.fluid, TH).series[0].itemStyle.color, '#123456', 'couleur posée par le rendu respectée');
@@ -238,15 +252,21 @@ const ALL = ['standard'].concat(NEW_STYLES);
       { type: 'line', symbolSize: 8, areaStyle: { opacity: 0.25 }, data: [1, 2, 3] },
       { type: 'line', stack: 'total', areaStyle: { opacity: 0.65 }, data: [1, 2, 3] }
     ]), styles.STYLES.fluid, TH);
-    assert.strictEqual(o.series[0].smooth, true);
+    assert.strictEqual(o.series[0].smooth, undefined, 'le style ne change jamais la forme du tracé');
     assert.strictEqual(o.series[0].lineStyle.width, 3);
     assert.strictEqual(o.series[0].symbol, 'circle', 'repère gardé');
     assert.strictEqual(o.series[0].symbolSize, 8);
     assert.deepStrictEqual(o.series[0].itemStyle, { borderColor: '#ffffff', borderWidth: 2 });
     assert.strictEqual(o.series[0].areaStyle.opacity, 0.16);
     assert.strictEqual(o.series[1].areaStyle.opacity, 0.65, 'aire empilée : opacité du rendu gardée');
+    // Forme choisie par la tuile (`tile.lineShape` : lissé 0,35 ou escalier) : intacte quel que soit le style.
+    for (const id of NEW_STYLES) {
+      const shaped = styles.applyToOption(lineOption([{ type: 'line', smooth: 0.35, data: [1, 2, 3] }, { type: 'line', step: 'middle', data: [1, 2, 3] }, { type: 'line', data: [1, 2, 3] }]), styles.STYLES[id], TH);
+      assert.strictEqual(shaped.series[0].smooth, 0.35, `${id} : lissage de la tuile gardé`);
+      assert.strictEqual(shaped.series[1].step, 'middle', `${id} : escalier de la tuile gardé`);
+      assert.ok(shaped.series[1].smooth === undefined && shaped.series[2].smooth === undefined && shaped.series[2].step === undefined, `${id} : jamais de forme ajoutée`);
+    }
     const d = styles.applyToOption(lineOption([{ type: 'line', data: [1, 2, 3] }]), styles.STYLES.dense, TH);
-    assert.strictEqual(d.series[0].smooth, undefined, 'dense ne lisse pas');
     assert.strictEqual(d.series[0].symbolSize, 5);
   }
   // Parts : couleur de la carte entre les parts (jamais du blanc en dur), arrondis, entonnoir sans rayon, carte proportionnelle avec écart.

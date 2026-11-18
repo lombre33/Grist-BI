@@ -125,7 +125,8 @@
     'type-wordcloud': '<path d="M2 5h6M10 5h4M3 8.5h4M9 8.5h5M2 12h7M11 12h3"/>',
     'type-kpi': '<rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M5 10l1.8-2.2 1.6 1.4L11 6"/>',
     'type-gauge': '<path d="M2.5 11.5a5.5 5.5 0 0 1 11 0"/><path d="M8 11.5l2.5-3.5"/>',
-    'type-pivot': '<rect x="2" y="2.5" width="12" height="11" rx="1"/><path d="M2 6.5h12M2 10h12M6 2.5v11"/>'
+    'type-pivot': '<rect x="2" y="2.5" width="12" height="11" rx="1"/><path d="M2 6.5h12M2 10h12M6 2.5v11"/>',
+    'type-heatmap': '<rect x="2.5" y="2.5" width="3" height="3" rx=".5"/><rect x="6.5" y="2.5" width="3" height="3" rx=".5" opacity=".55"/><rect x="10.5" y="2.5" width="3" height="3" rx=".5" opacity=".25"/><rect x="2.5" y="6.5" width="3" height="3" rx=".5" opacity=".7"/><rect x="6.5" y="6.5" width="3" height="3" rx=".5"/><rect x="10.5" y="6.5" width="3" height="3" rx=".5" opacity=".4"/><rect x="2.5" y="10.5" width="3" height="3" rx=".5" opacity=".3"/><rect x="6.5" y="10.5" width="3" height="3" rx=".5" opacity=".6"/><rect x="10.5" y="10.5" width="3" height="3" rx=".5"/>'
   };
   function icon(name) {
     return `<svg class="icon icon-${name}" viewBox="0 0 16 16" aria-hidden="true" focusable="false">${ICON_PATHS[name]}</svg>`;
@@ -263,6 +264,19 @@
   const paletteField = document.getElementById('tile-palette-field');
   const paletteSelect = document.getElementById('tile-palette');
   const paletteSwatch = document.getElementById('tile-palette-swatch');
+  const paletteHint = document.getElementById('tile-palette-hint');
+  const stackPercentField = document.getElementById('tile-stack-percent-field');
+  const stackPercentCheckbox = document.getElementById('tile-stack-percent');
+  const lineShapeField = document.getElementById('tile-line-shape-field');
+  const lineShapeSelect = document.getElementById('tile-line-shape');
+  const valueLabelsField = document.getElementById('tile-value-labels-field');
+  const valueLabelsCheckbox = document.getElementById('tile-value-labels');
+  const refLineField = document.getElementById('tile-refline-field');
+  const refLineSelect = document.getElementById('tile-refline');
+  const refValueField = document.getElementById('tile-refvalue-field');
+  const refValueInput = document.getElementById('tile-refvalue');
+  const pivotHeatField = document.getElementById('tile-pivot-heat-field');
+  const pivotHeatCheckbox = document.getElementById('tile-pivot-heat');
   // Format des nombres de la tuile (`tile.numberFormat`, js/format.js) : liste Automatique / Comme dans la colonne /
   // Personnalisé, + (décimales, notation compacte) visibles seulement en « Personnalisé » et une ligne d'explication.
   const numFmtField = document.getElementById('tile-numfmt-field');
@@ -579,7 +593,7 @@
   // updateAdvancedFilterFieldsForColumn (store.getState().rows n'est pas encore à jour à cet
   // instant lors d'un changement de table).
   function updateSuggestDateHierarchyVisibility(rows) {
-    const noDrill = formHasNoDimension() || tileTypeSelect.value === 'pivot';
+    const noDrill = formHasNoDimension() || tileTypeSelect.value === 'pivot' || tileTypeSelect.value === 'heatmap';
     const column = dimensionSelect.value;
     suggestDateHierarchyBtn.hidden = noDrill || !column || inferColumnKind(column, rows) !== 'date';
   }
@@ -747,6 +761,7 @@
     else if (p.isCombo) { key = 'tileTitle.combo'; vars = { measure: p.measure, measureY: p.measureY, dimension: p.dimension }; }
     else if (p.isProgress) { key = 'tileTitle.progress'; vars = { measure: p.measure, dimension: p.dimension }; }
     else if (p.isTable) { key = 'tileTitle.table'; vars = { columns: p.tableColumns.slice(0, 3).join(', ') + (p.tableColumns.length > 3 ? '…' : '') }; }
+    else if (p.isHeatmap) { key = 'tileTitle.heatmap'; vars = { measure: p.measure, dimension: p.dimension, columnDimension: p.columnDimension }; }
     else if (p.isPivot) { key = 'tileTitle.pivot'; vars = { measure: p.measure, dimension: p.dimension, columnDimension: p.columnDimension }; }
     else if (p.isRadarColumns) { key = 'tileTitle.radarColumns'; vars = { axes: p.radarAxes.join(', ') }; }
     else if (p.isWordCloudSplit) { key = 'tileTitle.wordCloud'; vars = { dimension: p.dimension }; }
@@ -794,7 +809,7 @@
   // générique l'ignore explicitement (voir le garde dans getOrCreateChartInstance). Masquer le
   // formulaire de configuration du drill-down pour ce type plutôt que de laisser l'utilisateur
   // configurer des niveaux qui ne se déclencheront jamais au clic.
-  function supportsDrillDown(type) { return !typeHasNoDimension(type) && type !== 'pivot' && type !== 'radar' && type !== 'progress'; }
+  function supportsDrillDown(type) { return !typeHasNoDimension(type) && type !== 'pivot' && type !== 'heatmap' && type !== 'radar' && type !== 'progress'; }
 
   // Drill-down à N niveaux : un combobox par niveau, créé dynamiquement ("+ Niveau") plutôt que des
   // champs figés dans le HTML — data.js/state.js/charts.js gèrent déjà un tableau drillDimensions
@@ -972,6 +987,7 @@
     if (mode === 'read') closeTilePanel(false); // on ne laisse ni panneau ouvert ni édition en cours derrière un mode qui les masque
     GristBI.appbar.closePopovers();
     applyMode();
+    fitPageTabs(); // le mode Édition ajoute des boutons à la barre
   }
   function autoMode() {
     const hasTiles = store.getState().pages.some((p) => p.tiles && p.tiles.length > 0);
@@ -1143,6 +1159,7 @@
     setTableDependentControlsEnabled(Boolean(currentTableId) && dashboardReady);
     renderBookmarks(state);
     renderConnectionStatus(state);
+    fitPageTabs();
 
     // `pages`/`currentPageId`/`bookmarks` ne changent de référence/valeur que via leurs actions
     // dédiées (state.js) : un rendu déclenché par un simple rafraîchissement de données (setRows) ne
@@ -1182,7 +1199,32 @@
   function updateTabsOverflow() {
     pageTabsEl.classList.toggle('overflows', pageTabsEl.scrollWidth > pageTabsEl.clientWidth + 1);
   }
-  window.addEventListener('resize', updateTabsOverflow);
+  // Les onglets sont la navigation : le reste de la barre s'allège avant qu'un onglet ne soit rogné (bug réel n°51 : « Segments » coupé à
+  // 1100 et 1200 px dès qu'une vue était suivie ; avec 4 pages, réduit à une lettre). Deux paliers, essayés dans l'ordre à partir de la
+  // barre complète, et gardés seulement s'ils servent :
+  // 1. `bar-names-hidden` : le nom de la vue suivie écrit dans le bouton Vues (un rappel : la pastille « Vue » de la rangée des filtres et
+  //    le nom accessible du bouton le disent aussi) ;
+  // 2. `bar-labels-hidden` : les libellés des boutons (icônes seules, comme au-dessous de 900 px) — SEULEMENT si les onglets tiennent alors ;
+  //    sinon (beaucoup de pages) les boutons gardent leur texte et les onglets défilent, avec le fondu de bord (`overflows`).
+  // À rappeler après tout ce qui change la largeur de la barre : `render()` en dernier (le nom de la vue est posé APRÈS le rendu des onglets,
+  // d'où le fondu qui restait faux), le changement de mode ou de langue, la taille de la fenêtre, et un ResizeObserver en filet de sécurité.
+  const appbarEl = document.getElementById('appbar');
+  const tabsClipped = () => pageTabsEl.scrollWidth > pageTabsEl.clientWidth + 1;
+  function fitPageTabs() {
+    if (appbarEl) {
+      GristBI.appbar.fitTabsLevel(tabsClipped, (level) => {
+        appbarEl.classList.toggle('bar-names-hidden', level === 1);
+        appbarEl.classList.toggle('bar-labels-hidden', level === 2);
+      }, !viewsActiveNameEl.hidden);
+    }
+    updateTabsOverflow();
+    // L'onglet actif doit rester visible dans une liste qui défile (la largeur disponible vient peut-être de changer).
+    const activeTab = pageTabsEl.querySelector('.page-tab.active');
+    if (activeTab && typeof activeTab.scrollIntoView === 'function') activeTab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+  window.addEventListener('resize', fitPageTabs);
+  // Différé d'une image : modifier la barre dans le rappel d'un ResizeObserver qui l'observe ferait « loop completed with undelivered notifications ».
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => requestAnimationFrame(fitPageTabs)).observe(pageTabsEl);
   let restoreTabFocus = false; // le rendu qui suit une flèche doit rendre le focus à l'onglet actif
   function renderPageTabs(pages, currentPageId) {
     pageTabsEl.innerHTML = pages.map((p) => {
@@ -1220,7 +1262,6 @@
       restoreTabFocus = false;
       if (activeTab) activeTab.focus();
     }
-    updateTabsOverflow();
     for (const removeBtn of pageTabsEl.querySelectorAll('.page-tab-remove')) {
       removeBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
@@ -1756,7 +1797,10 @@
   // CSSOM (`style.background`), jamais un attribut `style` posé en HTML : même règle que le reste du widget.
   function updatePaletteSwatch() {
     paletteSwatch.textContent = '';
-    GristBI.data.paletteColors(paletteSelect.value).forEach((color) => {
+    // Carte de chaleur / tableau croisé coloré : la pastille montre le dégradé réellement utilisé (4 arrêts, clair -> foncé).
+    const heat = tileTypeSelect.value === 'heatmap' || (tileTypeSelect.value === 'pivot' && pivotHeatCheckbox.checked);
+    paletteHint.hidden = !heat;
+    (heat ? GristBI.data.heatStops(paletteSelect.value) : GristBI.data.paletteColors(paletteSelect.value)).forEach((color) => {
       const chip = document.createElement('span');
       chip.style.background = color;
       paletteSwatch.appendChild(chip);
@@ -1866,6 +1910,8 @@
     const isBar = type === 'bar';
     const hasMeasureMode = isBar && measureModeSelect.value && measureModeSelect.value !== 'brut';
     const isPivot = type === 'pivot';
+    const isHeatmap = type === 'heatmap';
+    const isGrid = isPivot || isHeatmap; // deux dimensions (lignes + colonnes) : tableau croisé et carte de chaleur
     const isRadar = type === 'radar';
     const isRadarColumns = isRadarColumnsMode();
     const isWordCloud = type === 'wordcloud';
@@ -1883,8 +1929,9 @@
     // une 2e mesure (axe Y). Le pivot et le radar ajoutent une 2e dimension/un axe par valeur mais
     // n'ont pas de drill-down (voir supportsDrillDown).
     dimensionField.hidden = formHasNoDimension();
-    dimensionLabel.textContent = t(isPivot ? 'tileForm.dimension.labelRows' : 'tileForm.dimension.label');
-    columnDimensionField.hidden = !isPivot;
+    dimensionLabel.textContent = t(isGrid ? 'tileForm.dimension.labelRows' : 'tileForm.dimension.label');
+    columnDimensionField.hidden = !isGrid;
+    pivotHeatField.hidden = !isPivot;
     wordCloudSplitField.hidden = !isWordCloud;
     // Radar "compétences en colonnes" ET nuage de mots "découpage de cellule" : mesure/agrégat n'ont
     // pas de sens dans les deux cas (un axe radar = la moyenne d'une colonne ; un mot du nuage = un
@@ -1930,11 +1977,23 @@
     // et l'AIRE — une courbe sans remplissage empilée serait une courbe cumulée, que personne ne lit comme
     // telle (voir GristBI.data.isStackedTile).
     // Palette : tous les types qui colorent leurs marques (pas la cascade, le KPI ni le tableau croisé).
-    paletteField.hidden = !GristBI.data.supportsPalette({ type });
+    // Ligne de repère : barres (hors mode mesure) et courbe ; la valeur fixe demande un champ de plus.
+    const refOk = GristBI.data.supportsRefLine({ type, measureMode: measureModeSelect.value });
+    refLineField.hidden = !refOk;
+    refValueField.hidden = !(refOk && refLineSelect.value === 'value');
+    paletteField.hidden = !GristBI.data.supportsPalette({ type, pivotHeat: pivotHeatCheckbox.checked });
     updatePaletteSwatch();
     numFmtField.hidden = !GristBI.data.supportsNumberFormat({ type });
     updateNumberFormatUI();
     stackField.hidden = !(seriesSelect.value && (isBarBrut || (type === 'line' && areaCheckbox.checked)));
+    // 100 % : seulement quand la pile est cochée ; tracé de la courbe et étiquettes : courbe, et barres hors mode mesure.
+    stackPercentField.hidden = stackField.hidden || !stackedCheckbox.checked;
+    lineShapeField.hidden = type !== 'line';
+    valueLabelsField.hidden = !GristBI.data.supportsValueLabels({ type, measureMode: measureModeSelect.value });
+    // Ligne de repère : pas en 100 % (l'axe est en parts, un objectif brut n'y est pas comparable).
+    const pctOn = !stackPercentField.hidden && stackPercentCheckbox.checked;
+    refLineField.hidden = !refOk || pctOn;
+    refValueField.hidden = !(refOk && !pctOn && refLineSelect.value === 'value');
     donutField.hidden = type !== 'pie';
     showPctField.hidden = type !== 'pie';
     // Combo : mode « autre mesure » = 2e mesure + son agrégat ; Pareto = rien de plus (la courbe se déduit des barres).
@@ -2019,7 +2078,13 @@
     horizontalCheckbox.checked = !!tile.horizontal;
     areaCheckbox.checked = !!tile.areaFill;
     stackedCheckbox.checked = !!tile.stacked;
+    stackPercentCheckbox.checked = !!tile.stackPercent;
+    lineShapeSelect.value = GristBI.data.LINE_SHAPES.includes(tile.lineShape) ? tile.lineShape : '';
+    valueLabelsCheckbox.checked = !!tile.valueLabels;
     paletteSelect.value = GristBI.data.PALETTE_KEYS.includes(tile.palette) ? tile.palette : 'standard';
+    pivotHeatCheckbox.checked = !!tile.pivotHeat;
+    refLineSelect.value = GristBI.data.REF_LINE_KINDS.includes(tile.refLine) ? tile.refLine : '';
+    refValueInput.value = Number.isFinite(tile.refValue) ? tile.refValue : '';
     setNumberFormatForm(tile.numberFormat);
     donutCheckbox.checked = !!tile.donut;
     showPctCheckbox.checked = !!tile.showPct;
@@ -2058,6 +2123,10 @@
   trendDimensionSelect.addEventListener('change', updateFormFieldsForType);
   paletteSelect.addEventListener('change', updatePaletteSwatch);
   areaCheckbox.addEventListener('change', updateFormFieldsForType);
+  stackedCheckbox.addEventListener('change', updateFormFieldsForType);
+  stackPercentCheckbox.addEventListener('change', updateFormFieldsForType);
+  pivotHeatCheckbox.addEventListener('change', updateFormFieldsForType);
+  refLineSelect.addEventListener('change', updateFormFieldsForType);
   radarModeSelect.addEventListener('change', updateFormFieldsForType);
   comboModeSelect.addEventListener('change', updateFormFieldsForType);
   wordCloudSplitCheckbox.addEventListener('change', updateFormFieldsForType);
@@ -2122,6 +2191,8 @@
     const measureMode = (isBar && measureModeSelect.value && measureModeSelect.value !== 'brut') ? measureModeSelect.value : undefined;
     const dateColumn = measureMode ? dateColumnSelect.value : '';
     const isPivot = type === 'pivot';
+    const isHeatmap = type === 'heatmap';
+    const isGrid = isPivot || isHeatmap; // deux dimensions (lignes + colonnes), obligatoires et différentes
     const isRadarColumns = isRadarColumnsMode();
     const isWordCloudSplit = isWordCloudSplitMode();
     const isText = type === 'text';
@@ -2160,10 +2231,16 @@
     if (hasDimension && !dimension) fail('tile-dimension', 'tileForm.error.dimensionRequired');
     if (isScatter && !measureYSelect.value) fail('tile-measure-y', 'tileForm.error.measureYRequired'); // 2e mesure obligatoire pour un nuage de points
     if (isHistogram && binsValue !== undefined && !(Number.isInteger(binsValue) && binsValue >= 2 && binsValue <= GristBI.data.HISTOGRAM_MAX_BINS)) fail('tile-bins', 'tileForm.error.binsRange');
+    // Ligne de repère : une valeur fixe demande un nombre.
+    const stackPctForm = !!seriesSelect.value && stackedCheckbox.checked && stackPercentCheckbox.checked && ((isBar && !measureMode) || (type === 'line' && areaCheckbox.checked));
+    const refKind = (GristBI.data.supportsRefLine({ type, measureMode }) && !stackPctForm) ? refLineSelect.value : '';
+    const refRaw = refKind === 'value' ? refValueInput.value.trim() : '';
+    const refValue = refRaw === '' ? undefined : Number(refRaw);
+    if (refKind === 'value' && !(refValue !== undefined && Number.isFinite(refValue))) fail('tile-refvalue', 'tileForm.error.refValueRequired');
     if (isCombo && !comboPareto && !measureYSelect.value) fail('tile-measure-y', 'tileForm.error.comboMeasureRequired'); // la courbe d'un combo a sa propre mesure
     if (measureMode && !dateColumn) fail('tile-date-column', 'tileForm.alert.dateColumnRequired');
-    if (isPivot && !columnDimension) fail('tile-column-dimension', 'tileForm.error.columnDimensionRequired'); // 2e dimension obligatoire pour un tableau croisé
-    else if (isPivot && columnDimension === dimension) fail('tile-column-dimension', 'tileForm.alert.pivotDimsDiffer');
+    if (isGrid && !columnDimension) fail('tile-column-dimension', 'tileForm.error.columnDimensionRequired'); // 2e dimension obligatoire pour un tableau croisé / une carte de chaleur
+    else if (isGrid && columnDimension === dimension) fail('tile-column-dimension', 'tileForm.alert.pivotDimsDiffer');
     // Séries multiples : seulement pour les barres (hors mode mesure) et la courbe/aire ; jamais la
     // dimension elle-même (chaque catégorie n'aurait qu'une série).
     const seriesColumn = ((isBar && !measureMode) || type === 'line') ? seriesSelect.value : '';
@@ -2189,7 +2266,7 @@
     // voir i18n.js:tileTitle) pour que l'en-tête de tuile suive la langue de l'interface au lieu de
     // rester figé dans celle de sa création.
     const auto = autoTileTitle({
-      isText, isTable, isProgress, isCombo, comboPareto, isHistogram, measureY: measureYSelect.value, tableColumns, isPivot, isRadarColumns, isWordCloudSplit, hasDimension, measureMode,
+      isText, isTable, isProgress, isCombo, comboPareto, isHistogram, measureY: measureYSelect.value, tableColumns, isPivot, isHeatmap, isRadarColumns, isWordCloudSplit, hasDimension, measureMode,
       measure, dimension, columnDimension, aggFn, radarAxes, seriesColumn
     });
     const customTitle = tileTitleInput.value.trim();
@@ -2235,7 +2312,10 @@
     tileData.gaugeMax = isGauge ? gaugeMax : undefined;
     tileData.measureMode = measureMode;
     tileData.dateColumn = measureMode ? dateColumn : undefined;
-    tileData.columnDimension = isPivot ? columnDimension : undefined;
+    tileData.columnDimension = isGrid ? columnDimension : undefined;
+    tileData.pivotHeat = (isPivot && pivotHeatCheckbox.checked) ? true : undefined;
+    tileData.refLine = refKind || undefined;
+    tileData.refValue = refKind === 'value' ? refValue : undefined;
     tileData.seriesColumn = seriesColumn || undefined;
     tileData.radarAxisMode = (type === 'radar') ? (isRadarColumns ? 'columns' : 'dimension') : undefined;
     tileData.radarAxes = isRadarColumns ? radarAxes : undefined;
@@ -2254,10 +2334,13 @@
     tileData.horizontal = (isBar && !measureMode && horizontalCheckbox.checked) ? true : undefined;
     tileData.areaFill = (type === 'line' && areaCheckbox.checked) ? true : undefined;
     // `standard` n'est jamais écrit : une tuile sans choix de palette garde exactement sa configuration d'avant.
-    tileData.palette = (GristBI.data.supportsPalette({ type }) && paletteSelect.value !== 'standard' && GristBI.data.PALETTE_KEYS.includes(paletteSelect.value)) ? paletteSelect.value : undefined;
+    tileData.palette = (GristBI.data.supportsPalette({ type, pivotHeat: isPivot && pivotHeatCheckbox.checked }) && paletteSelect.value !== 'standard' && GristBI.data.PALETTE_KEYS.includes(paletteSelect.value)) ? paletteSelect.value : undefined;
     // Format des nombres : `undefined` = Automatique (jamais écrit), comme `palette` ci-dessus.
     tileData.numberFormat = GristBI.data.supportsNumberFormat({ type }) ? numberFormatFromForm() : undefined;
     tileData.stacked = (seriesColumn && stackedCheckbox.checked && ((isBar && !measureMode) || (type === 'line' && areaCheckbox.checked))) ? true : undefined;
+    tileData.stackPercent = (tileData.stacked && stackPercentCheckbox.checked) ? true : undefined;
+    tileData.lineShape = (type === 'line' && GristBI.data.LINE_SHAPES.includes(lineShapeSelect.value)) ? lineShapeSelect.value : undefined;
+    tileData.valueLabels = (GristBI.data.supportsValueLabels({ type, measureMode }) && valueLabelsCheckbox.checked) ? true : undefined;
     tileData.donut = (type === 'pie' && donutCheckbox.checked) ? true : undefined;
     tileData.showPct = (type === 'pie' && showPctCheckbox.checked) ? true : undefined;
     return { tileData, errors: [], autoTitle: auto.title };
@@ -2329,7 +2412,7 @@
   // repliées, aperçu en direct, conseil en direct). Le panneau est en flux normal (voir css/style.css) :
   // il ne recouvre jamais la barre. Toute la lecture du formulaire passe par readTileForm() ci-dessus.
   // =============================================================================================
-  const TYPE_CARDS = ['bar', 'histogram', 'line', 'combo', 'pie', 'treemap', 'funnel', 'scatter', 'waterfall', 'radar', 'wordcloud', 'kpi', 'gauge', 'progress', 'pivot', 'table', 'text'];
+  const TYPE_CARDS = ['bar', 'histogram', 'line', 'combo', 'pie', 'treemap', 'funnel', 'scatter', 'waterfall', 'radar', 'wordcloud', 'kpi', 'gauge', 'progress', 'pivot', 'heatmap', 'table', 'text'];
   const PREVIEW_TILE_ID = '__preview__';
   let panelOpener = null;
   let previewTimer = null;
@@ -2394,7 +2477,13 @@
     horizontalCheckbox.checked = false;
     areaCheckbox.checked = false;
     stackedCheckbox.checked = false;
+    stackPercentCheckbox.checked = false;
+    lineShapeSelect.value = '';
+    valueLabelsCheckbox.checked = false;
     paletteSelect.value = 'standard';
+    pivotHeatCheckbox.checked = false;
+    refLineSelect.value = '';
+    refValueInput.value = '';
     setNumberFormatForm(null);
     donutCheckbox.checked = false;
     showPctCheckbox.checked = false;

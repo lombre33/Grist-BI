@@ -2006,6 +2006,67 @@ const SAMPLE_TIME_SERIES = [
   console.log('OK appbar — placePopover (bords, marge, hauteur mini), tabKeyTarget, menuKeyTarget');
 }
 
+// Onglets de page rognés quand le bouton Vues porte le nom de la vue suivie (bug réel n°51, 18/11/2026) : `fitTabsLevel` (js/appbar.js, pure) choisit
+// combien alléger la barre pour que les onglets tiennent ; le DOM est remplacé ici par un modèle de largeurs.
+{
+  const appbar = require('../js/appbar.js');
+  const A = 300; // largeur offerte aux onglets par la barre complète
+  const NAME_W = 60; // gagnée en effaçant le nom de la vue
+  const LABELS_W = 100; // gagnée en effaçant en plus les libellés des boutons
+  const run = (need, hasName) => {
+    const calls = [];
+    let level = -1;
+    const avail = () => A + (level >= 1 && hasName ? NAME_W : 0) + (level === 2 ? LABELS_W : 0);
+    const result = appbar.fitTabsLevel(() => need > avail(), (n) => { level = n; calls.push(n); }, hasName);
+    return { result, calls, final: level, clipped: need > avail() };
+  };
+  // Ça tient d'emblée : un seul réglage (barre complète), rien n'est effacé.
+  let r = run(280, true);
+  assert.deepStrictEqual([r.result, r.calls], [0, [0]]);
+  // Le nom de la vue suffit : les libellés des boutons ne sont jamais touchés.
+  r = run(A + 50, true);
+  assert.deepStrictEqual([r.result, r.calls, r.clipped], [1, [0, 1], false]);
+  // Le nom ne suffit pas, les libellés oui.
+  r = run(A + 150, true);
+  assert.deepStrictEqual([r.result, r.calls, r.clipped], [2, [0, 1, 2], false]);
+  // Sans nom de vue : on passe directement aux libellés (le palier 1 n'existe pas), jamais de palier 1.
+  r = run(A + 50, false);
+  assert.deepStrictEqual([r.result, r.calls], [2, [0, 2]]);
+  r = run(A + 150, false);
+  assert.deepStrictEqual([r.result, r.clipped], [0, true], 'sans nom, 100 px ne suffisent pas : on garde les libellés');
+  // Beaucoup de pages : rien ne suffit. Les libellés sont gardés (inutile de les perdre), le nom de la vue reste effacé (il aide un peu).
+  r = run(A + 500, true);
+  assert.deepStrictEqual([r.result, r.final, r.clipped], [1, 1, true]);
+  assert.strictEqual(r.calls[r.calls.length - 1], 1, 'le dernier réglage posé est le palier rendu');
+  r = run(A + 500, false);
+  assert.deepStrictEqual([r.result, r.final], [0, 0]);
+  // Pour tout besoin de largeur : le dernier réglage posé EST le palier rendu, le palier ne baisse jamais quand le besoin augmente,
+  // et si le palier rendu laisse les onglets rognés, aucun palier plus fort n'aurait suffi.
+  for (const hasName of [true, false]) {
+    let previous = -1;
+    for (let need = 200; need <= 600; need += 10) {
+      const x = run(need, hasName);
+      assert.strictEqual(x.final, x.result, `besoin ${need} : état final cohérent`);
+      // Le palier 2 est le plus puissant : s'il avait suffi, il aurait été gardé. Rogné = même tous les paliers ne suffisent pas.
+      if (x.clipped) assert.ok(need > A + (hasName ? NAME_W : 0) + LABELS_W, `besoin ${need} : rogné seulement si même tous les paliers ne suffisent pas`);
+      assert.ok(x.result >= previous || x.clipped, `besoin ${need} : le palier ne baisse pas quand le besoin augmente`);
+      if (!x.clipped) previous = x.result;
+    }
+  }
+  // Câblage : l'ajustement passe APRÈS le rendu du nom de la vue (le bug : il se faisait avant, dans renderPageTabs), au changement de mode,
+  // au redimensionnement et par un ResizeObserver différé ; les deux classes existent dans la feuille.
+  const fs = require('fs');
+  const main = fs.readFileSync(require('path').join(__dirname, '..', 'js', 'main.js'), 'utf8');
+  const css = fs.readFileSync(require('path').join(__dirname, '..', 'css', 'style.css'), 'utf8');
+  assert.ok(/renderBookmarks\(state\);\s*renderConnectionStatus\(state\);\s*fitPageTabs\(\);/.test(main), 'render() ajuste les onglets après le nom de la vue et la pastille de table');
+  assert.ok(!/function renderPageTabs[\s\S]*?updateTabsOverflow\(\);\s*for \(const removeBtn/.test(main), 'renderPageTabs ne mesure plus (avant que le bouton Vues ait changé de largeur)');
+  assert.ok(/applyMode\(\);\s*fitPageTabs\(\);/.test(main), 'le changement de mode (boutons en plus en Édition) réajuste la barre');
+  assert.ok(/window\.addEventListener\('resize', fitPageTabs\)/.test(main) && /new ResizeObserver\(\(\) => requestAnimationFrame\(fitPageTabs\)\)\.observe\(pageTabsEl\)/.test(main), 'redimensionnement : tout de suite, et en filet différé d\'une image');
+  assert.ok(/GristBI\.appbar\.fitTabsLevel\(tabsClipped/.test(main), 'main.js délègue le choix du palier à js/appbar.js');
+  assert.ok(/\.appbar\.bar-names-hidden \.bar-view-name/.test(css) && /\.appbar\.bar-labels-hidden \.bar-label \{ display: none; \}/.test(css) && /\.appbar\.bar-labels-hidden \.bar-btn-mode \.bar-label \{ display: inline; \}/.test(css), 'classes de palier dans la feuille (le libellé du mode reste)');
+  console.log('OK appbar — fitTabsLevel (paliers nom de vue puis libellés, gardés seulement s\'ils servent, 2 x 41 largeurs), câblage');
+}
+
 // `dev-tests/harness.html` recopie le <body> d'index.html (voir dev-tests/sync-harness.js) : un id ajouté
 // à l'un et oublié dans l'autre faisait planter js/main.js dès son chargement dans le harnais (bug réel
 // n°27). Faux ici = lancer `node dev-tests/sync-harness.js`.
@@ -2289,6 +2350,38 @@ const SAMPLE_TIME_SERIES = [
       }
     }
   }
+  // une échelle d'ENTIERS de moins de 5 chiffres (années, colonne entière) n'est jamais compactée ; au-delà, le compact reste
+  {
+    const fr = format.forTile({}, 'x', 'fr');
+    const en = format.forTile({}, 'x', 'en');
+    const n = (x) => x.replace(/[\u202f\u00a0]/g, ' ');
+    assert.ok(format.plainScale(1990, 2030) && format.plainScale(0, 3000) && format.plainScale(-2000, 2000) && format.plainScale(0, 9999), 'entiers < 10 000 : échelle en toutes lettres');
+    assert.ok(!format.plainScale(0, 10000) && !format.plainScale(0, 3266234) && !format.plainScale(-20000, 5), 'dès 5 chiffres : compact');
+    assert.ok(!format.plainScale(0, 0.0007) && !format.plainScale(0, 2500.5) && !format.plainScale(null, 5) && !format.plainScale(5, undefined) && !format.plainScale('a', 5), 'bouts non entiers ou absents : compact');
+    const years = fr.forScale(1990, 2030);
+    assert.deepStrictEqual([1990, 2000, 2010, 2020, 2030].map(years.axis), ['1990', '2000', '2010', '2020', '2030'], 'années : « 2010 », jamais « 2,01 k » ni « 2 010 »');
+    assert.strictEqual(years.format(2010), '2010');
+    assert.strictEqual(years.format(2010.4), '2010', 'valeur non entière >= 1000 : sans séparateur de milliers non plus');
+    assert.strictEqual(years.format(12.345), n(fr.format(12.345)), 'sous 1000 : le format habituel');
+    assert.deepStrictEqual([0, 1000, 2500, 3000].map(fr.forScale(0, 3000).axis), ['0', '1000', '2500', '3000'], 'colonne entière : pas de « 1 k »');
+    assert.deepStrictEqual([-2000, 0, 1000].map(en.forScale(-2000, 2000).axis), ['-2000', '0', '1000']);
+    assert.strictEqual(Object.is(fr.forScale(0, 100).axis(-0), true), false);
+    assert.strictEqual(fr.forScale(0, 100).axis(-0), '0', 'jamais « -0 »');
+    assert.deepStrictEqual([0, 1e6, 2e6].map(fr.forScale(0, 3266234).axis).map(n), ['0', '1 M', '2 M'], 'grande échelle : compact inchangé');
+    assert.strictEqual(n(fr.forScale(0, 3266234).format(3266234)), '3 266 234', 'grande échelle : format inchangé');
+    // un non-entier sur une échelle entière garde le compact exact (jamais arrondi à l'entier)
+    assert.strictEqual(fr.forScale(0, 100).axis(7.5), fr.axis(7.5));
+    assert.strictEqual(fr.forScale(0, 100).axis(null), '');
+    // les formats choisis restent les leurs : devise, pourcentage, décimales fixes, parenthèses
+    const cur = format.makeFormatter({ locale: 'fr-FR', kind: 'currency', currency: 'EUR', minFD: null, maxFD: null, notation: 'standard', useAuto: false, parens: false });
+    assert.strictEqual(n(cur.forScale(0, 5000).format(2500)), n(cur.format(2500)), 'devise : format de la colonne conservé');
+    const pct = format.makeFormatter({ locale: 'fr-FR', kind: 'percent', useAuto: true, minFD: 0, maxFD: 0, notation: 'standard', parens: false });
+    assert.strictEqual(pct.forScale(0, 1).axis(0.5), pct.axis(0.5), 'pourcentage : inchangé');
+    const fixed = format.forTile({ numberFormat: { mode: 'custom', decimals: 2, notation: 'standard' } }, 'x', 'fr');
+    assert.strictEqual(n(fixed.forScale(0, 5000).format(2500)), n(fixed.format(2500)), 'décimales choisies : respectées');
+    // BigInt de DuckDB
+    assert.strictEqual(years.axis(2010n), '2010');
+  }
   // sans graduation, la géométrie est exactement celle d'avant (aucune place réservée pour rien)
   for (const [w, h] of [[240, 150], [316, 162], [600, 400]]) {
     const a = format.gaugeLayout(w, h);
@@ -2303,12 +2396,54 @@ const SAMPLE_TIME_SERIES = [
   // câblage : la jauge n'a plus de graduations intermédiaires ni d'aiguille sur des libellés ; elle suit le redimensionnement
   const charts = require('fs').readFileSync(require('path').join(__dirname, '..', 'js', 'charts.js'), 'utf8');
   assert.ok(/F\.gaugeTicks\(g\.min, g\.max, n\)/.test(charts) && /F\.gaugeTickBudget\(base\.r\)/.test(charts) && /F\.gaugeTickPlacement\(L, it\.frac\)/.test(charts), 'graduations calculées, plafonnées par la place, placées à l\'extérieur de l\'arc');
+  assert.ok(/g\.fmt\.forScale\(g\.min, g\.max\)/.test(charts) && /scale\.format\(g\.value\)/.test(charts), 'jauge : bornes, graduations et valeur lues sur l\'échelle entière (années jamais compactées)');
+  assert.ok(/f\.forScale\(hist\.bins\[0\]\.lo, hist\.bins\[hist\.bins\.length - 1\]\.hi\)/.test(charts), 'histogramme : les bornes de classes forment une échelle');
+  assert.ok(/axisLabel: \{ interval: 'auto', width: 84, overflow: 'truncate'/.test(charts), 'histogramme : libellé de classe de largeur fixée (finalizeOption ne le tronque pas à la largeur d\'une barre : « 199… »)');
   assert.ok(/lay\.overflow/.test(charts) && /0\.72 \* base\.r/.test(charts), 'elles disparaissent plutôt que de faire trop rétrécir l\'arc ou de sortir de la tuile');
   assert.ok(/startAngle: 180,\s*endAngle: 0/.test(charts), 'jauge en demi-cercle');
   assert.ok(/axisLabel: \{ show: false \}/.test(charts) && /splitLine: \{ show: false \}/.test(charts), 'plus de graduations dans l\'arc');
   assert.ok(/inst\.__refit/.test(charts) && /instance\.__refit = draw/.test(charts), 'la jauge se redessine à chaque redimensionnement (resizeAll)');
   assert.ok(/container-type: inline-size/.test(require('fs').readFileSync(require('path').join(__dirname, '..', 'css', 'style.css'), 'utf8')), 'carte KPI : conteneur de requête (valeur ajustée à la largeur)');
-  console.log('OK js/format.js — jauge : niceCeil, gaugeLayout (7 tailles de tuile), graduations extérieures (gaugeTicks, placement, 4 plages), fitFont, câblage');
+  console.log('OK js/format.js — jauge : niceCeil, gaugeLayout (7 tailles de tuile), graduations extérieures (gaugeTicks, placement, 4 plages), échelles entières jamais compactées (plainScale, forScale), fitFont, câblage');
+}
+
+// js/format.js : radar avec légende (bug réel n°50, 18/11/2026) — la légende « Élève / Moyenne du groupe » recouvrait le nom de l'axe du haut
+{
+  const fs = require('fs');
+  const path = require('path');
+  const format = require('../js/format.js');
+  // Toutes les tailles de zone réalistes : tuile normale (283 x 162), étroite, large, agrandie, très haute.
+  const sizes = [[283, 162], [298, 162], [240, 150], [330, 190], [316, 224], [600, 400], [938, 422], [500, 800], [200, 160]];
+  for (const [w, h] of sizes) {
+    const L = format.radarLayout(w, h, true);
+    const top = L.cy - L.r - L.gap - L.nameH; // haut du nom de l'axe du haut
+    const bottom = L.cy + L.r + L.gap + L.nameH; // bas du nom de l'axe du bas
+    assert.ok(top >= L.legendH - 0.001, `${w}x${h} : le nom de l'axe du haut commence sous la légende (${top} >= ${L.legendH})`);
+    assert.ok(bottom <= h + 0.001, `${w}x${h} : le nom de l'axe du bas reste dans la zone (${bottom} <= ${h})`);
+    assert.strictEqual(L.cx, w / 2, `${w}x${h} : centré horizontalement`);
+    assert.ok(L.r <= 0.62 * Math.min(w, h) / 2 + 1e-9, `${w}x${h} : jamais plus grand que le réglage historique (62 %)`);
+    assert.ok(L.r >= 20, `${w}x${h} : un polygone reste lisible`);
+  }
+  // L'ancienne géométrie (centre à 50 %, rayon 62 %, nom d'axe à 15 px) recouvrait bel et bien la légende dans une tuile de 162 px :
+  // c'est ce que ce test aurait vu, et ce qu'il garantit de ne plus revoir.
+  const oldTop = 162 / 2 - 0.62 * 162 / 2 - 15 - 16;
+  assert.ok(oldTop < format.radarLayout(283, 162, true).legendH, 'avant : le nom de l\'axe du haut (' + oldTop.toFixed(1) + ' px) commençait DANS la bande de la légende');
+  // Sans légende : centre à mi-hauteur, rien de réservé ; une tuile plus grande donne un polygone plus grand.
+  for (const [w, h] of sizes) {
+    const L = format.radarLayout(w, h, false);
+    assert.strictEqual(L.legendH, 0);
+    assert.strictEqual(L.cy, h / 2, 'sans légende : centré à mi-hauteur');
+  }
+  assert.ok(format.radarLayout(938, 422, true).r > format.radarLayout(283, 162, true).r, 'la tuile agrandie a un plus grand polygone');
+  // Une zone minuscule ne donne jamais un rayon nul ni négatif (le texte déborde alors, mais le polygone existe).
+  assert.strictEqual(format.radarLayout(100, 60, true).r, 20);
+  // câblage : légende défilante, place réservée par finalizeOption, recalcul au redimensionnement, couleur de légende conservée
+  const charts = fs.readFileSync(path.join(__dirname, '..', 'js', 'charts.js'), 'utf8');
+  assert.ok(/legend: series\.length > 1\s*\? \{ top: 2, type: 'scroll'/.test(charts), 'la légende du radar est compacte et défilante (deux noms longs ne passent pas à la ligne)');
+  assert.ok(/GristBI\.format\.radarLayout\(w, h, true\)/.test(charts) && /axisNameGap: L\.gap/.test(charts), 'finalizeOption place le polygone dans la place laissée par la légende');
+  assert.ok(/instance\.__refit = placed \?/.test(charts), 'centre et rayon en pixels : recalculés par resizeAll (tuile agrandie)');
+  assert.ok(/option\.legend = Object\.assign\(\{\}, option\.legend, \{ textStyle: Object\.assign\(\{ color: th\.secondary \}, option\.legend\.textStyle\) \}\)/.test(charts), 'une légende qui règle sa police garde la couleur du thème');
+  console.log('OK js/format.js — radar avec légende : radarLayout (9 tailles de zone, ancienne géométrie qui se chevauchait), câblage');
 }
 
 // js/format.js + panneau : réglage « Format des nombres » par tuile (audit de lisibilité, lot 3, 18/11/2026)
@@ -2319,13 +2454,13 @@ const SAMPLE_TIME_SERIES = [
   const format = require('../js/format.js');
 
   // types concernés : ceux qui affichent un nombre ; pas de réglage pour un type inconnu ni null
-  for (const type of ['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo', 'histogram']) {
+  for (const type of ['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo', 'histogram', 'heatmap']) {
     assert.strictEqual(data.supportsNumberFormat({ type }), true, type);
   }
   assert.strictEqual(data.supportsNumberFormat({ type: 'text' }), false, 'la tuile Texte ne montre aucun nombre');
   assert.strictEqual(data.supportsNumberFormat({ type: 'inconnu' }), false);
   assert.strictEqual(data.supportsNumberFormat(null), false);
-  assert.deepStrictEqual(data.NUMBER_FORMAT_TILE_TYPES.filter((ty) => !['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo', 'histogram'].includes(ty)), []);
+  assert.deepStrictEqual(data.NUMBER_FORMAT_TILE_TYPES.filter((ty) => !['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo', 'histogram', 'heatmap'].includes(ty)), []);
 
   // verdict de « Comme dans la colonne » : sert l'explication affichée sous le réglage
   format.setColumnInfo({
@@ -2384,8 +2519,8 @@ const SAMPLE_TIME_SERIES = [
   const charts = read('js/charts.js');
   const main = read('js/main.js');
   const css = read('css/style.css');
-  // une seule dernière étape avant setOption, pour les trois chemins ECharts (graphiques, mesures temporelles, histogramme)
-  assert.strictEqual((charts.match(/finalizeOption\(option, instance\);\s*\n\s*instance\.setOption\(option, true\);/g) || []).length, 3, 'finalizeOption avant chaque setOption d\'option');
+  // une seule dernière étape avant setOption, pour les quatre chemins ECharts (graphiques, mesures temporelles, histogramme, carte de chaleur)
+  assert.strictEqual((charts.match(/finalizeOption\(option, instance\);\s*\n\s*instance\.setOption\(option, true\);/g) || []).length, 4, 'finalizeOption avant chaque setOption d\'option');
   assert.strictEqual((charts.match(/^\s*confineTooltip\(option\);/gm) || []).length, 1, 'confineTooltip n\'est plus appelée qu\'à l\'intérieur de finalizeOption');
   // les jetons du thème viennent de la page, pas de couleurs en dur
   for (const token of ["'--surface'", "'--border-strong'", "'--border'", "'--text-secondary'"]) assert.ok(charts.includes(token), `chartTheme lit ${token}`);
@@ -4277,6 +4412,286 @@ const SAMPLE_TIME_SERIES = [
         }
       }
     }
+  }
+
+  // Carte de chaleur (`type: 'heatmap'`) et tableau croisé coloré (`tile.pivotHeat`) : rampes, couleur du texte, grille, filtres de case,
+  // export, défauts, conseil, i18n, câblage.
+  {
+    const fsH = require('fs');
+    const pathH = require('path');
+    const rootH = pathH.join(__dirname, '..');
+    const hex = /^#[0-9a-f]{6}$/;
+    const lum = (h) => {
+      const [r, g, b] = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((c) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)));
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    const contrast = (a, b) => { const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x); return (hi + 0.05) / (lo + 0.05); };
+
+    // Rampes : 4 arrêts, du plus clair au plus foncé (luminance strictement décroissante), tirées des dégradés validés de PALETTES.
+    assert.deepStrictEqual(Object.keys(data.HEAT_RAMPS), ['blue', 'orange', 'green', 'gray']);
+    Object.entries(data.HEAT_RAMPS).forEach(([key, stops]) => {
+      assert.strictEqual(stops.length, 4, key);
+      stops.forEach((c) => assert.ok(hex.test(c), key + ' ' + c));
+      for (let i = 1; i < stops.length; i++) assert.ok(lum(stops[i]) < lum(stops[i - 1]), key + ' : clair -> foncé, arrêt ' + i);
+      assert.deepStrictEqual(stops.slice(1), [data.PALETTES[key][5], data.PALETTES[key][3], data.PALETTES[key][0]], key + ' reprend le dégradé validé de PALETTES');
+    });
+    // Palette catégorielle ou inconnue : le bleu ; clé piégée : jamais une propriété d'Object.
+    for (const key of [undefined, null, '', 'standard', 'okabe', 'inconnue', 'constructor', '__proto__', 'toString', 42]) assert.strictEqual(data.heatStops(key), data.HEAT_RAMPS.blue, String(key));
+    assert.strictEqual(data.heatStops('orange'), data.HEAT_RAMPS.orange);
+
+    // heatColor : bornes exactes, interpolation, hors bornes et NaN ramenés dans [0 ; 1], luminance monotone.
+    const blue = data.HEAT_RAMPS.blue;
+    assert.strictEqual(data.heatColor(0, blue), blue[0]);
+    assert.strictEqual(data.heatColor(1, blue), blue[3]);
+    assert.strictEqual(data.heatColor(1 / 3, blue), blue[1], 'arrêts régulièrement espacés');
+    assert.strictEqual(data.heatColor(-5, blue), blue[0]); assert.strictEqual(data.heatColor(9, blue), blue[3]); assert.strictEqual(data.heatColor(NaN, blue), blue[0]);
+    for (const stops of Object.values(data.HEAT_RAMPS)) {
+      let prev = Infinity;
+      for (let i = 0; i <= 40; i++) { const c = data.heatColor(i / 40, stops); assert.ok(hex.test(c), c); const l = lum(c); assert.ok(l <= prev + 1e-9, 'luminance non croissante le long de la rampe'); prev = l; }
+    }
+
+    // Texte blanc ou noir : celui des deux qui contraste le plus ; jamais sous 4,5:1 sur aucune couleur d'aucune rampe.
+    assert.strictEqual(data.heatTextColor('#eef4fc'), '#000000'); assert.strictEqual(data.heatTextColor('#002f63'), '#ffffff');
+    let worst = Infinity;
+    for (const stops of Object.values(data.HEAT_RAMPS)) {
+      for (let i = 0; i <= 100; i++) {
+        const bg = data.heatColor(i / 100, stops);
+        const fg = data.heatTextColor(bg);
+        assert.ok(fg === '#000000' || fg === '#ffffff');
+        const ratio = contrast(bg, fg);
+        worst = Math.min(worst, ratio);
+        assert.ok(ratio >= 4.5, 'contraste ' + ratio.toFixed(2) + ' sur ' + bg);
+        assert.ok(ratio + 1e-9 >= contrast(bg, fg === '#ffffff' ? '#000000' : '#ffffff'), 'le meilleur des deux');
+      }
+    }
+
+    // Grille : bornes, cellule sans valeur (null, vide, booléen, texte) ni couleur ni influence sur l'échelle.
+    assert.deepStrictEqual(data.heatRange([[1, null], [5, '']]), { min: 1, max: 5 });
+    assert.deepStrictEqual(data.heatRange([['4', 2.5], [true, false]]), { min: 2.5, max: 4 }, 'chaîne numérique comptée, booléens jamais');
+    assert.strictEqual(data.heatRange([]), null); assert.strictEqual(data.heatRange([[null, null]]), null); assert.strictEqual(data.heatRange(null), null);
+    const grid = [[10, null, 50], [30, 0, 'x']];
+    const hc = data.heatCellColors(grid, blue);
+    assert.strictEqual(hc[0][0] && hc[0][0].bg, data.heatColor(0.2, blue));
+    assert.strictEqual(hc[0][1], null, 'intersection sans donnée : aucune couleur, jamais « la plus claire »');
+    assert.strictEqual(hc[1][2], null, 'texte : aucune couleur');
+    assert.strictEqual(hc[1][1].bg, blue[0], 'le minimum (0) est le plus clair'); assert.strictEqual(hc[0][2].bg, blue[3], 'le maximum est le plus foncé');
+    assert.strictEqual(hc[0][2].fg, '#ffffff'); assert.strictEqual(hc[1][1].fg, '#000000');
+    // Toutes les valeurs égales : couleur du milieu ; aucune valeur : que des null ; négatifs : l'échelle s'ajuste.
+    assert.deepStrictEqual(data.heatCellColors([[7, 7]], blue).map((l) => l.map((c) => c.bg)), [[data.heatColor(0.5, blue), data.heatColor(0.5, blue)]]);
+    assert.deepStrictEqual(data.heatCellColors([[null]], blue), [[null]]); assert.deepStrictEqual(data.heatCellColors([], blue), []);
+    const neg = data.heatCellColors([[-10, 0, 10]], blue)[0];
+    assert.strictEqual(neg[0].bg, blue[0]); assert.strictEqual(neg[2].bg, blue[3]); assert.strictEqual(neg[1].bg, data.heatColor(0.5, blue));
+    // Valeurs BigInt de DuckDB : une cellule BigInt n'est jamais une couleur (les cellules numériques du pivot sont des Number).
+    assert.doesNotThrow(() => data.heatCellColors([[1, 2n]], blue));
+
+    // Clic sur une case : quels toggleFilter, sans lever le filtre d'une ligne déjà choisie.
+    const eq = (column, value) => ({ column, value, sourceTileId: 'h' });
+    assert.deepStrictEqual(data.cellFilterToggles([], 'Region', 'Nord', 'Produit', 'A'), [{ column: 'Region', value: 'Nord' }, { column: 'Produit', value: 'A' }], 'rien de posé : les deux');
+    assert.deepStrictEqual(data.cellFilterToggles([eq('Region', 'Nord'), eq('Produit', 'A')], 'Region', 'Nord', 'Produit', 'A'), [{ column: 'Region', value: 'Nord' }, { column: 'Produit', value: 'A' }], 'déjà la sélection : les deux, qui la retirent');
+    assert.deepStrictEqual(data.cellFilterToggles([eq('Region', 'Nord'), eq('Produit', 'A')], 'Region', 'Nord', 'Produit', 'B'), [{ column: 'Produit', value: 'B' }], 'autre case de la même ligne : la ligne reste');
+    assert.deepStrictEqual(data.cellFilterToggles([eq('Region', 'Nord')], 'Region', 'Sud', 'Produit', 'A'), [{ column: 'Region', value: 'Sud' }, { column: 'Produit', value: 'A' }]);
+    assert.deepStrictEqual(data.cellFilterToggles([{ column: 'Region', type: 'range', min: 0, max: 5 }], 'Region', '3', 'Produit', 'A').map((c) => c.column), ['Region', 'Produit'], 'un filtre de plage n\'est pas une égalité');
+    {
+      const st = state.createStore();
+      st.setRows([{ Region: 'Nord', Produit: 'A', M: 1 }, { Region: 'Nord', Produit: 'B', M: 2 }, { Region: 'Sud', Produit: 'A', M: 4 }]);
+      st.addTile({ id: 'hm', type: 'heatmap', dimension: 'Region', columnDimension: 'Produit', measure: 'M', aggFn: 'sum', title: 'H' });
+      const click = (r, c) => data.cellFilterToggles(st.getState().activeFilters, 'Region', r, 'Produit', c).forEach((x) => st.toggleFilter(x.column, x.value, 'hm'));
+      click('Nord', 'A');
+      assert.deepStrictEqual(st.getState().activeFilters.map((f) => [f.column, f.value]), [['Region', 'Nord'], ['Produit', 'A']]);
+      click('Nord', 'B');
+      assert.deepStrictEqual(st.getState().activeFilters.map((f) => [f.column, f.value]), [['Region', 'Nord'], ['Produit', 'B']], 'la ligne Nord reste filtrée');
+      click('Nord', 'B');
+      assert.deepStrictEqual(st.getState().activeFilters, [], 'un 2e clic sur la même case retire les deux filtres');
+      assert.strictEqual(data.rowsForTile(st.getState().tiles[0], st.getState()).length, 3, 'la carte reste affichée en entier');
+    }
+
+    // Types : palette (carte toujours ; tableau croisé seulement coloré), format oui, tri / séries / empilé non.
+    assert.strictEqual(data.supportsPalette({ type: 'heatmap' }), true);
+    assert.strictEqual(data.supportsPalette({ type: 'pivot' }), false); assert.strictEqual(data.supportsPalette({ type: 'pivot', pivotHeat: false }), false);
+    assert.strictEqual(data.supportsPalette({ type: 'pivot', pivotHeat: true }), true);
+    assert.strictEqual(data.supportsNumberFormat({ type: 'heatmap' }), true);
+    assert.strictEqual(data.isSortableTile({ type: 'heatmap' }), false); assert.strictEqual(data.isSeriesTile({ type: 'heatmap', seriesColumn: 'R' }), false);
+    assert.strictEqual(data.isStackedTile({ type: 'heatmap', seriesColumn: 'R', stacked: true }), false);
+
+    // Export Excel : la même grille que le tableau croisé (cases vides vides, Total en plus) ; la couleur n'est pas exportée.
+    const hmRows = [{ Region: 'Nord', Produit: 'A', M: 10 }, { Region: 'Nord', Produit: 'B', M: 5 }, { Region: 'Sud', Produit: 'A', M: 30 }];
+    const hmState = { rows: hmRows, activeFilters: [], advancedFilters: [], drillIns: {}, comments: [], pages: [] };
+    const hmTile = { id: 'hx', type: 'heatmap', title: 'Carte', dimension: 'Region', columnDimension: 'Produit', measure: 'M', aggFn: 'sum' };
+    assert.strictEqual(data.tileExportKind(hmTile), 'image');
+    const hmSheet = data.tileExportSheet(hmTile, hmState);
+    assert.deepStrictEqual(hmSheet, Object.assign({}, data.tileExportSheet(Object.assign({}, hmTile, { type: 'pivot' }), hmState), { name: 'Carte' }));
+    assert.deepStrictEqual(hmSheet.header, ['Region', 'A', 'B', 'Total']);
+    assert.deepStrictEqual(hmSheet.rows, [['Nord', 10, 5, 15], ['Sud', 30, '', 30], ['Total', 40, 5, 45]]);
+    assert.strictEqual(data.tileExportKind(Object.assign({}, hmTile, { type: 'pivot', pivotHeat: true })), 'table', 'le tableau croisé reste un tableau, coloré ou non');
+
+    // Formulaire : valeurs par défaut (deux vraies catégories, comme le tableau croisé), conseils.
+    const cats = [];
+    ['Nord', 'Sud', 'Est'].forEach((Region) => ['A', 'B', 'C'].forEach((Produit) => cats.push({ Region, Produit, Montant: 10 + cats.length })));
+    const hd = advice.defaultsForType('heatmap', cats, ['Region', 'Produit', 'Montant']);
+    assert.ok(hd && hd.dimension && hd.columnDimension && hd.dimension !== hd.columnDimension && hd.measure === 'Montant', 'deux catégories différentes et une mesure préremplies');
+    assert.strictEqual(advice.adviceForType('heatmap', cats.map((r) => ({ Region: r.Region, Montant: r.Montant })), ['Region', 'Montant']).key, 'advice.fit.needTwoDimensions');
+    assert.strictEqual(advice.adviceForType('heatmap', cats, ['Region', 'Produit', 'Montant']).key, 'advice.use.heatmap');
+    assert.strictEqual(advice.TILE_TYPES.includes('heatmap'), false, 'jamais proposé à l\'accueil');
+    assert.deepStrictEqual(advice.suggestTiles(cats, ['Region', 'Produit', 'Montant'], { limit: 30, t: (k) => k }).filter((c) => c.type === 'heatmap'), []);
+    assert.strictEqual(advice.adviceForTile({ type: 'heatmap', dimension: 'Region', columnDimension: 'Produit', measure: 'Montant', aggFn: 'sum' }, cats), null);
+    const wide = [];
+    for (let i = 0; i < 30; i++) for (let j = 0; j < 3; j++) wide.push({ J: 'j' + i, H: 'h' + j, M: i + j });
+    const tooBig = advice.adviceForTile({ type: 'heatmap', dimension: 'J', columnDimension: 'H', measure: 'M', aggFn: 'sum' }, wide);
+    assert.deepStrictEqual([tooBig.key, tooBig.level, tooBig.vars], ['advice.heatmap.tooBig', 'warn', { rows: 30, columns: 3 }]);
+    assert.strictEqual(advice.adviceForTile({ type: 'heatmap', dimension: 'H', columnDimension: 'J', measure: 'M', aggFn: 'sum' }, wide).key, 'advice.heatmap.tooBig', 'trop de colonnes aussi');
+    assert.strictEqual(advice.previewFor({ type: 'heatmap', dimension: 'Region', columnDimension: 'Produit', measure: 'Montant', aggFn: 'sum' }, cats).kind, 'grid');
+
+    // i18n fr/en, titre automatique.
+    ['tileForm.type.heatmap', 'tileForm.pivotHeat.label', 'tileForm.palette.heatHint', 'tileTitle.heatmap', 'chart.heatmap.empty', 'advice.use.heatmap', 'advice.heatmap.tooBig']
+      .forEach((k) => assert.ok(i18n.STRINGS[k] && i18n.STRINGS[k].fr && i18n.STRINGS[k].en, 'traduction fr/en : ' + k));
+    i18n.setLang('en');
+    assert.strictEqual(i18n.tileTitle({ title: 'x', titleKey: 'tileTitle.heatmap', titleVars: { measure: 'M', dimension: 'A', columnDimension: 'B' } }), 'M by A × B');
+    assert.strictEqual(i18n.t('advice.heatmap.tooBig', { rows: 30, columns: 3 }).includes('30 rows × 3 columns'), true);
+    i18n.setLang('fr');
+
+    // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
+    const mainH = fsH.readFileSync(pathH.join(rootH, 'js', 'main.js'), 'utf8');
+    const chartsH = fsH.readFileSync(pathH.join(rootH, 'js', 'charts.js'), 'utf8');
+    const indexH = fsH.readFileSync(pathH.join(rootH, 'index.html'), 'utf8');
+    assert.ok(/const TYPE_CARDS = \[[^\]]*'heatmap'/.test(mainH) && /<option value="heatmap"/.test(indexH) && /id="tile-pivot-heat"/.test(indexH) && /'type-heatmap'/.test(mainH));
+    assert.ok(/currentTile\.type === 'heatmap'/.test(chartsH) && /toggleCellFilters\(currentTile/.test(chartsH), 'le clic d\'une case pose les filtres de la ligne et de la colonne');
+    assert.ok(/type: 'heatmap'/.test(chartsH) && /visualMap/.test(chartsH) && /inverse: true/.test(chartsH));
+    assert.ok(!/Intl\.NumberFormat|toFixed/.test(chartsH), 'aucun format de nombre en dur dans charts.js');
+    // Seules des couleurs CALCULÉES (hex des rampes) entrent dans un attribut `style` du tableau croisé, jamais une chaîne de la configuration.
+    assert.ok(/style="background:\$\{c\.bg\};color:\$\{c\.fg\}"/.test(chartsH) && !/style="[^"]*\$\{tile\./.test(chartsH));
+    // Carte de chaleur et pivot restent hors drill-down (deux dimensions déjà affichées en même temps).
+    assert.ok(/type !== 'heatmap'/.test(mainH));
+    const cssH = fsH.readFileSync(pathH.join(rootH, 'css', 'style.css'), 'utf8');
+    assert.ok(/\.pivot-heat \.pivot-cell\.pivot-active/.test(cssH), 'une cellule colorée sélectionnée reste repérable (contour, pas un fond écrasé par la couleur)');
+    console.log('OK carte de chaleur et tableau croisé coloré — rampes, contraste du texte (min ' + worst.toFixed(1) + ':1), grille, clic de case, export, défauts, conseil et i18n');
+  }
+
+  // Ligne de repère (`tile.refLine` / `tile.refValue`) : moyenne des valeurs affichées ou objectif saisi, sur barres et courbe.
+  {
+    const fsR = require('fs');
+    const pathR = require('path');
+    const rootR = pathR.join(__dirname, '..');
+    assert.deepStrictEqual(data.REF_LINE_KINDS, ['average', 'value']);
+    // Types : barres (hors mode mesure temporelle) et courbe seulement.
+    for (const tile of [{ type: 'bar' }, { type: 'bar', measureMode: 'brut' }, { type: 'bar', measureMode: undefined }, { type: 'line' }, { type: 'line', areaFill: true }]) assert.strictEqual(data.supportsRefLine(tile), true, JSON.stringify(tile));
+    for (const tile of [{ type: 'bar', measureMode: 'ytd' }, { type: 'bar', measureMode: 'cumulative' }, { type: 'pie' }, { type: 'kpi' }, { type: 'combo' }, { type: 'histogram' }, { type: 'heatmap' }, { type: 'pivot' }, { type: 'radar' }, null, undefined]) assert.strictEqual(data.supportsRefLine(tile), false, JSON.stringify(tile));
+    // Genre tracé : une clé inconnue, un objectif sans nombre valide, un type qui n'en porte pas -> aucune ligne.
+    assert.strictEqual(data.refLineKind({ type: 'bar', refLine: 'average' }), 'average');
+    assert.strictEqual(data.refLineKind({ type: 'line', refLine: 'average', refValue: 'abc' }), 'average', 'la moyenne ignore refValue');
+    assert.strictEqual(data.refLineKind({ type: 'bar', refLine: 'value', refValue: 100 }), 'value');
+    assert.strictEqual(data.refLineKind({ type: 'bar', refLine: 'value', refValue: 0 }), 'value', 'zéro est un objectif valide');
+    assert.strictEqual(data.refLineKind({ type: 'bar', refLine: 'value', refValue: '12,5' }), '', 'texte non numérique');
+    assert.strictEqual(data.refLineKind({ type: 'bar', refLine: 'value', refValue: '12.5' }), 'value', 'chaîne numérique');
+    for (const refValue of [undefined, null, '', 'abc', NaN, Infinity, true, false]) assert.strictEqual(data.refLineKind({ type: 'bar', refLine: 'value', refValue }), '', String(refValue));
+    for (const refLine of [undefined, '', 'median', 'constructor', '__proto__', 1]) assert.strictEqual(data.refLineKind({ type: 'bar', refLine, refValue: 5 }), '', String(refLine));
+    assert.strictEqual(data.refLineKind({ type: 'pie', refLine: 'average' }), '');
+    assert.strictEqual(data.refLineKind({ type: 'bar', measureMode: 'ytd', refLine: 'average' }), '');
+    // Valeur : l'objectif saisi, ou la moyenne des valeurs affichées (vides ignorés, jamais comptés comme 0).
+    const bar = { type: 'bar', refLine: 'average' };
+    assert.strictEqual(data.refLineValue(bar, [10, null, 20, '', 30]), 20);
+    assert.strictEqual(data.refLineValue(bar, [10, 20, 30, 0]), 15, 'un vrai zéro compte');
+    assert.strictEqual(data.refLineValue(bar, [-10, 10, 30]), 10);
+    assert.strictEqual(data.refLineValue(bar, [4n, 6n]), 5, 'BigInt de DuckDB');
+    assert.strictEqual(data.refLineValue(bar, ['4', 6]), 5, 'chaîne numérique');
+    assert.strictEqual(data.refLineValue(bar, [true, 'x', null]), null, 'aucune valeur numérique : pas de ligne');
+    assert.strictEqual(data.refLineValue(bar, []), null); assert.strictEqual(data.refLineValue(bar, undefined), null);
+    assert.strictEqual(data.refLineValue({ type: 'bar', refLine: 'value', refValue: 7.5 }, []), 7.5, 'objectif : indépendant des valeurs');
+    assert.strictEqual(data.refLineValue({ type: 'bar', refLine: 'value', refValue: -3 }, [1, 2]), -3);
+    assert.strictEqual(data.refLineValue({ type: 'bar' }, [1, 2]), null); assert.strictEqual(data.refLineValue({ type: 'pie', refLine: 'average' }, [1, 2]), null);
+    // Moyenne sans bruit de flottant visible : l'affichage passe par js/format.js (« 0,2 »), pas par la valeur brute.
+    assert.ok(Math.abs(data.refLineValue(bar, [0.1, 0.2, 0.3]) - 0.2) < 1e-12);
+    // Le store garde et efface les deux champs ; l'export Excel n'en dépend pas.
+    {
+      const st = state.createStore();
+      st.setRows([{ R: 'A', M: 1 }, { R: 'B', M: 3 }]);
+      st.addTile({ id: 'r1', type: 'bar', dimension: 'R', measure: 'M', aggFn: 'sum', title: 'T', refLine: 'value', refValue: 2 });
+      assert.deepStrictEqual([st.getState().tiles[0].refLine, st.getState().tiles[0].refValue], ['value', 2]);
+      const rState = { rows: [{ R: 'A', M: 1 }, { R: 'B', M: 3 }], activeFilters: [], advancedFilters: [], drillIns: {}, comments: [], pages: [] };
+      const withRef = data.tileExportSheet(st.getState().tiles[0], rState);
+      st.updateTile('r1', { refLine: undefined, refValue: undefined });
+      assert.strictEqual(st.getState().tiles[0].refLine, undefined);
+      assert.deepStrictEqual(data.tileExportSheet(st.getState().tiles[0], rState), withRef, 'la ligne de repère n\'est pas exportée : même feuille');
+    }
+    ['tileForm.refLine.label', 'tileForm.refLine.none', 'tileForm.refLine.average', 'tileForm.refLine.value', 'tileForm.refValue.label', 'tileForm.error.refValueRequired', 'chart.refLine.average', 'chart.refLine.value']
+      .forEach((k) => assert.ok(i18n.STRINGS[k] && i18n.STRINGS[k].fr && i18n.STRINGS[k].en, 'traduction fr/en : ' + k));
+    // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
+    const mainR = fsR.readFileSync(pathR.join(rootR, 'js', 'main.js'), 'utf8');
+    const chartsR = fsR.readFileSync(pathR.join(rootR, 'js', 'charts.js'), 'utf8');
+    const indexR = fsR.readFileSync(pathR.join(rootR, 'index.html'), 'utf8');
+    assert.ok(/id="tile-refline"/.test(indexR) && /id="tile-refvalue"/.test(indexR) && /<label for="tile-refvalue"/.test(indexR), 'champs étiquetés');
+    assert.ok(/supportsRefLine\(\{ type, measureMode/.test(mainR) && /tileData\.refLine = refKind \|\| undefined/.test(mainR));
+    assert.ok(/markLine/.test(chartsR) && /function addRefLine/.test(chartsR) && /refLineValue\(tile, groups\.map/.test(chartsR), 'la moyenne se calcule sur les valeurs AFFICHÉES (groupes triés/drillés)');
+    assert.ok(!/Intl\.NumberFormat|toFixed/.test(chartsR), 'aucun format de nombre en dur dans charts.js');
+    console.log('OK ligne de repère — types, genre tracé, objectif invalide, moyenne (vides, BigInt), store, export inchangé, i18n, câblage');
+  }
+
+  // Options d'affichage : étiquettes de valeur, tracé de la courbe (lissé / escalier), 100 % empilé.
+  {
+    const fsD = require('fs');
+    const pathD = require('path');
+    const rootD = pathD.join(__dirname, '..');
+    // Tracé de la courbe : courbe/aire seulement, clé inconnue ou piégée -> droit.
+    assert.deepStrictEqual(data.LINE_SHAPES, ['smooth', 'step']);
+    assert.strictEqual(data.lineShapeOf({ type: 'line', lineShape: 'smooth' }), 'smooth');
+    assert.strictEqual(data.lineShapeOf({ type: 'line', lineShape: 'step' }), 'step');
+    for (const lineShape of [undefined, '', 'straight', 'constructor', '__proto__', 1, null]) assert.strictEqual(data.lineShapeOf({ type: 'line', lineShape }), '', String(lineShape));
+    for (const type of ['bar', 'pie', 'combo', 'kpi']) assert.strictEqual(data.lineShapeOf({ type, lineShape: 'smooth' }), '', type);
+    assert.strictEqual(data.lineShapeOf(null), '');
+    // Étiquettes de valeur : mêmes types que la ligne de repère (barres hors mode mesure, courbe).
+    for (const tile of [{ type: 'bar' }, { type: 'bar', measureMode: 'brut' }, { type: 'line' }]) assert.strictEqual(data.supportsValueLabels(tile), true, JSON.stringify(tile));
+    for (const tile of [{ type: 'bar', measureMode: 'yoy' }, { type: 'pie' }, { type: 'combo' }, { type: 'histogram' }, { type: 'heatmap' }, null]) assert.strictEqual(data.supportsValueLabels(tile), false, JSON.stringify(tile));
+    // 100 % empilé : seulement une pile (colonne Séries + empilé), barres ou aire.
+    const pile = { type: 'bar', dimension: 'R', measure: 'M', aggFn: 'sum', seriesColumn: 'P', stacked: true, stackPercent: true };
+    assert.strictEqual(data.isStackedPercentTile(pile), true);
+    assert.strictEqual(data.isStackedPercentTile(Object.assign({}, pile, { type: 'line', areaFill: true })), true);
+    assert.strictEqual(data.isStackedPercentTile(Object.assign({}, pile, { type: 'line' })), false, 'une courbe sans aire n\'est pas une pile');
+    assert.strictEqual(data.isStackedPercentTile(Object.assign({}, pile, { stacked: false })), false, '100 % sans « Empiler » : ignoré');
+    assert.strictEqual(data.isStackedPercentTile(Object.assign({}, pile, { seriesColumn: '' })), false);
+    assert.strictEqual(data.isStackedPercentTile(Object.assign({}, pile, { stackPercent: false })), false);
+    assert.strictEqual(data.isStackedPercentTile(Object.assign({}, pile, { measureMode: 'ytd' })), false);
+    assert.strictEqual(data.isStackedPercentTile(null), false);
+    // Parts : somme 100, cellule absente reste absente, total non positif -> aucune part, BigInt, texte numérique.
+    assert.deepStrictEqual(data.shareOfTotal([1, 3]), [25, 75]);
+    assert.deepStrictEqual(data.shareOfTotal([5, null, 5]), [50, null, 50]);
+    assert.deepStrictEqual(data.shareOfTotal([7]), [100]);
+    assert.deepStrictEqual(data.shareOfTotal([0, 0]), [null, null], 'total nul : pas de 0 % trompeur');
+    assert.deepStrictEqual(data.shareOfTotal([-5, 2]), [null, null], 'total négatif : aucune part');
+    assert.deepStrictEqual(data.shareOfTotal([1n, 3n]), [25, 75]);
+    assert.deepStrictEqual(data.shareOfTotal(['1', 3, '', true]), [25, 75, null, null]);
+    assert.deepStrictEqual(data.shareOfTotal([]), []); assert.deepStrictEqual(data.shareOfTotal(undefined), []);
+    assert.deepStrictEqual(data.shareOfTotal([-10, 30]), [-50, 150], 'négatifs dans une pile positive : part sans sens, le conseil le signale');
+    const total = data.shareOfTotal([0.1, 0.2, 0.7]).reduce((a, b) => a + b, 0);
+    assert.ok(Math.abs(total - 100) < 1e-9, 'somme à 100 (flottants)');
+    // Tout le graphique : chaque colonne somme à 100, séries de longueurs inégales, vide.
+    const sh = data.stackShares([[10, 0, null], [30, 0, 5], [60, 0, 5]]);
+    assert.deepStrictEqual(sh, [[10, null, null], [30, null, 50], [60, null, 50]]);
+    for (const c of [0, 2]) assert.ok(Math.abs(sh.reduce((a, srs) => a + (srs[c] || 0), 0) - 100) < 1e-9, 'colonne ' + c);
+    assert.deepStrictEqual(data.stackShares([[1, 1], [1]]), [[50, 100], [50, null]]);
+    assert.deepStrictEqual(data.stackShares([]), []); assert.deepStrictEqual(data.stackShares(undefined), []);
+    // Export Excel : les trois options n'y changent rien (valeurs brutes, comme avant).
+    const dRows = [{ R: 'A', P: 'x', M: 10 }, { R: 'A', P: 'y', M: 30 }, { R: 'B', P: 'x', M: 20 }];
+    const dState = { rows: dRows, activeFilters: [], advancedFilters: [], drillIns: {}, comments: [], pages: [] };
+    const plainSheet = data.tileExportSheet(Object.assign({ id: 'p', title: 'T' }, pile, { stackPercent: undefined }), dState);
+    assert.deepStrictEqual(data.tileExportSheet(Object.assign({ id: 'p', title: 'T' }, pile, { valueLabels: true }), dState), plainSheet, '100 % et étiquettes : même feuille');
+    assert.deepStrictEqual(data.tileExportSheet({ id: 'l', title: 'L', type: 'line', dimension: 'R', measure: 'M', aggFn: 'sum', lineShape: 'smooth' }, dState), data.tileExportSheet({ id: 'l', title: 'L', type: 'line', dimension: 'R', measure: 'M', aggFn: 'sum' }, dState));
+    // Conseil : des valeurs négatives en 100 % ; rien sans négatif, rien si ce n'est pas du 100 %.
+    const negRows = [{ R: 'A', P: 'x', M: 10 }, { R: 'A', P: 'y', M: -3 }, { R: 'B', P: 'x', M: 5 }];
+    assert.strictEqual(advice.adviceForTile(pile, negRows).key, 'advice.stackedPercent.negative');
+    assert.strictEqual(advice.adviceForTile(pile, dRows), null);
+    assert.strictEqual(advice.adviceForTile(Object.assign({}, pile, { stackPercent: false }), negRows), null, 'pile ordinaire : pas ce conseil');
+    assert.strictEqual(advice.adviceForTile(Object.assign({}, pile, { aggFn: 'avg' }), dRows).key, 'advice.stacked.notAdditive', 'le conseil existant prime');
+    ['tileForm.stackPercent.label', 'tileForm.lineShape.label', 'tileForm.lineShape.straight', 'tileForm.lineShape.smooth', 'tileForm.lineShape.step', 'tileForm.valueLabels.label', 'advice.stackedPercent.negative']
+      .forEach((k) => assert.ok(i18n.STRINGS[k] && i18n.STRINGS[k].fr && i18n.STRINGS[k].en, 'traduction fr/en : ' + k));
+    // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
+    const mainD = fsD.readFileSync(pathD.join(rootD, 'js', 'main.js'), 'utf8');
+    const chartsD = fsD.readFileSync(pathD.join(rootD, 'js', 'charts.js'), 'utf8');
+    const indexD = fsD.readFileSync(pathD.join(rootD, 'index.html'), 'utf8');
+    for (const id of ['tile-stack-percent', 'tile-line-shape', 'tile-value-labels']) assert.ok(new RegExp(`id="${id}"`).test(indexD) && new RegExp(`<label for="${id}"`).test(indexD), 'champ étiqueté : ' + id);
+    assert.ok(/stackPercentCheckbox\.addEventListener\('change', updateFormFieldsForType\)/.test(mainD) && /stackedCheckbox\.addEventListener\('change', updateFormFieldsForType\)/.test(mainD), 'cocher/décocher recalcule les champs visibles');
+    assert.ok(/tileData\.stackPercent = \(tileData\.stacked && stackPercentCheckbox\.checked\)/.test(mainD), 'le 100 % ne s\'écrit que sur une pile');
+    assert.ok(/stackShares\(/.test(chartsD) && /labelLayout: \{ hideOverlap: true \}/.test(chartsD) && /step: 'middle'/.test(chartsD) && /if \(!stackPct && option\.series/.test(chartsD), 'pas de ligne de repère brute sur un axe en %');
+    assert.ok(!/Intl\.NumberFormat|toFixed/.test(chartsD), 'aucun format de nombre en dur dans charts.js');
+    console.log('OK options d\'affichage — tracé de la courbe, étiquettes, 100 % empilé (parts, colonnes, négatifs), export inchangé, conseil, i18n, câblage');
   }
 
   // Export Excel avec ExcelJS 4.4.0 (consigne GFS 017, 18/11/2026) : le VRAI paquet vendorisé, exécuté sous Node
