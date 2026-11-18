@@ -40,17 +40,17 @@
 
   const t = (key, vars) => GristBI.i18n.t(key, vars);
 
-  function $(id) { return document.getElementById(id); }
+  function byId(id) { return document.getElementById(id); }
 
   function collectElements() {
     el = {
-      openBtn: $('open-keywords'), modal: $('keywords-modal'), closeBtn: $('keywords-close'),
-      noTable: $('keywords-no-table'), body: $('keywords-body'),
-      kindPdf: $('keywords-kind-pdf'), kindText: $('keywords-kind-text'), pdfNeeds: $('keywords-pdf-needs'), pdfAdd: $('keywords-pdf-add'),
-      sourceLabel: $('keywords-source-label'), source: $('keywords-source-column'), sourceEmpty: $('keywords-source-empty'),
-      target: $('keywords-target-column'), manual: $('keywords-manual-column'), max: $('keywords-max'), lang: $('keywords-lang'),
-      plan: $('keywords-plan'), error: $('keywords-error'), progress: $('keywords-progress'), status: $('keywords-status'), log: $('keywords-log'),
-      start: $('keywords-start'), stop: $('keywords-stop')
+      openBtn: byId('open-keywords'), modal: byId('keywords-modal'), closeBtn: byId('keywords-close'),
+      noTable: byId('keywords-no-table'), body: byId('keywords-body'),
+      kindPdf: byId('keywords-kind-pdf'), kindText: byId('keywords-kind-text'), pdfNeeds: byId('keywords-pdf-needs'), pdfAdd: byId('keywords-pdf-add'),
+      sourceLabel: byId('keywords-source-label'), source: byId('keywords-source-column'), sourceEmpty: byId('keywords-source-empty'),
+      target: byId('keywords-target-column'), manual: byId('keywords-manual-column'), max: byId('keywords-max'), lang: byId('keywords-lang'),
+      plan: byId('keywords-plan'), error: byId('keywords-error'), progress: byId('keywords-progress'), status: byId('keywords-status'), log: byId('keywords-log'),
+      start: byId('keywords-start'), stop: byId('keywords-stop')
     };
     return Object.values(el).every(Boolean);
   }

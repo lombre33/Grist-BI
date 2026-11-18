@@ -110,7 +110,7 @@
     return tables.some((t) => (typeof t === 'string' ? t : t.id) === tableId);
   }
 
-  // [BUG RÉEL remonté par l'utilisateur : une table se "regénérait" (barre de progression "Création…"
+  // [DÉFAUT RÉEL remonté par l'utilisateur : une table se "regénérait" (barre de progression "Création…"
   // complète) à chaque réouverture du widget, alors qu'elle existait déjà dans le document réel.]
   // `grist.ready()` ne renvoie PAS de promesse (voir la doc de l'API Grist) : la vraie négociation
   // d'accès avec l'hôte se termine de façon asynchrone, APRÈS que `ready()` a déjà rendu la main.
@@ -175,7 +175,7 @@
     return (rv && rv.table_id) || null;
   }
 
-  // [BUG RÉEL trouvé le 21/10/2026, lors de l'audit UX/UI, sur un document VRAIMENT vide (aucune
+  // [DÉFAUT RÉEL trouvé le 21/10/2026, lors de l'audit UX/UI, sur un document VRAIMENT vide (aucune
   // table utilisateur)] `loadConfig()` et `saveConfig()` appellent CHACUNE `ensureConfigTableExists()`
   // — hors, dans `main.js:switchTable`, `store.clearFilter()`/`store.clearAdvancedFilter()` (avant
   // `loadConfig`) déclenchent déjà un `render()` (store.subscribe) qui peut programmer une sauvegarde
@@ -303,12 +303,12 @@
   async function loadConfig(tableId) {
     try {
       await ensureConfigTableExists();
-      const data = await grist.docApi.fetchTable(CONFIG_TABLE);
-      const ids = (data && data.id) || [];
+      const configTable = await grist.docApi.fetchTable(CONFIG_TABLE);
+      const ids = (configTable && configTable.id) || [];
       for (let i = 0; i < ids.length; i++) {
-        if (data.TableId[i] === tableId) {
+        if (configTable.TableId[i] === tableId) {
           _configRowIdByTable[tableId] = ids[i];
-          try { return normalizeConfig(JSON.parse(data.ConfigJSON[i] || '[]')); }
+          try { return normalizeConfig(JSON.parse(configTable.ConfigJSON[i] || '[]')); }
           catch (e) { return singlePageConfig([], [], null); }
         }
       }
@@ -362,8 +362,8 @@
     // pas encore vu cette session, ou ligne d'avant cette consigne sans Nom) : relit l'état réel de
     // BI_Dashboard_Config pour savoir s'il faut poser Nom/TypeRapport, et pour le garde-fou
     // "TypeRapport inconnu" ci-dessous (consigne GFS 007, guide des apps, test "Inconnu").
-    const data = await grist.docApi.fetchTable(CONFIG_TABLE);
-    const ids = (data && data.id) || [];
+    const savedTable = await grist.docApi.fetchTable(CONFIG_TABLE);
+    const ids = (savedTable && savedTable.id) || [];
     let idx = -1;
     if (rowId) {
       idx = ids.indexOf(rowId);
@@ -371,9 +371,9 @@
       // Comportement historique : revérifie qu'une ligne n'existe pas déjà côté doc (créée par une
       // session précédente) avant d'en ajouter une — jamais pour le jeton 'new', qui doit toujours
       // créer une ligne séparée même si ce TableId en porte déjà une autre.
-      for (let i = 0; i < ids.length; i++) if (data.TableId[i] === tableId) { idx = i; rowId = ids[i]; break; }
+      for (let i = 0; i < ids.length; i++) if (savedTable.TableId[i] === tableId) { idx = i; rowId = ids[i]; break; }
     }
-    const existingType = idx !== -1 && data.TypeRapport ? data.TypeRapport[idx] : '';
+    const existingType = idx !== -1 && savedTable.TypeRapport ? savedTable.TypeRapport[idx] : '';
     if (existingType && existingType !== CONFIG_REPORT_TYPE) {
       // Un TypeRapport que ce widget ne connaît pas n'est ni ouvert, ni réenregistré (consigne GFS
       // 007) — ne devrait jamais arriver en pratique (seul Grist-BI écrit dans cette table), gardé
@@ -384,9 +384,9 @@
       );
       return rowId || null;
     }
-    const existingName = idx !== -1 && data.Nom ? data.Nom[idx] : '';
+    const existingName = idx !== -1 && savedTable.Nom ? savedTable.Nom[idx] : '';
     if (!existingName) {
-      const existingNames = new Set((data.Nom || []).filter(Boolean));
+      const existingNames = new Set((savedTable.Nom || []).filter(Boolean));
       fields.Nom = idx !== -1 ? uniqueDefaultName(tableId, existingNames) : nextNewReportName(existingNames);
       fields.TypeRapport = CONFIG_REPORT_TYPE;
     }
@@ -412,17 +412,17 @@
     const numericId = Number(reportId);
     if (!Number.isInteger(numericId)) return null;
     await ensureConfigTableExists();
-    const data = await grist.docApi.fetchTable(CONFIG_TABLE);
-    const idx = (data.id || []).indexOf(numericId);
+    const reportTable = await grist.docApi.fetchTable(CONFIG_TABLE);
+    const idx = (reportTable.id || []).indexOf(numericId);
     if (idx === -1) return null;
-    const typeRapport = data.TypeRapport ? data.TypeRapport[idx] : '';
+    const typeRapport = reportTable.TypeRapport ? reportTable.TypeRapport[idx] : '';
     if (typeRapport && typeRapport !== CONFIG_REPORT_TYPE) return null;
-    const name = data.Nom ? data.Nom[idx] : '';
+    const name = reportTable.Nom ? reportTable.Nom[idx] : '';
     if (name) _namedReportRowIds.add(numericId);
     let config;
-    try { config = normalizeConfig(JSON.parse(data.ConfigJSON[idx] || '[]')); }
+    try { config = normalizeConfig(JSON.parse(reportTable.ConfigJSON[idx] || '[]')); }
     catch (e) { config = singlePageConfig([], [], null); }
-    const tableId = data.TableId[idx];
+    const tableId = reportTable.TableId[idx];
     _configRowIdByTable[tableId] = numericId;
     return { id: numericId, tableId, name, config };
   }
@@ -578,7 +578,7 @@
     const actions = rows.map((row, i) => {
       const derived = deriveMissingColumns(row);
       const fields = {};
-      for (const c of missingColumns) fields[c.id] = derived[c.id];
+      for (const missingColumn of missingColumns) fields[missingColumn.id] = derived[missingColumn.id];
       return ['UpdateRecord', tableId, table.id[i], fields];
     });
     await applyActionsInChunks('migrate', actions, onProgress);
@@ -624,7 +624,7 @@
         _rawTables = null;
         alreadyExists = true;
       } else {
-        // [BUG RÉEL trouvé le 21/10/2026, lors de l'audit UX/UI, en testant un document VRAIMENT
+        // [DÉFAUT RÉEL trouvé le 21/10/2026, lors de l'audit UX/UI, en testant un document VRAIMENT
         // vide (aucune table utilisateur) : `_rawTables` peut valoir `null` ici, pas seulement un
         // tableau à compléter. C'est le cas précis où CETTE création est le tout premier contrôle
         // d'existence de la session (`_raceGuardArmed` encore `true`, voir tableExistsConfirmed) ET

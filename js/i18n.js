@@ -74,8 +74,15 @@
     'bookmarks.exportPdf': { fr: 'Exporter en PDF', en: 'Export to PDF' },
     'bookmarks.exportPptx': { fr: 'Exporter en PPTX', en: 'Export to PPTX' },
     'export.none': { fr: 'Aucune tuile à exporter.', en: 'No tile to export.' },
-    'export.soon': { fr: 'bientôt disponible', en: 'coming soon' },
     'export.failed': { fr: "Échec de l'export Excel — voir la console (F12).", en: 'Excel export failed — see the console (F12).' },
+    // Classeur Excel (js/export.js) : une feuille par page, un bloc par tuile (graphique en image + données).
+    'export.xlsx.subtitle': { fr: 'Exporté le {date} · {rows} {rows|ligne|lignes} de données', en: 'Exported on {date} · {rows} data {rows|row|rows}' },
+    'export.xlsx.filters': { fr: '{n} {n|filtre actif appliqué|filtres actifs appliqués} aux chiffres ci-dessous', en: '{n} active {n|filter|filters} applied to the figures below' },
+    'export.xlsx.noImage': { fr: 'Graphique indisponible pour cette tuile : ses données sont ci-dessous.', en: 'Chart unavailable for this tile: its data is below.' },
+    'export.xlsx.truncated': { fr: '… {n} {n|ligne de plus n’est pas exportée|lignes de plus ne sont pas exportées}', en: '… {n} more {n|row is|rows are} not exported' },
+    'export.xlsx.cut': { fr: 'Feuille pleine : les tuiles suivantes de cette page ne sont pas exportées.', en: 'Sheet full: the following tiles of this page are not exported.' },
+    'export.xlsx.preparing': { fr: 'Préparation du classeur Excel…', en: 'Preparing the Excel workbook…' },
+    // PDF et PPTX (js/pdf-export.js, js/pptx-export.js) : la page est photographiée telle qu'elle est dessinée (js/snapshot.js).
     'export.pdf.failed': { fr: "Échec de l'export PDF — voir la console (F12).", en: 'PDF export failed — see the console (F12).' },
     'export.header.filters': { fr: 'Filtres actifs', en: 'Active filters' },
     'export.pptx.failed': { fr: "Échec de l'export PPTX — voir la console (F12).", en: 'PPTX export failed — see the console (F12).' },
@@ -952,7 +959,7 @@
     return out;
   }
 
-  function t(key, vars) {
+  function translate(key, vars) {
     const entry = STRINGS[key];
     if (!entry) { console.warn('[GristBI.i18n] clé inconnue :', key); return key; }
     if (!entry[lang]) console.warn('[GristBI.i18n] traduction "' + lang + '" manquante pour "' + key + '" (repli FR).');
@@ -970,7 +977,7 @@
   // main) le texte stocké (`title`) tel quel. Jamais utilisé pour nommer une feuille d'export
   // (js/data.js reste pur, sans dépendance à ce module) : ces exports gardent `tile.title`.
   function tileTitle(tile) {
-    if (tile && tile.titleKey && STRINGS[tile.titleKey]) return t(tile.titleKey, tile.titleVars);
+    if (tile && tile.titleKey && STRINGS[tile.titleKey]) return translate(tile.titleKey, tile.titleVars);
     return (tile && tile.title) || '';
   }
 
@@ -1003,11 +1010,11 @@
   function applyTranslations(root) {
     if (typeof document === 'undefined') return; // Node (tests) : pas de DOM à mettre à jour.
     const scope = root || document;
-    scope.querySelectorAll('[data-i18n]').forEach((el) => { el.textContent = t(el.getAttribute('data-i18n')); });
-    scope.querySelectorAll('[data-i18n-html]').forEach((el) => { el.innerHTML = t(el.getAttribute('data-i18n-html')); });
-    scope.querySelectorAll('[data-i18n-title]').forEach((el) => { el.setAttribute('title', t(el.getAttribute('data-i18n-title'))); });
-    scope.querySelectorAll('[data-i18n-aria]').forEach((el) => { el.setAttribute('aria-label', t(el.getAttribute('data-i18n-aria'))); });
-    scope.querySelectorAll('[data-i18n-placeholder]').forEach((el) => { el.setAttribute('placeholder', t(el.getAttribute('data-i18n-placeholder'))); });
+    scope.querySelectorAll('[data-i18n]').forEach((el) => { el.textContent = translate(el.getAttribute('data-i18n')); });
+    scope.querySelectorAll('[data-i18n-html]').forEach((el) => { el.innerHTML = translate(el.getAttribute('data-i18n-html')); });
+    scope.querySelectorAll('[data-i18n-title]').forEach((el) => { el.setAttribute('title', translate(el.getAttribute('data-i18n-title'))); });
+    scope.querySelectorAll('[data-i18n-aria]').forEach((el) => { el.setAttribute('aria-label', translate(el.getAttribute('data-i18n-aria'))); });
+    scope.querySelectorAll('[data-i18n-placeholder]').forEach((el) => { el.setAttribute('placeholder', translate(el.getAttribute('data-i18n-placeholder'))); });
   }
 
   // Applique tout de suite (pas seulement lors d'un futur setLang) : ce script est placé après tout
@@ -1016,5 +1023,5 @@
   if (typeof document !== 'undefined') document.documentElement.lang = lang;
   applyTranslations();
 
-  return { t, tileTitle, getLang, setLang, applyTranslations, onChange, STRINGS };
+  return { t: translate, tileTitle, getLang, setLang, applyTranslations, onChange, STRINGS };
 });

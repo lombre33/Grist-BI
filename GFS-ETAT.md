@@ -342,7 +342,7 @@ Mis à jour le 2026-11-18 (décision du porteur : une seule copie d'ECharts quan
   seule l'adresse change, donc pas de demande. **À regarder côté GFS** : si la politique de contenu du cadre de l'app n'autorise que certains sites pour les scripts, `cdn.jsdelivr.net` doit y figurer
   pour que l'export PPTX marche dans GFS ; et `allow-downloads` doit rester déclaré pour les deux fichiers (`dashboard-bi.pdf`, `dashboard-bi.pptx`). **Pas vérifié** : ni le chargement depuis jsDelivr
   ni les téléchargements dans un vrai GFS (essayés avec la vraie bibliothèque servie à la place de l'adresse, dans une page directe et dans un `<iframe sandbox="allow-scripts allow-downloads">`).
-  L'export Excel reste fermé (« bientôt disponible »), autre chantier.
+  L'export Excel, refait par un autre fil le même jour (`js/export.js`, ExcelJS déjà vendorisé), est lui aussi rouvert : rien de nouveau pour GFS de ce côté-là.
 - 2026-11-18 · `05fd5eb` · **Vitrine refaite : les trois captures de `vitrine/` sont remplacées** (même dossier, mêmes noms `1.webp`, `2.webp`, `3.webp`, même taille 960 × 600, de 49 976 à 54 370 octets, donc sous les 60 Ko ;
   `vitrine.json` : légendes 1 et 3 changées, la 2 reste vraie, description inchangée, toujours ≤ 280 / ≤ 60 signes fr/en). Les anciennes montraient l'interface d'avant la refonte ; les nouvelles montrent l'interface actuelle de `main`
   et varient les styles d'affichage et les dispositions de page (Antoine l'a demandé : « utiliser les styles différents ») : **1** = style « Verre dépoli » en disposition « Planche » (indicateurs avec tendance et objectif, jauge, barres, aire empilée) ;

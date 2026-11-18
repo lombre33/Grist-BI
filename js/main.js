@@ -386,12 +386,6 @@
   const exportPdfBtn = document.getElementById('export-pdf');
   const exportPptxBtn = document.getElementById('export-pptx');
 
-  // Exports (18/11/2026, demande d'Antoine) : le PDF empilait les cartes au lieu de garder le visuel du tableau de bord et le PPTX ne chargeait pas sa
-  // bibliothèque dans un vrai Grist ; ils ont été grisés en urgence puis REFAITS (js/snapshot.js : la page est photographiée telle qu'elle est
-  // dessinée) et sont rouverts. L'export Excel reste provisoirement fermé (fil à part). Un export fermé a son bouton GRISÉ dans index.html
-  // (« bientôt disponible ») ; ce tableau le garde fermé quand une table se connecte (setTableDependentControlsEnabled) et coupe son écouteur.
-  // Remettre `excel` à `true` ET dégriser son bouton (retirer `disabled`, `aria-disabled` et la mention) quand l'export Excel est rouvert.
-  const EXPORTS_AVAILABLE = { excel: false, pdf: true, pptx: true };
   const tableSelectInput = document.getElementById('table-select');
   const blendSecondaryTableInput = document.getElementById('blend-secondary-table');
   const blendPrimaryColumnInput = document.getElementById('blend-primary-column');
@@ -475,7 +469,7 @@
   // relit la liste des tables à CHAQUE ouverture du menu (pas seulement au démarrage/après un
   // changement de table réussi comme le fait refreshTablePicker par ailleurs) : une table créée
   // dans Grist après le chargement du widget doit rester atteignable sans recharger la page
-  // [BUG RÉEL, voir HYPOTHESES.md].
+  // [DÉFAUT RÉEL, voir HYPOTHESES.md].
   GristBI.combobox.attach(tableSelectInput, tableSelectInput.nextElementSibling, { strict: true, beforeOpen: refreshTablePicker });
 
   // Data blending multi-tables (ROADMAP.md Tier 2) : trois comboboxes de plus, même composant/même
@@ -1013,9 +1007,6 @@
                        filterToggleBtn, viewsToggleBtn, exportToggleBtn, modeToggleBtn,
                        blendSecondaryTableInput, blendPrimaryColumnInput, blendSecondaryColumnInput]) {
       el.disabled = !enabled;
-    }
-    for (const [btn, key] of [[exportExcelBtn, 'excel'], [exportPdfBtn, 'pdf'], [exportPptxBtn, 'pptx']]) {
-      if (!EXPORTS_AVAILABLE[key]) btn.disabled = true;
     }
   }
 
@@ -1940,8 +1931,8 @@
     const mode = numFmtSelect.value;
     if (mode === 'column') return { mode: 'column' };
     if (mode === 'custom') {
-      const d = numFmtDecimals.value;
-      return { mode: 'custom', decimals: d === 'auto' ? 'auto' : Number(d), notation: numFmtCompact.checked ? 'compact' : 'standard' };
+      const decimalsChoice = numFmtDecimals.value;
+      return { mode: 'custom', decimals: decimalsChoice === 'auto' ? 'auto' : Number(decimalsChoice), notation: numFmtCompact.checked ? 'compact' : 'standard' };
     }
     return undefined;
   }
@@ -1980,8 +1971,8 @@
     renderColumnsPicker(sel.concat(cols.filter((c) => !sel.includes(c))), new Set(sel));
   }
   function defaultTableColumns(cols) {
-    const d = GristBI.advice ? GristBI.advice.defaultsForType('table', [], cols) : null;
-    return d && d.columns ? d.columns : cols.slice(0, 6);
+    const tableDefaults = GristBI.advice ? GristBI.advice.defaultsForType('table', [], cols) : null;
+    return tableDefaults && tableDefaults.columns ? tableDefaults.columns : cols.slice(0, 6);
   }
   // Changement de table/de lignes : garde les cases cochées qui existent encore, sinon recoche les premières.
   function refreshColumnsPicker(cols) {
@@ -2670,36 +2661,36 @@
     resetTileForm();
     tileTypeSelect.value = type;
     const rows = store.getState().rows;
-    const d = GristBI.advice ? GristBI.advice.defaultsForType(type, rows, availableColumns(rows)) : null;
-    if (d) {
-      if (d.dimension) dimensionSelect.value = d.dimension;
-      columnDimensionSelect.value = d.columnDimension || '';
-      startColumnSelect.value = d.startColumn || '';
-      endColumnSelect.value = d.endColumn || '';
-      seriesSelect.value = d.seriesColumn || '';
-      measureYSelect.value = d.measureY || '';
-      comboModeSelect.value = d.comboMode === 'pareto' ? 'pareto' : 'measure';
-      if (d.drillDimensions) setDrillLevels(d.drillDimensions);
-      if (Number.isFinite(d.gaugeMin)) gaugeMinInput.value = d.gaugeMin;
-      if (Number.isFinite(d.gaugeMax)) gaugeMaxInput.value = d.gaugeMax;
-      radarModeSelect.value = d.radarAxisMode === 'columns' ? 'columns' : 'dimension';
-      if (d.radarAxisMode === 'columns') setRadarAxes(d.radarAxes);
-      wordCloudSplitCheckbox.checked = !!d.wordCloudSplit;
-      sortSelect.value = d.sortMode || '';
-      horizontalCheckbox.checked = !!d.horizontal;
-      areaCheckbox.checked = !!d.areaFill;
-      stackedCheckbox.checked = !!d.stacked;
-      donutCheckbox.checked = !!d.donut;
-      showPctCheckbox.checked = !!d.showPct;
-      if (d.columns) setColumnsPicker(d.columns);
+    const typeDefaults = GristBI.advice ? GristBI.advice.defaultsForType(type, rows, availableColumns(rows)) : null;
+    if (typeDefaults) {
+      if (typeDefaults.dimension) dimensionSelect.value = typeDefaults.dimension;
+      columnDimensionSelect.value = typeDefaults.columnDimension || '';
+      startColumnSelect.value = typeDefaults.startColumn || '';
+      endColumnSelect.value = typeDefaults.endColumn || '';
+      seriesSelect.value = typeDefaults.seriesColumn || '';
+      measureYSelect.value = typeDefaults.measureY || '';
+      comboModeSelect.value = typeDefaults.comboMode === 'pareto' ? 'pareto' : 'measure';
+      if (typeDefaults.drillDimensions) setDrillLevels(typeDefaults.drillDimensions);
+      if (Number.isFinite(typeDefaults.gaugeMin)) gaugeMinInput.value = typeDefaults.gaugeMin;
+      if (Number.isFinite(typeDefaults.gaugeMax)) gaugeMaxInput.value = typeDefaults.gaugeMax;
+      radarModeSelect.value = typeDefaults.radarAxisMode === 'columns' ? 'columns' : 'dimension';
+      if (typeDefaults.radarAxisMode === 'columns') setRadarAxes(typeDefaults.radarAxes);
+      wordCloudSplitCheckbox.checked = !!typeDefaults.wordCloudSplit;
+      sortSelect.value = typeDefaults.sortMode || '';
+      horizontalCheckbox.checked = !!typeDefaults.horizontal;
+      areaCheckbox.checked = !!typeDefaults.areaFill;
+      stackedCheckbox.checked = !!typeDefaults.stacked;
+      donutCheckbox.checked = !!typeDefaults.donut;
+      showPctCheckbox.checked = !!typeDefaults.showPct;
+      if (typeDefaults.columns) setColumnsPicker(typeDefaults.columns);
     }
     updateFormFieldsForType();
-    if (d) {
-      measureSelect.value = d.measure || '';
-      aggSelect.value = d.aggFn || 'sum';
-      aggYSelect.value = d.aggFnY || d.aggFn || 'sum';
-      aggSizeSelect.value = d.aggFn || 'sum';
-      trendDimensionSelect.value = d.trendDimension || '';
+    if (typeDefaults) {
+      measureSelect.value = typeDefaults.measure || '';
+      aggSelect.value = typeDefaults.aggFn || 'sum';
+      aggYSelect.value = typeDefaults.aggFnY || typeDefaults.aggFn || 'sum';
+      aggSizeSelect.value = typeDefaults.aggFn || 'sum';
+      trendDimensionSelect.value = typeDefaults.trendDimension || '';
     }
   }
 
@@ -2874,7 +2865,7 @@
   // Appelées SANS argument (via une flèche plutôt qu'en passant la fonction directement en callback)
   // : un `addEventListener` passe l'Event en 1er argument, qui satisferait silencieusement le
   // paramètre optionnel `rows` de `updateAdvancedFilterFieldsForColumn` à sa place (`rows` vaudrait
-  // l'Event, pas les lignes) — `distinctColumnValues` plante alors sur un Event non itérable [BUG
+  // l'Event, pas les lignes) — `distinctColumnValues` plante alors sur un Event non itérable [DÉFAUT
   // RÉEL trouvé en testant l'autocomplétion des valeurs, voir HYPOTHESES.md/TEST_PROTOCOL.md].
   filterDateModeSelect.addEventListener('change', () => updateAdvancedFilterFieldsForColumn());
 
@@ -2987,48 +2978,55 @@
     store.saveBookmark('bm_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name);
   });
 
-  // Une feuille par tuile, toutes pages confondues (voir GristBI.data.buildWorkbookSheetsAsync) —
-  // les données déjà agrégées/filtrées EXACTEMENT comme à l'écran (rowsForTile est la même fonction
-  // que charts.js), y compris pour une tuile en mode mesure (Cumul/YTD/N-1), désormais calculée via
-  // DuckDB-WASM plutôt que remplacée par un message (voir js/export.js). Jamais vérifié en
-  // conditions réelles Grist que le téléchargement se déclenche bien depuis l'iframe du widget
-  // (voir HYPOTHESES.md) — fonctionne dans ce harness et un navigateur standard, l'iframe n'étant
-  // pas sandboxée (voir ROADMAP.md).
+  // Une feuille par PAGE, toutes les pages (voir GristBI.data.buildExportPagesAsync), et dans chaque page un bloc par tuile :
+  // son graphique en image puis ses données, déjà agrégées/filtrées EXACTEMENT comme à l'écran (rowsForTile est la même fonction
+  // que charts.js), y compris pour une tuile en mode mesure (Cumul/YTD/N-1) calculée via DuckDB-WASM (voir js/export.js).
+  // Les graphiques sont redessinés hors écran puis photographiés (quelques secondes pour un grand tableau de bord) : le bouton
+  // est fermé pendant ce temps et le bandeau le dit, sinon un second clic lancerait un second export. Jamais vérifié en
+  // conditions réelles Grist que le téléchargement se déclenche bien depuis l'iframe du widget (voir HYPOTHESES.md) —
+  // fonctionne dans ce harness et un navigateur standard, l'iframe n'étant pas sandboxée (voir ROADMAP.md).
   exportExcelBtn.addEventListener('click', async () => {
-    if (!EXPORTS_AVAILABLE.excel) return;
+    if (exportExcelBtn.dataset.busy) return;
+    exportExcelBtn.dataset.busy = '1';
+    exportExcelBtn.disabled = true;
+    if (renderTimeEl) renderTimeEl.textContent = t('export.xlsx.preparing');
     try {
       const exported = await GristBI.exportExcel.exportDashboardToExcel(store.getState());
       if (!exported) showNotice(t('export.none'));
     } catch (e) {
       console.error('[GristBI] échec de l\'export Excel', e);
       showError(t('export.failed'));
+    } finally {
+      delete exportExcelBtn.dataset.busy;
+      exportExcelBtn.disabled = !(Boolean(currentTableId) && dashboardReady);
+      if (renderTimeEl && renderTimeEl.textContent === t('export.xlsx.preparing')) renderTimeEl.textContent = '';
     }
   });
 
-  // Seulement la page actuellement affichée (voir js/pdf-export.js), pas toutes les pages comme l'export Excel : la page est photographiée
-  // telle qu'elle est dessinée (js/snapshot.js), sans bibliothèque ni réseau.
-  exportPdfBtn.addEventListener('click', async () => {
-    if (!EXPORTS_AVAILABLE.pdf) return;
+  // PDF et PPTX : seulement la page actuellement affichée (voir js/pdf-export.js, js/pptx-export.js), pas toutes les pages comme l'export Excel ; la page
+  // est photographiée telle qu'elle est dessinée (js/snapshot.js), ce qui prend une à quelques secondes : le bouton est fermé pendant ce temps (sinon un
+  // second clic lancerait un second export), puis rendu dans l'état que setTableDependentControlsEnabled lui donne.
+  async function runPageExport(btn, run, failureMessage) {
+    if (btn.dataset.busy) return;
+    btn.dataset.busy = '1';
+    btn.disabled = true;
     try {
-      const exported = await GristBI.exportPdf.exportDashboardToPdf(store.getState());
+      const exported = await run(store.getState());
       if (!exported) showNotice(t('export.none'));
     } catch (e) {
-      console.error('[GristBI] échec de l\'export PDF', e);
-      showError(t('export.pdf.failed'));
+      console.error('[GristBI] échec de l\'export', e);
+      showError(failureMessage(e));
+    } finally {
+      delete btn.dataset.busy;
+      btn.disabled = !(Boolean(currentTableId) && dashboardReady);
     }
-  });
-
-  // Même raisonnement que l'export PDF ci-dessus, pour PptxGenJS (js/pptx-export.js).
-  exportPptxBtn.addEventListener('click', async () => {
-    if (!EXPORTS_AVAILABLE.pptx) return;
-    try {
-      const exported = await GristBI.exportPptx.exportDashboardToPptx(store.getState());
-      if (!exported) showNotice(t('export.none'));
-    } catch (e) {
-      console.error('[GristBI] échec de l\'export PPTX', e);
-      showError(t(e && e.code === GristBI.exportPptx.LOAD_ERROR_CODE ? 'export.pptx.networkError' : 'export.pptx.failed'));
-    }
-  });
+  }
+  exportPdfBtn.addEventListener('click', () => runPageExport(exportPdfBtn,
+    (state) => GristBI.exportPdf.exportDashboardToPdf(state), () => t('export.pdf.failed')));
+  // PptxGenJS est chargé à la demande (js/pptx-export.js) : seul un échec de CE chargement parle de connexion.
+  exportPptxBtn.addEventListener('click', () => runPageExport(exportPptxBtn,
+    (state) => GristBI.exportPptx.exportDashboardToPptx(state),
+    (e) => t(e && e.code === GristBI.exportPptx.LOAD_ERROR_CODE ? 'export.pptx.networkError' : 'export.pptx.failed')));
 
   addPageBtn.addEventListener('click', async () => {
     const answer = await GristBI.dialogs.prompt({

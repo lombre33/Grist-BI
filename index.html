@@ -230,10 +230,9 @@
   </div>
 
   <div id="export-popover" class="popover popover-menu" role="menu" data-i18n-aria="export.menu.aria" aria-label="Exporter" hidden>
-    <!-- Exports provisoirement désactivés (18/11/2026, demande d'Antoine : le PDF empile les cartes au lieu de garder le visuel du
-         tableau de bord, le PPTX ne charge pas sa bibliothèque dans un vrai Grist). Boutons grisés, jamais retirés : la mention
-         « bientôt disponible » dit pourquoi. js/main.js:EXPORTS_AVAILABLE les réactive (et ne les laisse jamais se rouvrir à la connexion d'une table). -->
-    <button id="export-excel" type="button" class="menu-item" role="menuitem" data-close-popover disabled aria-disabled="true"><span data-i18n="bookmarks.exportExcel">Exporter en Excel</span> <span class="menu-item-soon" data-i18n="export.soon">bientôt disponible</span></button>
+    <!-- Les trois exports sont ouverts (18/11/2026) : Excel (js/export.js, une feuille par page), PDF et PPTX (js/snapshot.js : la page est photographiée
+         telle qu'elle est dessinée). -->
+    <button id="export-excel" type="button" class="menu-item" role="menuitem" data-close-popover data-i18n="bookmarks.exportExcel">Exporter en Excel</button>
     <button id="export-pdf" type="button" class="menu-item" role="menuitem" data-close-popover data-i18n="bookmarks.exportPdf">Exporter en PDF</button>
     <button id="export-pptx" type="button" class="menu-item" role="menuitem" data-close-popover data-i18n="bookmarks.exportPptx">Exporter en PPTX</button>
   </div>

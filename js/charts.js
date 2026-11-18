@@ -123,7 +123,15 @@
   // temporelles) — pas seulement le cas où le bug a été trouvé la première fois.
   const numericGrid = { containLabel: true, left: 8, right: 16, top: 24, bottom: 8 };
 
+  // Rend la promesse du dessin (ou `undefined` pour une tuile synchrone) : l'écran l'ignore, les exports l'attendent (js/export.js pour l'image
+  // d'un graphique) et `whenSettled` aussi (js/snapshot.js : rien n'est photographié tant qu'un calcul DuckDB est en vol).
   function renderTile(tile, state, container) {
+    const pending = drawTile(tile, state, container);
+    trackPending(pending);
+    return pending;
+  }
+
+  function drawTile(tile, state, container) {
     // Filtrage délégué à GristBI.data.rowsForTile (source de vérité partagée avec l'export Excel,
     // voir data.js) : une tuile qui EST la source d'un filtre croisé s'affiche non filtrée SUR CE
     // FILTRE LÀ (pour rester cliquable sur tous ses segments) ; elle reçoit quand même les filtres
@@ -132,27 +140,24 @@
     const drillPath = (state.drillIns && state.drillIns[tile.id]) || [];
     const rows = rowsForTile(tile, state);
 
-    let pending;
     if (tile.type === 'kpi') {
-      pending = renderKpi(tile, rows, container);
+      return renderKpi(tile, rows, container);
     } else if (tile.type === 'gauge') {
-      pending = renderGauge(tile, rows, container);
+      return renderGauge(tile, rows, container);
     } else if (tile.type === 'pivot') {
-      pending = renderPivot(tile, rows, state, container);
+      return renderPivot(tile, rows, state, container);
     } else if (tile.type === 'text') {
-      renderText(tile, container);
+      return renderText(tile, container);
     } else if (tile.type === 'table') {
-      renderTable(tile, rows, container);
+      return renderTable(tile, rows, container);
     } else if (tile.type === 'progress') {
-      renderProgress(tile, rows, state, container);
+      return renderProgress(tile, rows, state, container);
     } else if (tile.type === 'gantt') {
-      renderGantt(tile, rows, state, container);
+      return renderGantt(tile, rows, state, container);
     } else if (tile.type === 'bar' && tile.measureMode && tile.measureMode !== 'brut') {
-      pending = renderMeasureChart(tile, rows, container);
-    } else {
-      pending = renderChart(tile, rows, state, container, drillPath);
+      return renderMeasureChart(tile, rows, container);
     }
-    trackPending(pending);
+    return renderChart(tile, rows, state, container, drillPath);
   }
 
   // Tuile Texte : aucune donnée, aucune instance ECharts (donc rien à disposer ni à redimensionner). Le contenu
@@ -295,12 +300,12 @@
       } else {
         goalEl.hidden = false;
         const pctText = kpiFmt.percent(prog.pct);
-        const bar = goalEl.querySelector('.goal-bar');
+        const goalBar = goalEl.querySelector('.goal-bar');
         const fill = goalEl.querySelector('.goal-fill');
         fill.style.width = `${Math.round(prog.fill * 1000) / 10}%`;
         fill.className = `goal-fill goal-${prog.level}`;
-        bar.setAttribute('aria-valuenow', String(Math.round(prog.pct)));
-        bar.setAttribute('aria-label', t('chart.kpi.goalPct', { pct: pctText }));
+        goalBar.setAttribute('aria-valuenow', String(Math.round(prog.pct)));
+        goalBar.setAttribute('aria-label', t('chart.kpi.goalPct', { pct: pctText }));
         goalEl.querySelector('.goal-pct').textContent = t('chart.kpi.goalPct', { pct: pctText });
         goalEl.querySelector('.goal-target').textContent = t('chart.kpi.goalTarget', { target: kpiFmt.format(finiteTarget(targetValue)) });
       }
@@ -327,7 +332,7 @@
     const el = container.querySelector(`[data-tile-id="${tile.id}"] .tile-chart`);
     if (!el) return;
     const list = progressRows(valueGroups, targetGroups, tile.target, tile.goodPct, tile.warnPct);
-    const f = fmtFor(tile, tile.measure);
+    const numberFormat = fmtFor(tile, tile.measure);
     const filter = state.activeFilters.find((af) => af.column === tile.dimension);
     const good = finiteTarget(tile.goodPct) != null ? Number(tile.goodPct) : GristBI.data.DEFAULT_GOOD_PCT;
     const warn = finiteTarget(tile.warnPct) != null ? Number(tile.warnPct) : GristBI.data.DEFAULT_WARN_PCT;
@@ -339,9 +344,9 @@
         const key = String(r.key);
         const active = filter && filterSelects(filter, key);
         const dimmed = filter && !active;
-        const pctText = r.pct == null ? '–' : f.percent(r.pct);
-        const title = r.target == null ? `${key} : ${f.format(r.value) || '–'}`
-          : t('chart.progress.row', { label: key, value: f.format(r.value) || '–', target: f.format(r.target) || '–' });
+        const pctText = r.pct == null ? '–' : numberFormat.percent(r.pct);
+        const title = r.target == null ? `${key} : ${numberFormat.format(r.value) || '–'}`
+          : t('chart.progress.row', { label: key, value: numberFormat.format(r.value) || '–', target: numberFormat.format(r.target) || '–' });
         return `<div class="prog-row${active ? ' prog-active' : ''}${dimmed ? ' prog-dimmed' : ''}" role="button" tabindex="0" data-value="${escapeHtml(key)}" title="${escapeHtml(title)}">`
           + `<span class="prog-label">${escapeHtml(key)}</span>`
           + `<span class="prog-track"><span class="prog-fill ${r.level ? 'goal-' + r.level : ''}" style="width:${Math.round(r.fill * 1000) / 10}%"></span></span>`
@@ -1088,8 +1093,8 @@
     // (une somme de ligne écraserait l'échelle des cellules). Couleurs CALCULÉES (hex), jamais une chaîne de la configuration.
     const heat = tile.pivotHeat ? heatCellColors(pivot.cells, heatStops(tile.palette)) : null;
     const heatStyle = (ri, ci) => {
-      const c = heat && heat[ri] && heat[ri][ci];
-      return c ? ` style="background:${c.bg};color:${c.fg}"` : '';
+      const heatCell = heat && heat[ri] && heat[ri][ci];
+      return heatCell ? ` style="background:${heatCell.bg};color:${heatCell.fg}"` : '';
     };
     const bodyRows = pivot.rowKeys.map((rk, ri) => {
       const rowActive = rowFilter && filterSelects(rowFilter, rk);
@@ -1202,8 +1207,8 @@
       })),
       series: panels.map((sr, i) => {
         const col = color(i);
-        const data = sr.values.map((v, k) => ({ value: v, itemStyle: dim(cats[k]) }));
-        const base = { name: String(sr.name), xAxisIndex: i, yAxisIndex: i, data };
+        const panelData = sr.values.map((v, k) => ({ value: v, itemStyle: dim(cats[k]) }));
+        const base = { name: String(sr.name), xAxisIndex: i, yAxisIndex: i, data: panelData };
         if (isBar) return { ...base, type: 'bar', barCategoryGap: '30%', itemStyle: { color: col } };
         return {
           ...base,
@@ -1300,10 +1305,10 @@
     }
     // Formateur de la mesure (axe Y, infobulles, étiquettes) ; nuage de points : l'axe X porte `measure`,
     // l'axe Y `measureY`, chacun avec le format de SA colonne.
-    const f = fmtFor(tile, tile.measure);
-    const fY = tile.type === 'scatter' ? fmtFor(tile, tile.measureY) : f;
+    const tileFormat = fmtFor(tile, tile.measure);
+    const fY = tile.type === 'scatter' ? fmtFor(tile, tile.measureY) : tileFormat;
     // Valeur d'infobulle : une valeur absente (combinaison sans donnée) s'affiche « – », jamais vide.
-    const tipValue = (v) => (f.format(v) || '–');
+    const tipValue = (v) => (tileFormat.format(v) || '–');
 
     // Radar "compétences en colonnes" (tile.radarAxisMode === 'columns', voir ROADMAP.md : demande
     // du forum Grist, un radar à partir de plusieurs colonnes numériques plutôt que d'une seule
@@ -1383,10 +1388,10 @@
         const lines = list.map((p) => {
           const v = Number(p.value);
           if (Number.isFinite(v)) total += v;
-          return `${p.marker}${escapeHtml(String(p.seriesName))} : ${Number.isFinite(v) ? f.format(v) : '–'}`;
+          return `${p.marker}${escapeHtml(String(p.seriesName))} : ${Number.isFinite(v) ? tileFormat.format(v) : '–'}`;
         });
         const head = escapeHtml(String(list[0].axisValueLabel != null ? list[0].axisValueLabel : list[0].name));
-        return `${head}<br/>${lines.join('<br/>')}<br/><b>${escapeHtml(t('chart.stacked.total'))} : ${f.format(total)}</b>`;
+        return `${head}<br/>${lines.join('<br/>')}<br/><b>${escapeHtml(t('chart.stacked.total'))} : ${tileFormat.format(total)}</b>`;
       }
     };
 
@@ -1404,13 +1409,13 @@
         const lines = list.map((p) => {
           const raw = p.data && p.data.raw;
           if (Number.isFinite(Number(raw))) total += Number(raw);
-          return `${p.marker}${escapeHtml(String(p.seriesName))} : ${f.percent(Number(p.value))}${raw != null ? ` (${f.format(raw) || '–'})` : ''}`;
+          return `${p.marker}${escapeHtml(String(p.seriesName))} : ${tileFormat.percent(Number(p.value))}${raw != null ? ` (${tileFormat.format(raw) || '–'})` : ''}`;
         });
         const head = escapeHtml(String(list[0].axisValueLabel != null ? list[0].axisValueLabel : list[0].name));
-        return `${head}<br/>${lines.join('<br/>')}<br/><b>${escapeHtml(t('chart.stacked.total'))} : ${f.format(total)}</b>`;
+        return `${head}<br/>${lines.join('<br/>')}<br/><b>${escapeHtml(t('chart.stacked.total'))} : ${tileFormat.format(total)}</b>`;
       }
     };
-    const valueAxisPct = { type: 'value', min: 0, max: 100, axisLabel: { formatter: (v) => f.percent(v) } };
+    const valueAxisPct = { type: 'value', min: 0, max: 100, axisLabel: { formatter: (v) => tileFormat.percent(v) } };
     // Étiquettes de valeur (`tile.valueLabels`, barres et courbe) : au-dessus de la barre ou du point (à droite d'une barre horizontale),
     // DANS le segment d'une pile avec le texte noir ou blanc qui contraste avec sa couleur ; compactes (`f.axis`) ou en % en 100 % empilé ;
     // une valeur absente ou nulle d'une pile n'écrit rien, et celles qui se recouvrent sont masquées (`labelLayout.hideOverlap`).
@@ -1429,7 +1434,7 @@
             const raw = p.value;
             const v = Number(raw);
             if (raw == null || !Number.isFinite(v) || (stacked && v === 0)) return '';
-            return stackPct ? f.percent(v) : (f.axis(v) || '');
+            return stackPct ? tileFormat.percent(v) : (tileFormat.axis(v) || '');
           }
         },
         labelLayout: { hideOverlap: true }
@@ -1441,7 +1446,7 @@
     // barres/courbe plus bas, qui ne s'exécute donc pas.
     const smallOn = !!multi && isSmallMultiplesTile(tile);
     if (smallOn) {
-      const built = buildSmallMultiplesOption(tile, multi, { f, tipValue, dim, palette, width: instance.getWidth(), height: instance.getHeight() });
+      const built = buildSmallMultiplesOption(tile, multi, { f: tileFormat, tipValue, dim, palette, width: instance.getWidth(), height: instance.getHeight() });
       option = built.option;
       instance.__refit = () => {
         const w = instance.getWidth();
@@ -1467,7 +1472,7 @@
           labelLine: { length: 15, length2: 15 },
           ...(tile.showPct ? {
             percentPrecision: 1,
-            label: { formatter: (p) => `${p.name}\n${f.percent(p.percent)}` }
+            label: { formatter: (p) => `${p.name}\n${tileFormat.percent(p.percent)}` }
           } : {}),
           data: groups.map((d) => ({ name: d.dimension, value: d.value, itemStyle: dim(d.dimension) }))
         }]
@@ -1507,8 +1512,8 @@
           trigger: 'item',
           formatter: (p) => {
             const pct = firstValue > 0 && Number.isFinite(p.value)
-              ? `<br/>${escapeHtml(t('chart.funnel.ofFirst', { pct: f.percent((p.value / firstValue) * 100) }))}` : '';
-            return `${escapeHtml(String(p.name))}<br/>${f.format(p.value)}${pct}`;
+              ? `<br/>${escapeHtml(t('chart.funnel.ofFirst', { pct: tileFormat.percent((p.value / firstValue) * 100) }))}` : '';
+            return `${escapeHtml(String(p.name))}<br/>${tileFormat.format(p.value)}${pct}`;
           }
         },
         series: [{
@@ -1527,7 +1532,7 @@
             overflow: 'truncate',
             fontSize: 11,
             lineHeight: 13,
-            formatter: (p) => `${p.name}\n${f.axis(p.value)}`
+            formatter: (p) => `${p.name}\n${tileFormat.axis(p.value)}`
           },
           labelLine: { show: true, length: 12 },
           data: groups.map((d) => ({ name: d.dimension, value: d.value, itemStyle: dim(d.dimension) }))
@@ -1584,13 +1589,13 @@
             const v = params.value || [];
             const lines = [escapeHtml(String(params.name))];
             if (showLegend && params.seriesName) lines.push(`${params.marker || ''}${escapeHtml(tile.seriesColumn)} : ${escapeHtml(String(params.seriesName))}`);
-            lines.push(`${escapeHtml(tile.measure)} : ${f.format(v[0])}`);
+            lines.push(`${escapeHtml(tile.measure)} : ${tileFormat.format(v[0])}`);
             lines.push(`${escapeHtml(tile.measureY)} : ${fY.format(v[1])}`);
             if (bubble) lines.push(`${escapeHtml(tile.measureSize)} (${t('chart.bubble.size')}) : ${fSize.format(v[2]) || '–'}`);
             return lines.join('<br/>');
           }
         },
-        xAxis: { type: 'value', axisLabel: { formatter: f.axis } },
+        xAxis: { type: 'value', axisLabel: { formatter: tileFormat.axis } },
         yAxis: { type: 'value', axisLabel: { formatter: fY.axis } },
         series: buildSeries(maxDiameter())
       };
@@ -1626,7 +1631,7 @@
           }
         },
         xAxis: { type: 'category', data: agg.map((d) => d.dimension) },
-        yAxis: { type: 'value', axisLabel: { formatter: f.axis } },
+        yAxis: { type: 'value', axisLabel: { formatter: tileFormat.axis } },
         series: [
           {
             name: t('chart.waterfall.base'),
@@ -1702,7 +1707,7 @@
       // un max par série, qui rendrait la comparaison élève/moyenne elle-même trompeuse) ; `min`
       // partagé aussi, pour les mesures pouvant être négatives.
       // Mode « colonnes » : chaque axe est une colonne, donc SON format ; mode dimension : celui de la mesure.
-      const axisFmts = axisNames.map((n) => (isRadarColumns ? fmtFor(tile, n) : f));
+      const axisFmts = axisNames.map((n) => (isRadarColumns ? fmtFor(tile, n) : tileFormat));
       const allValues = series.reduce((acc, s) => acc.concat(s.value), []);
       const maxVal = Math.max(0, ...allValues);
       const minVal = Math.min(0, ...allValues);
@@ -1743,14 +1748,14 @@
       const combo = comboSeries(tile, groups, aggY);
       const pareto = combo.mode === 'pareto';
       // L'agrégat de la courbe peut différer de celui des barres : un comptage n'a jamais le format d'une colonne.
-      const fLine = pareto ? f : fmtFor({ ...tile, aggFn: tile.aggFnY || tile.aggFn }, tile.measureY);
+      const fLine = pareto ? tileFormat : fmtFor({ ...tile, aggFn: tile.aggFnY || tile.aggFn }, tile.measureY);
       const aggLabel = (fn) => t('tileForm.agg.' + (fn || 'sum'));
       // Légende : les noms de colonnes, seuls (une tuile de 270 px ne porte pas « Montant (Somme) » + « Quantité (Somme) ») ;
       // l'agrégat n'est ajouté que si les deux séries portent la même colonne et ne se distingueraient plus.
       const sameColumn = !pareto && tile.measure === tile.measureY;
       const barName = sameColumn ? `${tile.measure} (${aggLabel(tile.aggFn)})` : String(tile.measure);
       const lineName = pareto ? t('chart.combo.cumulative') : (sameColumn ? `${tile.measureY} (${aggLabel(tile.aggFnY || tile.aggFn)})` : String(tile.measureY));
-      const lineValue = (v) => (pareto ? (Number.isFinite(Number(v)) ? f.percent(Number(v)) : '–') : (fLine.format(v) || '–'));
+      const lineValue = (v) => (pareto ? (Number.isFinite(Number(v)) ? tileFormat.percent(Number(v)) : '–') : (fLine.format(v) || '–'));
       option = {
         color: palette,
         grid: { ...numericGrid, top: 40 },
@@ -1758,12 +1763,12 @@
         tooltip: { trigger: 'axis' },
         xAxis: { type: 'category', data: combo.categories },
         yAxis: [
-          { type: 'value', axisLabel: { formatter: f.axis } },
+          { type: 'value', axisLabel: { formatter: tileFormat.axis } },
           {
             type: 'value',
             position: 'right',
             splitLine: { show: false },
-            axisLabel: { formatter: pareto ? (v) => f.percent(v) : fLine.axis },
+            axisLabel: { formatter: pareto ? (v) => tileFormat.percent(v) : fLine.axis },
             ...(pareto ? { min: 0, max: 100 } : {})
           }
         ],
@@ -1814,7 +1819,7 @@
         legend: seriesLegend,
         tooltip: stackPct ? pctTooltip : (stacked ? stackedTooltip : { trigger: 'axis', valueFormatter: tipValue }),
         xAxis: { type: 'category', data: lineCategories },
-        yAxis: stackPct ? valueAxisPct : { type: 'value', axisLabel: { formatter: f.axis } },
+        yAxis: stackPct ? valueAxisPct : { type: 'value', axisLabel: { formatter: tileFormat.axis } },
         series: lineSeries.map((sr, si) => ({
           type: 'line',
           name: sr.name,
@@ -1842,7 +1847,7 @@
       const barSeries = multi
         ? multi.series.map((sr) => ({ name: sr.name, values: sr.values }))
         : [{ name: undefined, values: groups.map((d) => d.value) }];
-      const valueAxis = stackPct ? valueAxisPct : { type: 'value', axisLabel: { formatter: f.axis } };
+      const valueAxis = stackPct ? valueAxisPct : { type: 'value', axisLabel: { formatter: tileFormat.axis } };
       const barShares = stackPct ? stackShares(barSeries.map((sr) => sr.values)) : null;
       option = {
         color: palette,
@@ -1873,7 +1878,7 @@
     // Pas en 100 % empilé : l'axe y est en parts, un objectif ou une moyenne en valeur brute n'y est pas comparable.
     if (!stackPct && option.series && option.series.length && (tile.type === 'bar' || tile.type === 'line')) {
       const ref = refLineValue(tile, groups.map((g) => g.value));
-      if (ref !== null) addRefLine(option, tile, ref, f, instance);
+      if (ref !== null) addRefLine(option, tile, ref, tileFormat, instance);
     }
     finalizeOption(option, instance);
     instance.setOption(option, true);
@@ -1949,7 +1954,7 @@
       instance.setOption({ title: { text: t('chart.heatmap.empty'), left: 'center', top: 'middle', textStyle: { fontSize: 12, fontWeight: 'normal', color: chartTheme().muted } }, series: [], xAxis: { show: false }, yAxis: { show: false }, visualMap: [], grid: {}, tooltip: { show: false } }, true);
       return;
     }
-    const f = fmtFor(tile, tile.measure);
+    const heatFormat = fmtFor(tile, tile.measure);
     const th = chartTheme();
     const stops = heatStops(tile.palette);
     const colors = heatCellColors(pivot.cells, stops);
@@ -1961,14 +1966,14 @@
     const nCols = pivot.colKeys.length;
     // Place réelle d'une case (grille moins axes et légende) : le nombre n'est écrit que si elle le contient.
     const labelRoom = Math.max(0, width - 96) / nCols >= 40 && Math.max(0, height - 74) / nRows >= 17;
-    const data = [];
+    const heatPoints = [];
     pivot.cells.forEach((line, ri) => line.forEach((v, ci) => {
       if (!colors[ri][ci]) return; // intersection sans donnée : case vide
       const selected = (!rowFilter || filterSelects(rowFilter, pivot.rowKeys[ri])) && (!colFilter || filterSelects(colFilter, pivot.colKeys[ci]));
-      data.push({
+      heatPoints.push({
         value: [ci, ri, Number(v)],
         itemStyle: selected ? undefined : { opacity: 0.3 },
-        label: labelRoom ? { show: true, color: colors[ri][ci].fg, fontSize: 10, formatter: () => f.axis(Number(v)) } : undefined
+        label: labelRoom ? { show: true, color: colors[ri][ci].fg, fontSize: 10, formatter: () => heatFormat.axis(Number(v)) } : undefined
       });
     }));
     // Toutes les valeurs égales : l'échelle de la légende s'ouvre autour d'elles (couleur du milieu, comme heatCellColors).
@@ -1982,7 +1987,7 @@
         formatter: (p) => {
           const v = p && p.value;
           if (!Array.isArray(v)) return '';
-          return `${escapeHtml(String(pivot.rowKeys[v[1]]))} × ${escapeHtml(String(pivot.colKeys[v[0]]))}<br/>${escapeHtml(f.format(v[2]) || '–')}`;
+          return `${escapeHtml(String(pivot.rowKeys[v[1]]))} × ${escapeHtml(String(pivot.colKeys[v[0]]))}<br/>${escapeHtml(heatFormat.format(v[2]) || '–')}`;
         }
       },
       xAxis: { type: 'category', data: pivot.colKeys.map(String), splitArea: { show: false }, axisLabel: { interval: 'auto' } },
@@ -1990,12 +1995,12 @@
       visualMap: {
         type: 'continuous', min: lo, max: hi, calculable: false, orient: 'horizontal', left: 'center', bottom: 2,
         itemWidth: 8, itemHeight: Math.max(60, Math.min(170, Math.round(width * 0.5))),
-        text: [f.axis(range.max), f.axis(range.min)], textGap: 6,
+        text: [heatFormat.axis(range.max), heatFormat.axis(range.min)], textGap: 6,
         inRange: { color: stops }, textStyle: { fontSize: 10 }
       },
       series: [{
         type: 'heatmap',
-        data,
+        data: heatPoints,
         itemStyle: { borderColor: th.surface, borderWidth: 1 },
         emphasis: { itemStyle: { borderColor: th.text, borderWidth: 1 } },
         progressive: 0
@@ -2017,12 +2022,12 @@
       instance.setOption({ title: { text: t('chart.histogram.empty'), left: 'center', top: 'middle', textStyle: { fontSize: 12, fontWeight: 'normal' } }, series: [], xAxis: { show: false }, yAxis: { show: false } }, true);
       return;
     }
-    const f = fmtFor(tile, tile.measure);
+    const histogramFormat = fmtFor(tile, tile.measure);
     const fCount = fmtFor({ ...tile, aggFn: 'count' }, tile.measure);
     const palette = paletteColors(tile.palette);
     const mine = state.activeFilters.find((af) => af.column === tile.measure && af.sourceTileId === tile.id);
     // Les bornes des classes forment UNE échelle : des années (1990 – 2000) ne sont jamais compactées (« 1,99 k – 2 k »).
-    const scale = f.forScale(hist.bins[0].lo, hist.bins[hist.bins.length - 1].hi);
+    const scale = histogramFormat.forScale(hist.bins[0].lo, hist.bins[hist.bins.length - 1].hi);
     const bound = (v) => (scale.axis(v) || String(v));
     const label = (b) => (b.lo === b.hi ? bound(b.lo) : `${bound(b.lo)} – ${bound(b.hi)}`);
     const fullLabel = (b) => (b.lo === b.hi ? (scale.format(b.lo) || String(b.lo)) : `${scale.format(b.lo) || b.lo} – ${scale.format(b.hi) || b.hi}`);
@@ -2035,10 +2040,10 @@
         // Texte HTML : les bornes sont des nombres formatés (jamais du texte saisi), rien à échapper de plus.
         formatter: (params) => {
           const p = Array.isArray(params) ? params[0] : params;
-          const b = hist.bins[p.dataIndex];
-          if (!b) return '';
-          const share = hist.total > 0 ? ` (${f.percent((b.count * 100) / hist.total)})` : '';
-          return `${escapeHtml(fullLabel(b))}<br/>${t('chart.histogram.rows', { n: fCount.format(b.count) || b.count, count: b.count })}${share}`;
+          const histogramBin = hist.bins[p.dataIndex];
+          if (!histogramBin) return '';
+          const share = hist.total > 0 ? ` (${histogramFormat.percent((histogramBin.count * 100) / hist.total)})` : '';
+          return `${escapeHtml(fullLabel(histogramBin))}<br/>${t('chart.histogram.rows', { n: fCount.format(histogramBin.count) || histogramBin.count, count: histogramBin.count })}${share}`;
         }
       },
       // Largeur de libellé FIXÉE : un libellé de classe (« 1998 – 2003 », « 1 200 – 1 400 ») est deux nombres, bien plus large que
@@ -2073,14 +2078,14 @@
       instance.setOption({ title: { text: t('chart.box.empty'), left: 'center', top: 'middle', textStyle: { fontSize: 12, fontWeight: 'normal' } }, series: [], xAxis: { show: false }, yAxis: { show: false } }, true);
       return;
     }
-    const f = fmtFor(tile, tile.measure);
+    const boxFormat = fmtFor(tile, tile.measure);
     const fCount = fmtFor({ ...tile, aggFn: 'count' }, tile.measure);
     const color = paletteColors(tile.palette)[0];
     let fill = color;
     try { fill = echarts.color.modifyAlpha(color, 0.22); } catch (e) { /* repli : la couleur pleine, la boîte reste lisible */ }
     const filter = state.activeFilters.find((af) => af.column === tile.dimension);
     const dimmed = (g) => (filter && !filterSelects(filter, g.dimension) ? { opacity: 0.3 } : undefined);
-    const num = (v) => escapeHtml(f.format(v) || String(v));
+    const num = (v) => escapeHtml(boxFormat.format(v) || String(v));
     const outliers = [];
     box.groups.forEach((g, i) => g.outliers.forEach((v) => outliers.push({ value: [i, v], itemStyle: dimmed(g) })));
     const option = {
@@ -2105,7 +2110,7 @@
       },
       xAxis: { type: 'category', data: box.groups.map((g) => g.name), axisTick: { alignWithLabel: true } },
       // Pas de zéro imposé : des notes entre 8 et 18 se lisent sur 8-18, pas sur 0-18 (la boîte n'est pas une barre).
-      yAxis: { type: 'value', scale: true, axisLabel: { formatter: f.axis } },
+      yAxis: { type: 'value', scale: true, axisLabel: { formatter: boxFormat.axis } },
       series: [
         {
           type: 'boxplot',
@@ -2139,7 +2144,7 @@
       instance.setOption({ title: { text: t('chart.calendar.empty'), left: 'center', top: 'middle', textStyle: { fontSize: 12, fontWeight: 'normal', color: chartTheme().muted } }, series: [] }, true); // pas de composant `calendar` sans plage : ECharts lèverait une exception
       return;
     }
-    const f = fmtFor(tile, tile.measure);
+    const calendarFormat = fmtFor(tile, tile.measure);
     const th = chartTheme();
     const stops = heatStops(tile.palette);
     const lang = GristBI.i18n.getLang();
@@ -2168,13 +2173,13 @@
         formatter: (p) => {
           const v = p && p.value;
           if (!Array.isArray(v)) return '';
-          return `${escapeHtml(longDate(String(v[0])))}<br/>${escapeHtml(f.format(v[1]) || '–')}`;
+          return `${escapeHtml(longDate(String(v[0])))}<br/>${escapeHtml(calendarFormat.format(v[1]) || '–')}`;
         }
       },
       visualMap: {
         type: 'continuous', min: lo, max: hi, calculable: false, orient: 'horizontal', left: 'center', bottom: 2,
         itemWidth: 8, itemHeight: Math.max(60, Math.min(170, Math.round(width * 0.5))),
-        text: [f.axis(max), f.axis(min)], textGap: 6,
+        text: [calendarFormat.axis(max), calendarFormat.axis(min)], textGap: 6,
         inRange: { color: stops }, textStyle: { fontSize: 10 }
       },
       calendar: {
@@ -2215,7 +2220,7 @@
       instance.setOption({ title: { text: t('chart.sankey.empty'), left: 'center', top: 'middle', textStyle: { fontSize: 12, fontWeight: 'normal' } }, series: [], graphic: [], xAxis: { show: false }, yAxis: { show: false } }, true);
       return;
     }
-    const f = fmtFor(tile, tile.measure);
+    const sankeyFormat = fmtFor(tile, tile.measure);
     const th = chartTheme();
     const palette = paletteColors(tile.palette);
     const sources = Array.from(new Set(shown.map((fl) => fl.source)));
@@ -2247,9 +2252,9 @@
       tooltip: {
         trigger: 'item',
         formatter: (p) => {
-          const share = (v) => (shownTotal > 0 ? ` (${f.percent((v * 100) / shownTotal)})` : '');
-          if (p.dataType === 'edge') return `${label(p.data.source)} → ${label(p.data.target)}<br/>${escapeHtml(f.format(p.data.value) || String(p.data.value))}${share(p.data.value)}`;
-          return `<b>${label(p.data.name)}</b><br/>${t('chart.sankey.node')} : ${escapeHtml(f.format(p.value) || String(p.value))}${share(p.value)}`;
+          const share = (v) => (shownTotal > 0 ? ` (${sankeyFormat.percent((v * 100) / shownTotal)})` : '');
+          if (p.dataType === 'edge') return `${label(p.data.source)} → ${label(p.data.target)}<br/>${escapeHtml(sankeyFormat.format(p.data.value) || String(p.data.value))}${share(p.data.value)}`;
+          return `<b>${label(p.data.name)}</b><br/>${t('chart.sankey.node')} : ${escapeHtml(sankeyFormat.format(p.value) || String(p.value))}${share(p.value)}`;
         }
       },
       series: [{
@@ -2292,7 +2297,7 @@
       instance.setOption({ title: { text: t('chart.sunburst.empty'), left: 'center', top: 'middle', textStyle: { fontSize: 12, fontWeight: 'normal', color: chartTheme().muted } }, series: [], graphic: [], xAxis: { show: false }, yAxis: { show: false } }, true);
       return;
     }
-    const f = fmtFor(tile, tile.measure);
+    const sunburstFormat = fmtFor(tile, tile.measure);
     const th = chartTheme();
     const palette = paletteColors(tile.palette);
     const filters = state.activeFilters;
@@ -2310,7 +2315,7 @@
         children: n.children.map((c) => toNode(c, depth + 1, base))
       };
     };
-    const data = tree.roots.map((r, i) => toNode(r, 1, palette[i % palette.length]));
+    const sunburstRoots = tree.roots.map((r, i) => toNode(r, 1, palette[i % palette.length]));
     // Place d'un nom dans son anneau : l'épaisseur d'un anneau (rayon / nombre d'anneaux) divisée par ~6 px par signe ; relu à chaque dessin,
     // donc à jour quand la tuile est agrandie. Le nom entier reste dans l'infobulle.
     const fit = (name) => {
@@ -2324,13 +2329,13 @@
         trigger: 'item',
         formatter: (p) => {
           const path = p.data && Array.isArray(p.data.path) ? p.data.path : [p.name];
-          const share = tree.total > 0 ? ` (${f.percent((Number(p.value) * 100) / tree.total)})` : '';
-          return `${path.map((v) => escapeHtml(v)).join(' › ')}<br/>${escapeHtml(f.format(p.value) || String(p.value))}${share}`;
+          const share = tree.total > 0 ? ` (${sunburstFormat.percent((Number(p.value) * 100) / tree.total)})` : '';
+          return `${path.map((v) => escapeHtml(v)).join(' › ')}<br/>${escapeHtml(sunburstFormat.format(p.value) || String(p.value))}${share}`;
         }
       },
       series: [{
         type: 'sunburst',
-        data,
+        data: sunburstRoots,
         radius: [0, '90%'],
         center: ['50%', tree.hidden > 0 ? '46%' : '50%'],
         sort: null, // l'ordre est celui de l'arbre (apparition ou tri choisi), pas un tri d'ECharts

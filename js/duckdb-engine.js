@@ -123,9 +123,9 @@
   function arrowTableToObjects(table) {
     const fields = table.schema.fields.map((f) => f.name);
     return table.toArray().map((row) => {
-      const obj = {};
-      for (const field of fields) obj[field] = row[field];
-      return obj;
+      const record = {};
+      for (const field of fields) record[field] = row[field];
+      return record;
     });
   }
 

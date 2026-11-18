@@ -511,7 +511,7 @@ const rows = [
 
 // tableToRows exclut les colonnes techniques ajoutées par Grist lui-même (jamais demandées via
 // AddColumn côté widget) — `manualSort` en particulier fuitait dans les sélecteurs Dimension/
-// Mesure/Filtre du formulaire d'ajout de tuile en conditions réelles [BUG RÉEL, voir
+// Mesure/Filtre du formulaire d'ajout de tuile en conditions réelles [DÉFAUT RÉEL, voir
 // TEST_PROTOCOL.md #19]. `fetchTable()` la renvoie mêlée aux vraies colonnes du document.
 {
   const table = { id: [1, 2], Region: ['Nord', 'Sud'], Montant: [100, 50], manualSort: [1.0, 2.0] };
@@ -2402,7 +2402,7 @@ const SAMPLE_TIME_SERIES = [
   const charts = require('fs').readFileSync(require('path').join(__dirname, '..', 'js', 'charts.js'), 'utf8');
   assert.ok(/F\.gaugeTicks\(g\.min, g\.max, n\)/.test(charts) && /F\.gaugeTickBudget\(base\.r\)/.test(charts) && /F\.gaugeTickPlacement\(L, it\.frac\)/.test(charts), 'graduations calculées, plafonnées par la place, placées à l\'extérieur de l\'arc');
   assert.ok(/g\.fmt\.forScale\(g\.min, g\.max\)/.test(charts) && /scale\.format\(g\.value\)/.test(charts), 'jauge : bornes, graduations et valeur lues sur l\'échelle entière (années jamais compactées)');
-  assert.ok(/f\.forScale\(hist\.bins\[0\]\.lo, hist\.bins\[hist\.bins\.length - 1\]\.hi\)/.test(charts), 'histogramme : les bornes de classes forment une échelle');
+  assert.ok(/histogramFormat\.forScale\(hist\.bins\[0\]\.lo, hist\.bins\[hist\.bins\.length - 1\]\.hi\)/.test(charts), 'histogramme : les bornes de classes forment une échelle');
   assert.ok(/axisLabel: \{ interval: 'auto', width: 84, overflow: 'truncate'/.test(charts), 'histogramme : libellé de classe de largeur fixée (finalizeOption ne le tronque pas à la largeur d\'une barre : « 199… »)');
   assert.ok(/lay\.overflow/.test(charts) && /0\.72 \* base\.r/.test(charts), 'elles disparaissent plutôt que de faire trop rétrécir l\'arc ou de sortir de la tuile');
   assert.ok(/startAngle: 180,\s*endAngle: 0/.test(charts), 'jauge en demi-cercle');
@@ -3485,7 +3485,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     const panel = fsK.readFileSync(pathK.join(__dirname, '..', 'js', 'keywords-panel.js'), 'utf8');
     const main = fsK.readFileSync(pathK.join(__dirname, '..', 'js', 'main.js'), 'utf8');
     // chaque élément que le panneau cherche par id existe dans la page
-    const wanted = Array.from(panel.matchAll(/\$\('([a-z-]+)'\)/g)).map((m) => m[1]);
+    const wanted = Array.from(panel.matchAll(/byId\('([a-z-]+)'\)/g)).map((m) => m[1]);
     assert.ok(wanted.length >= 20);
     for (const id of wanted) assert.ok(index.includes(`id="${id}"`), `#${id} manque dans index.html`);
     // les scripts, dans l'ordre : les pièces pures avant le pont Grist, le panneau avant main.js
@@ -4586,7 +4586,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
       const chartsSrc = fs.readFileSync(path.join(root, 'js', 'charts.js'), 'utf8');
       assert.ok(/const TYPE_CARDS = \[[^\]]*'text'\]/.test(mainSrc), 'carte « Texte » dans l\'étape Choisir');
       assert.ok(/<option value="text"/.test(indexSrc) && /<textarea id="tile-text"[^>]*maxlength="2000"/.test(indexSrc), 'option + zone de texte plafonnée');
-      assert.ok(/tile\.type === 'text'\) \{\s*renderText\(/.test(chartsSrc) || /tile\.type === 'text'\) \{\r?\n\s*renderText\(/.test(chartsSrc), 'renderTile aiguille vers renderText');
+      assert.ok(/tile\.type === 'text'\) \{\s*(?:return )?renderText\(/.test(chartsSrc) || /tile\.type === 'text'\) \{\r?\n\s*(?:return )?renderText\(/.test(chartsSrc), 'renderTile aiguille vers renderText');
       assert.ok(!/innerHTML = tile\.text|innerHTML = textValue/.test(mainSrc + chartsSrc), 'jamais de texte saisi dans innerHTML sans passer par renderTextHtml');
       console.log('OK tuile Texte — échappement total (liste fermée de balises), repères # ## - **, plafond, exports sans feuille Excel, conseil et i18n');
 
@@ -4664,7 +4664,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
         const chartsSrc2 = fs.readFileSync(path.join(root, 'js', 'charts.js'), 'utf8');
         const indexSrc2 = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
         assert.ok(/const TYPE_CARDS = \[[^\]]*'table'/.test(mainSrc2) && /<option value="table"/.test(indexSrc2) && /id="tile-columns"/.test(indexSrc2));
-        assert.ok(/tile\.type === 'table'\) \{\s*renderTable\(/.test(chartsSrc2), 'renderTile aiguille vers renderTable');
+        assert.ok(/tile\.type === 'table'\) \{\s*(?:return )?renderTable\(/.test(chartsSrc2), 'renderTile aiguille vers renderTable');
         assert.ok(/el\.dataset\.tileType !== tile\.type/.test(mainSrc2), 'une tuile dont le type change est recréée');
         assert.ok(!/Intl\.NumberFormat|toFixed/.test(chartsSrc2), 'aucun format de nombre en dur dans charts.js');
         console.log('OK tuile Table — colonnes, tri (naturel, vides à la fin, stable), nombres bruts, exports plafonnés, conseil et i18n');
@@ -4735,7 +4735,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
         const indexSrc3 = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
         assert.ok(/const TYPE_CARDS = \[[^\]]*'progress'/.test(mainSrc3) && /<option value="progress"/.test(indexSrc3) && /id="tile-target"/.test(indexSrc3) && /id="tile-sparkline"/.test(indexSrc3));
         assert.ok(/tile-kpi-spark/.test(mainSrc3) && /tile-kpi-goal/.test(mainSrc3), 'balisage de la carte KPI : courbe + objectif');
-        assert.ok(/tile\.type === 'progress'\) \{\s*renderProgress\(/.test(chartsSrc3), 'renderTile aiguille vers renderProgress');
+        assert.ok(/tile\.type === 'progress'\) \{\s*(?:return )?renderProgress\(/.test(chartsSrc3), 'renderTile aiguille vers renderProgress');
         assert.ok(/setProperty\('--kpi-chars'/.test(chartsSrc3), 'la police de la valeur KPI s\'ajuste toujours (lot jauge/KPI)');
         console.log('OK objectif KPI, courbe, Progression — niveaux et seuils, lignes par catégorie, courbe SVG, exports, conseil et i18n');
         // Combo barres + courbe (lot 2 de l'étude, 18/11/2026) : Pareto, alignement par nom, export, conseil, câblage.
@@ -5093,7 +5093,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     assert.ok(/type: 'heatmap'/.test(chartsH) && /visualMap/.test(chartsH) && /inverse: true/.test(chartsH));
     assert.ok(!/Intl\.NumberFormat|toFixed/.test(chartsH), 'aucun format de nombre en dur dans charts.js');
     // Seules des couleurs CALCULÉES (hex des rampes) entrent dans un attribut `style` du tableau croisé, jamais une chaîne de la configuration.
-    assert.ok(/style="background:\$\{c\.bg\};color:\$\{c\.fg\}"/.test(chartsH) && !/style="[^"]*\$\{tile\./.test(chartsH));
+    assert.ok(/style="background:\$\{heatCell\.bg\};color:\$\{heatCell\.fg\}"/.test(chartsH) && !/style="[^"]*\$\{tile\./.test(chartsH));
     // Carte de chaleur et pivot restent hors drill-down (deux dimensions déjà affichées en même temps).
     assert.ok(/type !== 'heatmap'/.test(mainH));
     const cssH = fsH.readFileSync(pathH.join(rootH, 'css', 'style.css'), 'utf8');
@@ -5643,7 +5643,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     assert.ok(/inferColumnKind\(dimension\) !== 'date'\) fail\('tile-dimension', 'tileForm\.error\.calendarNotDate'\)/.test(mainC), 'la colonne doit contenir de vraies dates');
     assert.ok(/currentTile\.type === 'calendar'/.test(chartsC) && /toggleFilter\(currentTile\.dimension, day, currentTile\.id\)/.test(chartsC), 'clic = filtre du jour');
     assert.ok(/firstDay: 1/.test(chartsC) && /escapeHtml\(longDate\(/.test(chartsC) && /heatStops\(tile\.palette\)/.test(chartsC), 'lundi en premier, date de l\'infobulle échappée, rampe de la carte de chaleur');
-    const emptyCal = chartsC.slice(chartsC.indexOf('function renderCalendar'), chartsC.indexOf('const f = fmtFor(tile, tile.measure);', chartsC.indexOf('function renderCalendar')));
+    const emptyCal = chartsC.slice(chartsC.indexOf('function renderCalendar'), chartsC.indexOf('const calendarFormat = fmtFor(tile, tile.measure);', chartsC.indexOf('function renderCalendar')));
     assert.ok(!/calendar: \{/.test(emptyCal) && !/visualMap/.test(emptyCal), 'aucun composant `calendar` sans plage (ECharts lèverait une exception)');
     assert.ok(!/Intl\.NumberFormat|toFixed/.test(chartsC), 'aucun format de nombre en dur dans charts.js');
     console.log('OK calendrier — valeur par jour, jours sans ligne, fenêtre d\'un an, clic = filtre du jour, export, défauts, conseils, i18n, câblage');
@@ -5765,7 +5765,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     assert.ok(/id="tile-start-column"/.test(indexG) && /id="tile-end-column"/.test(indexG) && /startColumnSelect, endColumnSelect,/.test(mainG), 'deux champs de colonne branchés comme comboboxes');
     assert.ok(/inferColumnKind\(startColumnSelect\.value\) !== 'date'\) fail\('tile-start-column', 'tileForm\.error\.calendarNotDate'\)/.test(mainG) && /inferColumnKind\(endColumnSelect\.value\) !== 'date'\) fail\('tile-end-column', 'tileForm\.error\.calendarNotDate'\)/.test(mainG), 'début et fin doivent être de vraies dates');
     assert.ok(/!isText && !isTable && !isGantt && !measure\) fail\('tile-measure'/.test(mainG) && /tileData\.measure = undefined; tileData\.aggFn = undefined; \}\s*\n\s*tileData\.startColumn/.test(mainG), 'aucune mesure exigée ni écrite');
-    assert.ok(/tile\.type === 'gantt'\) \{\s*renderGantt\(tile, rows, state, container\);/.test(chartsG), 'dispatch de renderTile');
+    assert.ok(/tile\.type === 'gantt'\) \{\s*(?:return )?renderGantt\(tile, rows, state, container\);/.test(chartsG), 'dispatch de renderTile');
     const rg = chartsG.slice(chartsG.indexOf('function renderGantt'), chartsG.indexOf('async function renderGauge'));
     assert.ok(/data-value="\$\{escapeHtml\(b\.label\)\}"/.test(rg) && /escapeHtml\(label\)/.test(rg) && /data-status="\$\{escapeHtml\(st\)\}"/.test(rg) && /title="\$\{escapeHtml\(title\)\}"/.test(rg), 'libellé, statut et infobulle (saisis dans les données) sont échappés');
     assert.ok(/background:\$\{colorOf\(/.test(rg) && /paletteColors\(tile\.palette\)/.test(rg) && !/style="[^"]*\$\{(?:b\.status|st\b|label)/.test(rg), 'les couleurs en ligne viennent de la palette, jamais d\'une donnée');
@@ -6044,45 +6044,26 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     assert.strictEqual(cv(new Date('invalide')), null);
     assert.strictEqual(cv('x'.repeat(40000)).length, 32767);
 
-    // Un classeur complet : écriture puis relecture par ExcelJS lui-même, et inspection du XML réel.
+    // tidyNumber / numberFormatFor : le bruit de flottant d'une somme disparaît, jamais une donnée.
+    assert.strictEqual(exportJs.tidyNumber(3266234.2699999986), 3266234.27);
+    assert.strictEqual(exportJs.tidyNumber(0.1 + 0.2), 0.3);
+    assert.strictEqual(exportJs.tidyNumber(2022), 2022);
+    assert.strictEqual(exportJs.tidyNumber(1e9 + 0.5), 1e9 + 0.5, 'au-delà de 1e9 : laissé tel quel');
+    assert.ok(Number.isNaN(exportJs.tidyNumber(NaN)) && exportJs.tidyNumber(Infinity) === Infinity);
+    assert.strictEqual(exportJs.tidyNumber('texte'), 'texte');
+    assert.strictEqual(exportJs.tidyNumber(5n), 5n);
+    assert.strictEqual(exportJs.numberFormatFor(40288), '#,##0');
+    assert.strictEqual(exportJs.numberFormatFor(1234.5), '#,##0.00');
+    assert.strictEqual(exportJs.numberFormatFor(0.0006), '0.00##', 'une moyenne de 0,0006 ne s\'affiche pas « 0,00 »');
+    assert.strictEqual(exportJs.numberFormatFor(-0.25), '0.00##');
+
+    // Un classeur complet : écriture puis relecture par ExcelJS lui-même, et inspection du XML réel. Une FEUILLE PAR PAGE, un BLOC par tuile
+    // (bandeau de titre, [image], en-tête, lignes) — la mise en page du premier export (une feuille par tuile) a disparu (retour d'Antoine, 18/11/2026).
     const ExcelJSLib = require('../js/vendor/exceljs/exceljs.min.js');
     const zlibForXlsx = require('zlib');
-    const sheetsForXlsx = [
-      { name: 'Montant par Région', header: ['Région', 'Montant'], rows: [
-        ['Nord', 1234.5], ['Sud', 0], ['=SUM(A1)', 5], ['+cmd|x', -1], ['@x', null], ['', undefined],
-        ['nan', NaN], ['gros', 12345678901234567890n], ['petit', 5n], ['oui', true],
-        ['date', new Date(Date.UTC(2026, 10, 18, 9, 30))], ['liste', ['L', 'a']], ['accentué é ç', 'a\nb'] ] },
-      { name: 'Vide', header: ['A', 'B'], rows: [] }
-    ];
-    const wbX = exportJs.buildWorkbook(ExcelJSLib, sheetsForXlsx);
-    assert.strictEqual(wbX.creator, 'Grist BI');
-    const buf = Buffer.from(await wbX.xlsx.writeBuffer());
-    assert.strictEqual(buf.slice(0, 2).toString('latin1'), 'PK', 'un classeur .xlsx est une archive zip');
-    const back = new ExcelJSLib.Workbook();
-    await back.xlsx.load(buf);
-    assert.deepStrictEqual(back.worksheets.map((w) => w.name), ['Montant par Région', 'Vide']);
-    const first = back.getWorksheet('Montant par Région');
-    assert.strictEqual(first.rowCount, 14); // en-tête + 13 lignes
-    assert.deepStrictEqual(first.getRow(1).values.slice(1), ['Région', 'Montant']);
-    assert.strictEqual(first.getCell('B2').value, 1234.5);
-    assert.strictEqual(first.getCell('B3').value, 0);
-    assert.strictEqual(first.getCell('B3').type, ExcelJSLib.ValueType.Number);
-    assert.strictEqual(first.getCell('A4').value, '=SUM(A1)');
-    assert.strictEqual(first.getCell('A4').type, ExcelJSLib.ValueType.String, 'un texte qui commence par = reste du texte');
-    assert.strictEqual(first.getCell('A5').value, '+cmd|x');
-    assert.strictEqual(first.getCell('A6').value, '@x');
-    assert.strictEqual(first.getCell('B6').value, null);
-    assert.deepStrictEqual(first.getCell('B8').value, { error: '#NUM!' });
-    assert.strictEqual(first.getCell('B9').value, '12345678901234567890');
-    assert.strictEqual(first.getCell('B10').value, 5);
-    assert.strictEqual(first.getCell('B11').value, true);
-    assert.strictEqual(first.getCell('B12').value.toISOString(), '2026-11-18T09:30:00.000Z');
-    assert.strictEqual(first.getCell('B13').value, 'L,a');
-    assert.strictEqual(first.getCell('A14').value, 'accentué é ç');
-    assert.strictEqual(back.getWorksheet('Vide').rowCount, 1); // une feuille vide garde son en-tête
-    // XML réel : aucune formule dans aucune feuille, du texte en chaînes partagées, jamais « NaN » en clair.
-    const xmlFiles = (() => {
-      // Lecteur de zip minimal par le répertoire central (tailles exactes, même quand les entrées sont en flux).
+    const PNG_1PX = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+    // Lecteur de zip minimal par le répertoire central (tailles exactes, même quand les entrées sont en flux).
+    const readZip = (buf) => {
       let eocd = buf.length - 22;
       while (eocd >= 0 && buf.readUInt32LE(eocd) !== 0x06054b50) eocd--;
       assert.ok(eocd >= 0, 'fin d\'archive zip trouvée');
@@ -6100,17 +6081,139 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
         const name = buf.slice(o + 46, o + 46 + nlen).toString('utf8');
         const start = local + 30 + buf.readUInt16LE(local + 26) + buf.readUInt16LE(local + 28);
         const raw = buf.slice(start, start + csize);
-        if (!name.endsWith('/')) out[name] = (method === 8 ? zlibForXlsx.inflateRawSync(raw) : raw).toString('utf8');
+        if (!name.endsWith('/')) out[name] = (method === 8 ? zlibForXlsx.inflateRawSync(raw) : raw);
         o += 46 + nlen + xlen + clen;
       }
       return out;
-    })();
-    const sheetXml = xmlFiles['xl/worksheets/sheet1.xml'];
+    };
+    const reload = async (wb) => {
+      const buf = Buffer.from(await wb.xlsx.writeBuffer());
+      assert.strictEqual(buf.slice(0, 2).toString('latin1'), 'PK', 'un classeur .xlsx est une archive zip');
+      const back = new ExcelJSLib.Workbook();
+      await back.xlsx.load(buf);
+      return { buf, back, files: readZip(buf) };
+    };
+    // Ligne (1-based) dont la 1re cellule vaut `text`, à partir de `from`.
+    const rowOf = (ws, text, from) => {
+      let found = 0;
+      ws.eachRow((row, n) => { if (!found && n >= (from || 1) && row.getCell(1).value === text) found = n; });
+      return found;
+    };
+
+    const pagesForXlsx = [{
+      id: 'p1', name: 'Montant par Région', title: 'Montant par Région', blocks: [
+        { tileId: 'a', kind: 'table', name: 'Données', header: ['Région', 'Montant'], rows: [
+          ['Nord', 1234.5], ['Sud', 0], ['=SUM(A1)', 5], ['+cmd|x', -1], ['@x', null], ['', undefined],
+          ['nan', NaN], ['gros', 12345678901234567890n], ['petit', 5n], ['oui', true],
+          ['date', new Date(Date.UTC(2026, 10, 18, 9, 30))], ['liste', ['L', 'a']], ['accentué é ç', 'a\nb'],
+          ['bruit', 3266234.2699999986], ['moyenne', 0.0006] ] },
+        { tileId: 'b', kind: 'table', name: 'Vide', header: ['A', 'B'], rows: [] }
+      ]
+    }];
+    const wbX = exportJs.buildWorkbook(ExcelJSLib, pagesForXlsx, { subtitle: () => 'Exporté le 18 novembre 2026 · 3 lignes' });
+    assert.strictEqual(wbX.creator, 'Grist BI');
+    const { back, files: xmlFiles } = await reload(wbX);
+    assert.deepStrictEqual(back.worksheets.map((w) => w.name), ['Montant par Région'], 'une feuille par PAGE, pas une par tuile');
+    const first = back.getWorksheet('Montant par Région');
+    assert.strictEqual(first.getCell('A1').value, 'Montant par Région');
+    assert.strictEqual(first.getCell('A1').font.bold, true);
+    assert.strictEqual(first.getCell('A2').value, 'Exporté le 18 novembre 2026 · 3 lignes', 'sous-titre');
+    const titleA = rowOf(first, 'Données');
+    assert.strictEqual(titleA, 4, 'bandeau de titre du 1er bloc (titre de page, sous-titre, ligne blanche)');
+    assert.strictEqual(first.getCell(titleA, 1).font.bold, true);
+    const hA = titleA + 1;
+    assert.deepStrictEqual(first.getRow(hA).values.slice(1), ['Région', 'Montant']);
+    assert.strictEqual(first.getCell(hA, 1).font.bold, true);
+    const at = (label) => rowOf(first, label, hA + 1);
+    const cellB = (label) => first.getCell(at(label), 2);
+    assert.strictEqual(cellB('Nord').value, 1234.5);
+    assert.strictEqual(cellB('Nord').numFmt, '#,##0.00');
+    assert.strictEqual(cellB('Sud').value, 0);
+    assert.strictEqual(cellB('Sud').type, ExcelJSLib.ValueType.Number);
+    assert.strictEqual(cellB('Sud').numFmt, '#,##0');
+    assert.strictEqual(first.getCell(at('=SUM(A1)'), 1).value, '=SUM(A1)');
+    assert.strictEqual(first.getCell(at('=SUM(A1)'), 1).type, ExcelJSLib.ValueType.String, 'un texte qui commence par = reste du texte');
+    assert.strictEqual(first.getCell(at('+cmd|x'), 1).value, '+cmd|x');
+    assert.strictEqual(first.getCell(at('@x'), 1).value, '@x');
+    assert.strictEqual(cellB('@x').value, null);
+    assert.deepStrictEqual(cellB('nan').value, { error: '#NUM!' });
+    assert.strictEqual(cellB('gros').value, '12345678901234567890');
+    assert.strictEqual(cellB('petit').value, 5);
+    assert.strictEqual(cellB('oui').value, true);
+    assert.strictEqual(cellB('date').value.toISOString(), '2026-11-18T09:30:00.000Z');
+    assert.strictEqual(cellB('date').numFmt, 'yyyy-mm-dd hh:mm');
+    assert.strictEqual(cellB('liste').value, 'L,a');
+    assert.strictEqual(first.getCell(at('accentué é ç'), 1).value, 'accentué é ç');
+    assert.strictEqual(cellB('bruit').value, 3266234.27, 'le bruit de flottant d\'une somme n\'est pas écrit');
+    assert.strictEqual(cellB('moyenne').value, 0.0006);
+    assert.strictEqual(cellB('moyenne').numFmt, '0.00##');
+    const titleB = rowOf(first, 'Vide');
+    assert.ok(titleB > at('moyenne') + 2, 'deux lignes d\'air entre deux blocs');
+    assert.deepStrictEqual(first.getRow(titleB + 1).values.slice(1), ['A', 'B']);
+    assert.strictEqual(first.getRow(titleB + 2).getCell(1).value, null, 'un bloc sans ligne garde son en-tête');
+    // La 1re colonne est celle des libellés : une année n'est pas une valeur (jamais « 2 022 »).
+    const wbYear = exportJs.buildWorkbook(ExcelJSLib, [{ name: 'Années', title: 'Années', blocks: [{ tileId: 'y', kind: 'table', name: 'Par année', header: ['Annee', 'Montant'], rows: [[2022, 552746.81]] }] }]);
+    const yearCell = (await reload(wbYear)).back.getWorksheet('Années').getCell(5, 1);
+    assert.strictEqual(yearCell.value, 2022);
+    assert.ok(!yearCell.numFmt || yearCell.numFmt === 'General', 'pas de séparateur de milliers sur une année');
+    assert.strictEqual(yearCell.alignment.horizontal, 'left', 'alignée comme un libellé');
+    // XML réel : aucune formule dans aucune feuille, du texte en chaînes partagées, jamais « NaN » en clair.
+    const sheetXml = xmlFiles['xl/worksheets/sheet1.xml'].toString('utf8');
     assert.ok(sheetXml, 'feuille 1 lisible dans le zip');
     assert.ok(!/<f[ >]/.test(sheetXml), 'aucune formule écrite, même pour un texte qui commence par = + - @');
     assert.ok(!/NaN|Infinity/.test(sheetXml), 'aucun nombre non fini écrit en clair');
     assert.ok(/t="e"><v>#NUM!<\/v>/.test(sheetXml), 'NaN = cellule d\'erreur');
-    assert.ok(xmlFiles['xl/sharedStrings.xml'].includes('=SUM(A1)'), 'le texte est une chaîne partagée');
+    assert.ok(xmlFiles['xl/sharedStrings.xml'].toString('utf8').includes('=SUM(A1)'), 'le texte est une chaîne partagée');
+    assert.ok(/fitToPage="1"/.test(sheetXml) && /fitToWidth="1"/.test(sheetXml) && /fitToHeight="0"/.test(sheetXml), 'toute la largeur de la page à l\'impression');
+    assert.ok(/showGridLines="0"/.test(sheetXml), 'pas de quadrillage : le bloc est la mise en page');
+
+    // Images : le graphique en PNG sous le titre du bloc, les données JUSTE en dessous, les lignes recouvertes réservées (le bloc suivant ne passe pas dessous).
+    const pagesImg = [{ id: 'p', name: 'Avec image', title: 'Avec image', blocks: [
+      { tileId: 'g1', kind: 'image', name: 'Barres', header: ['Région', 'Montant'], rows: [['Nord', 10], ['Sud', 20]], image: { base64: 'data:image/png;base64,' + PNG_1PX, width: 560, height: 298 } },
+      { tileId: 'g2', kind: 'image', name: 'Sans image', header: ['Région', 'Montant'], rows: [['Est', 5]] },
+      { tileId: 'g3', kind: 'text', name: 'Note', header: ['Texte'], rows: [['Cliquez, tout se filtre\n• une barre : toutes les tuiles se filtrent']] },
+      { tileId: 'g4', kind: 'table', name: 'Tronquée', header: ['Enceinte Bluetooth Premium Édition', 'Montant'], rows: [['a', 1]], truncated: 7 }
+    ] }];
+    const wbImg = exportJs.buildWorkbook(ExcelJSLib, pagesImg, {
+      title: (b) => 'T:' + b.name,
+      labels: { noImage: 'IMAGE INDISPONIBLE', truncated: (n) => 'RESTE ' + n }
+    });
+    const { back: backImg, files: filesImg } = await reload(wbImg);
+    const wsImg = backImg.getWorksheet('Avec image');
+    assert.ok(filesImg['xl/media/image1.png'] && filesImg['xl/media/image1.png'].slice(1, 4).toString() === 'PNG', 'le PNG est dans le classeur, tel quel');
+    assert.strictEqual(Object.keys(filesImg).filter((f) => /^xl\/media\//.test(f)).length, 1, 'une seule image : la tuile sans image n\'en a pas');
+    const titleImg = rowOf(wsImg, 'T:Barres');
+    assert.ok(titleImg > 0 && wsImg.getCell(titleImg, 1).font.bold, 'titre affiché par l\'appelant (opts.title)');
+    const drawing = filesImg['xl/drawings/drawing1.xml'].toString('utf8');
+    const fromRow = Number(/<xdr:from><xdr:col>0<\/xdr:col><xdr:colOff>\d+<\/xdr:colOff><xdr:row>(\d+)<\/xdr:row>/.exec(drawing)[1]);
+    assert.strictEqual(fromRow, titleImg, 'l\'image démarre juste sous le bandeau de titre (ligne suivante, comptée depuis 0)');
+    assert.ok(/<xdr:ext cx="5334000" cy="2838450"/.test(drawing) || /cx="5334000"/.test(drawing), '560 px de large dans la feuille (1 px = 9525 EMU)');
+    const headerImg = rowOf(wsImg, 'Région', titleImg);
+    assert.strictEqual(headerImg, titleImg + 1 + Math.ceil(298 / 20) + 1, 'les données commencent sous les 15 lignes que recouvre l\'image (20 px par ligne), pas dessous');
+    assert.ok(!/IMAGE INDISPONIBLE/.test(String(wsImg.getCell(titleImg + 1, 1).value)), 'un bloc avec image n\'a pas de mention « indisponible »');
+    const titleNoImg = rowOf(wsImg, 'T:Sans image');
+    assert.strictEqual(wsImg.getCell(titleNoImg + 1, 1).value, 'IMAGE INDISPONIBLE', 'tuile graphique sans image : le dit, et garde ses données');
+    assert.strictEqual(wsImg.getCell(titleNoImg + 3, 1).value, 'Est');
+    const titleNote = rowOf(wsImg, 'T:Note');
+    const noteCell = wsImg.getCell(titleNote + 1, 1);
+    assert.ok(noteCell.value.startsWith('Cliquez') && noteCell.value.includes('\n'), 'une note : le texte lui-même');
+    assert.ok(noteCell.alignment.wrapText && noteCell.isMerged, 'étalée sur plusieurs colonnes, à la ligne');
+    assert.ok(wsImg.getRow(titleNote + 1).height >= 30, 'et assez haute pour ses deux lignes');
+    const titleTrunc = rowOf(wsImg, 'T:Tronquée');
+    assert.strictEqual(wsImg.getRow(titleTrunc + 1).height, 33, 'en-tête à retour à la ligne (deux lignes de 15 pt + 3) : hauteur EXPLICITE (sinon le tableur décale les lignes sous les images déjà posées)');
+    assert.strictEqual(wsImg.getCell(titleTrunc + 3, 1).value, 'RESTE 7', 'lignes laissées de côté : dites');
+    const simpleHeaderRow = wsImg.getRow(headerImg);
+    assert.strictEqual(simpleHeaderRow.height, 15, 'un en-tête sur une ligne reste à la hauteur normale');
+
+    // Une feuille pleine ne reçoit pas un bloc à moitié : mention, puis arrêt (Excel s'arrête à 1 048 576 lignes).
+    const wbFull = exportJs.buildWorkbook(ExcelJSLib, [{ name: 'Pleine', title: 'Pleine', blocks: [
+      { tileId: 'big', kind: 'table', name: 'Énorme', header: ['A'], rows: new Array(1000001) },
+      { tileId: 'next', kind: 'table', name: 'Suivant', header: ['A'], rows: [[1]] }
+    ] }], { labels: { cut: 'FEUILLE PLEINE' } });
+    const wsFull = wbFull.getWorksheet('Pleine');
+    assert.strictEqual(rowOf(wsFull, 'FEUILLE PLEINE'), 3, 'le bloc qui ne tient plus n\'est pas écrit');
+    assert.strictEqual(rowOf(wsFull, 'Suivant'), 0, 'et rien ne le suit');
+    assert.ok(wsFull.rowCount < 10);
 
     // Les noms de feuille que fabrique sanitizeSheetName ne font JAMAIS lever ExcelJS (il est plus strict que
     // SheetJS : casse, apostrophes, « History »).
@@ -6121,60 +6224,109 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     assert.strictEqual(new Set(names.map((nm) => nm.toLowerCase())).size, names.length, 'noms uniques sans tenir compte de la casse');
     assert.ok(names.every((nm) => nm.length >= 1 && nm.length <= 31 && !/^'|'$/.test(nm) && !/[:\\/?*[\]]/.test(nm) && nm.toLowerCase() !== 'history'));
     assert.deepStrictEqual(names.slice(0, 3), ['Ventes', 'ventes (2)', 'VENTES (3)']);
-    const wbNames = exportJs.buildWorkbook(ExcelJSLib, names.map((nm) => ({ name: nm, header: ['A'], rows: [[1]] })));
+    const wbNames = exportJs.buildWorkbook(ExcelJSLib, names.map((nm) => ({ name: nm, title: nm, blocks: [{ tileId: 'n', kind: 'table', name: 'x', header: ['A'], rows: [[1]] }] })));
     assert.strictEqual(wbNames.worksheets.length, titles.length);
 
-    // Bout en bout (hors DuckDB et hors DOM) : les feuilles d'un VRAI état, par la chaîne que js/export.js utilise.
+    // Bout en bout (hors DuckDB et hors DOM) : les pages d'un VRAI état, par la chaîne que js/export.js utilise.
     const stateX = {
-      rows: [{ Region: 'Nord', Montant: 10 }, { Region: 'Sud', Montant: 20 }, { Region: 'Nord', Montant: 5 }],
+      rows: [{ Region: 'Nord', Montant: 10, Date: '2025-01-15' }, { Region: 'Sud', Montant: 20, Date: '2025-02-15' }, { Region: 'Nord', Montant: 5, Date: '2026-01-15' }],
       activeFilters: [], advancedFilters: [], drillIns: {},
       pages: [
         { id: 'p1', name: 'Ventes', tiles: [
           { id: 't1', type: 'bar', title: 'Par région', dimension: 'Region', measure: 'Montant', aggFn: 'sum' },
           { id: 't2', type: 'kpi', measure: 'Montant', aggFn: 'sum' },
-          { id: 't3', type: 'text', text: 'note' }
+          { id: 't3', type: 'text', text: 'note' },
+          { id: 't5', type: 'bar', title: 'Cumul', measure: 'Montant', aggFn: 'sum', measureMode: 'ytd', dateColumn: 'Date' }
         ] },
-        { id: 'p2', name: 'Autre', tiles: [{ id: 't4', type: 'pivot', dimension: 'Region', columnDimension: 'Region', measure: 'Montant', aggFn: 'sum' }] }
+        { id: 'p0', name: 'Vide', tiles: [] },
+        { id: 'p2', name: 'ventes', tiles: [{ id: 't4', type: 'pivot', dimension: 'Region', columnDimension: 'Region', measure: 'Montant', aggFn: 'sum' }] }
       ]
     };
-    const sheetsReal = await data.buildWorkbookSheetsAsync(stateX, async () => { throw new Error('pas de mesure temporelle ici'); });
-    const wbReal = exportJs.buildWorkbook(ExcelJSLib, sheetsReal);
-    const backReal = new ExcelJSLib.Workbook();
-    await backReal.xlsx.load(Buffer.from(await wbReal.xlsx.writeBuffer()));
-    assert.deepStrictEqual(backReal.worksheets.map((w) => w.name), ['Ventes - Par région', 'Ventes - sum(Montant)', 'Autre - sum(Montant)']);
-    assert.deepStrictEqual(backReal.getWorksheet('Ventes - Par région').getRow(2).values.slice(1), ['Nord', 15]);
-    assert.deepStrictEqual(backReal.getWorksheet('Ventes - Par région').getRow(3).values.slice(1), ['Sud', 20]);
-    assert.deepStrictEqual(backReal.getWorksheet('Ventes - sum(Montant)').getRow(2).values.slice(1), ['sum(Montant)', 35]);
-    console.log('OK export Excel ExcelJS 4.4.0 — empreinte de GFS, SheetJS retiré, cellules (types, NaN, grands entiers, objets), texte = formule jamais, noms de feuille, relecture complète');
+    const computeCalls = [];
+    const pagesReal = await data.buildExportPagesAsync(stateX, async (tile, rows) => { computeCalls.push([tile.id, rows.length]); return [{ period: '2025-01-01', value: 10, cumulative: 10, ytd: 10, previousYear: null }]; });
+    assert.deepStrictEqual(pagesReal.map((p) => [p.id, p.name, p.title]), [['p1', 'Ventes', 'Ventes'], ['p2', 'ventes (2)', 'ventes']], 'une page sans tuile n\'a pas de feuille ; noms uniques sans tenir compte de la casse');
+    assert.deepStrictEqual(pagesReal[0].blocks.map((b) => [b.tileId, b.kind]), [['t1', 'image'], ['t2', 'table'], ['t3', 'text'], ['t5', 'image']], 'l\'ordre enregistré, la note comprise');
+    assert.deepStrictEqual(computeCalls, [['t5', 3]], 'seule la tuile en mode mesure passe par le calcul injecté');
+    assert.strictEqual(pagesReal[0].blocks[0].tile, stateX.pages[0].tiles[0], 'la tuile elle-même suit son bloc (js/export.js la dessine)');
+    const wbReal = exportJs.buildWorkbook(ExcelJSLib, pagesReal, { title: (b) => b.tile.title || b.name });
+    const { back: backReal } = await reload(wbReal);
+    assert.deepStrictEqual(backReal.worksheets.map((w) => w.name), ['Ventes', 'ventes (2)']);
+    const wsV = backReal.getWorksheet('Ventes');
+    const hRegion = rowOf(wsV, 'Region', rowOf(wsV, 'Par région'));
+    assert.deepStrictEqual(wsV.getRow(hRegion).values.slice(1), ['Region', 'Montant']);
+    assert.deepStrictEqual(wsV.getRow(hRegion + 1).values.slice(1), ['Nord', 15]);
+    assert.deepStrictEqual(wsV.getRow(hRegion + 2).values.slice(1), ['Sud', 20]);
+    assert.deepStrictEqual(wsV.getRow(rowOf(wsV, 'Mesure') + 1).values.slice(1), ['sum(Montant)', 35]);
+    assert.ok(rowOf(wsV, 'Cumul') > 0 && rowOf(wsV, 'Période') > 0, 'le bloc en mode mesure a ses vraies valeurs');
+    assert.ok(rowOf(wsV, 'note') > 0, 'la note est dans la page, comme à l\'écran');
+    // Le même état filtré : les blocs suivent l'écran (filtre posé par une AUTRE tuile ; la tuile source reste entière).
+    const pagesFiltered = await data.buildExportPagesAsync(Object.assign({}, stateX, { activeFilters: [{ column: 'Region', type: 'eq', value: 'Nord', sourceTileId: 't1' }] }), async () => []);
+    assert.deepStrictEqual(pagesFiltered[0].blocks[0].rows, [['Nord', 15], ['Sud', 20]], 'la tuile qui pose le filtre croisé reste non filtrée sur son propre filtre');
+    assert.deepStrictEqual(pagesFiltered[0].blocks[1].rows, [['sum(Montant)', 15]], 'les autres tuiles sont filtrées');
+    // Les anciennes fonctions « une feuille par tuile » restent exactes (données seules).
+    const flat = await data.buildWorkbookSheetsAsync(stateX, async () => []);
+    assert.deepStrictEqual(flat.map((s) => s.name), ['Ventes - Par région', 'Ventes - sum(Montant)', 'Ventes - Cumul', 'ventes - sum(Montant) (2)']);
+
+    // Photographie des graphiques (navigateur : voir TEST_PROTOCOL.md) — ce que ce fichier garantit, lu dans les sources.
+    {
+      const xl = exportSrc;
+      assert.ok(typeof exportJs.captureTileImages === 'function' && typeof exportJs.stateForClone === 'function');
+      assert.ok(/Object\.assign\(\{\}, block\.tile, \{ id: cloneId \}\)/.test(xl) && /'__xl_'/.test(xl), 'chaque graphique est redessiné SOUS UN IDENTIFIANT DE COPIE, jamais dans l\'instance affichée');
+      assert.ok(!/getInstance\(block\.tileId\)|getInstance\(item\.block\.tile\.id\)|getInstance\(tile\.id\)/.test(xl), 'jamais l\'instance affichée : l\'écran n\'est pas touché');
+      assert.ok(/finally \{[\s\S]*disposeTile[\s\S]*host\.remove\(\)/.test(xl), 'les copies et le conteneur hors écran sont libérés même si un dessin échoue');
+      assert.ok(/await GristBI\.charts\.renderTile\(/.test(xl), 'le dessin est ATTENDU avant de photographier (renderTile rend la promesse)');
+      assert.ok(/isFinished\(\)/.test(xl) && /ANIMATION_WAIT_MS/.test(xl), 'l\'animation d\'entrée d\'ECharts est attendue (bornée), pas photographiée à mi-course');
+      assert.ok(/dataUrl\.replace\(\/\^data:image\\\/png;base64,\/, ''\)/.test(xl) || /replace\(\/\^data:image\\\/png;base64,\/, ''\)/.test(xl), 'le PNG est passé à ExcelJS en base64 nu');
+      assert.ok(/CAPTURE_BATCH/.test(xl) && /dispose/.test(xl), 'dessinés par lots : la mémoire des canevas est bornée');
+      assert.ok(/isWordCloudCanvas/.test(xl) && /display === 'none'/.test(xl), 'le nuage de mots masqué (extension absente) n\'a pas d\'image');
+      // L'état d'une copie : le filtre croisé posé par la tuile ne la filtre pas, son drill-down est le sien ; l'état d'origine reste intact.
+      const liveState = { activeFilters: [{ column: 'Region', value: 'Nord', sourceTileId: 'T' }, { column: 'Canal', value: 'Web', sourceTileId: 'U' }], drillIns: { T: [{ column: 'Annee', value: 2025 }] }, advancedFilters: [{ column: 'Montant' }] };
+      const cloneState = exportJs.stateForClone(liveState, { id: 'T' }, '__xl_0');
+      assert.deepStrictEqual(cloneState.activeFilters.map((f) => f.sourceTileId), ['__xl_0', 'U']);
+      assert.deepStrictEqual(cloneState.drillIns, { T: [{ column: 'Annee', value: 2025 }], __xl_0: [{ column: 'Annee', value: 2025 }] });
+      assert.strictEqual(liveState.activeFilters[0].sourceTileId, 'T', 'l\'état vivant n\'est jamais modifié');
+      assert.strictEqual(cloneState.advancedFilters, liveState.advancedFilters);
+      const chartsSrcX = nodeFs.readFileSync(nodePath.join(repoRoot, 'js', 'charts.js'), 'utf8');
+      assert.ok(/return renderChart\(tile, rows, state, container, drillPath\);/.test(chartsSrcX), 'renderTile rend la promesse du dessin');
+      const mainSrcX = nodeFs.readFileSync(nodePath.join(repoRoot, 'js', 'main.js'), 'utf8');
+      const excelListener = mainSrcX.slice(mainSrcX.indexOf("exportExcelBtn.addEventListener('click'"), mainSrcX.indexOf("exportPdfBtn.addEventListener('click'"));
+      assert.ok(/dataset\.busy/.test(excelListener) && /finally \{/.test(excelListener), 'pas de second export pendant le premier ; le bouton est rendu même après un échec');
+      assert.ok(!/EXPORTS_AVAILABLE/.test(excelListener), 'l\'export Excel est rouvert : il ne dépend plus du drapeau des autres');
+    }
+    console.log('OK export Excel — une feuille par page, bloc par tuile (titre, image réservée, données), cellules (types, NaN, grands entiers, objets, formats), texte = formule jamais, noms de feuille, bout en bout, photographie des graphiques lue dans les sources');
   }
 
-  // Exports désactivés provisoirement (18/11/2026, demande d'Antoine) : un bouton GRISÉ (jamais retiré) avec la mention « bientôt
-  // disponible » en fr ET en anglais ; js/main.js:EXPORTS_AVAILABLE le garde fermé quand une table se connecte
-  // (setTableDependentControlsEnabled ré-activait tout) et coupe son écouteur. Une clé à `true` = bouton dégrisé dans index.html.
+  // Les trois exports sont ouverts (18/11/2026) : l'Excel refait par un autre fil (une feuille par page, graphiques en images), le PDF et le PPTX
+  // refaits ici (la page est photographiée). Plus aucun bouton grisé ni drapeau `EXPORTS_AVAILABLE` : ni dans `js/main.js`, ni dans `index.html`.
   {
     const fsE = require('fs');
     const pathE = require('path');
     const indexE = fsE.readFileSync(pathE.join(__dirname, '..', 'index.html'), 'utf8');
     const mainE = fsE.readFileSync(pathE.join(__dirname, '..', 'js', 'main.js'), 'utf8');
-    const flags = mainE.match(/const EXPORTS_AVAILABLE = \{([^}]*)\};/);
-    assert.ok(flags, 'tableau EXPORTS_AVAILABLE');
-    const available = {};
-    for (const m of flags[1].matchAll(/(\w+):\s*(true|false)/g)) available[m[1]] = m[2] === 'true';
-    assert.deepStrictEqual(Object.keys(available).sort(), ['excel', 'pdf', 'pptx']);
-    let greyed = 0;
-    for (const [id, key] of [['export-excel', 'excel'], ['export-pdf', 'pdf'], ['export-pptx', 'pptx']]) {
+    for (const [id, label] of [['export-excel', 'bookmarks.exportExcel'], ['export-pdf', 'bookmarks.exportPdf'], ['export-pptx', 'bookmarks.exportPptx']]) {
       const m = indexE.match(new RegExp('<button id="' + id + '"[^>]*>'));
-      assert.ok(m, id + ' : bouton présent (grisé ou non, jamais retiré)');
-      const isGreyed = /\sdisabled\b/.test(m[0]) && /aria-disabled="true"/.test(m[0]);
-      assert.strictEqual(isGreyed, !available[key], id + ' : grisé dans index.html si et seulement si EXPORTS_AVAILABLE.' + key + ' est faux');
-      if (isGreyed) greyed++;
-      assert.ok(new RegExp("if \\(!EXPORTS_AVAILABLE\\." + key + "\\) return;").test(mainE), key + ' : écouteur de clic coupé quand l\'export est désactivé');
+      assert.ok(m, id + ' : bouton présent');
+      assert.ok(!/\sdisabled\b/.test(m[0]) && !/aria-disabled/.test(m[0]), id + ' : rouvert, sans mention « bientôt disponible »');
+      assert.ok(m[0].indexOf('data-i18n="' + label + '"') > 0, id + ' : son libellé');
     }
-    assert.strictEqual((indexE.match(/data-i18n="export\.soon"/g) || []).length, greyed, 'la mention « bientôt disponible » sur chaque bouton grisé, et sur eux seuls');
-    assert.strictEqual(i18n.STRINGS['export.soon'].fr, 'bientôt disponible');
-    assert.strictEqual(i18n.STRINGS['export.soon'].en, 'coming soon');
-    assert.ok(/if \(!EXPORTS_AVAILABLE\[key\]\) btn\.disabled = true;/.test(mainE), 'la connexion d\'une table ne ré-active pas un export désactivé');
-    console.log('OK exports désactivés — bouton grisé avec « bientôt disponible » fr/en si l\'export est coupé, jamais ré-activé par la connexion d\'une table');
+    assert.ok(!/EXPORTS_AVAILABLE/.test(mainE) && !/EXPORTS_AVAILABLE/.test(indexE), 'plus aucun drapeau de désactivation des exports');
+    assert.ok(!/export\.soon/.test(indexE) && !i18n.STRINGS['export.soon'], 'plus de mention « bientôt disponible »');
+    // Textes du classeur Excel : fr ET en, variables identiques.
+    for (const key of ['export.xlsx.subtitle', 'export.xlsx.filters', 'export.xlsx.noImage', 'export.xlsx.truncated', 'export.xlsx.cut', 'export.xlsx.preparing']) {
+      const entry = i18n.STRINGS[key];
+      assert.ok(entry && entry.fr && entry.en, key + ' : fr et en');
+      const vars = (str) => (str.match(/\{(\w+)[|}]/g) || []).map((x) => x.replace(/[{|}]/g, '')).sort().join(',');
+      assert.strictEqual(vars(entry.fr), vars(entry.en), key + ' : mêmes variables');
+    }
+    i18n.setLang('fr');
+    assert.strictEqual(i18n.t('export.xlsx.subtitle', { date: '18 novembre 2026', rows: 1 }), 'Exporté le 18 novembre 2026 · 1 ligne de données');
+    assert.strictEqual(i18n.t('export.xlsx.subtitle', { date: '18 novembre 2026', rows: 5760 }), 'Exporté le 18 novembre 2026 · 5760 lignes de données');
+    assert.strictEqual(i18n.t('export.xlsx.filters', { n: 1 }), '1 filtre actif appliqué aux chiffres ci-dessous');
+    assert.strictEqual(i18n.t('export.xlsx.truncated', { n: 7 }), '… 7 lignes de plus ne sont pas exportées');
+    i18n.setLang('en');
+    assert.strictEqual(i18n.t('export.xlsx.filters', { n: 2 }), '2 active filters applied to the figures below');
+    i18n.setLang('fr');
+    console.log('OK exports — Excel, PDF et PPTX ouverts, plus de drapeau ni de bouton grisé ; textes du classeur fr/en');
   }
 
   // Export PDF refait (18/11/2026, demande d'Antoine : « même visuel » que le tableau de bord) : la page est photographiée telle qu'elle est
@@ -6306,8 +6458,8 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     // ECharts), et chaque instance ECharts — jauge comprise, qui ne passe pas par getOrCreateChartInstance — est suivie par trackLoading.
     const chartsSource = read('js/charts.js');
     assert.strictEqual((chartsSource.match(/echarts\.init\(/g) || []).length, (chartsSource.match(/trackLoading\(instance\);/g) || []).length, 'chaque echarts.init est suivi par trackLoading');
-    assert.ok(/pendingRenders\.size === 0/.test(chartsSource) && /trackPending\(pending\)/.test(chartsSource), 'whenSettled attend aussi les rendus asynchrones en vol');
-    assert.ok(/pending = renderKpi\(/.test(chartsSource) && /pending = renderPivot\(/.test(chartsSource) && /pending = renderGauge\(/.test(chartsSource), 'KPI, pivot et jauge suivis');
+    assert.ok(/pendingRenders\.size === 0/.test(chartsSource) && /const pending = drawTile\(tile, state, container\);\s*trackPending\(pending\);\s*return pending;/.test(chartsSource), 'renderTile suit chaque dessin en vol (whenSettled les attend) et rend la même promesse à l\'export Excel');
+    assert.ok(/return renderKpi\(/.test(chartsSource) && /return renderPivot\(/.test(chartsSource) && /return renderGauge\(/.test(chartsSource), 'KPI, pivot et jauge rendent leur promesse');
 
     for (const f of ['index.html', 'dev-tests/harness.html']) {
       const html = read(f);
