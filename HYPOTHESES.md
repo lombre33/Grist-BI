@@ -3696,6 +3696,28 @@ Constat (en testant le style global des tuiles) : sur une courbe ou des barres v
   aucune tâche, gantt -> barres -> gantt, édition). Le style global (glass, console…) a été regardé sur capture : en verre, l'axe et la légende collants gardent un fond opaque (une bande pâle sur la carte translucide).
   **Pas testé dans un vrai Grist ni un vrai GFS.**
 
+### Tuiles usuelles des outils BI — lot 3, petits multiples (18/11/2026)
+
+- **Ce qui est livré** (PR 13 du plan, §5.8 de `etudes/tuiles-usuelles-dashboard-2026-11-18.md`) : une OPTION des barres et de la courbe/aire, pas un type — la case « Un petit graphique par série (même échelle pour tous) »,
+  visible dès qu'une colonne « Séries » est choisie. Au lieu de superposer les séries (une couleur chacune sur un seul graphique), un petit graphique par valeur de la colonne, rangés en grille, tous sur les mêmes catégories
+  ET sur la même échelle des valeurs (sinon un petit panneau ressemblerait à un grand). Le titre du panneau est le nom de la série. Les calculs sont ceux des séries multiples (un `groupByAggregate` par série, DuckDB au-delà de
+  5 000 lignes) ; seule la mise en page change. Clic sur une barre ou un point = drill-down ou filtre de la catégorie, comme un graphique unique ; les catégories non retenues s'estompent dans TOUS les panneaux.
+- **Choix** : UNE instance ECharts à N grilles (plutôt que N instances) : un seul rendu, un seul gestionnaire de clic, le style global des tuiles et le thème s'appliquent par `finalizeOption`/`styles.applyToOption`
+  sans écrire rien de plus. La géométrie est en pixels (`smallMultiplesGrid`) et `instance.__refit` la recalcule au redimensionnement. Échelle commune de 0 au plus haut, pas rond, 2 à 4 intervalles, la plus serrée possible
+  (`smallMultiplesRange`) ; graduations des valeurs sur la 1re colonne seulement, noms des catégories sous le dernier panneau de chaque colonne, et retirés quand chacun aurait moins de 24 px (l'infobulle les donne).
+  Empilé, 100 %, barres horizontales, ligne de repère et étiquettes de valeur sont ignorés tant que la case est cochée (le formulaire les masque, `readTileForm` écarte leur valeur) mais jamais effacés de la tuile. Au plus
+  12 panneaux (« Les 12 premières séries sur 14 » + avertissement) ; l'export Excel garde toutes les séries et est identique à celui des séries superposées.
+- **Pas fait, à décider** : échelles propres à chaque panneau (case « échelles indépendantes » : utile quand les ordres de grandeur divergent, mais trompeur par défaut), petits multiples sur d'autres types (camembert, nuage de
+  points, carte de chaleur), choix du nombre de colonnes, panneau « Total » en tête, tri des panneaux par valeur.
+- **Conseils** : plus de 12 séries (remplace l'avertissement de couleurs, qui n'a plus de sens), une seule série, plus de 24 catégories (illisibles dans un petit panneau). Jamais proposé à l'écran d'accueil ni préremplit.
+- **Testé** : Node (bloc « petits multiples » : prédicats, empilé/repère/étiquettes ignorés puis restitués en décochant, plafond de panneaux, échelle commune pour 19 maxima de 0,07 à 1 234 567, grille sans recouvrement pour
+  10 tailles, export identique, conseils, i18n, câblage) ; Playwright contre le vrai `index.html` + `grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`, 60 et 6 060 lignes, clair et sombre (formulaire : case
+  masquée sans Séries, champs exclus masqués, tuile enregistrée sans pile ni barres horizontales ; option = calcul pur ; géométrie dans la tuile sans recouvrement ; **clic réel de souris** sur une barre d'un panneau,
+  infobulle limitée à la série survolée, estompage dans tous les panneaux, 2e clic = retiré ; agrandissement = panneaux plus grands puis retour exact ; courbe en aire lissée ; décocher = graphique unique sans refit ;
+  14 séries = 12 panneaux + note + conseil ; nom de série hostile (`<img onerror>`) sans HTML injecté ; les quatre styles globaux ; export).
+- **Constat visuel** : avec 12 panneaux dans une tuile de 224 px, les barres sont fines mais lisibles et l'échelle commune montre aussitôt quelles séries dominent ; dans un panneau étroit ECharts n'écrit qu'un nom
+  de catégorie sur deux et tronque les autres (« Ch… » pour Charlie), et sous 24 px par nom ils sont retirés (l'infobulle les donne). Rendu dans un vrai Grist / GFS : non testé ici.
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée

@@ -292,6 +292,8 @@
   const paletteHint = document.getElementById('tile-palette-hint');
   const stackPercentField = document.getElementById('tile-stack-percent-field');
   const stackPercentCheckbox = document.getElementById('tile-stack-percent');
+  const smallMultiplesField = document.getElementById('tile-small-multiples-field');
+  const smallMultiplesCheckbox = document.getElementById('tile-small-multiples');
   const lineShapeField = document.getElementById('tile-line-shape-field');
   const lineShapeSelect = document.getElementById('tile-line-shape');
   const valueLabelsField = document.getElementById('tile-value-labels-field');
@@ -2085,6 +2087,13 @@
     const pctOn = !stackPercentField.hidden && stackPercentCheckbox.checked;
     refLineField.hidden = !refOk || pctOn;
     refValueField.hidden = !(refOk && !pctOn && refLineSelect.value === 'value');
+    // Petits multiples : barres (hors mode mesure) et courbe avec une colonne Séries. Un petit graphique par série ne s'empile pas, ne s'oriente
+    // pas, et n'a ni ligne de repère ni étiquettes de valeur (un panneau est trop petit pour les porter) : ces champs disparaissent, et
+    // `readTileForm` n'écrit plus leur valeur.
+    smallMultiplesField.hidden = !(seriesSelect.value && (isBarBrut || type === 'line'));
+    if (!smallMultiplesField.hidden && smallMultiplesCheckbox.checked) {
+      [stackField, stackPercentField, horizontalField, valueLabelsField, refLineField, refValueField].forEach((fld) => { fld.hidden = true; });
+    }
     donutField.hidden = type !== 'pie';
     showPctField.hidden = type !== 'pie';
     // Combo : mode « autre mesure » = 2e mesure + son agrégat ; Pareto = rien de plus (la courbe se déduit des barres).
@@ -2175,6 +2184,7 @@
     areaCheckbox.checked = !!tile.areaFill;
     stackedCheckbox.checked = !!tile.stacked;
     stackPercentCheckbox.checked = !!tile.stackPercent;
+    smallMultiplesCheckbox.checked = !!tile.smallMultiples;
     lineShapeSelect.value = GristBI.data.LINE_SHAPES.includes(tile.lineShape) ? tile.lineShape : '';
     valueLabelsCheckbox.checked = !!tile.valueLabels;
     paletteSelect.value = GristBI.data.PALETTE_KEYS.includes(tile.palette) ? tile.palette : 'standard';
@@ -2223,6 +2233,7 @@
   areaCheckbox.addEventListener('change', updateFormFieldsForType);
   stackedCheckbox.addEventListener('change', updateFormFieldsForType);
   stackPercentCheckbox.addEventListener('change', updateFormFieldsForType);
+  smallMultiplesCheckbox.addEventListener('change', updateFormFieldsForType);
   pivotHeatCheckbox.addEventListener('change', updateFormFieldsForType);
   refLineSelect.addEventListener('change', updateFormFieldsForType);
   radarModeSelect.addEventListener('change', updateFormFieldsForType);
@@ -2343,7 +2354,9 @@
     if (isHistogram && binsValue !== undefined && !(Number.isInteger(binsValue) && binsValue >= 2 && binsValue <= GristBI.data.HISTOGRAM_MAX_BINS)) fail('tile-bins', 'tileForm.error.binsRange');
     // Ligne de repère : une valeur fixe demande un nombre.
     const stackPctForm = !!seriesSelect.value && stackedCheckbox.checked && stackPercentCheckbox.checked && ((isBar && !measureMode) || (type === 'line' && areaCheckbox.checked));
-    const refKind = (GristBI.data.supportsRefLine({ type, measureMode }) && !stackPctForm) ? refLineSelect.value : '';
+    // Petits multiples : jamais d'empilé, de barres horizontales, de ligne de repère ni d'étiquettes (les champs sont masqués, leur valeur écartée).
+    const smallOnForm = !!seriesSelect.value && smallMultiplesCheckbox.checked && ((isBar && !measureMode) || type === 'line');
+    const refKind = (GristBI.data.supportsRefLine({ type, measureMode }) && !stackPctForm && !smallOnForm) ? refLineSelect.value : '';
     const refRaw = refKind === 'value' ? refValueInput.value.trim() : '';
     const refValue = refRaw === '' ? undefined : Number(refRaw);
     if (refKind === 'value' && !(refValue !== undefined && Number.isFinite(refValue))) fail('tile-refvalue', 'tileForm.error.refValueRequired');
@@ -2450,16 +2463,17 @@
     // (Object.assign de `store.updateTile` n'efface que les clés présentes). Jamais `false` : un
     // booléen décoché n'a pas à alourdir la config sauvegardée.
     tileData.sortMode = (GristBI.data.isSortableTile({ type, measureMode, comboMode: comboPareto ? 'pareto' : undefined }) && sortSelect.value) ? sortSelect.value : undefined;
-    tileData.horizontal = (isBar && !measureMode && horizontalCheckbox.checked) ? true : undefined;
+    tileData.horizontal = (isBar && !measureMode && horizontalCheckbox.checked && !smallOnForm) ? true : undefined;
     tileData.areaFill = (type === 'line' && areaCheckbox.checked) ? true : undefined;
     // `standard` n'est jamais écrit : une tuile sans choix de palette garde exactement sa configuration d'avant.
     tileData.palette = (GristBI.data.supportsPalette({ type, pivotHeat: isPivot && pivotHeatCheckbox.checked }) && paletteSelect.value !== 'standard' && GristBI.data.PALETTE_KEYS.includes(paletteSelect.value)) ? paletteSelect.value : undefined;
     // Format des nombres : `undefined` = Automatique (jamais écrit), comme `palette` ci-dessus.
     tileData.numberFormat = GristBI.data.supportsNumberFormat({ type }) ? numberFormatFromForm() : undefined;
-    tileData.stacked = (seriesColumn && stackedCheckbox.checked && ((isBar && !measureMode) || (type === 'line' && areaCheckbox.checked))) ? true : undefined;
+    tileData.stacked = (seriesColumn && !smallOnForm && stackedCheckbox.checked && ((isBar && !measureMode) || (type === 'line' && areaCheckbox.checked))) ? true : undefined;
+    tileData.smallMultiples = smallOnForm ? true : undefined;
     tileData.stackPercent = (tileData.stacked && stackPercentCheckbox.checked) ? true : undefined;
     tileData.lineShape = (type === 'line' && GristBI.data.LINE_SHAPES.includes(lineShapeSelect.value)) ? lineShapeSelect.value : undefined;
-    tileData.valueLabels = (GristBI.data.supportsValueLabels({ type, measureMode }) && valueLabelsCheckbox.checked) ? true : undefined;
+    tileData.valueLabels = (GristBI.data.supportsValueLabels({ type, measureMode }) && valueLabelsCheckbox.checked && !smallOnForm) ? true : undefined;
     tileData.donut = (type === 'pie' && donutCheckbox.checked) ? true : undefined;
     tileData.showPct = (type === 'pie' && showPctCheckbox.checked) ? true : undefined;
     return { tileData, errors: [], autoTitle: auto.title };
@@ -2609,6 +2623,7 @@
     areaCheckbox.checked = false;
     stackedCheckbox.checked = false;
     stackPercentCheckbox.checked = false;
+    smallMultiplesCheckbox.checked = false;
     lineShapeSelect.value = '';
     valueLabelsCheckbox.checked = false;
     paletteSelect.value = 'standard';

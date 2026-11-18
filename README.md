@@ -37,7 +37,8 @@ réellement (voir HYPOTHESES.md).
   formulaire.
 - **Séries multiples, empilé, palettes** (Options avancées d'une tuile) : barres et courbe/aire peuvent
   tracer une série par valeur d'une colonne (« Séries »), côte à côte ou **empilées** (barres et aire,
-  info-bulle avec le total) ; chaque tuile peut aussi choisir sa **palette** (Standard 8 couleurs,
+  info-bulle avec le total) ou en **petits multiples** (un petit graphique par valeur de la colonne, tous
+  sur la même échelle, jusqu'à 12) ; chaque tuile peut aussi choisir sa **palette** (Standard 8 couleurs,
   Okabe-Ito pour le daltonisme, ou un dégradé bleu/orange/vert/gris pour des catégories ordonnées).
 - Constructeur de tuile simple : dimension + mesure + agrégat (somme/moyenne/comptage/min/max) —
   volontairement **pas** un langage de mesures façon DAX complet (voir HYPOTHESES.md). Une tuile

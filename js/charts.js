@@ -8,7 +8,7 @@
   const GristBI = global.GristBI || (global.GristBI = {});
   const {
     groupByAggregate, sameValue, aggregateSingle, pivotTable, trendFromGroups, targetProgress, progressRows, sparklineValues, sparklineGeometry, measureSeriesForTile,
-    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, comboSeries, comboModeOf, histogramBins, histogramFilter, histogramBinIsActive, boxStatsByGroup, sankeyFlows, topFlows, SANKEY_MAX_LINKS, isBubbleTile, bubblePoints, bubbleDiameters, calendarDays, ganttTasks, ganttLayout, filterSelects, lineShapeOf, isStackedPercentTile, stackShares, supportsValueLabels, refLineKind, refLineValue, cellFilterToggles, heatStops, heatRange, heatCellColors, heatTextColor, isStackedTile, splitBySeries, assembleSeries, paletteColors, PALETTES, escapeHtml,
+    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, isSmallMultiplesTile, smallMultiplesPanels, smallMultiplesGrid, smallMultiplesRange, comboSeries, comboModeOf, histogramBins, histogramFilter, histogramBinIsActive, boxStatsByGroup, sankeyFlows, topFlows, SANKEY_MAX_LINKS, isBubbleTile, bubblePoints, bubbleDiameters, calendarDays, ganttTasks, ganttLayout, filterSelects, lineShapeOf, isStackedPercentTile, stackShares, supportsValueLabels, refLineKind, refLineValue, cellFilterToggles, heatStops, heatRange, heatCellColors, heatTextColor, isStackedTile, splitBySeries, assembleSeries, paletteColors, PALETTES, escapeHtml,
     tileDrillLevels, currentDimension, rowsForTile, wordFrequency
   } = GristBI.data;
   const { t } = GristBI.i18n;
@@ -1091,6 +1091,96 @@
     });
   }
 
+  // === Petits multiples (`tile.smallMultiples`, barres ou courbe avec une colonne Séries) ================================================
+  // UNE instance ECharts, N grilles : un petit graphique par valeur de la colonne Séries, tous sur la MÊME échelle (sinon un petit panneau
+  // ressemblerait à un grand) et sur les mêmes catégories. La géométrie est en PIXELS (js/data.js:smallMultiplesGrid) : elle ne suit pas
+  // un redimensionnement seule, `instance.__refit` la recalcule (comme la jauge et le radar). Les graduations de l'axe des valeurs ne
+  // s'écrivent que sur la 1re colonne, celles des catégories que sous le dernier panneau de chaque colonne : le reste du quadrillage
+  // suffit à lire, et chaque panneau gagne sa place. Le nom de la série est le titre du panneau (la couleur ne porte jamais seule le nom).
+  // Retourne `{ option, refit }` : `refit(w, h)` rend la partie de l'option qui ne dépend que de la taille.
+  function buildSmallMultiplesOption(tile, multi, ctx) {
+    const { f, tipValue, dim, palette, width, height } = ctx;
+    const th = chartTheme();
+    const { panels, hidden } = smallMultiplesPanels(multi.series);
+    const range = smallMultiplesRange(panels);
+    const cats = multi.categories;
+    const n = panels.length;
+    const isBar = tile.type === 'bar';
+    const labelSize = Math.max(10, (GristBI.styles && GristBI.styles.current().chart && GristBI.styles.current().chart.labelSize) || 0);
+    // Largeur de la marge gauche : la plus large des graduations (mesurées, au format de l'axe), jamais plus que le quart de la tuile.
+    let widest = 0;
+    for (let v = range.min, guard = 0; v <= range.max + range.step * 1e-6 && guard < 40; v = Math.round((v + range.step) * 1e10) / 1e10, guard++) {
+      widest = Math.max(widest, measureText(f.axis(v) || '', labelSize, 400, th.font));
+    }
+    const left = Math.max(24, Math.min(Math.ceil(widest) + 8, Math.max(24, Math.floor((width || 300) / 4))));
+    const noteH = hidden > 0 ? 14 : 0;
+    const geometry = (w, h) => {
+      const layout = (bottom) => smallMultiplesGrid(n, w, h, { left, bottom: bottom + noteH, right: 8, titleH: 16, gapX: 10, gapY: 8 });
+      let g = layout(22);
+      // Des noms de catégorie qui n'ont plus que quelques pixels (« E… ») ne se lisent pas : on les retire (l'infobulle les donne) et la
+      // place qu'ils prenaient sous la dernière rangée revient aux panneaux.
+      const labelRaw = g.plotW / Math.max(1, Math.min(cats.length, 4));
+      const showCats = labelRaw >= 24;
+      if (!showCats) g = layout(4);
+      const cell = (i) => ({ c: i % g.cols, r: Math.floor(i / g.cols) });
+      const isBottom = (i) => showCats && i + g.cols >= n; // aucun panneau en dessous : c'est lui qui porte les catégories
+      const labelW = Math.max(20, Math.min(70, Math.floor(labelRaw)));
+      return {
+        g, cell, isBottom, labelW,
+        grid: panels.map((_, i) => { const { c, r } = cell(i); return { left: g.xs[c], top: g.ys[r], width: g.plotW, height: g.plotH, containLabel: false }; }),
+        title: panels.map((sr, i) => { const { c, r } = cell(i); return { text: String(sr.name), left: g.xs[c], top: g.ys[r] - g.titleH, textStyle: { color: th.text, fontSize: 11, fontWeight: 600, width: Math.floor(g.plotW), overflow: 'truncate' } }; })
+      };
+    };
+    const geo = geometry(width, height);
+    const color = (i) => palette[i % palette.length];
+    const option = {
+      color: palette,
+      grid: geo.grid,
+      title: geo.title,
+      tooltip: { trigger: 'axis', valueFormatter: tipValue, axisPointer: { type: isBar ? 'shadow' : 'line' } },
+      xAxis: panels.map((_, i) => ({
+        type: 'category',
+        gridIndex: i,
+        data: cats,
+        axisLabel: { show: geo.isBottom(i), width: geo.labelW, overflow: 'truncate', ellipsis: '…', fontSize: labelSize },
+        axisTick: { show: geo.isBottom(i), alignWithLabel: true }
+      })),
+      yAxis: panels.map((_, i) => ({
+        type: 'value',
+        gridIndex: i,
+        min: range.min,
+        max: range.max,
+        interval: range.step,
+        axisLabel: { show: geo.cell(i).c === 0, formatter: f.axis, fontSize: labelSize }
+      })),
+      series: panels.map((sr, i) => {
+        const col = color(i);
+        const data = sr.values.map((v, k) => ({ value: v, itemStyle: dim(cats[k]) }));
+        const base = { name: String(sr.name), xAxisIndex: i, yAxisIndex: i, data };
+        if (isBar) return { ...base, type: 'bar', barCategoryGap: '30%', itemStyle: { color: col } };
+        return {
+          ...base,
+          type: 'line',
+          symbolSize: cats.length > 24 ? 0 : 4,
+          lineStyle: { color: col },
+          itemStyle: { color: col },
+          ...(lineShapeOf(tile) === 'smooth' ? { smooth: 0.35 } : (lineShapeOf(tile) === 'step' ? { step: 'middle' } : {})),
+          ...(tile.areaFill ? { areaStyle: { color: col, opacity: 0.25 } } : {})
+        };
+      }),
+      graphic: hidden > 0 ? [{
+        type: 'text', left: 8, bottom: 2, silent: true,
+        style: { text: t('chart.smallMultiples.hidden', { shown: n, n: n + hidden }), fill: th.muted, fontSize: 11, fontFamily: th.font }
+      }] : undefined
+    };
+    // La partie qui ne dépend que de la taille de la tuile : grilles, titres, largeur des libellés de catégorie.
+    const refit = (w, h) => {
+      const next = geometry(w, h);
+      return { grid: next.grid, title: next.title, xAxis: panels.map((_, i) => ({ axisLabel: { show: next.isBottom(i), width: next.labelW }, axisTick: { show: next.isBottom(i) } })) };
+    };
+    return { option, refit };
+  }
+
   // ASYNCHRONE depuis que l'agrégation peut passer par DuckDB-WASM au-delà du seuil (voir
   // computeGroupBy) : récupère/crée l'instance ECharts et affiche le fil d'Ariane IMMÉDIATEMENT
   // (ni l'un ni l'autre ne dépend du calcul), bascule l'instance en "chargement" seulement si ce
@@ -1292,8 +1382,20 @@
         labelLayout: { hideOverlap: true }
       };
     };
+    instance.__refit = undefined; // une géométrie en pixels d'un rendu précédent (petits multiples) ne vaut plus ; celui qui en pose une la repose
     let option;
-    if (tile.type === 'pie') {
+    // Petits multiples : un petit graphique par série, sur UNE instance (js/data.js:isSmallMultiplesTile) ; remplace la construction
+    // barres/courbe plus bas, qui ne s'exécute donc pas.
+    const smallOn = !!multi && isSmallMultiplesTile(tile);
+    if (smallOn) {
+      const built = buildSmallMultiplesOption(tile, multi, { f, tipValue, dim, palette, width: instance.getWidth(), height: instance.getHeight() });
+      option = built.option;
+      instance.__refit = () => {
+        const w = instance.getWidth();
+        const h = instance.getHeight();
+        if (w && h) instance.setOption(built.refit(w, h));
+      };
+    } else if (tile.type === 'pie') {
       // `tile.donut` : même série `pie` qu'un camembert plein, seul le rayon change (un tableau
       // [intérieur, extérieur] ouvre le trou central) — drill-down/cross-filter inchangés, un clic
       // renvoie toujours `params.name`. `tile.showPct` : étiquette « nom » puis « x,x % » sur DEUX

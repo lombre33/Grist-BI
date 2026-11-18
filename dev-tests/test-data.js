@@ -5709,6 +5709,107 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     console.log('OK gantt — barres début/fin, lignes sans dates écartées, tri, plafond, axe du temps, aujourd\'hui, store (libellé, statut), export, défauts, conseils, i18n, câblage');
   }
 
+  // Petits multiples (18/11/2026) : un petit graphique par valeur de la colonne Séries, même échelle, mêmes catégories ; option des barres/courbe, pas un type.
+  {
+    const fsS = require('fs'), pathS = require('path'), rootS = pathS.join(__dirname, '..');
+    // Prédicats : barres brutes ou courbe avec une colonne Séries, case cochée ; jamais sans Séries, en mode mesure, ni sur un autre type.
+    const smBar = { type: 'bar', dimension: 'P', measure: 'M', aggFn: 'sum', seriesColumn: 'R', smallMultiples: true };
+    assert.strictEqual(data.isSmallMultiplesTile(smBar), true);
+    assert.strictEqual(data.isSmallMultiplesTile(Object.assign({}, smBar, { type: 'line' })), true);
+    assert.strictEqual(data.isSmallMultiplesTile(Object.assign({}, smBar, { smallMultiples: undefined })), false);
+    assert.strictEqual(data.isSmallMultiplesTile(Object.assign({}, smBar, { smallMultiples: 'true' })), false, 'seul `true` compte');
+    assert.strictEqual(data.isSmallMultiplesTile(Object.assign({}, smBar, { seriesColumn: '' })), false, 'sans colonne Séries : rien à séparer');
+    assert.strictEqual(data.isSmallMultiplesTile(Object.assign({}, smBar, { measureMode: 'ytd', dateColumn: 'D' })), false, 'mode mesure : une seule série par nature');
+    assert.strictEqual(data.isSmallMultiplesTile(Object.assign({}, smBar, { type: 'pie' })), false);
+    assert.strictEqual(data.isSmallMultiplesTile(null), false);
+    // Rien d'empilé, ni repère, ni étiquettes : les options valables pour des séries superposées sont ignorées (elles restent lisibles si la case est décochée).
+    const wished = Object.assign({}, smBar, { stacked: true, stackPercent: true, refLine: 'average', valueLabels: true, horizontal: true });
+    assert.strictEqual(data.isStackedTile(wished), false); assert.strictEqual(data.isStackedPercentTile(wished), false);
+    assert.strictEqual(data.supportsRefLine(wished), false); assert.strictEqual(data.refLineKind(wished), ''); assert.strictEqual(data.refLineValue(wished, [1, 2, 3]), null); assert.strictEqual(data.supportsValueLabels(wished), false);
+    assert.strictEqual(data.isStackedTile(Object.assign({}, wished, { smallMultiples: undefined })), true, 'décochée : la pile revient');
+    assert.strictEqual(data.supportsRefLine(Object.assign({}, wished, { smallMultiples: undefined })), true);
+    assert.strictEqual(data.isSeriesTile(smBar), true, 'ce sont bien les calculs des séries multiples');
+
+    // Panneaux : au plus 12, le reste compté.
+    const mk = (n) => Array.from({ length: n }, (_, i) => ({ name: 'S' + i, values: [i] }));
+    assert.deepStrictEqual(data.smallMultiplesPanels(mk(4)).hidden, 0); assert.strictEqual(data.smallMultiplesPanels(mk(4)).panels.length, 4);
+    const big14 = data.smallMultiplesPanels(mk(14)); assert.strictEqual(big14.panels.length, 12); assert.strictEqual(big14.hidden, 2); assert.strictEqual(big14.panels[11].name, 'S11', 'les premières séries');
+    assert.deepStrictEqual(data.smallMultiplesPanels(mk(5), 3).panels.map((x) => x.name), ['S0', 'S1', 'S2']); assert.strictEqual(data.smallMultiplesPanels(null).panels.length, 0); assert.strictEqual(data.SMALL_MULTIPLES_MAX, 12);
+
+    // Échelle commune : de 0 au plus haut (négatifs compris), 2 à 4 intervalles, la plus serrée ; valeurs vides/texte/BigInt.
+    const rg = (vals) => data.smallMultiplesRange([{ values: vals }]);
+    assert.deepStrictEqual(rg([6021]), { min: 0, max: 7500, step: 2500 }, '6 021 s\'arrête à 7 500, pas à 10 000');
+    assert.deepStrictEqual(rg([2014]), { min: 0, max: 3000, step: 1000 });
+    assert.deepStrictEqual(rg([100]), { min: 0, max: 100, step: 50 }, 'jamais une échelle à un seul intervalle');
+    assert.deepStrictEqual(rg([12]), { min: 0, max: 15, step: 5 });
+    assert.deepStrictEqual(rg([0.35]), { min: 0, max: 0.4, step: 0.2 }); assert.deepStrictEqual(rg([-3, 2]), { min: -4, max: 2, step: 2 }); assert.deepStrictEqual(rg([-100, 50]), { min: -100, max: 50, step: 50 });
+    assert.deepStrictEqual(rg([0, 0]), { min: 0, max: 1, step: 0.5 }, 'rien à montrer : 0 à 1'); assert.deepStrictEqual(rg([null, 'x', true, NaN]), { min: 0, max: 1, step: 0.5 }); assert.deepStrictEqual(data.smallMultiplesRange([]), { min: 0, max: 1, step: 0.5 }); assert.deepStrictEqual(data.smallMultiplesRange(null), { min: 0, max: 1, step: 0.5 });
+    assert.deepStrictEqual(rg([BigInt(6021)]), rg([6021]), 'DuckDB rend des BigInt');
+    assert.deepStrictEqual(data.smallMultiplesRange([{ values: [1, null] }, { values: [12, 3] }, { values: [5] }]), { min: 0, max: 15, step: 5 }, 'tous les panneaux, un seul jeu de bornes');
+    for (const hi of [1, 2, 3, 5, 7, 9, 12, 33, 99, 101, 250, 999, 1500, 4800, 6021, 12345, 1234567, 0.07, 0.9]) {
+      const r = rg([hi]); const k = (r.max - r.min) / r.step;
+      assert.ok(r.max >= hi && r.min <= 0, 'couvre ' + hi); assert.ok(Math.abs(k - Math.round(k)) < 1e-9 && k >= 2 && k <= 4, 'de 2 à 4 intervalles entiers pour ' + hi + ' : ' + k);
+      assert.ok(hi / r.max >= 0.5, 'la plus haute valeur remplit au moins la moitié de l\'échelle (' + hi + ' sur ' + r.max + ')');
+    }
+
+    // Grille : colonnes choisies pour la plus grande zone de tracé, dans la tuile, sans recouvrement, jamais une dimension nulle.
+    const gr = (n, w, h, o) => data.smallMultiplesGrid(n, w, h, o);
+    assert.strictEqual(gr(1, 270, 180).cols, 1); assert.strictEqual(gr(4, 270, 180).cols, 2); assert.strictEqual(gr(4, 270, 180).rows, 2); assert.strictEqual(gr(12, 270, 180).cols, 4);
+    assert.strictEqual(gr(4, 1200, 200).cols, 4, 'tuile très large : une rangée'); assert.strictEqual(gr(4, 200, 900).cols, 1, 'tuile très haute : une colonne');
+    for (const [n, w, h] of [[1, 270, 180], [2, 270, 180], [3, 270, 180], [4, 270, 180], [5, 270, 180], [7, 300, 200], [12, 270, 180], [12, 1200, 600], [6, 80, 60], [9, 0, 0]]) {
+      const g = gr(n, w, h); assert.strictEqual(g.cols * g.rows >= n, true); assert.ok(g.plotW >= 1 && g.plotH >= 1);
+      assert.strictEqual(g.xs.length, g.cols); assert.strictEqual(g.ys.length, g.rows);
+      if (w > 0 && h > 0 && w > 120 && h > 100) {
+        assert.ok(g.xs[g.cols - 1] + g.plotW <= w + 1e-6, 'dans la largeur ' + [n, w, h]); assert.ok(g.ys[g.rows - 1] + g.plotH <= h + 1e-6, 'dans la hauteur ' + [n, w, h]);
+        for (let c = 1; c < g.cols; c++) assert.ok(g.xs[c] >= g.xs[c - 1] + g.plotW, 'colonnes sans recouvrement'); for (let r = 1; r < g.rows; r++) assert.ok(g.ys[r] - g.titleH >= g.ys[r - 1] + g.plotH, 'rangées sans recouvrement (titre compris)');
+      }
+    }
+    assert.deepStrictEqual(gr(3, 300, 200, { left: 60, bottom: 40 }).xs[0], 60, 'marge gauche réservée aux graduations'); assert.ok(gr(1, 300, 200, { bottom: 60 }).plotH < gr(1, 300, 200, { bottom: 10 }).plotH, 'marge basse réservée aux catégories');
+
+    // Export Excel : celui des mêmes séries superposées (la mise en page ne change pas les données).
+    const rowsS = []; ['N', 'S', 'E'].forEach((r, ri) => ['a', 'b', 'c', 'd'].forEach((p, pi) => rowsS.push({ R: r, P: p, M: (ri + 1) * (pi + 1) })));
+    const stS = { rows: rowsS, activeFilters: [], advancedFilters: [], drillIns: {}, comments: [], pages: [] };
+    const sheetOn = data.tileExportSheet(Object.assign({ id: 'x', title: 'Montants' }, smBar), stS); const sheetOff = data.tileExportSheet(Object.assign({ id: 'x', title: 'Montants' }, smBar, { smallMultiples: undefined }), stS);
+    assert.deepStrictEqual(sheetOn, sheetOff); assert.ok(sheetOn.rows.length > 0);
+
+    // Conseils : plus de 12 séries (seuls 12 panneaux), une seule série, trop de catégories ; la couleur n'est plus le sujet (> 8 séries ne dit rien de la palette).
+    const many = []; for (let r = 0; r < 14; r++) for (let p = 0; p < 3; p++) many.push({ R: 'S' + r, P: 'p' + p, M: r + p });
+    assert.deepStrictEqual(advice.adviceForTile(smBar, many), { key: 'advice.smallMultiples.tooMany', vars: { n: 14, max: 12 }, level: 'warn' });
+    assert.strictEqual(advice.adviceForTile(Object.assign({}, smBar, { smallMultiples: undefined }), many).key, 'advice.series.tooMany', 'sans la case : l\'avertissement de couleurs');
+    const ten = []; for (let r = 0; r < 10; r++) for (let p = 0; p < 3; p++) ten.push({ R: 'S' + r, P: 'p' + p, M: r + p });
+    assert.strictEqual(advice.adviceForTile(smBar, ten), null, '10 séries : plus de limite de couleurs, 10 panneaux');
+    assert.strictEqual(advice.adviceForTile(Object.assign({}, smBar, { smallMultiples: undefined }), ten).key, 'advice.series.tooMany');
+    assert.deepStrictEqual(advice.adviceForTile(smBar, rowsS.filter((r) => r.R === 'N')), { key: 'advice.smallMultiples.single', vars: {}, level: 'tip' });
+    const wide = []; for (let r = 0; r < 3; r++) for (let p = 0; p < 30; p++) wide.push({ R: 'S' + r, P: 'p' + p, M: r + p });
+    assert.deepStrictEqual(advice.adviceForTile(smBar, wide), { key: 'advice.smallMultiples.tooManyCategories', vars: { n: 30, max: 24 }, level: 'tip' });
+    assert.strictEqual(advice.adviceForTile(smBar, rowsS), null, 'un cas sain : aucun conseil');
+    assert.doesNotThrow(() => advice.adviceForTile({ type: 'bar', dimension: 'Absente', measure: 'Autre', aggFn: 'sum', seriesColumn: 'Encore', smallMultiples: true }, rowsS));
+
+    // i18n : fr/en, et la note dit combien de panneaux sont dessinés.
+    ['tileForm.smallMultiples.label', 'chart.smallMultiples.hidden', 'advice.smallMultiples.tooMany', 'advice.smallMultiples.single', 'advice.smallMultiples.tooManyCategories']
+      .forEach((k) => assert.ok(i18n.STRINGS[k] && i18n.STRINGS[k].fr && i18n.STRINGS[k].en, 'traduction fr/en : ' + k));
+    i18n.setLang('fr'); assert.strictEqual(i18n.t('chart.smallMultiples.hidden', { shown: 12, n: 14 }), 'Les 12 premières séries sur 14');
+    i18n.setLang('en'); assert.strictEqual(i18n.t('chart.smallMultiples.hidden', { shown: 12, n: 14 }), 'First 12 of 14 series'); i18n.setLang('fr');
+
+    // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
+    const mainS = fsS.readFileSync(pathS.join(rootS, 'js', 'main.js'), 'utf8');
+    const chartsS = fsS.readFileSync(pathS.join(rootS, 'js', 'charts.js'), 'utf8');
+    const indexS = fsS.readFileSync(pathS.join(rootS, 'index.html'), 'utf8');
+    assert.ok(/id="tile-small-multiples"/.test(indexS) && /id="tile-small-multiples-field"/.test(indexS) && /data-i18n="tileForm\.smallMultiples\.label"/.test(indexS), 'case et champ du formulaire');
+    assert.ok(/smallMultiplesCheckbox\.addEventListener\('change', updateFormFieldsForType\)/.test(mainS), 'la case relance l\'affichage des champs qu\'elle exclut');
+    assert.ok(/smallMultiplesField\.hidden = !\(seriesSelect\.value && \(isBarBrut \|\| type === 'line'\)\)/.test(mainS), 'visible avec une colonne Séries, barres brutes ou courbe');
+    assert.ok(/\[stackField, stackPercentField, horizontalField, valueLabelsField, refLineField, refValueField\]\.forEach/.test(mainS), 'les champs exclus sont masqués');
+    assert.ok(/tileData\.smallMultiples = smallOnForm \? true : undefined/.test(mainS) && /tileData\.stacked = \(seriesColumn && !smallOnForm &&/.test(mainS) && /horizontalCheckbox\.checked && !smallOnForm/.test(mainS) && /valueLabelsCheckbox\.checked && !smallOnForm/.test(mainS) && /!stackPctForm && !smallOnForm/.test(mainS), 'readTileForm écarte ce qui est exclu : jamais une valeur cachée qui bloque ou revient');
+    assert.ok(/smallMultiplesCheckbox\.checked = !!tile\.smallMultiples/.test(mainS) && /smallMultiplesCheckbox\.checked = false;/.test(mainS), 'édition et réinitialisation');
+    assert.ok(/const smallOn = !!multi && isSmallMultiplesTile\(tile\);\s*\n\s*if \(smallOn\) \{/.test(chartsS), 'branché dans la chaîne de renderChart (le nombre de finalizeOption/setOption ne change pas)');
+    assert.ok(/instance\.__refit = undefined; \/\/ une géométrie en pixels/.test(chartsS) && /instance\.__refit = \(\) => \{\s*\n\s*const w = instance\.getWidth\(\);/.test(chartsS), 'la géométrie en pixels est reposée au redimensionnement, et levée quand la case est décochée');
+    const bs = chartsS.slice(chartsS.indexOf('function buildSmallMultiplesOption'), chartsS.indexOf('async function renderChart'));
+    assert.ok(/String\(sr\.name\)/.test(bs) && !/innerHTML|formatter: \(/.test(bs.replace(/formatter: f\.axis/g, '')), 'le nom de série n\'est que du texte canvas, aucune chaîne en HTML');
+    assert.ok(/xAxisIndex: i, yAxisIndex: i/.test(bs) && /min: range\.min,\s*\n\s*max: range\.max,\s*\n\s*interval: range\.step/.test(bs), 'chaque panneau a ses axes, tous sur la même échelle');
+    assert.ok(!/Intl\.NumberFormat|toFixed/.test(chartsS), 'aucun format de nombre en dur dans charts.js');
+    console.log('OK petits multiples — prédicats, échelle commune, grille, panneaux plafonnés, export inchangé, conseils, i18n, câblage');
+  }
+
   // Export Excel avec ExcelJS 4.4.0 (consigne GFS 017, 18/11/2026) : le VRAI paquet vendorisé, exécuté sous Node
   // (js/export.js se charge sous Node : mise en forme des cellules et construction du classeur, sans DOM). Ce que ces
   // essais ne voient pas : le chargement paresseux dans un navigateur et le déclenchement du téléchargement.

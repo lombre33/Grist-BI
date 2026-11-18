@@ -51,6 +51,7 @@
   const FUNNEL_MAX_STAGES = 10;
   // Autant de séries que de couleurs de la palette du tableau de bord (js/charts.js:CATEGORICAL_PALETTE).
   const SERIES_MAX = 8;
+  const SMALL_MULTIPLES_MAX_CATEGORIES = 24; // au-delà, les catégories d'un petit panneau (une cinquantaine de pixels de large) ne se lisent plus
   const LONG_LABEL = 14;
 
   // Même liste que js/data.js (GRIST_TECHNICAL_COLUMNS) : `manualSort` n'est jamais une donnée.
@@ -972,7 +973,13 @@
       // Au-delà du nombre de couleurs de la palette choisie, ECharts reprend au début : deux séries
       // auraient la même couleur. Le plafond suit donc la palette (8 en Standard, 6 en Okabe-Ito…).
       const seriesCap = Math.min(SERIES_MAX, data.paletteColors(tile.palette).length);
-      if (seriesCount > seriesCap) return warn('advice.series.tooMany', { n: seriesCount, max: seriesCap });
+      // Petits multiples : une couleur par série n'est plus le sujet (chaque série a son panneau) ; le plafond est le nombre de panneaux,
+      // et des catégories trop nombreuses n'ont plus la place de se lire dans un panneau étroit.
+      const small = data.isSmallMultiplesTile(tile);
+      if (small && seriesCount > data.SMALL_MULTIPLES_MAX) return warn('advice.smallMultiples.tooMany', { n: seriesCount, max: data.SMALL_MULTIPLES_MAX });
+      if (small && seriesCount < 2) return tip('advice.smallMultiples.single');
+      if (small && n > SMALL_MULTIPLES_MAX_CATEGORIES) return tip('advice.smallMultiples.tooManyCategories', { n, max: SMALL_MULTIPLES_MAX_CATEGORIES });
+      if (!small && seriesCount > seriesCap) return warn('advice.series.tooMany', { n: seriesCount, max: seriesCap });
       // Une pile additionne les hauteurs : sans sens pour une moyenne, un minimum ou un maximum.
       if (data.isStackedTile(tile) && (tile.aggFn === 'avg' || tile.aggFn === 'min' || tile.aggFn === 'max')) return warn('advice.stacked.notAdditive');
       // 100 % : une part n'a de sens que pour des valeurs positives (un total nul ou une pile qui descend sous zéro ne se lit pas en %).
