@@ -3144,6 +3144,29 @@ des nombres étant laissé au fil « Rendre les valeurs lisibles sur chaque tuil
   « Ajouter la visualisation » ; `submit` ne part jamais dans ce cadre, c'est `bindFormSubmit`). **Pas testé dans un vrai
   Grist ni dans un vrai GFS.**
 
+### Tuiles usuelles des outils BI — lot 1, table plate (18/11/2026)
+
+- **Ce que c'est** : type `table`, `tile.columns` (au moins une) = les colonnes cochées dans le formulaire, dans l'ordre des
+  flèches ▲▼ ; une ligne par ligne de la table de travail après les mêmes filtres que le bouton « Détail » (`rowsForTile`) ;
+  aucune agrégation, ni dimension, ni mesure.
+- **Tri** : un clic sur l'en-tête (croissant, décroissant, ordre d'origine) est un état de LECTURE, gardé par id de tuile dans
+  `js/charts.js` et jamais écrit dans la configuration : une personne qui lit le tableau de bord ne modifie pas la tuile des
+  autres, comme pour le chemin de drill-down. Il s'applique à TOUTES les lignes avant la coupe d'affichage (500).
+- **Choix de format des nombres** : Automatique = la donnée brute (`GristBI.format.cellNumber`), parce que le format Automatique
+  des chiffres clés (« 2 024 », milliers dès 1 000) serait faux pour une année, un code postal ou un identifiant. Un format
+  choisi pour la tuile (`custom`, ou « comme dans la colonne ») s'applique, avec le lot du fil « valeurs lisibles ».
+- **Pas de cross-filtre au clic d'une ligne** (décision de départ, à rouvrir si Antoine le veut) : une ligne n'est pas une catégorie,
+  et un clic de cellule qui poserait un filtre `=` sur n'importe quelle colonne numérique serait surprenant ; le filtre avancé couvre
+  ce besoin.
+- **Exports** : Excel jusqu'à 100 000 lignes dans l'ordre des colonnes de la tuile ; PDF 200 lignes, PowerPoint 12 (une
+  diapositive), avec une ligne « … N lignes de plus (voir l'export Excel) ».
+- **Bug réel trouvé en chemin** (voir TEST_PROTOCOL.md n°41, CLAUDE.md §7 n°24) : changer le TYPE d'une tuile en édition gardait
+  l'élément DOM de l'ancien type. Corrigé pour tous les types (`render()` recrée l'élément quand `dataset.tileType` diffère).
+- **Testé** : Node (bloc « tuile Table » de `dev-tests/test-data.js`) ; Playwright contre le vrai `index.html` + `grist-stub.js`,
+  page directe et `<iframe sandbox="allow-scripts">` (clics réels : carte Table, cases, flèches, tri, plafond à 1 200 lignes,
+  édition, Excel, anglais). **Pas testé dans un vrai Grist ni un vrai GFS ; types Grist exotiques (Attachments, Reference
+  résolue, ChoiceList) vus seulement par leur forme supposée** (`cellText`).
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée
