@@ -1,6 +1,6 @@
 # GFS-ETAT : Grist-BI
 
-Mis à jour le 2026-11-18 (ECharts 6.1.0 noté dans « Changements qui touchent GFS » ; consigne 015 lue, `consignes/bi/INDEX.md` à `a16fe10` ou plus récent). La
+Mis à jour le 2026-11-18 (ECharts 6.1.0 noté dans « Changements qui touchent GFS » ; consigne 016 faite, `consignes/bi/INDEX.md` à `47365bc` ou plus récent). La
 011 n'a pas été lue (remplacée par la 012 avant lecture, consigne explicite d'Antoine).
 
 ## Consignes
@@ -225,6 +225,31 @@ Mis à jour le 2026-11-18 (ECharts 6.1.0 noté dans « Changements qui touchent 
   de « Demandes à GFS » redite au nouveau commit. Les demandes `d3-cloud` et `pdfjs-dist` attendent
   toujours le mot du porteur côté GFS, inchangées par cette consigne. **Pas mesuré par GFS** : le
   premier export Excel dans GFS (013) — hors du périmètre de cette consigne, rien à rejouer ici.
+- 016 · faite · `cf889aa` · **Modèles de rapport pour « Nouveau > Depuis un modèle »** (facultative ; faite). (1) Catalogue :
+  `modeles/modeles.json` à la racine + une vignette WebP 240 × 320 par modèle (`vue-d-ensemble.webp`,
+  `evolution.webp`, `repartition.webp`, 9 228 / 9 172 / 9 570 octets, mesurés ; données d'exemple de ventes, aucun nom de personne).
+  Trois modèles de type `rapport`, noms de 8 à 25 signes et descriptions de 86 à 117 signes en français et en
+  anglais, quatre étiquettes bilingues chacun ; **aucun `tables: true`, aucun `extensions`** : un modèle de cette app est
+  un rapport de départ posé sur une table que la personne a DÉJÀ (la règle « ce widget ne crée aucune table de
+  données » ne change pas, voir CLAUDE.md §8), défini par des rôles (une date, des catégories, une mesure) et non par des
+  noms de colonne — il pioche ses tuiles parmi les suggestions de l'écran d'accueil. `vue-d-ensemble` : deux chiffres
+  clés avec tendance, aire dans le temps, barres, anneau ; `evolution` : chiffre clé, aire, aire empilée par
+  catégorie, barres par mois ; `repartition` : barres sur deux dimensions, anneau, treemap, tableau croisé. (2)
+  Ouverture : kit passé de `eaa2ae2` (0.9.0) à `7aa030c` (0.24.0), seul `kit/js/gfs-link.js` change parmi les fichiers
+  que cette app importe (vérifié par `git diff`). `GfsLink.onOpen` et l'ouverture initiale lisent `modele: { id }` et
+  ouvrent un rapport **non enregistré** (même jeton que « Nouveau » : rien n'est écrit tant que la personne n'a rien
+  fait). Un `id` inconnu, un type autre que `rapport` ou aucune table du document qui convienne rendent
+  `{ ouvert: false }` avec une fenêtre qui dit pourquoi, jamais un rapport vierge à la place ; à l'ouverture
+  initiale, un modèle qui ne s'ouvre pas laisse l'app démarrer comme d'habitude. Pour un `id` valide, le
+  modèle est appliqué à la table déjà connectée, sinon à la première table du document qui convient (8 au plus). (3)
+  Vérifié : tests Node (catalogue contre les règles de la consigne, correspondance exacte avec les modèles du code) et
+  le vrai `index.html` dans un `<iframe sandbox="allow-scripts">` servi par un **faux** GFS parent qui parle le
+  vrai kit 0.24.0 (9 scénarios, dont `id` inconnu, type `document` et ouverture sans table convenable). **Deux
+  réserves** : les vignettes viennent du vrai `index.html` avec le faux `window.grist` du dépôt, pas d'un
+  vrai Grist (même réserve que la vitrine, voir 014) ; et rien n'a été joué dans le vrai GFS (fenêtre « Depuis
+  un modèle », « Créer », copie du catalogue). **Trouvé en route** : une aire empilée par catégorie restait à plat
+  au-delà de 5 000 lignes (DuckDB rend un entier en BigInt, le JS pur un nombre) — corrigé à part, PR #65. Voir la
+  ligne « modeles » dans « Demandes à GFS ».
 
 ## Changements qui touchent GFS
 - 2026-11-18 · ECharts monté de la 5.6.0 à la **6.1.0** (dernière stable du registre npm, 19/05/2026, même version que
@@ -268,6 +293,14 @@ Mis à jour le 2026-11-18 (ECharts 6.1.0 noté dans « Changements qui touchent 
 - aucune
 
 ## Demandes à GFS
+- **`modeles`** · `cf889aa` · `modeles/modeles.json` · mes modèles de départ pour « Depuis un modèle » :
+  trois rapports (`vue-d-ensemble`, `evolution`, `repartition`), chacun avec sa vignette WebP à côté
+  (`modeles/<id>.webp`). **`ouverture.modele`** : oui, cette app sait ouvrir un modèle (kit 0.24.0, `7aa030c`) ; un
+  `id` inconnu ou un type refusé rend `{ ouvert: false }`. Aucune table créée, donc pas de `tables`. Même
+  réserve que `vitrine` sur les images : prises avec le vrai `index.html` et le faux `window.grist` du dépôt,
+  pas dans un vrai Grist (la consigne 016 demandait un vrai Grist). Si tu veux de vraies vignettes, dis-le : elles seront
+  refaites sous les mêmes noms de fichier. Le commit `cf889aa` contient le catalogue, ses vignettes et le code qui
+  les ouvre.
 - **`vitrine`** · `16379d0` · `vitrine/vitrine.json` · description et trois captures pour la carte et
   la fiche. **Remplacement du 18/11/2026** (Antoine : les deux premières captures se ressemblaient) :
   les trois images sont refaites sous les MÊMES noms (`1.webp` 48 692, `2.webp` 47 250, `3.webp`
