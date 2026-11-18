@@ -219,8 +219,8 @@
   <div id="export-popover" class="popover popover-menu" role="menu" data-i18n-aria="export.menu.aria" aria-label="Exporter" hidden>
     
     <button id="export-excel" type="button" class="menu-item" role="menuitem" data-close-popover disabled aria-disabled="true"><span data-i18n="bookmarks.exportExcel">Exporter en Excel</span> <span class="menu-item-soon" data-i18n="export.soon">bientôt disponible</span></button>
-    <button id="export-pdf" type="button" class="menu-item" role="menuitem" data-close-popover disabled aria-disabled="true"><span data-i18n="bookmarks.exportPdf">Exporter en PDF</span> <span class="menu-item-soon" data-i18n="export.soon">bientôt disponible</span></button>
-    <button id="export-pptx" type="button" class="menu-item" role="menuitem" data-close-popover disabled aria-disabled="true"><span data-i18n="bookmarks.exportPptx">Exporter en PPTX</span> <span class="menu-item-soon" data-i18n="export.soon">bientôt disponible</span></button>
+    <button id="export-pdf" type="button" class="menu-item" role="menuitem" data-close-popover data-i18n="bookmarks.exportPdf">Exporter en PDF</button>
+    <button id="export-pptx" type="button" class="menu-item" role="menuitem" data-close-popover data-i18n="bookmarks.exportPptx">Exporter en PPTX</button>
   </div>
 
   <div id="settings-modal" class="settings-modal" hidden>
@@ -912,6 +912,8 @@
   <script src="../js/charts.js"></script>
   <script src="../js/export.js"></script>
   
+  <script src="../js/snapshot.js"></script>
+  <script src="../js/pdf-writer.js"></script>
   <script src="../js/pdf-export.js"></script>
   
   <script src="../js/pptx-export.js"></script>

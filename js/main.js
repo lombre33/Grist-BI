@@ -386,11 +386,12 @@
   const exportPdfBtn = document.getElementById('export-pdf');
   const exportPptxBtn = document.getElementById('export-pptx');
 
-  // Exports PDF/PPTX/Excel provisoirement désactivés (18/11/2026, demande d'Antoine : le PDF empile les cartes au lieu
-  // de garder le visuel du tableau de bord, le PPTX ne charge pas sa bibliothèque dans un vrai Grist). Les boutons du
-  // menu Exporter sont grisés dans index.html (« bientôt disponible ») ; ce drapeau les garde fermés quand une table se
-  // connecte (setTableDependentControlsEnabled) et coupe les écouteurs. Remettre à `true` quand les exports sont refaits.
-  const EXPORTS_AVAILABLE = false;
+  // Exports (18/11/2026, demande d'Antoine) : le PDF empilait les cartes au lieu de garder le visuel du tableau de bord et le PPTX ne chargeait pas sa
+  // bibliothèque dans un vrai Grist ; ils ont été grisés en urgence puis REFAITS (js/snapshot.js : la page est photographiée telle qu'elle est
+  // dessinée) et sont rouverts. L'export Excel reste provisoirement fermé (fil à part). Un export fermé a son bouton GRISÉ dans index.html
+  // (« bientôt disponible ») ; ce tableau le garde fermé quand une table se connecte (setTableDependentControlsEnabled) et coupe son écouteur.
+  // Remettre `excel` à `true` ET dégriser son bouton (retirer `disabled`, `aria-disabled` et la mention) quand l'export Excel est rouvert.
+  const EXPORTS_AVAILABLE = { excel: false, pdf: true, pptx: true };
   const tableSelectInput = document.getElementById('table-select');
   const blendSecondaryTableInput = document.getElementById('blend-secondary-table');
   const blendPrimaryColumnInput = document.getElementById('blend-primary-column');
@@ -1013,7 +1014,9 @@
                        blendSecondaryTableInput, blendPrimaryColumnInput, blendSecondaryColumnInput]) {
       el.disabled = !enabled;
     }
-    if (!EXPORTS_AVAILABLE) for (const el of [exportExcelBtn, exportPdfBtn, exportPptxBtn]) el.disabled = true;
+    for (const [btn, key] of [[exportExcelBtn, 'excel'], [exportPdfBtn, 'pdf'], [exportPptxBtn, 'pptx']]) {
+      if (!EXPORTS_AVAILABLE[key]) btn.disabled = true;
+    }
   }
 
   // Mode Lecture / Édition (audit UI/UX du 18/11/2026) : `body[data-mode]` masque en lecture tout ce
@@ -2992,7 +2995,7 @@
   // (voir HYPOTHESES.md) — fonctionne dans ce harness et un navigateur standard, l'iframe n'étant
   // pas sandboxée (voir ROADMAP.md).
   exportExcelBtn.addEventListener('click', async () => {
-    if (!EXPORTS_AVAILABLE) return;
+    if (!EXPORTS_AVAILABLE.excel) return;
     try {
       const exported = await GristBI.exportExcel.exportDashboardToExcel(store.getState());
       if (!exported) showNotice(t('export.none'));
@@ -3002,30 +3005,28 @@
     }
   });
 
-  // Seulement la page actuellement affichée (voir js/pdf-export.js), pas toutes les pages comme
-  // l'export Excel — chaque graphique capturé est celui déjà rendu de CETTE page. pdfmake est
-  // chargé depuis un CDN externe (dérogation d'Antoine, voir CLAUDE.md) : un échec réseau doit être
-  // clairement dit à l'utilisateur plutôt que de rester silencieux ou de casser la page.
+  // Seulement la page actuellement affichée (voir js/pdf-export.js), pas toutes les pages comme l'export Excel : la page est photographiée
+  // telle qu'elle est dessinée (js/snapshot.js), sans bibliothèque ni réseau.
   exportPdfBtn.addEventListener('click', async () => {
-    if (!EXPORTS_AVAILABLE) return;
+    if (!EXPORTS_AVAILABLE.pdf) return;
     try {
       const exported = await GristBI.exportPdf.exportDashboardToPdf(store.getState());
       if (!exported) showNotice(t('export.none'));
     } catch (e) {
       console.error('[GristBI] échec de l\'export PDF', e);
-      showError(t('export.pdf.networkError'));
+      showError(t('export.pdf.failed'));
     }
   });
 
   // Même raisonnement que l'export PDF ci-dessus, pour PptxGenJS (js/pptx-export.js).
   exportPptxBtn.addEventListener('click', async () => {
-    if (!EXPORTS_AVAILABLE) return;
+    if (!EXPORTS_AVAILABLE.pptx) return;
     try {
       const exported = await GristBI.exportPptx.exportDashboardToPptx(store.getState());
       if (!exported) showNotice(t('export.none'));
     } catch (e) {
       console.error('[GristBI] échec de l\'export PPTX', e);
-      showError(t('export.pptx.networkError'));
+      showError(t(e && e.code === GristBI.exportPptx.LOAD_ERROR_CODE ? 'export.pptx.networkError' : 'export.pptx.failed'));
     }
   });
 

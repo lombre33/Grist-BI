@@ -234,8 +234,8 @@
          tableau de bord, le PPTX ne charge pas sa bibliothèque dans un vrai Grist). Boutons grisés, jamais retirés : la mention
          « bientôt disponible » dit pourquoi. js/main.js:EXPORTS_AVAILABLE les réactive (et ne les laisse jamais se rouvrir à la connexion d'une table). -->
     <button id="export-excel" type="button" class="menu-item" role="menuitem" data-close-popover disabled aria-disabled="true"><span data-i18n="bookmarks.exportExcel">Exporter en Excel</span> <span class="menu-item-soon" data-i18n="export.soon">bientôt disponible</span></button>
-    <button id="export-pdf" type="button" class="menu-item" role="menuitem" data-close-popover disabled aria-disabled="true"><span data-i18n="bookmarks.exportPdf">Exporter en PDF</span> <span class="menu-item-soon" data-i18n="export.soon">bientôt disponible</span></button>
-    <button id="export-pptx" type="button" class="menu-item" role="menuitem" data-close-popover disabled aria-disabled="true"><span data-i18n="bookmarks.exportPptx">Exporter en PPTX</span> <span class="menu-item-soon" data-i18n="export.soon">bientôt disponible</span></button>
+    <button id="export-pdf" type="button" class="menu-item" role="menuitem" data-close-popover data-i18n="bookmarks.exportPdf">Exporter en PDF</button>
+    <button id="export-pptx" type="button" class="menu-item" role="menuitem" data-close-popover data-i18n="bookmarks.exportPptx">Exporter en PPTX</button>
   </div>
 
   <!-- Panneau Réglages : Langue (radio-boutons fr/en, même placement de référence que Publipostage+
@@ -972,12 +972,12 @@
   <script src="js/state.js"></script>
   <script src="js/charts.js"></script>
   <script src="js/export.js"></script>
-  <!-- Export PDF (js/pdf-export.js) : DÉROGATION explicite d'Antoine (2026-09-29, voir CLAUDE.md) à
-       la règle "tout vendorisé" ci-dessus — pdfmake est chargé depuis cdnjs.cloudflare.com à la
-       demande (au premier export, pas ici), même bibliothèque/CDN que le widget frère
-       publipostageGrist. Hash SRI figé dans js/pdf-export.js, échec réseau géré explicitement. -->
+  <!-- Exports PDF et PPTX (refaits le 18/11/2026) : la page est photographiée telle qu'elle est dessinée (js/snapshot.js, sans bibliothèque),
+       le PDF est écrit par js/pdf-writer.js (sans bibliothèque non plus : plus de pdfmake ni de vfs_fonts depuis cdnjs). -->
+  <script src="js/snapshot.js"></script>
+  <script src="js/pdf-writer.js"></script>
   <script src="js/pdf-export.js"></script>
-  <!-- Export PPTX (js/pptx-export.js) : même dérogation qu'au-dessus, pour PptxGenJS. -->
+  <!-- Export PPTX (js/pptx-export.js) : PptxGenJS est chargé à la demande depuis jsDelivr (dérogation d'Antoine du 29/09/2026, version figée + SRI). -->
   <script src="js/pptx-export.js"></script>
   <!-- Mots-clés des publications (consigne GFS 019) : extraction RAKE (pure), lecture du texte d'un PDF
        (PDF.js que GFS donne, jamais ajouté ici) et la logique pure de la fenêtre. Aucune de ces trois

@@ -78,9 +78,9 @@ Le lot 3 ne change aucune note : il corrige un vrai défaut que l'outil ne sait 
   n'a pas de palier entre « une table » et « tout » ; les seules tables créées sont `BI_Dashboard_Config`, `BI_Dashboard_Comments`,
   `BI_Dashboard_UserProbe` (et la table d'un import CSV, après confirmation de la personne).
 - **C-EXFIL-05 / C-EXFIL-06** : `<script>` et `import()` dont l'adresse est calculée. Les trois scripts (`js/export.js`,
-  `js/pdf-export.js`, `js/pptx-export.js`) viennent d'un dossier local ou d'une adresse figée à version et empreinte SRI ; les
+  `js/pdf-export.js`, `js/pptx-export.js`) viennent d'un dossier local ou d'une adresse figée à version et empreinte SRI (PptxGenJS, jsDelivr) ; les
   quatre `import()` (kit, dialogues, DuckDB) sont résolus sur `document.currentScript.src`.
-- **F-SOUV-01** : `cdnjs.cloudflare.com` pour pdfmake et PptxGenJS, dérogation actée par Antoine le 29/09/2026 (`CLAUDE.md` §8).
+- **F-SOUV-01** : `cdn.jsdelivr.net` pour PptxGenJS (version figée, SRI), dérogation actée par Antoine le 29/09/2026 (`CLAUDE.md` §8) ; pdfmake et cdnjs ont disparu le 18/11/2026.
 - **C-STOCK-01** : deux clés `localStorage`, déjà documentées (`gristbi_lang`, `gristbi_comment_author`) : préférences, aucun contenu
   du document.
 - **A-DEV-03** : les 11 « marqueurs » sont le mot `BUG` dans des commentaires qui racontent un défaut *corrigé* (« bug réel n°… »),

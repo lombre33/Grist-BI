@@ -73,6 +73,12 @@ réellement (voir HYPOTHESES.md).
   `Date`, recherche texte (insensible à la casse) pour le reste. Le type de champ affiché s'adapte
   automatiquement à la colonne choisie, en inspectant une valeur réelle (pas son nom). Se cumulent en
   ET avec les filtres croisés existants et s'appliquent à toutes les tuiles.
+- **Export PDF et PPTX** (refaits le 18/11/2026) : la page affichée est photographiée telle qu'elle est dessinée — même grille, même
+  disposition de page, même style (Standard, Fluide, Éditorial, Console, Verre dépoli), thème clair ou sombre, cartes KPI, tableaux et texte
+  compris. Le PDF (`dashboard-bi.pdf`) est une page à la largeur d'un A4 paysage avec un bandeau (nom de la page, jeu de données, date, vue
+  suivie, filtres actifs), écrite sans bibliothèque ; le PPTX (`dashboard-bi.pptx`) a la page en diapositive 1 puis une diapositive par tuile
+  (PptxGenJS, chargé à la demande depuis jsDelivr). Ce sont des images : le texte n'est pas sélectionnable, une tuile rognée à l'écran (tableau
+  croisé large) l'est aussi dans le fichier — l'agrandir avant d'exporter. L'export Excel est provisoirement fermé (« bientôt disponible »).
 - **Export Excel** : « Exporter en Excel » télécharge un classeur `.xlsx` avec une feuille par tuile
   (toutes pages confondues), agrégées exactement comme à l'écran — mêmes filtres croisés, filtres
   avancés et niveau de drill-down par tuile appliqués. Basé sur [ExcelJS](https://github.com/exceljs/exceljs)

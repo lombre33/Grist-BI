@@ -861,7 +861,7 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 - [x] Nombres Automatique = donnée (2024, 1542980,88 / 1542980.88, `-0`, `BigInt`), format choisi respecté ✅
 - [x] Formulaire : champs de données masqués, tout décoché -> erreur sous la liste sans tuile ajoutée, flèches ▲▼ (focus gardé, bornes désactivées), aperçu vivant, édition recharge l'ordre et les cases 🌐
 - [x] Filtre croisé d'une autre tuile : les lignes suivent ; 1 200 lignes -> 500 affichées + message de troncature ; retour à 8 lignes 🌐
-- [x] Exports : feuille Excel avec les colonnes dans l'ordre, `maxRows`/`truncated` pour PDF/PPTX ✅ (CDN pdfmake/PptxGenJS non joignable ici : seuls les blocs sont testés) ⬜
+- [x] Exports : feuille Excel avec les colonnes dans l'ordre, `maxRows`/`truncated` pour la table plate ✅ (PDF et PPTX refaits le 18/11/2026 : photographie de la page, voir la section « exports PDF et PPTX » plus haut)
 - [x] **[BUG RÉEL n°41]** Barres -> Table -> Barres par « Changer de type » : l'élément est recréé, la table s'affiche, le graphique revient avec un canvas non vide 🌐
 - [x] `<iframe sandbox="allow-scripts">` : parcours au clic, aucune erreur ni boîte de dialogue 🌐
 - [ ] Rendu avec de vrais types Grist (ChoiceList, Reference, Attachments) ⬜ **[NON TESTABLE ICI]**
@@ -1117,6 +1117,20 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 - [ ] Rendu dans un vrai Grist / un vrai GFS ⬜ **[NON TESTABLE ICI]**
 - **Piège de test** : `getData().getRawDataItem(i)` rend aussi la racine virtuelle, sans `path` : chercher une part par son chemin en tolérant l'absence. Un test d'estompage lit `itemStyle.opacity` de l'option (1 ou 0,3), pas un pixel.
 
+### `js/snapshot.js` + `js/pdf-writer.js` + `js/pdf-export.js` + `js/pptx-export.js` + `js/charts.js` — exports PDF et PPTX (18/11/2026 ; Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js` préremplie avec la démo v3, page directe ET `<iframe sandbox="allow-scripts allow-downloads">`)
+
+- [x] `pageSizeFor` : largeur A4 paysage, hauteur au rapport, plafond de 14 400 pt, jamais NaN ✅ ; `rgbaToRgb`, `pdfTextString` (UTF-16BE) ✅
+- [x] `buildPdf` : 2 pages, table des références exacte (chaque entrée sur son « N 0 obj », `startxref` sur « xref »), longueur de flux exacte, pixels décompressés = pixels d'origine, JPEG déclaré DCT ✅ ; poppler (`pdfinfo`, `pdftoppm`) relit le fichier réel 🌐
+- [x] `pickScale` (échelle réduite pour une page très haute, aire ≤ 30 Mpx), `cleanXmlText` (caractères interdits en XML, demi-couple de substitution) ✅
+- [x] PPTX : adresse jsDelivr + SRI exacts, aucune trace de cdnjs/pdfmake ✅ ; `fitInSlide` (dans les marges, centré, rapport gardé, jamais > 3 x, jamais NaN) ✅ ; erreur de chargement distinguée des autres ✅
+- [x] **La vraie PptxGenJS 4.0.1** (paquet npm, SRI vérifié) servie à la place de l'adresse du CDN : 11/12 diapositives (page + une par tuile), image centrée, relues par python-pptx et LibreOffice 🌐
+- [x] Photographie de la page : 5 styles x 5 dispositions x 3 pages x clair/sombre sans erreur, écart moyen à l'écran de 3 à 6 sur 765 🌐 ; thème sombre, anglais, cadre isolé 🌐
+- [x] **[BUG RÉEL n°54]** Aucune tuile photographiée avec « Calcul… » ni un KPI à « – » : `whenSettled` attend les instances ECharts (jauge comprise) ET les rendus en vol ✅ (câblage) 🌐 (pages `page_vue_ensemble` et `page_analyse`, captures de ~400 ms)
+- [x] Boutons du menu Exporter : PDF et PPTX actifs, Excel grisé « bientôt disponible » ✅ ; vrais clics, téléchargement reçu 🌐
+- [ ] Safari et Firefox (`foreignObject`, `CompressionStream`) ⬜
+- [ ] Chargement de PptxGenJS depuis jsDelivr et téléchargement depuis un vrai GFS ⬜ **[NON TESTABLE ICI]**
+- **Piège de test** : servir la vraie bibliothèque par `context.route()` AVEC `access-control-allow-origin: *` (sinon l'empreinte SRI refuse la réponse) ; dans un cadre isolé, un serveur d'essai sans CORS fait échouer les tuiles DAX (à l'écran comme dans l'export).
+
 ### CSS — classe de bug à systématiquement re-vérifier
 
 - [x] `.field[hidden]` masque réellement l'élément (pas seulement `display:flex` de `.field` qui gagne à spécificité égale) [BUG RÉEL, trouvé 2 fois sur des champs différents] ✅ (règle en place)
@@ -1342,6 +1356,8 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 52. **Un redimensionnement de la fenêtre faisait défiler la page (`scrollIntoView` de l'onglet actif)** [BUG RÉEL, introduit par la correction n°51 et vu par moi en reprenant les captures de l'annonce forum, 18/11/2026] — `fitPageTabs` rappelait `activeTab.scrollIntoView()` à chaque redimensionnement ; `scrollIntoView` fait aussi défiler le document et la barre est collante : une capture pleine page (qui redimensionne la fenêtre) laissait la page 232 px plus bas, la barre au milieu de l'image. Corrigé par `revealActiveTab` (défilement de la LISTE d'onglets seulement : `scrollLeft`). Test : `dev-tests/test-data.js` (`fitPageTabs` sans `scrollIntoView`, `revealActiveTab`) + Playwright : défilement de la page avant/après une capture pleine page (avant : 0 -> 232, après : 0 -> 0), onglet actif toujours entier en réduisant la fenêtre de 1400 à 800 px avec 4 pages en Édition. Leçon : un test de mise en page qui ne regarde que la largeur des onglets ne voit pas un effet de bord sur la page ; mesurer aussi `window.scrollY`.
 
 53. **Le nom de l'axe de gauche d'un radar sortait de la tuile (première lettre coupée)** [BUG RÉEL, vu en reprenant les captures du forum et de la vitrine avec les nouveaux styles, 18/11/2026] — `finalizeOption` tronquait chaque nom d'axe à un tiers de la largeur de la tuile, sans regarder la place réelle entre le polygone et le bord : sur une tuile de 330 x 190 à 8 axes, « Montre Connectée » (axe de gauche) commençait à -15 px et perdait son « M », avec le style Standard comme avec Console. Corrigé par `GristBI.format.radarNameRoom` (place par axe : centré en haut et en bas, entre le polygone et le bord sur les côtés) et une coupe mesurée en pixels dans `js/charts.js`. Test : `dev-tests/test-data.js` (bloc « radarNameRoom ») + Playwright (radar de l'onglet « Analyse avancée » en Console, radar d'orientation à deux séries). Leçon : une capture déjà « validée » peut porter un défaut que seule une relecture de zones précises (les bords de chaque tuile) montre ; en reprenant des captures, regarder les bords et les coins de CHAQUE tuile, pas seulement l'ensemble.
+
+54. **L'export photographiait « Calcul… » et des cartes KPI à « – »** [BUG RÉEL, trouvé en refaisant les exports PDF/PPTX, 18/11/2026] — `whenSettled` ne suivait que les instances ECharts créées par `getOrCreateChartInstance` ; la jauge créait la sienne (`echarts.init` à part, sans `trackLoading`), et une carte KPI ou un tableau croisé n'ont pas d'instance : ils écrivent « – » tant que DuckDB calcule. Dans certains cas (première prise après un changement de page, tableaux de plus de 5 000 lignes) le fichier gardait le masque de chargement. Corrigé : chaque `echarts.init` passe par `trackLoading` et `renderTile` suit les rendus en vol (`trackPending`), un test Node compte les deux ; vérifié sur les pages de la démo (plus aucun « Calcul… », prise en ~400 ms au lieu de 4 à 5 s d'attente).
 
 ## Fragilité de test connue (PAS un bug produit — investiguée en profondeur, à ne pas re-diagnostiquer)
 
