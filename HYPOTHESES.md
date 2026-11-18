@@ -2768,7 +2768,7 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     Grist étroit) : à droite des tuiles à partir de 900 px (grille `minmax(0,1fr) 400px`, panneau collant sous la
     barre, dont la hauteur est lue dans `--chrome-h`), au-dessus des tuiles en dessous. Bouton « Ajouter » dans la
     barre, Édition seulement ; « Modifier » sur une tuile ouvre directement l'étape « Régler ».
-  - **Choisir** : 11 cartes de type (icône, nom, ligne de conseil `advice.adviceForType` calculée sur les VRAIES
+  - **Choisir** : 11 cartes de type à l'époque, 12 avec l'entonnoir (icône, nom, ligne de conseil `advice.adviceForType` calculée sur les VRAIES
     données : « idéal jusqu'à une douzaine de barres », etc.). **Régler** : seuls les champs essentiels du type
     sont affichés, préremplis par `advice.defaultsForType` (dimension et mesure différentes, jauge min/max…) ; le
     reste est dans « Options avancées » (replié) ; titre facultatif (placeholder = titre automatique, vidé =
@@ -2959,6 +2959,45 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     à Standard -> propriété non écrite, 9 types avec le dégradé bleu rendus sans erreur (cascade restée vert/rouge), clé
     inconnue -> Standard, libellés anglais. **Non vérifié** : un vrai Grist / GFS ; lecture au vidéoprojecteur ou à
     l'impression noir et blanc du dégradé gris ; thème sombre (les graphiques n'en ont pas) ; plus de 8 séries.
+
+- **Retours d'Antoine sur la nouvelle interface, 1re série (18/11/2026)** — `js/grist-api.js`, `js/main.js`,
+  `js/appbar.js`, `js/charts.js`, `index.html`, `css/style.css`. Huit retours ; ce lot en traite six, les deux
+  autres (suivi d'une vue sauvegardée, zoom d'une tuile sur place) ont leur PR.
+  - **« E,NameError » dans le champ Auteur d'un commentaire** (bug réel n°35) : la colonne `Email` de la
+    table-sonde `BI_Dashboard_UserProbe` était créée comme formule ORDINAIRE (`isFormula: true`). Or `user` n'existe
+    que dans une formule DÉCLENCHÉE (`isFormula: false` + `formula`) et dans les règles d'accès : dans un vrai
+    document la cellule valait `NameError`, que `fetchTable` rend sous la forme `['E', 'NameError']`, affichée telle
+    quelle (`String(['E','NameError'])` = « E,NameError ») dans un champ verrouillé. Le mock ne simulait pas le moteur
+    de formules, donc rien ne l'avait vu (voir CLAUDE.md §3 : « jamais testé en réel »). Corrigé en trois couches :
+    (1) la colonne est créée en formule déclenchée ; (2) `validEmailOrNull` : seule une chaîne qui ressemble à une
+    adresse devient un auteur, jamais un tableau d'erreur ni un nombre ; (3) les documents qui ont déjà l'ancienne
+    colonne sont réparés — cellule en erreur → UN `ModifyColumn` (`isFormula: false`, `formula: 'user.Email'`) puis
+    une relecture, une seule fois par session ; si Grist refuse, repli sur la saisie manuelle, sans exception. Le champ
+    a aussi une étiquette visible (« Auteur », « Commentaire ») et, quand l'adresse est reconnue, une note
+    « Reconnu depuis votre compte Grist ».
+    - **Non vérifié** : (a) que `ModifyColumn` convertisse bien l'ancienne colonne dans un vrai Grist (le test Node
+      simule la réponse de l'API, pas le moteur) ; (b) que `user.Email` soit rempli pour un utilisateur connecté
+      appelant `applyUserActions` depuis un widget — c'est le pari initial du projet, jamais confirmé ; (c) le cas
+      d'un visiteur anonyme (adresse vide) retombe sur la saisie manuelle, c'est voulu. À confirmer en rouvrant un
+      commentaire dans le vrai document d'Antoine (`console` : `[GristBI] réparation de la colonne Email…` si la
+      réparation échoue).
+  - **Menu Filtre refait pour la souris** (retours 2 et 5) : il s'ouvrait avec le focus dans un combobox, donc avec
+    la liste des colonnes déjà dépliée et rognée par le panneau. Désormais deux étapes sans aucun combobox :
+    (1) la liste de TOUTES les colonnes, visibles et cliquables, avec un badge de type (Aa / 123 / 31) et une
+    recherche ; (2) le réglage pour la colonne cliquée (plage, dates, ou valeurs). Les valeurs du filtre texte sont
+    des boutons cliquables sous le champ (jusqu'à 40, « N autres valeurs » au-delà ; un clic pose le filtre « contient »
+    tout de suite, un morceau de texte tapé filtre la liste). Les erreurs de saisie s'affichent sous les champs, plus
+    dans une fenêtre. Chaque ouverture revient au 1er écran (`GristBI.appbar.onOpen`). Clavier : ↓ ↑ entre la
+    recherche et les colonnes (ou les valeurs), Entrée dans la recherche ouvre la 1re colonne trouvée, Échap ferme.
+    **Limite** : la liste des valeurs est plafonnée à 500 valeurs distinctes (`distinctColumnValues`), comme avant.
+  - **« Effacer les filtres »** (retour 1) : un vrai bouton (`.btn-secondary.btn-chip`, icône ×) au lieu d'un lien souligné.
+  - **Roue crantée** (retour 6) : l'icône de Réglages était un soleil (cercle + 8 rayons). Remplacée par la roue de
+    Publipostage+ (`css/toolbar-v2.css`, `#v2-btn-settings`), tracée sur une grille de 24.
+  - **Infobulle du radar hors de la carte** (retour 7, bug réel n°36) : reproduit — la bulle d'un radar de 224 px de
+    haut se posait à x = −66 px (hors de l'écran à gauche), à 72 px au-dessus de la tuile. `confine: true` est posé sur
+    TOUTES les bulles juste avant `setOption` (`confineTooltip`), et celle du radar est formatée (une ligne par axe,
+    nombres au format français ; avant : « 8.504166666666666 »).
+  - **Non vérifié** : rien n'a été vu dans un vrai Grist ni un vrai GFS ; clavier réel et lecteur d'écran non essayés.
 
 - **Modèles de rapport pour « Nouveau > Depuis un modèle » de GFS** (18/11/2026, fil « Appliquer la nouvelle consigne GFS »,
   consigne 016, facultative) :

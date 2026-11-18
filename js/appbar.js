@@ -90,6 +90,11 @@
     panel.style.maxHeight = spot.maxHeight + 'px';
   }
 
+  // Rappels appelés à l'ouverture d'un panneau (après `hidden = false`, AVANT que le focus soit donné) :
+  // le menu Filtre y remet son 1er écran, pour que le champ `data-autofocus` soit déjà visible.
+  const openHooks = {};
+  function onOpen(panelId, fn) { openHooks[panelId] = fn; }
+
   function closePopovers(returnFocus) {
     if (!openState) return;
     const { toggle, panel } = openState;
@@ -106,6 +111,7 @@
     panel.hidden = false;
     toggle.setAttribute('aria-expanded', 'true');
     openState = { toggle, panel };
+    if (openHooks[panel.id]) openHooks[panel.id]();
     place();
     // Le focus va : à l'élément marqué `data-autofocus` (le champ qu'on veut remplir tout de suite),
     // sinon au 1er élément d'un menu (role="menu"), sinon au panneau lui-même — jamais d'office dans
@@ -175,5 +181,5 @@
 
   if (doc) init();
 
-  return { placePopover, tabKeyTarget, menuKeyTarget, init, closePopovers: () => closePopovers(false), isOpen: () => !!openState };
+  return { placePopover, tabKeyTarget, menuKeyTarget, init, onOpen, closePopovers: () => closePopovers(false), isOpen: () => !!openState };
 });
