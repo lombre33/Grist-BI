@@ -1,5 +1,5 @@
 /*
- * Rendu des tuiles (bar/pie/kpi/gauge/treemap/scatter/waterfall/radar) avec ECharts : filtres
+ * Rendu des tuiles (bar/line/pie/kpi/gauge/treemap/scatter/waterfall/radar) avec ECharts : filtres
  * croisés multiples, tendance KPI, et drill-down multi-niveaux (voir GristBI.data.tileDrillLevels)
  * avec fil d'Ariane. Dépend du global `echarts` (js/vendor/echarts/, voir index.html) et de
  * GristBI.data/GristBI.store.
@@ -8,7 +8,8 @@
   const GristBI = global.GristBI || (global.GristBI = {});
   const {
     groupByAggregate, sameValue, aggregateSingle, pivotTable, trendFromGroups, measureSeriesForTile,
-    waterfallSeries, escapeHtml, tileDrillLevels, currentDimension, rowsForTile, wordFrequency
+    waterfallSeries, sortGroups, isSortableTile, escapeHtml, tileDrillLevels, currentDimension, rowsForTile,
+    wordFrequency
   } = GristBI.data;
   const { t } = GristBI.i18n;
 
@@ -677,15 +678,31 @@
       ? { opacity: 0.3 }
       : undefined);
 
+    // Tri d'affichage optionnel (tile.sortMode) : une étape distincte, appliquée APRÈS l'agrégation
+    // (qui garde son ordre d'apparition, piège n°14), et seulement pour les types qui s'y prêtent
+    // (voir GristBI.data.isSortableTile) — `agg` reste tel quel pour tous les autres.
+    const groups = isSortableTile(tile) ? sortGroups(agg, tile.sortMode) : agg;
+
     let option;
     if (tile.type === 'pie') {
+      // `tile.donut` : même série `pie` qu'un camembert plein, seul le rayon change (un tableau
+      // [intérieur, extérieur] ouvre le trou central) — drill-down/cross-filter inchangés, un clic
+      // renvoie toujours `params.name`. `tile.showPct` : étiquette « nom » puis « x,x % » sur DEUX
+      // lignes (une seule ligne « nom : x,x % » était tronquée avec des points de suspension dans une
+      // tuile de ~270 px, le pourcentage — la seule raison d'être de l'option — disparaissait), même
+      // format français que formatNumber (texte canvas d'ECharts, jamais interprété comme du HTML,
+      // voir GFS-ETAT.md consigne 005).
       option = {
         color: CATEGORICAL_PALETTE,
         tooltip: { trigger: 'item' },
         series: [{
           type: 'pie',
-          radius: '65%',
-          data: agg.map((d) => ({ name: d.dimension, value: d.value, itemStyle: dim(d.dimension) }))
+          radius: tile.donut ? ['40%', '65%'] : '65%',
+          ...(tile.showPct ? {
+            percentPrecision: 1,
+            label: { formatter: (p) => `${p.name}\n${formatPercent(p.percent)}` }
+          } : {}),
+          data: groups.map((d) => ({ name: d.dimension, value: d.value, itemStyle: dim(d.dimension) }))
         }]
       };
     } else if (tile.type === 'treemap') {
@@ -837,17 +854,49 @@
           data: series
         }]
       };
-    } else {
-      // bar (par défaut)
+    } else if (tile.type === 'line') {
+      // Courbe (ou aire si `tile.areaFill`) : même formulaire et mêmes données que "bar" (1 dimension
+      // + 1 mesure + agrégat, drill-down, cross-filter), seule la série ECharts change — l'axe est
+      // catégoriel et chaque point porte son `name`, donc le gestionnaire de clic générique
+      // (handleTileClick) marche tel quel. L'ordre des points est celui des données (ou du tri
+      // choisi) : pour une série temporelle, une dimension dérivée d'une date ("Date.Annee",
+      // "Date.Mois") ou un tri « Libellé » donne l'ordre chronologique.
       option = {
         color: CATEGORICAL_PALETTE,
         grid: numericGrid,
         tooltip: { trigger: 'axis' },
-        xAxis: { type: 'category', data: agg.map((d) => d.dimension) },
+        xAxis: { type: 'category', data: groups.map((d) => d.dimension) },
         yAxis: { type: 'value', axisLabel: { formatter: formatCompactNumber } },
         series: [{
+          type: 'line',
+          symbolSize: 8,
+          ...(tile.areaFill ? { areaStyle: { opacity: 0.25 } } : {}),
+          data: groups.map((d) => ({ value: d.value, itemStyle: dim(d.dimension) }))
+        }]
+      };
+    } else {
+      // bar (par défaut). `tile.horizontal` : mêmes séries, axes permutés. L'axe des catégories est
+      // inversé pour que la première catégorie (ou la plus grande avec le tri « Valeur décroissante »)
+      // soit EN HAUT, comme une liste qu'on lit de haut en bas ; les libellés longs sont tronqués
+      // (le survol — tooltip — garde le nom complet) plutôt que de rétrécir la zone du graphique.
+      const categoryLabels = groups.map((d) => d.dimension);
+      const valueAxis = { type: 'value', axisLabel: { formatter: formatCompactNumber } };
+      option = {
+        color: CATEGORICAL_PALETTE,
+        grid: numericGrid,
+        tooltip: { trigger: 'axis' },
+        ...(tile.horizontal
+          ? {
+            xAxis: valueAxis,
+            yAxis: { type: 'category', inverse: true, data: categoryLabels, axisLabel: { width: 110, overflow: 'truncate' } }
+          }
+          : {
+            xAxis: { type: 'category', data: categoryLabels },
+            yAxis: valueAxis
+          }),
+        series: [{
           type: 'bar',
-          data: agg.map((d) => ({ value: d.value, itemStyle: dim(d.dimension) }))
+          data: groups.map((d) => ({ value: d.value, itemStyle: dim(d.dimension) }))
         }]
       };
     }
@@ -936,6 +985,12 @@
 
   function formatNumber(n) {
     return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 }).format(n);
+  }
+
+  // « 12,5 % » : un décimal maximum (ECharts donne déjà `percent` arrondi à `percentPrecision`),
+  // espace avant le % comme l'usage français — même langue figée que formatNumber ci-dessus.
+  function formatPercent(n) {
+    return `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 }).format(n)} %`;
   }
 
   // Format compact ("2,7 M", "150 k") pour les libellés d'AXE seulement (pas les cartes KPI ni les

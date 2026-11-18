@@ -368,6 +368,43 @@
     return { base, rise, fall };
   }
 
+  // Tri d'AFFICHAGE optionnel d'un agrégat (`tile.sortMode`, voir js/main.js:updateFormFieldsForType),
+  // pour les seuls types dont l'ordre des catégories n'a pas de sens propre : Barres (hors mode
+  // mesure temporelle, dont l'axe est un mois calculé), Courbe/Aire et Camembert. Jamais pour
+  // Cascade (l'ordre EST le sens du cumul), Treemap, Radar ni Nuage de mots.
+  // `groupByAggregate` garde son contrat (ordre d'apparition, piège n°14 CLAUDE.md §7) : le tri est
+  // une étape SÉPARÉE appliquée après, jamais fusionnée dedans, et sans `sortMode` (ou avec une
+  // valeur inconnue, ex. une tuile sauvegardée par une version future) l'agrégat revient inchangé.
+  // Partagée par le rendu (js/charts.js) et l'export Excel (tileExportSheet) : ce qui est exporté
+  // doit rester dans l'ordre affiché à l'écran.
+  const SORT_MODES = ['value-desc', 'value-asc', 'label'];
+  const SORTABLE_TILE_TYPES = ['bar', 'line', 'pie'];
+
+  function isSortableTile(tile) {
+    if (!tile || SORTABLE_TILE_TYPES.indexOf(tile.type) === -1) return false;
+    return !(tile.type === 'bar' && tile.measureMode && tile.measureMode !== 'brut');
+  }
+
+  function compareLabels(a, b) {
+    if (typeof a === 'number' && typeof b === 'number' && !Number.isNaN(a) && !Number.isNaN(b)) return a - b;
+    // `numeric: true` : "2" avant "10", "T2" avant "T10" ; `sensitivity: 'base'` ignore casse/accents.
+    return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
+  }
+
+  function sortGroups(agg, mode) {
+    if (SORT_MODES.indexOf(mode) === -1) return agg;
+    const copy = agg.slice(); // jamais de tri en place : `agg` peut être réutilisé tel quel ailleurs
+    if (mode === 'label') return copy.sort((x, y) => compareLabels(x.dimension, y.dimension));
+    const direction = mode === 'value-desc' ? -1 : 1;
+    const isMissing = (v) => v == null || Number.isNaN(v);
+    return copy.sort((x, y) => {
+      // Valeur absente (min/max sur un groupe sans valeur numérique) toujours en dernier, quel que
+      // soit le sens du tri : ni "la plus grande" ni "la plus petite", juste sans valeur à comparer.
+      if (isMissing(x.value) || isMissing(y.value)) return (isMissing(x.value) ? 1 : 0) - (isMissing(y.value) ? 1 : 0);
+      return direction * (x.value - y.value);
+    });
+  }
+
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, (c) => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -516,7 +553,8 @@
       const freq = wordFrequency(rows, dimension, true).slice().sort((a, b) => b.value - a.value);
       return { name: title, header: [dimension, 'Occurrences'], rows: freq.map((d) => [d.dimension, d.value]) };
     }
-    const agg = groupByAggregate(rows, dimension, tile.measure, tile.aggFn);
+    // Même tri que le rendu (js/charts.js:renderChart) : jamais appliqué à un type non triable.
+    const agg = sortGroups(groupByAggregate(rows, dimension, tile.measure, tile.aggFn), isSortableTile(tile) ? tile.sortMode : undefined);
     return { name: title, header: [dimension, tile.measure], rows: agg.map((d) => [d.dimension, d.value]) };
   }
 
@@ -714,7 +752,7 @@
     tableToRows, epochSecondsToIsoDate, applyFilters, matchesFilter, sameValue, parseDateValue,
     relativeDateRange, RELATIVE_DATE_PRESETS, groupByAggregate, aggregateSingle, wordFrequency, pivotTable,
     distinctColumnValues, computeTrend, trendFromGroups, periodLabel, measureSeriesForTile,
-    waterfallSeries, escapeHtml,
+    waterfallSeries, sortGroups, isSortableTile, escapeHtml,
     tileDrillLevels, currentDimension, rowsForTile, tileExportSheet, tileExportKind,
     sanitizeSheetName, buildWorkbookSheets, measureExportSheet, buildWorkbookSheetsAsync,
     blendRows, deriveDateHierarchyColumns, commentsForTile, isAccessRuleRefusal, AGGREGATORS
