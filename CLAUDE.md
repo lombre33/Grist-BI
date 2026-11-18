@@ -60,7 +60,8 @@ suive. Voir §2 (ligne `kit/`) et §7/§8 pour le détail.
 Pas de `package.json`, pas d'étape de build : `index.html` charge directement chaque script via
 `<script src="...">`, dans un ordre précis (voir la fin du `<body>` d'`index.html`) :
 `i18n.js → data.js → combobox.js → state.js → charts.js → export.js →
-pdf-export.js → pptx-export.js → grist-api.js → duckdb-engine.js → main.js`. `js/demo-data.js`
+pdf-export.js → pptx-export.js → grist-api.js → duckdb-engine.js → dialogs.js → main.js` (la liste
+est abrégée : `pbix-layout.js`, `csv-import.js` et `advice.js` s'y intercalent, voir `index.html`). `js/demo-data.js`
 n'en fait plus partie depuis le retrait de `BI_StressTest` (2026-10-21, voir §3/§7/§8) : ce fichier
 reste dans le dépôt comme fixture de test Node pure (`dev-tests/test-data.js`), jamais chargé par
 `index.html`/`dev-tests/harness.html`. `i18n.js` est chargé en tout premier
@@ -80,11 +81,12 @@ suivants lisent `GristBI.i18n.t()` comme un global déjà prêt.
 | `js/charts.js` | Rendu ECharts pour les 9 types de tuiles graphiques (bar/line/pie/treemap/scatter/waterfall/radar/kpi/gauge — `line` = courbe, ou aire avec `tile.areaFill` ; `bar` accepte `tile.horizontal` ; `pie` accepte `tile.donut`/`tile.showPct`) + le pivot (table HTML) + le nuage de mots (canvas maison, voir plus bas), une instance ECharts par tuile mise en cache, gestionnaire de clic générique (drill-down vs cross-filter) qui relit l'état du store en direct à chaque clic plutôt que de capturer des variables au moment du rendu — sauf pour radar (pas de drill-down/cross-filter, voir HYPOTHESES.md). Waterfall simule une série ECharts absente nativement (2 barres empilées, cumul calculé par `js/data.js:waterfallSeries`). Chaque fonction de rendu est **async** : au-delà de `DUCKDB_ROW_THRESHOLD` lignes, l'agrégation passe par `GristBI.duckdbEngine` plutôt que la version JS pure de `js/data.js` (repli silencieux si DuckDB échoue), avec un compteur de rendu par tuile (`renderSeq`/`bumpSeq`/`isStale`, partagé par tous les chemins de rendu asynchrones) qui abandonne le résultat d'un calcul devenu périmé. |
 | `js/advice.js` | Conseil de visualisation et assistance au premier lancement (18/11/2026) : **pur JS, testable sous Node**, dépend uniquement de `js/data.js`, **aucun texte en dur** (renvoie des clés i18n `advice.*` + variables, traduites par l'appelant). `suggestTiles(rows, columns, {limit, t})` (cartes d'accueil, prêtes pour `addTile`), `defaultsForType(type, rows, columns)` (préremplissage du formulaire), `adviceForTile(tile, rows)` (`{key, vars, level}` ou `null` : anneau > 7 parts, radar > 8 axes, courbe sans ordre naturel…), `adviceForType(type, rows, columns)` (une ligne par type pour l'étape « Choisir »). Rôle de chaque colonne déduit des VALEURS, pas du nom ; voir HYPOTHESES.md. Chargé juste après `js/csv-import.js` ; branché dans l'interface en PR 2b (écran d'accueil, étape « Choisir »). |
 | `js/combobox.js` | Composant d'autocomplétion réutilisable, DOM-agnostique pour sa logique de filtrage (`filterOptions`, `highlightMatch`) + câblage DOM (`attach`). Modes `strict` (doit correspondre à une option, comme un `<select>`) et non-strict (texte libre, suggestions seulement). |
+| `js/dialogs.js` | `GristBI.dialogs.prompt/confirm/notice` (promesses) : fenêtres du kit (`kit/js/dialogs.js`, feuille `kit/css/windows.css` liée dans `index.html`) à la place de `window.prompt/confirm/alert`, **muets dans le cadre isolé de GFS** (pas de `allow-modals`) — voir §7 piège n°17. Chargé paresseusement par `import()` dynamique résolu sur `document.currentScript.src` ; libellés des boutons toujours passés par ce widget (`dialog.*`), jamais ceux du kit ; repli sur les boîtes du navigateur si le kit manque. Les jetons que lit `windows.css` (`--pp-scrim`, `--z-window`, `--z-dialog`, `--danger-ink`, `--danger-soft`) sont définis dans `css/style.css` : `kit/css/tokens.css` n'est PAS chargé. **Toujours `await`** (ou ignorer la promesse pour un simple message) : la fenêtre n'arrête pas le script. |
 | `js/export.js` | Construit le classeur `.xlsx` (une feuille par tuile, toutes pages confondues) via SheetJS vendorisé (`window.XLSX`) et déclenche le téléchargement ; async depuis que les tuiles en mode mesure (Cumul/YTD/N-1) y exportent leurs vraies valeurs via `GristBI.duckdbEngine.timeSeriesMeasures`, injecté dans `GristBI.data.buildWorkbookSheetsAsync`. |
 | `js/pdf-export.js` | Export PDF (page actuellement affichée uniquement) via pdfmake, chargé depuis un CDN externe et non vendorisé (exception, voir §8) — capture l'image de chaque graphique déjà rendu (`GristBI.charts.getInstance`) plutôt que de recalculer, ce qui évite le mur asynchrone des tuiles en mode mesure DAX rencontré par l'export Excel. |
 | `js/pptx-export.js` | Export PPTX (page actuellement affichée uniquement) via PptxGenJS, même dérogation CDN/même stratégie de capture d'image que `js/pdf-export.js` — une diapositive par tuile (image ou tableau natif `slide.addTable`, selon `GristBI.data.tileExportKind`) plutôt qu'une grille façon écran. |
 | `js/vendor/echarts/`, `js/vendor/xlsx/`, `js/vendor/duckdb/`, `js/vendor/apache-arrow/`, `js/vendor/flatbuffers/`, `js/vendor/tslib/` | Bibliothèques tierces **vendorisées localement, jamais chargées depuis un CDN externe** — voir §7 pour la raison (bug réel rencontré). |
-| `kit/` | **Sous-module Git** (`lombre33/grist-factory-kit`, public, GPL 3.0 — pas une bibliothèque tierce vendorisée comme la ligne ci-dessus, et pas davantage une « nouvelle bibliothèque » au sens du protocole GFS §8 : l'adresse de ce dépôt est documentée dans ses propres consignes, référencée directement sans passer par une demande à GFS). Pointe sur un commit ≥ `8afa569` (Kit 0.6.0+, l'ambiance de GFS). Ce widget n'en importe pour l'instant que `kit/js/ambiance.js` (`js/main.js`, tout en haut du fichier, via un `import()` dynamique — même mécanisme que `js/duckdb-engine.js`/`js/charts.js:loadD3Cloud` pour charger un module ES depuis un script classique) : `Ambiance.start()` au démarrage, qui pose les jetons de couleur/forme de l'ambiance GFS choisie sur `<html>`, lus par `css/style.css` — voir §7/§8. N'importe aucun autre module du kit (pas encore de traduction/thème/fenêtres communs : ce lot ne couvre que l'ambiance, voir la consigne GFS 004). |
+| `kit/` | **Sous-module Git** (`lombre33/grist-factory-kit`, public, GPL 3.0 — pas une bibliothèque tierce vendorisée comme la ligne ci-dessus, et pas davantage une « nouvelle bibliothèque » au sens du protocole GFS §8 : l'adresse de ce dépôt est documentée dans ses propres consignes, référencée directement sans passer par une demande à GFS). Pointe sur un commit ≥ `8afa569` (Kit 0.6.0+, l'ambiance de GFS). Ce widget n'en importe pour l'instant que `kit/js/ambiance.js` et, depuis le 18/11/2026, `kit/js/dialogs.js` (+ `kit/css/windows.css`, voir la ligne `js/dialogs.js`) (`js/main.js`, tout en haut du fichier, via un `import()` dynamique — même mécanisme que `js/duckdb-engine.js`/`js/charts.js:loadD3Cloud` pour charger un module ES depuis un script classique) : `Ambiance.start()` au démarrage, qui pose les jetons de couleur/forme de l'ambiance GFS choisie sur `<html>`, lus par `css/style.css` — voir §7/§8. N'importe aucun autre module du kit (pas encore de traduction/thème/fenêtres communs : ce lot ne couvre que l'ambiance, voir la consigne GFS 004). |
 | `vitrine/` | Carte et fiche de l'app dans la fenêtre « Apps et extensions » de GFS (consigne 014, 17/11/2026) : `vitrine.json` (description ≤ 280 caractères et trois légendes ≤ 60, fr/en) + `1.webp`/`2.webp`/`3.webp` (960 × 600, ≤ 60 Ko, données d'exemple sans nom de personne). Jamais chargé par `index.html` : GFS en copie les images chez lui. Prises avec le vrai `index.html` et le faux Grist du dépôt, PAS dans un vrai Grist — voir HYPOTHESES.md. |
 | `dev-tests/` | Harnais de test hors Grist — voir §5. |
 | `README.md` | Vue d'ensemble produit, fonctionnalités, installation dans Grist, historique condensé des bugs réels corrigés. |
@@ -124,7 +126,9 @@ dépôt. Les tests se lancent manuellement (voir §5).
   (lecture fraîche de `listTables()`, tables internes de ce widget exclues). Si le document n'a
   encore AUCUNE table utilisateur, le dashboard affiche un état explicite (`status.noTables`) plutôt
   que de créer quoi que ce soit — l'utilisateur crée sa table dans Grist, puis la choisit via le
-  sélecteur ci-dessous, sans recharger le widget. Contrairement à l'ancien comportement
+  sélecteur ci-dessous, sans recharger le widget. L'état de la connexion est explicite
+  (`main.js:connectionState` : `connecting` jusqu'à ce que la liste des tables soit lue — jamais « Aucune
+  table » avant — puis `noTables`/`failed`, ce dernier avec un bouton « Réessayer »). Contrairement à l'ancien comportement
   (`BI_StressTest`), aucune tuile n'est jamais pré-configurée automatiquement : un dashboard neuf
   démarre toujours vide, qu'il s'agisse de la connexion automatique du démarrage ou d'un changement
   de table manuel.
@@ -415,6 +419,18 @@ Cette liste condense les bugs réels les plus instructifs (détail complet dans 
     le seul point de confirmation manquant. Voir HYPOTHESES.md pour le détail complet, y compris les
     deux autres points vérifiés le même jour (colonnes Reference, collision `AddTable` pour
     `BI_Dashboard_Comments`).
+
+17. **`window.prompt`, `confirm` et `alert` ne font RIEN dans le cadre isolé de GFS** (`sandbox="allow-scripts"`,
+    sans `allow-modals`) : `prompt()` rend `null`, `confirm()` rend `false`, `alert()` n'affiche rien, sans
+    exception — « + Page » et « Sauvegarder la vue » ne créaient rien, et tout message de validation ou d'erreur
+    était invisible (audit UI/UX du 18/11/2026). Ne plus jamais les appeler : `GristBI.dialogs.*` (`js/dialogs.js`,
+    fenêtres du kit), avec `await`. Un test qui ne tourne que dans une page directe ne voit pas ce défaut : le
+    rejouer dans un `<iframe sandbox="allow-scripts">`.
+18. **Une tuile mise en cache ne doit jamais capturer l'objet `tile` de sa création dans ses écouteurs ni son
+    en-tête** : `buildTileElement` n'est appelé qu'une fois, donc après `store.updateTile` l'en-tête gardait l'ancien
+    titre et « Modifier » rechargeait les anciennes valeurs. Relire la tuile vive (`store.getState().tiles`) à
+    chaque clic, réécrire le titre à chaque `render()`. Un titre auto-composé porte `titleKey`/`titleVars`
+    (`i18n.tileTitle`), jamais seulement du français figé ; les exports lisent encore `tile.title`.
 
 ## 8. Règles du projet (vérifiées dans le code et la documentation)
 
