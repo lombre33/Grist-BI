@@ -112,6 +112,7 @@
     'type-bar': '<path d="M3.5 13V8M8 13V3.5M12.5 13V6"/><path d="M2 14h12"/>',
     'type-line': '<path d="M2 12l3.5-4 3 2.5L14 4"/><path d="M2 14h12"/>',
     'type-histogram': '<path d="M2 14v-4h2.6v4M4.6 14V6h2.6v8M7.2 14V3h2.6v11M9.8 14V7h2.6v7M12.4 14v-3H14v3"/><path d="M2 14h12"/>',
+    'type-box': '<path d="M5 3v2.5M5 10.5V13M3.5 3h3M3.5 13h3"/><rect x="3" y="5.5" width="4" height="5" rx=".5"/><path d="M3 8h4"/><path d="M11.5 4.5v1.5M11.5 11v2M10 4.5h3M10 13h3"/><rect x="9.5" y="6" width="4" height="5" rx=".5"/><path d="M9.5 8.5h4"/>',
     'type-combo': '<path d="M3 13V9M7 13V6M11 13V8"/><path d="M2 14h12"/><path d="M2.5 6l4-2.5L10.5 5l3-2.7"/>',
     'type-pie': '<circle cx="8" cy="8" r="5.5"/><path d="M8 8V2.5M8 8l4.7 2.9"/>',
     'type-treemap': '<rect x="2" y="2.5" width="12" height="11" rx="1"/><path d="M8.5 2.5v11M8.5 8H14"/>',
@@ -757,6 +758,7 @@
     let vars;
     if (p.isText) { key = 'tileTitle.text'; vars = undefined; }
     else if (p.isHistogram) { key = 'tileTitle.histogram'; vars = { measure: p.measure }; }
+    else if (p.isBox) { key = 'tileTitle.box'; vars = { measure: p.measure, dimension: p.dimension }; }
     else if (p.isCombo && p.comboPareto) { key = 'tileTitle.pareto'; vars = { measure: p.measure, dimension: p.dimension }; }
     else if (p.isCombo) { key = 'tileTitle.combo'; vars = { measure: p.measure, measureY: p.measureY, dimension: p.dimension }; }
     else if (p.isProgress) { key = 'tileTitle.progress'; vars = { measure: p.measure, dimension: p.dimension }; }
@@ -809,7 +811,7 @@
   // générique l'ignore explicitement (voir le garde dans getOrCreateChartInstance). Masquer le
   // formulaire de configuration du drill-down pour ce type plutôt que de laisser l'utilisateur
   // configurer des niveaux qui ne se déclencheront jamais au clic.
-  function supportsDrillDown(type) { return !typeHasNoDimension(type) && type !== 'pivot' && type !== 'heatmap' && type !== 'radar' && type !== 'progress'; }
+  function supportsDrillDown(type) { return !typeHasNoDimension(type) && type !== 'pivot' && type !== 'heatmap' && type !== 'radar' && type !== 'progress' && type !== 'box'; }
 
   // Drill-down à N niveaux : un combobox par niveau, créé dynamiquement ("+ Niveau") plutôt que des
   // champs figés dans le HTML — data.js/state.js/charts.js gèrent déjà un tableau drillDimensions
@@ -1218,9 +1220,18 @@
       }, !viewsActiveNameEl.hidden);
     }
     updateTabsOverflow();
-    // L'onglet actif doit rester visible dans une liste qui défile (la largeur disponible vient peut-être de changer).
-    const activeTab = pageTabsEl.querySelector('.page-tab.active');
-    if (activeTab && typeof activeTab.scrollIntoView === 'function') activeTab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    revealActiveTab();
+  }
+  // L'onglet actif doit rester visible dans une liste qui défile (la largeur disponible vient peut-être de changer). On fait défiler la LISTE
+  // des onglets seulement, jamais `scrollIntoView` : il fait aussi défiler la page, et la barre étant collante (`sticky`), un redimensionnement
+  // de la fenêtre emportait la page plus bas (bug réel n°52, vu en prenant des captures pleine page).
+  function revealActiveTab() {
+    const tab = pageTabsEl.querySelector('.page-tab-group.active');
+    if (!tab) return;
+    const box = pageTabsEl.getBoundingClientRect();
+    const at = tab.getBoundingClientRect();
+    if (at.left < box.left) pageTabsEl.scrollLeft -= box.left - at.left;
+    else if (at.right > box.right) pageTabsEl.scrollLeft += at.right - box.right;
   }
   window.addEventListener('resize', fitPageTabs);
   // Différé d'une image : modifier la barre dans le rappel d'un ResizeObserver qui l'observe ferait « loop completed with undelivered notifications ».
@@ -1922,6 +1933,7 @@
     const isCombo = type === 'combo';
     const isComboPareto = isCombo && comboModeSelect.value === 'pareto';
     const isHistogram = type === 'histogram';
+    const isBox = type === 'box';
     // KPI/jauge/tuile "Barres" en mode de calcul temporel : pas de dimension de regroupement ni de
     // drill-down, juste un agrégat sur toute la sélection (le KPI peut en plus le comparer à une
     // période via "Tendance vs", la jauge le positionne sur un cadran Min/Max, la tuile Barres en
@@ -1941,7 +1953,8 @@
     radarAxesField.hidden = !isRadarColumns;
     measureField.hidden = isRadarColumns || isWordCloudSplit || isText || isTable;
     // Histogramme : une colonne numérique et un nombre de classes, jamais d'agrégat (on compte des lignes).
-    aggField.hidden = isRadarColumns || isWordCloudSplit || isText || isTable || isHistogram;
+    // Boîte à moustaches : les valeurs brutes de chaque ligne, jamais un agrégat.
+    aggField.hidden = isRadarColumns || isWordCloudSplit || isText || isTable || isHistogram || isBox;
     binsField.hidden = !isHistogram;
     tileTextField.hidden = !isText;
     tileColumnsField.hidden = !isTable;
@@ -2006,7 +2019,7 @@
     else { measureField.after(measureYField); measureYField.after(aggField); }
     aggLabel.textContent = t(isCombo && !isComboPareto ? 'tileForm.agg.labelBars' : 'tileForm.agg.label');
     measureYLabel.textContent = t(isCombo ? 'tileForm.measureY.labelLine' : 'tileForm.measureY.label');
-    measureLabel.textContent = t(isScatter ? 'tileForm.measure.labelX' : (isCombo && !isComboPareto ? 'tileForm.measure.labelBars' : (isHistogram ? 'tileForm.measure.labelHistogram' : 'tileForm.measure.label')));
+    measureLabel.textContent = t(isScatter ? 'tileForm.measure.labelX' : (isCombo && !isComboPareto ? 'tileForm.measure.labelBars' : ((isHistogram || isBox) ? 'tileForm.measure.labelHistogram' : 'tileForm.measure.label')));
     updateDrillLevelsUI();
     updateRadarAxesUI();
     updateSuggestDateHierarchyVisibility();
@@ -2201,6 +2214,7 @@
     const isCombo = type === 'combo';
     const comboPareto = isCombo && comboModeSelect.value === 'pareto';
     const isHistogram = type === 'histogram';
+    const isBox = type === 'box';
     const binsRaw = isHistogram ? binsInput.value.trim() : '';
     const binsValue = binsRaw === '' ? undefined : Number(binsRaw);
     const tableColumns = isTable ? readColumnsPicker() : [];
@@ -2266,7 +2280,7 @@
     // voir i18n.js:tileTitle) pour que l'en-tête de tuile suive la langue de l'interface au lieu de
     // rester figé dans celle de sa création.
     const auto = autoTileTitle({
-      isText, isTable, isProgress, isCombo, comboPareto, isHistogram, measureY: measureYSelect.value, tableColumns, isPivot, isHeatmap, isRadarColumns, isWordCloudSplit, hasDimension, measureMode,
+      isText, isTable, isProgress, isCombo, comboPareto, isHistogram, isBox, measureY: measureYSelect.value, tableColumns, isPivot, isHeatmap, isRadarColumns, isWordCloudSplit, hasDimension, measureMode,
       measure, dimension, columnDimension, aggFn, radarAxes, seriesColumn
     });
     const customTitle = tileTitleInput.value.trim();
@@ -2279,6 +2293,8 @@
     if (isText || isTable) { tileData.dimension = undefined; tileData.measure = undefined; tileData.aggFn = undefined; }
     // Histogramme : la colonne est `measure` ; ni dimension ni agrégat (on compte des lignes).
     if (isHistogram) { tileData.dimension = undefined; tileData.aggFn = undefined; }
+    // Boîte à moustaches : dimension = les groupes, mesure = la colonne numérique ; pas d'agrégat (valeurs brutes).
+    if (isBox) tileData.aggFn = undefined;
     tileData.bins = isHistogram ? binsValue : undefined;
     tileData.text = isText ? textValue : undefined;
     tileData.columns = isTable ? tableColumns : undefined;
@@ -2412,7 +2428,7 @@
   // repliées, aperçu en direct, conseil en direct). Le panneau est en flux normal (voir css/style.css) :
   // il ne recouvre jamais la barre. Toute la lecture du formulaire passe par readTileForm() ci-dessus.
   // =============================================================================================
-  const TYPE_CARDS = ['bar', 'histogram', 'line', 'combo', 'pie', 'treemap', 'funnel', 'scatter', 'waterfall', 'radar', 'wordcloud', 'kpi', 'gauge', 'progress', 'pivot', 'heatmap', 'table', 'text'];
+  const TYPE_CARDS = ['bar', 'histogram', 'box', 'line', 'combo', 'pie', 'treemap', 'funnel', 'scatter', 'waterfall', 'radar', 'wordcloud', 'kpi', 'gauge', 'progress', 'pivot', 'heatmap', 'table', 'text'];
   const PREVIEW_TILE_ID = '__preview__';
   let panelOpener = null;
   let previewTimer = null;

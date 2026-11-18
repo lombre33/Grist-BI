@@ -3343,6 +3343,7 @@ Dernier lot de l'audit : tout ce qui, hors des nombres eux-mêmes, rendait une t
   clignotement entre deux paliers).
 - **Mesuré** (démo v3, vue « Focus En ligne » suivie) : onglets entiers à 1000, 1100, 1200 et 1400 px, en Lecture comme en Édition, en français comme en anglais, y compris en redimensionnant
   la fenêtre en direct ; le nom de la vue revient à 1400 px. Cas qui reste rogné, mais signalé par le fondu : 4 pages en mode Édition à 1200 px (231 px de place pour 431).
+- **Correction du lendemain même** (bug réel n°52) : la première version ramenait l'onglet actif dans la vue par `scrollIntoView`, appelé à chaque redimensionnement ; il fait aussi défiler la page, et la barre étant collante, une capture pleine page laissait la page 232 px plus bas. `revealActiveTab` fait défiler la liste d'onglets seule (`scrollLeft`).
 - **Pas fait, à décider** : un menu « … » pour les pages en trop (comme les onglets d'un navigateur) ; réduire la pastille de la table connectée (223 px à 1200 px) avant les libellés.
 - **Testé** : Node (paliers, 2 x 41 besoins de largeur, ordre dans `render()`) ; Playwright contre le vrai `index.html` + `grist-stub.js`. **Pas testé dans un vrai Grist** (la largeur réelle du
   panneau d'un widget Grist n'est pas celle d'une fenêtre : le redimensionnement passe par l'événement `resize` de l'iframe, supposé).
@@ -3435,6 +3436,29 @@ Point de départ : la limite notée à la fin du lot « graduations de la jauge 
   i18n, câblage) ; Playwright contre le vrai `index.html` + `grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`, 120 et 6 000 lignes (formulaire : champs visibles selon les cases, repère
   masqué en 100 %, édition qui relit les trois options, décocher « Empiler » efface le 100 % ; pile à 100 sur chaque catégorie, valeurs brutes gardées, infobulle, aire 100 %, camembert et forme inconnue sans effet).
   **Pas testé dans un vrai Grist ni un vrai GFS.**
+
+### Tuiles usuelles des outils BI — lot 3, boîte à moustaches (18/11/2026)
+
+- **Ce qui est livré** (PR 8 du plan, §5.1 de `etudes/tuiles-usuelles-dashboard-2026-11-18.md`) : un type `box` (« Boîte à moustaches »). Une boîte par valeur de la dimension, sur les valeurs BRUTES de la colonne
+  numérique (jamais un agrégat : pas de champ Agrégat, pas de drill-down). Médiane, quartiles, moustaches et valeurs aberrantes tracées une à une (cercles creux). Clic sur une boîte ou une aberrante = filtre d'égalité
+  sur le groupe (la tuile reste entière, les autres groupes s'estompent, comme une barre).
+- **Choix de calcul** : quantiles par interpolation linéaire (« type 7 » : `QUARTILE.INC` d'Excel, `quantile_cont` de DuckDB, numpy par défaut) — une médiane de notes d'effectif pair est la moyenne des deux du milieu.
+  Moustaches de Tukey (1,5 x l'écart interquartile) : un groupe dont presque toutes les valeurs sont égales a donc un écart nul et déclare toute autre valeur aberrante, ce qui est le comportement habituel mais peut
+  surprendre. **Calcul en JS pur à tout volume**, pas de DuckDB : il faut les valeurs de chaque ligne côté JS de toute façon (le tri par groupe), 500 000 lignes prennent ~200 ms ; une requête DuckDB (`quantile_cont`)
+  demanderait de sérialiser les lignes vers le moteur pour un gain nul. À reconsidérer seulement si un document dépasse plusieurs millions de lignes.
+- **Plafond de points tracés** : 60 aberrantes par groupe (les plus éloignées de la médiane), le compte exact reste dans l'infobulle (« 157 valeurs aberrantes ») ; sans plafond, une colonne à queue lourde sur
+  47 000 lignes tracerait des milliers de cercles. Valeurs vides, booléennes, textes et NaN : ignorés (jamais 0) ; un groupe sans aucune valeur numérique n'a pas de boîte (la tuile n'affiche rien pour lui, sans
+  le dire — à décider : une pastille « n groupes sans valeur »).
+- **Conseils** (`js/advice.js`) : plus de 24 groupes (boîtes trop fines), ou aucun groupe de plus de 4 valeurs (des quartiles sur si peu de points disent peu) ; valeurs par défaut du formulaire = une vraie mesure +
+  une catégorie de 2 à 24 valeurs, de préférence avec au moins 5 lignes par groupe. Jamais proposé à l'écran d'accueil (ce n'est pas une première visualisation).
+- **Pas fait, à décider** : boîte horizontale, groupes triés par médiane, moyenne marquée d'un point, boîte « cassée » (encoches), violon, deuxième dimension (boîtes groupées), clic sur une valeur aberrante pour
+  filtrer cette seule ligne (aujourd'hui : filtre du groupe), export Excel des valeurs aberrantes une à une (aujourd'hui leur nombre ; la table plate les liste).
+- **Testé** : Node (bloc « boîte à moustaches » : quantiles contre des valeurs calculées à la main et contre un second calcul indépendant sur un jeu pseudo-aléatoire, moustaches, aberrantes basses et hautes, valeurs
+  identiques, une seule valeur, `BigInt`, plafond, entrées vides, store, export, défauts, conseils, i18n, câblage) ; Playwright contre le vrai `index.html` + `grist-stub.js`, page directe ET
+  `<iframe sandbox="allow-scripts">`, 220 et 6 000 lignes (formulaire : champ Agrégat masqué, libellé « Colonne numérique », préremplissage, tuile enregistrée sans agrégat ; option ECharts = calcul pur ; **pixel de
+  la médiane lu dans le graphique = couleur de palette**, intérieur teinté, fond au-dessus de la moustache ; clic réel sur une boîte = filtre + autres groupes à 0,3 + tuile source entière, 2e clic = filtre retiré,
+  clic réel sur une aberrante = filtre du bon groupe ; filtre d'une autre tuile = boîtes recalculées ; feuille Excel ; barres -> boîte -> barres sans reliquat ; tuile sans valeur numérique = message ; thème
+  sombre). **Pas testé dans un vrai Grist ni un vrai GFS.**
 
 ### Style global des tuiles — cinq entrées, un réglage du tableau de bord (18/11/2026)
 

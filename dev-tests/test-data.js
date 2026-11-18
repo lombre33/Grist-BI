@@ -2063,6 +2063,11 @@ const SAMPLE_TIME_SERIES = [
   assert.ok(/applyMode\(\);\s*fitPageTabs\(\);/.test(main), 'le changement de mode (boutons en plus en Édition) réajuste la barre');
   assert.ok(/window\.addEventListener\('resize', fitPageTabs\)/.test(main) && /new ResizeObserver\(\(\) => requestAnimationFrame\(fitPageTabs\)\)\.observe\(pageTabsEl\)/.test(main), 'redimensionnement : tout de suite, et en filet différé d\'une image');
   assert.ok(/GristBI\.appbar\.fitTabsLevel\(tabsClipped/.test(main), 'main.js délègue le choix du palier à js/appbar.js');
+  // Bug réel n°52 : `scrollIntoView` (appelé sur l'onglet actif à chaque redimensionnement) fait aussi défiler la PAGE ; la barre étant collante,
+  // une capture pleine page emportait le document de 232 px. L'ajustement des onglets ne fait défiler que la liste d'onglets.
+  const fitBody = main.slice(main.indexOf('function fitPageTabs()'), main.indexOf('// L\'onglet actif doit rester visible dans une liste qui défile'));
+  assert.ok(fitBody.length > 100 && !/scrollIntoView/.test(fitBody), 'fitPageTabs ne fait jamais défiler la page');
+  assert.ok(/function revealActiveTab\(\) \{[\s\S]*?pageTabsEl\.scrollLeft [-+]= /.test(main) && /updateTabsOverflow\(\);\s*revealActiveTab\(\);/.test(main), 'l\'onglet actif est ramené dans la vue par le défilement de la liste seulement');
   assert.ok(/\.appbar\.bar-names-hidden \.bar-view-name/.test(css) && /\.appbar\.bar-labels-hidden \.bar-label \{ display: none; \}/.test(css) && /\.appbar\.bar-labels-hidden \.bar-btn-mode \.bar-label \{ display: inline; \}/.test(css), 'classes de palier dans la feuille (le libellé du mode reste)');
   console.log('OK appbar — fitTabsLevel (paliers nom de vue puis libellés, gardés seulement s\'ils servent, 2 x 41 largeurs), câblage');
 }
@@ -2454,13 +2459,13 @@ const SAMPLE_TIME_SERIES = [
   const format = require('../js/format.js');
 
   // types concernés : ceux qui affichent un nombre ; pas de réglage pour un type inconnu ni null
-  for (const type of ['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo', 'histogram', 'heatmap']) {
+  for (const type of ['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo', 'histogram', 'heatmap', 'box']) {
     assert.strictEqual(data.supportsNumberFormat({ type }), true, type);
   }
   assert.strictEqual(data.supportsNumberFormat({ type: 'text' }), false, 'la tuile Texte ne montre aucun nombre');
   assert.strictEqual(data.supportsNumberFormat({ type: 'inconnu' }), false);
   assert.strictEqual(data.supportsNumberFormat(null), false);
-  assert.deepStrictEqual(data.NUMBER_FORMAT_TILE_TYPES.filter((ty) => !['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo', 'histogram', 'heatmap'].includes(ty)), []);
+  assert.deepStrictEqual(data.NUMBER_FORMAT_TILE_TYPES.filter((ty) => !['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo', 'histogram', 'heatmap', 'box'].includes(ty)), []);
 
   // verdict de « Comme dans la colonne » : sert l'explication affichée sous le réglage
   format.setColumnInfo({
@@ -2520,7 +2525,7 @@ const SAMPLE_TIME_SERIES = [
   const main = read('js/main.js');
   const css = read('css/style.css');
   // une seule dernière étape avant setOption, pour les quatre chemins ECharts (graphiques, mesures temporelles, histogramme, carte de chaleur)
-  assert.strictEqual((charts.match(/finalizeOption\(option, instance\);\s*\n\s*instance\.setOption\(option, true\);/g) || []).length, 4, 'finalizeOption avant chaque setOption d\'option');
+  assert.strictEqual((charts.match(/finalizeOption\(option, instance\);\s*\n\s*instance\.setOption\(option, true\);/g) || []).length, 5, 'finalizeOption avant chaque setOption d\'option');
   assert.strictEqual((charts.match(/^\s*confineTooltip\(option\);/gm) || []).length, 1, 'confineTooltip n\'est plus appelée qu\'à l\'intérieur de finalizeOption');
   // les jetons du thème viennent de la page, pas de couleurs en dur
   for (const token of ["'--surface'", "'--border-strong'", "'--border'", "'--text-secondary'"]) assert.ok(charts.includes(token), `chartTheme lit ${token}`);
@@ -4721,6 +4726,135 @@ const SAMPLE_TIME_SERIES = [
     assert.ok(/stackShares\(/.test(chartsD) && /labelLayout: \{ hideOverlap: true \}/.test(chartsD) && /step: 'middle'/.test(chartsD) && /if \(!stackPct && option\.series/.test(chartsD), 'pas de ligne de repère brute sur un axe en %');
     assert.ok(!/Intl\.NumberFormat|toFixed/.test(chartsD), 'aucun format de nombre en dur dans charts.js');
     console.log('OK options d\'affichage — tracé de la courbe, étiquettes, 100 % empilé (parts, colonnes, négatifs), export inchangé, conseil, i18n, câblage');
+  }
+
+  // Boîte à moustaches (type 'box', 18/11/2026, lot 3 de l'étude des tuiles usuelles) : quantiles, moustaches de Tukey, aberrantes,
+  // valeurs ignorées, plafond de points tracés, clic (filtre de groupe), export, défauts, conseils, i18n, câblage.
+  {
+    const fsB = require('fs');
+    const pathB = require('path');
+    const rootB = pathB.join(__dirname, '..');
+    // Quantiles (type 7, comme QUARTILE.INC d'Excel et quantile_cont de DuckDB) : valeurs de référence calculées à la main.
+    const q = data.quantileSorted;
+    assert.strictEqual(q([], 0.5), null);
+    assert.strictEqual(q([7], 0.25), 7); assert.strictEqual(q([7], 0.75), 7);
+    assert.strictEqual(q([1, 2, 3, 4], 0.5), 2.5, 'médiane d\'un effectif pair : moyenne des deux du milieu');
+    assert.strictEqual(q([1, 2, 3, 4], 0.25), 1.75); assert.strictEqual(q([1, 2, 3, 4], 0.75), 3.25);
+    assert.strictEqual(q([1, 2, 3, 4, 5], 0.25), 2); assert.strictEqual(q([1, 2, 3, 4, 5], 0.5), 3); assert.strictEqual(q([1, 2, 3, 4, 5], 0.75), 4);
+    assert.strictEqual(q([10, 20], 0), 10); assert.strictEqual(q([10, 20], 1), 20); assert.strictEqual(q([10, 20], 5), 20, 'p borné à [0 ; 1]');
+    // Un groupe de référence : [2,4,4,4,5,5,7,9,100] -> Q1 4, médiane 5, Q3 7, EIQ 3, barrière haute 11,5 : 100 est aberrante.
+    const sample = [];
+    [2, 4, 4, 4, 5, 5, 7, 9, 100].forEach((v) => sample.push({ g: 'A', v }));
+    [1, 2, 3, 4].forEach((v) => sample.push({ g: 'B', v }));
+    sample.push({ g: 'C', v: null }, { g: 'D', v: 'x' }, { g: 'E', v: '' }, { g: 'A', v: true }, { g: 'F', v: NaN });
+    const bs = data.boxStatsByGroup(sample, 'g', 'v');
+    assert.deepStrictEqual(bs.groups.map((g) => g.name), ['A', 'B'], 'ordre de première apparition ; un groupe sans valeur numérique n\'a pas de boîte');
+    assert.strictEqual(bs.ignored, 5, 'null, texte, vide, booléen et NaN : ignorés, jamais comptés comme 0');
+    const gA = bs.groups[0];
+    assert.deepStrictEqual([gA.n, gA.min, gA.max, gA.q1, gA.median, gA.q3, gA.low, gA.high, gA.outliers, gA.outlierCount], [9, 2, 100, 4, 5, 7, 2, 9, [100], 1]);
+    const gB = bs.groups[1];
+    assert.deepStrictEqual([gB.q1, gB.median, gB.q3, gB.low, gB.high, gB.outlierCount], [1.75, 2.5, 3.25, 1, 4, 0], 'pas d\'aberrante : les moustaches vont jusqu\'au min et au max');
+    // Aberrantes basses ET hautes, et moustache = la valeur extrême QUI RESTE dans les barrières (pas la barrière elle-même).
+    const lo = data.boxStatsByGroup([-50, 10, 11, 12, 13, 14, 15, 16, 80].map((v) => ({ g: 'X', v })), 'g', 'v').groups[0];
+    assert.deepStrictEqual([lo.low, lo.high, lo.outliers], [10, 16, [-50, 80]]);
+    assert.ok(lo.low >= lo.q1 - 1.5 * (lo.q3 - lo.q1) && lo.high <= lo.q3 + 1.5 * (lo.q3 - lo.q1));
+    // Valeurs identiques : boîte réduite à un trait, rien d'aberrant ; une seule valeur de même ; BigInt (DuckDB) et chaînes numériques.
+    const flat = data.boxStatsByGroup([5, 5, 5, 5].map((v) => ({ g: 'X', v })), 'g', 'v').groups[0];
+    assert.deepStrictEqual([flat.q1, flat.median, flat.q3, flat.low, flat.high, flat.outlierCount], [5, 5, 5, 5, 5, 0]);
+    const one = data.boxStatsByGroup([{ g: 'X', v: 3 }], 'g', 'v').groups[0];
+    assert.deepStrictEqual([one.n, one.low, one.q1, one.median, one.q3, one.high], [1, 3, 3, 3, 3, 3]);
+    const big = data.boxStatsByGroup([{ g: 1n, v: 10n }, { g: 1n, v: '20' }, { g: 1n, v: 30 }], 'g', 'v').groups[0];
+    assert.deepStrictEqual([big.name, big.n, big.median], ['1', 3, 20], 'BigInt et chaînes numériques acceptés');
+    // Presque toutes les valeurs égales : l'EIQ est nul, toute autre valeur est aberrante (comportement de Tukey, pas un défaut).
+    const skew = data.boxStatsByGroup([5, 5, 5, 5, 5, 5, 9].map((v) => ({ g: 'X', v })), 'g', 'v').groups[0];
+    assert.deepStrictEqual([skew.low, skew.high, skew.outliers], [5, 5, [9]]);
+    // Plafond de points tracés : les plus éloignées de la médiane sont gardées, rangées par ordre croissant, le compte reste exact.
+    const many = [];
+    for (let i = 0; i < 400; i++) many.push({ g: 'X', v: 50 }); // boîte nette (EIQ nul : toute autre valeur est aberrante)
+    for (let i = 1; i <= 100; i++) many.push({ g: 'X', v: 50 + 10 * i * (i % 2 ? 1 : -1) }); // 100 aberrantes
+    const capped = data.boxStatsByGroup(many, 'g', 'v', 10).groups[0];
+    assert.strictEqual(capped.outlierCount, 100); assert.strictEqual(capped.outliers.length, 10);
+    assert.deepStrictEqual(capped.outliers, capped.outliers.slice().sort((a, b) => a - b), 'ordre croissant');
+    assert.ok(capped.outliers.every((v) => Math.abs(v - capped.median) >= 900), 'les 10 plus éloignées');
+    assert.strictEqual(data.boxStatsByGroup(many, 'g', 'v').groups[0].outliers.length, data.BOX_MAX_OUTLIERS, 'plafond par défaut');
+    assert.strictEqual(data.boxStatsByGroup(many, 'g', 'v', 0).groups[0].outliers.length, 0); assert.strictEqual(data.boxStatsByGroup(many, 'g', 'v', 0).groups[0].outlierCount, 100);
+    // Entrées vides ou absentes : rien, jamais d'exception.
+    assert.deepStrictEqual(data.boxStatsByGroup([], 'g', 'v'), { groups: [], ignored: 0 });
+    assert.deepStrictEqual(data.boxStatsByGroup(undefined, 'g', 'v'), { groups: [], ignored: 0 });
+    // Cohérence avec le calcul indépendant d'une jeu pseudo-aléatoire reproductible (tri + interpolation écrits autrement).
+    let seedB = 11; const rndB = () => { seedB = (seedB * 16807) % 2147483647; return seedB / 2147483647; };
+    const rs = Array.from({ length: 300 }, (_, i) => ({ g: ['a', 'b', 'c'][i % 3], v: Math.round(rndB() * 1000) / 10 }));
+    data.boxStatsByGroup(rs, 'g', 'v').groups.forEach((g) => {
+      const vals = rs.filter((r) => r.g === g.name).map((r) => r.v).sort((a, b) => a - b);
+      const at = (p) => { const h = (vals.length - 1) * p; return vals[Math.floor(h)] + (h - Math.floor(h)) * (vals[Math.ceil(h)] - vals[Math.floor(h)]); };
+      assert.ok(Math.abs(g.median - at(0.5)) < 1e-9 && Math.abs(g.q1 - at(0.25)) < 1e-9 && Math.abs(g.q3 - at(0.75)) < 1e-9, 'quartiles du groupe ' + g.name);
+      assert.ok(g.min <= g.low && g.low <= g.q1 && g.q1 <= g.median && g.median <= g.q3 && g.q3 <= g.high && g.high <= g.max, 'ordre min <= moustache <= Q1 <= médiane <= Q3 <= moustache <= max');
+    });
+    // Store : un clic de boîte pose un filtre d'égalité sur le groupe (comme une barre), la tuile source reste entière, les autres sont filtrées.
+    {
+      const st = state.createStore();
+      st.setRows(sample.filter((r) => typeof r.v === 'number' && !Number.isNaN(r.v)));
+      st.addTile({ id: 'bx', type: 'box', dimension: 'g', measure: 'v', title: 'B' });
+      st.addTile({ id: 'br', type: 'bar', dimension: 'g', measure: 'v', aggFn: 'sum', title: 'R' });
+      st.toggleFilter('g', 'B', 'bx');
+      assert.deepStrictEqual(st.getState().activeFilters, [{ column: 'g', value: 'B', sourceTileId: 'bx' }]);
+      assert.strictEqual(data.rowsForTile(st.getState().tiles[0], st.getState()).length, 13, 'la boîte reste affichée en entier');
+      assert.strictEqual(data.rowsForTile(st.getState().tiles[1], st.getState()).length, 4, 'les autres tuiles sont filtrées');
+      st.toggleFilter('g', 'B', 'bx');
+      assert.deepStrictEqual(st.getState().activeFilters, [], 'même groupe : filtre retiré');
+      st.toggleFilter('g', 'A', 'bx'); st.removeTile('bx');
+      assert.deepStrictEqual(st.getState().activeFilters, [], 'supprimer la tuile lève son filtre');
+    }
+    // Export Excel : une ligne par groupe, mêmes statistiques que l'écran, filtres des autres tuiles appliqués ; la tuile est une image pour PDF/PPTX.
+    const bState = { rows: sample.filter((r) => typeof r.v === 'number'), activeFilters: [], advancedFilters: [], drillIns: {}, comments: [], pages: [] };
+    const bTile = { id: 'bx', type: 'box', title: 'Notes par classe', dimension: 'g', measure: 'v' };
+    assert.strictEqual(data.tileExportKind(bTile), 'image');
+    assert.deepStrictEqual(data.tileExportSheet(bTile, bState), {
+      name: 'Notes par classe',
+      header: ['g', 'Effectif', 'Moustache basse', '1er quartile', 'Médiane', '3e quartile', 'Moustache haute', 'Valeurs aberrantes'],
+      rows: [['A', 9, 2, 4, 5, 7, 9, 1], ['B', 4, 1, 1.75, 2.5, 3.25, 4, 0]]
+    });
+    const bFiltered = Object.assign({}, bState, { activeFilters: [{ column: 'g', value: 'B', sourceTileId: 'autre' }] });
+    assert.deepStrictEqual(data.tileExportSheet(bTile, bFiltered).rows.map((r) => r[0]), ['B'], 'filtre d\'une autre tuile appliqué');
+    assert.deepStrictEqual(data.tileExportSheet(bTile, { rows: [], activeFilters: [], advancedFilters: [], drillIns: {} }).rows, [], 'aucune ligne : en-têtes seuls');
+    assert.strictEqual(data.buildWorkbookSheets && true, true);
+    // Types : palette et format oui ; ni tri, ni séries, ni empilé, ni ligne de repère.
+    assert.strictEqual(data.supportsPalette({ type: 'box' }), true); assert.strictEqual(data.supportsNumberFormat({ type: 'box' }), true);
+    assert.strictEqual(data.isSortableTile({ type: 'box' }), false); assert.strictEqual(data.isSeriesTile({ type: 'box', seriesColumn: 'P' }), false);
+    assert.strictEqual(data.supportsRefLine({ type: 'box' }), false); assert.strictEqual(data.supportsValueLabels({ type: 'box' }), false);
+    // Valeurs par défaut : une vraie mesure et une catégorie de quelques groupes, sans agrégat ; rien sans colonne numérique.
+    const cls = [];
+    for (let i = 0; i < 120; i++) cls.push({ Classe: ['2nde A', '2nde B', '1re S'][i % 3], Matiere: 'M' + (i % 40), Note: 8 + ((i * 7) % 13) });
+    const bd = advice.defaultsForType('box', cls, ['Classe', 'Matiere', 'Note']);
+    assert.ok(bd && bd.measure === 'Note' && bd.dimension === 'Classe' && bd.aggFn === undefined, 'catégorie à peu de groupes, colonne numérique, pas d\'agrégat : ' + JSON.stringify(bd));
+    assert.strictEqual(advice.defaultsForType('box', [{ R: 'N' }, { R: 'S' }], ['R']), null);
+    assert.strictEqual(advice.adviceForType('box', [{ R: 'N' }, { R: 'S' }], ['R']).key, 'advice.fit.noMeasure');
+    assert.strictEqual(advice.TILE_TYPES.includes('box'), false, 'jamais proposé à l\'accueil');
+    assert.strictEqual(advice.adviceForType('box', cls, ['Classe', 'Matiere', 'Note']).key, 'advice.use.box');
+    // Conseils : trop de groupes ; trop peu de valeurs par groupe ; rien sinon.
+    const wide = Array.from({ length: 300 }, (_, i) => ({ G: 'g' + (i % 30), V: i }));
+    assert.deepStrictEqual(advice.adviceForTile({ type: 'box', dimension: 'G', measure: 'V' }, wide), { key: 'advice.box.tooManyGroups', vars: { n: 30 }, level: 'warn' });
+    const thin = [{ G: 'a', V: 1 }, { G: 'a', V: 2 }, { G: 'b', V: 3 }, { G: 'b', V: 4 }, { G: 'b', V: 9 }];
+    assert.strictEqual(advice.adviceForTile({ type: 'box', dimension: 'G', measure: 'V' }, thin).key, 'advice.box.fewValues');
+    assert.doesNotThrow(() => advice.adviceForTile({ type: 'box', dimension: 'Absente', measure: 'Aussi' }, cls), 'colonnes absentes : aucune exception');
+    assert.strictEqual(advice.adviceForTile({ type: 'box', dimension: 'Classe', measure: 'Note' }, cls), null);
+    ['tileForm.type.box', 'tileTitle.box', 'chart.box.empty', 'chart.box.count', 'chart.box.max', 'chart.box.q3', 'chart.box.median', 'chart.box.q1', 'chart.box.min', 'chart.box.outliers', 'chart.box.outlier',
+      'advice.use.box', 'advice.box.tooManyGroups', 'advice.box.fewValues']
+      .forEach((k) => assert.ok(i18n.STRINGS[k] && i18n.STRINGS[k].fr && i18n.STRINGS[k].en, 'traduction fr/en : ' + k));
+    i18n.setLang('fr'); assert.strictEqual(i18n.t('chart.box.count', { n: 1, count: 1 }), '1 valeur'); assert.strictEqual(i18n.t('chart.box.outliers', { n: 3, count: 3 }), '3 valeurs aberrantes');
+    i18n.setLang('en'); assert.strictEqual(i18n.t('chart.box.outliers', { n: 1, count: 1 }), '1 outlier'); i18n.setLang('fr');
+    // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
+    const mainB = fsB.readFileSync(pathB.join(rootB, 'js', 'main.js'), 'utf8');
+    const chartsB = fsB.readFileSync(pathB.join(rootB, 'js', 'charts.js'), 'utf8');
+    const indexB = fsB.readFileSync(pathB.join(rootB, 'index.html'), 'utf8');
+    assert.ok(/const TYPE_CARDS = \[[^\]]*'box'/.test(mainB) && /<option value="box"/.test(indexB) && /'type-box':/.test(mainB), 'carte, option et icône du type');
+    assert.ok(/type !== 'box'; \}/.test(mainB), 'pas de drill-down (valeurs brutes, pas de niveau suivant)');
+    assert.ok(/if \(isBox\) tileData\.aggFn = undefined;/.test(mainB) && /isHistogram \|\| isBox;/.test(mainB), 'ni agrégat écrit ni champ Agrégat affiché');
+    assert.ok(/currentTile\.type === 'box'/.test(chartsB) && /params\.seriesType === 'scatter' && Array\.isArray\(params\.value\) \? params\.value\[0\]/.test(chartsB), 'le clic retrouve le groupe par son rang (boîte : dataIndex, aberrante : value[0])');
+    assert.ok(/toggleFilter\(currentTile\.dimension, names\[rank\], currentTile\.id\)/.test(chartsB), 'filtre d\'égalité sur le groupe, tuile source = la boîte');
+    assert.ok(/escapeHtml\(g\.name\)/.test(chartsB), 'le nom du groupe (donnée saisie) est échappé dans l\'infobulle');
+    assert.ok(!/Intl\.NumberFormat|toFixed/.test(chartsB), 'aucun format de nombre en dur dans charts.js');
+    console.log('OK boîte à moustaches — quantiles (type 7), moustaches de Tukey, aberrantes (plafond), valeurs ignorées, groupes, store, export, défauts, conseil, i18n, câblage');
   }
 
   // Export Excel avec ExcelJS 4.4.0 (consigne GFS 017, 18/11/2026) : le VRAI paquet vendorisé, exécuté sous Node
