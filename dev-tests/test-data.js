@@ -4619,6 +4619,33 @@ const SAMPLE_TIME_SERIES = [
     }
     ['tileForm.refLine.label', 'tileForm.refLine.none', 'tileForm.refLine.average', 'tileForm.refLine.value', 'tileForm.refValue.label', 'tileForm.error.refValueRequired', 'chart.refLine.average', 'chart.refLine.value']
       .forEach((k) => assert.ok(i18n.STRINGS[k] && i18n.STRINGS[k].fr && i18n.STRINGS[k].en, 'traduction fr/en : ' + k));
+    // Libellé d'une ligne horizontale : HORS de la zone de tracé (à droite), sur deux lignes, jamais plus de ~22 % de la tuile
+    // (posé dedans il cachait la fin de la courbe et la dernière barre).
+    {
+      const fmtR = require('../js/format.js');
+      const measureR = (text, px) => String(text).length * px * 0.56; // estimation : le navigateur mesure avec un canvas
+      for (const width of [180, 224, 270, 340, 640]) {
+        for (const [name, value] of [['Moyenne', '816 559'], ['Objectif', '900 000'], ['Moyenne', '1 234 567,89'], ['Average', '0,2'], ['Objectif', '12 345 678 901,23']]) {
+          const lay = fmtR.refLabelLayout([name, value], width, measureR);
+          assert.strictEqual(lay.text, `${name}\n${value}`);
+          assert.ok(lay.font >= 9 && lay.font <= 11, `taille ${lay.font}`);
+          assert.ok(lay.reserve <= Math.max(Math.ceil(width * 0.22) + 1, 30 + 13), `${width} px : marge ${lay.reserve} <= 22 % de la tuile (plancher : 30 px de texte)`);
+          assert.ok(lay.reserve >= 16, 'au moins la marge historique de la grille (16 px)');
+          // Ce qui est réservé contient le texte (dans la limite du tiers) : jamais de libellé qui sorte de la tuile.
+          const widest = Math.max(measureR(name, lay.font), measureR(value, lay.font));
+          if (lay.width == null) assert.ok(widest + 6 + 5 + 2 <= lay.reserve + 1, `${width} px, « ${value} » : le texte tient dans la marge`);
+          else assert.ok(lay.width + 6 + 5 + 2 <= lay.reserve + 1, 'texte tronqué : la largeur demandée tient dans la marge');
+        }
+      }
+      // Large tuile et texte court : taille pleine, rien de tronqué ; petite tuile et nombre long : réduit, puis tronqué en dernier recours.
+      const roomy = fmtR.refLabelLayout(['Moyenne', '816 559'], 640, measureR);
+      assert.deepStrictEqual([roomy.font, roomy.width], [11, null]);
+      const tight = fmtR.refLabelLayout(['Objectif', '12 345 678 901,23'], 180, measureR);
+      assert.ok(tight.font < 11 && tight.width !== null && tight.width > 0, 'réduit puis tronqué');
+      assert.strictEqual(fmtR.refLabelLayout('Seul', 270, measureR).text, 'Seul', 'une chaîne seule est acceptée');
+      assert.doesNotThrow(() => fmtR.refLabelLayout([], 0, measureR));
+      assert.doesNotThrow(() => fmtR.refLabelLayout([null, undefined], NaN, measureR));
+    }
     // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
     const mainR = fsR.readFileSync(pathR.join(rootR, 'js', 'main.js'), 'utf8');
     const chartsR = fsR.readFileSync(pathR.join(rootR, 'js', 'charts.js'), 'utf8');
@@ -4627,6 +4654,8 @@ const SAMPLE_TIME_SERIES = [
     assert.ok(/supportsRefLine\(\{ type, measureMode/.test(mainR) && /tileData\.refLine = refKind \|\| undefined/.test(mainR));
     assert.ok(/markLine/.test(chartsR) && /function addRefLine/.test(chartsR) && /refLineValue\(tile, groups\.map/.test(chartsR), 'la moyenne se calcule sur les valeurs AFFICHÉES (groupes triés/drillés)');
     assert.ok(!/Intl\.NumberFormat|toFixed/.test(chartsR), 'aucun format de nombre en dur dans charts.js');
+    assert.ok(/label\.position = 'end'/.test(chartsR) && !/insideEndTop/.test(chartsR), 'libellé d\'un trait horizontal : hors de la zone de tracé, jamais « insideEndTop »');
+    assert.ok(/option\.grid = \{ \.\.\.grid, right: Math\.max\(/.test(chartsR), 'marge prise sur une COPIE de la grille (numericGrid est partagée)');
     console.log('OK ligne de repère — types, genre tracé, objectif invalide, moyenne (vides, BigInt), store, export inchangé, i18n, câblage');
   }
 

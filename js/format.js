@@ -501,8 +501,37 @@
     return size;
   }
 
+  // Libellé d'une ligne de repère (moyenne, objectif) tracée HORIZONTALEMENT (barres verticales, courbe) : il va HORS de la zone de tracé,
+  // à droite du trait, sur autant de lignes que `lines` (« Moyenne » puis « 816 559 »). À l'intérieur, au bout du trait, il se posait
+  // sur la fin de la courbe et sur la dernière barre : avec son fond opaque il cachait justement les points les plus récents, ceux qu'on
+  // compare à la moyenne. `reserve` = marge à laisser à droite de la grille (le libellé n'entre pas dans `containLabel`) ; `font` se réduit
+  // (jusqu'à `REF_LABEL_MIN_FONT`) pour que la marge ne dépasse guère un cinquième de la tuile (22 %) ; si le texte reste trop large à la taille
+  // minimale, `width` demande à ECharts de le tronquer plutôt que de le laisser sortir de la tuile. `measure(texte, taille)` rend la
+  // largeur du texte (canvas dans le navigateur, estimation dans les tests).
+  const REF_LABEL_FONT = 11;
+  const REF_LABEL_MIN_FONT = 9;
+  const REF_LABEL_PAD_X = 3; // marge intérieure gauche/droite du libellé (fond opaque)
+  const REF_LABEL_GAP = 5; // écart entre le bout du trait et le libellé
+  const REF_LABEL_EDGE = 2; // marge de sécurité contre le bord de la tuile
+  const REF_LABEL_MAX_SHARE = 0.22;
+  function refLabelLayout(lines, containerWidth, measure) {
+    const list = (Array.isArray(lines) ? lines : [lines]).map((l) => String(l == null ? '' : l));
+    const longest = list.reduce((a, b) => (measure(b, REF_LABEL_FONT) > measure(a, REF_LABEL_FONT) ? b : a), '');
+    const maxText = Math.max(30, Math.floor((containerWidth || 0) * REF_LABEL_MAX_SHARE) - 2 * REF_LABEL_PAD_X - REF_LABEL_GAP - REF_LABEL_EDGE);
+    const font = fitFont(longest, maxText, REF_LABEL_FONT, REF_LABEL_MIN_FONT, measure);
+    const wide = Math.ceil(list.reduce((m, l) => Math.max(m, measure(l, font)), 0));
+    const truncated = wide > maxText;
+    const textW = truncated ? maxText : wide;
+    return {
+      font,
+      width: truncated ? maxText : null,
+      reserve: textW + 2 * REF_LABEL_PAD_X + REF_LABEL_GAP + REF_LABEL_EDGE,
+      text: list.join('\n')
+    };
+  }
+
   return {
-    niceCeil, plainScale, gaugeLayout, gaugeTicks, gaugeTickBudget, gaugeTickPlacement, radarLayout, fitFont, cellNumber,
+    niceCeil, plainScale, refLabelLayout, gaugeLayout, gaugeTicks, gaugeTickBudget, gaugeTickPlacement, radarLayout, fitFont, cellNumber,
     MODES, MAX_CUSTOM_DECIMALS, localeForLang, normalizeSpec, parseWidgetOptions, parseDocSettings,
     styleFromColumn, resolveStyle, makeFormatter, forTile, setColumnInfo, getColumnInfo, getDocSettings, columnModeState
   };
