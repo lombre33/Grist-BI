@@ -1038,6 +1038,20 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 - [ ] Rendu dans un vrai Grist / un vrai GFS ⬜ **[NON TESTABLE ICI]**
 - **Piège de test** : un `setOption` avec `calendar` mais sans `range` lève dans ECharts ; l'état vide ne doit pas écrire de composant `calendar`.
 
+### `js/keywords.js` + `js/pdf-text.js` + `js/publications.js` + `js/keywords-panel.js` + `js/grist-api.js` — mots-clés des publications (18/11/2026 ; Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts">`, vrai `pdfjs.js` de GFS, vrais PDF)
+
+- [x] `extractKeywords` : textes français et anglais réalistes (les expressions qui reviennent passent devant les rares), composé à trait d'union gardé, élision et possessif retirés, ligne vide = coupure, unité contenue non répétée, ex-aequo par ordre d'apparition (jamais alphabétique), texte vide / sans mot utile = aucun mot-clé ; `rakeKeywords` garde son comportement (découpage des phrases trop longues) ✅
+- [x] `publications` : `attachmentIds` (`['L', 1, 2]`, liste nue, nombre seul, texte JSON, doublons, non-entiers), `columnChoices` (source PDF = colonnes de pièces jointes, source texte, sortie = colonnes de texte, mots saisis = texte / choix), `freshColumnName` (casse ignorée, `_2`…), `planRows` (cellule de sortie remplie jamais touchée, ligne sans source écartée, trois pièces jointes au plus) ✅
+- [x] `keywordsForTask` : PDF lu, image ignorée (pas un PDF), PDF scanné = `noText`, mots saisis à la main exclus, aucun mot utile = `noKeywords` ✅ ; `runJob` : lots, erreur par ligne sans arrêt, refus d'écriture = arrêt, annulation écrit ce qui est prêt, source texte ✅
+- [x] `pdfText.readPdf` : page par page, plafonds de pages et de signes, annulation, document libéré à la fin ET en cas d'erreur, `isPdfBytes` ✅
+- [x] `grist-api` (faux `grist` et `fetch` dans un `vm`) : jeton en lecture seule mis en cache, adresse de téléchargement, 404, trop lourde, jeton expiré (une reprise), `addTextColumn` (jamais de formule, colId réellement rendu), `writeColumnValues` (un `UpdateRecord` par ligne, un seul `applyUserActions`), refus clair sans `jeton` ✅
+- [x] Câblage : chaque id cherché par le panneau existe dans `index.html`, ordre des scripts (`extensions.js` avant le panneau), aucun `<form>` dans la fenêtre (piège n°20), aucune boîte native, textes fr/en, bouton réservé à l'Édition, aucune bibliothèque PDF dans la page, le panneau ne parle pas directement à GFS ✅
+- [x] **Grisé, jamais masqué** : app seule (option PDF grisée, « Comment l'avoir » ouvre la fenêtre du grisé, la colonne de texte marche sans extension) ; hébergé sans l'extension (« Ajouter l'extension » appelle l'installation, la fenêtre se dégrise SANS rouvrir quand l'extension arrive, se regrise quand elle est retirée) 🌐
+- [x] Travail réel avec le vrai pdf.js de GFS : trois lignes remplies, un scan « sans texte lisible », une ligne « sans PDF », mots saisis à la main inchangés, plus long gel de la page 88 ms, relecture de la table de travail (le tableau de bord voit la colonne) 🌐 ; **page directe ET cadre isolé** 🌐
+- [x] GFS sans la capacité `jeton` : refus clair AVANT toute écriture, aucune colonne créée 🌐 ; anglais 🌐
+- [ ] Un vrai Grist (réponse de `getAccessToken`, adresse de téléchargement d'une pièce jointe, `AddColumn`), un vrai GFS (capacités `jeton` et `ecrit` déclarées), de vrais PDF de chercheurs, 100 000 lignes ⬜ **[NON TESTABLE ICI]**
+- **Piège de test** : le faux GFS doit rendre un `integrite` égal au `sha384` du vrai fichier (le navigateur refuse sinon le `<script type="module">`) ; la fenêtre ne se repeint qu'à l'événement `extensions` (`GristBI.extensions.onChange`), jamais en relisant le lien.
+
 ### CSS — classe de bug à systématiquement re-vérifier
 
 - [x] `.field[hidden]` masque réellement l'élément (pas seulement `display:flex` de `.field` qui gagne à spécificité égale) [BUG RÉEL, trouvé 2 fois sur des champs différents] ✅ (règle en place)

@@ -2421,13 +2421,59 @@ dans une seule instance de widget, avec ses propres tuiles internes.
     traité la demande (voir GFS-ETAT.md, section "Demandes à GFS"). Fonctions pures de jointure
     (`joinTextItems`/`joinPages`) testées sous Node ; le reste (chargement réel d'un PDF) a besoin
     d'un vrai PDF.js, donc d'un navigateur — même limite que le moteur SQL de `duckdb-engine.js`.
-  - **Non fait à ce stade** : le branchement Grist lui-même (colonne mots-clés manuels + auto via
-    `ensureColumnsUpToDate`, UI de déclenchement à l'ajout d'un document, lecture de la pièce
-    jointe via `grist.docApi.getAccessToken`) et le plan de rattrapage des publications déjà
-    existantes (backlog) — question posée à Antoine, réponse pas encore reçue au moment de ce
-    commit. Voir ROADMAP.md.
-  - **Non testable depuis ce sandbox** : le round-trip réel PDF.js une fois GFS la fournie (CDN
-    réel, taille du fichier worker, timing sur un PDF de plusieurs centaines de pages).
+  - **Mise à jour du 18/11/2026 — branché (consigne GFS 019, fil « Recherche sémantique sur publications »)**.
+    Antoine a confirmé : 100 000 publications et plus, des PDF déposés dans une colonne pièce jointe de Grist, aucun
+    backlog (« Pas de publication pour le moment »), zéro back-end, mots-clés saisis à la main ET automatiques.
+    Ce qui existe : menu Données > « Mots-clés des publications » (mode Édition, `js/keywords-panel.js`).
+    - **Le choix du déclenchement** : un geste de la personne, jamais à l'ajout d'une ligne. Le widget n'a pas de
+      moyen d'écouter « un document vient d'être déposé » quand il est fermé (pas de back-end, pas de `onRecords`),
+      et il n'écrit rien dans la table de la personne sans l'avoir dit : la fenêtre choisit la source (le PDF joint, ou
+      une colonne de texte : titre, résumé), la colonne qui reçoit les mots-clés (existante, ou nouvelle
+      `Mots_cles_auto` créée APRÈS une fenêtre de confirmation qui dit le nombre de lignes et la colonne), une colonne
+      facultative de mots saisis à la main (jamais répétés dans l'automatique), le nombre de mots et la langue. Une
+      cellule déjà remplie n'est jamais touchée ; relancer le travail ne fait donc que compléter (les nouvelles lignes).
+    - **L'algorithme** (`js/keywords.js:extractKeywords`, zéro dépendance, `Intl.Segmenter`) : RAKE ne suffit pas pour
+      un texte long (il classe d'abord les phrases candidates les plus longues, « méthode proposée consiste à… » devient
+      un mot-clé). Il reste (`rakeKeywords`, utile à un titre ou un résumé court) mais l'extraction principale
+      classe des unités de 1 à 3 mots par **récurrence** : une expression qui revient (`activité physique`,
+      `perovskite solar cells`) passe devant une expression rare, un mot seul demande deux occurrences (sauf sur un
+      texte très court), les composés à trait d'union restent un seul mot (`mots-clés`), l'élision française
+      (`l'apprentissage`) et le possessif anglais (`model's`) sont retirés, une ligne vide coupe une expression, une
+      unité contenue dans une unité retenue de fréquence comparable n'est pas répétée. Les ex-aequo suivent l'ordre
+      de première apparition (jamais l'ordre alphabétique, piège n°14). Mesuré à la main sur des textes français et
+      anglais réalistes (articles de santé publique, d'énergie, de linguistique) : les expressions retenues sont celles
+      qu'un lecteur retiendrait ; ce n'est PAS une mesure sur un vrai corpus de chercheurs, et un texte dont les mots
+      importants ne reviennent jamais donnera peu de mots-clés (voulu : mieux vaut peu que du bruit).
+    - **La lecture du PDF** (`js/pdf-text.js:readPdf`) : pdf.js vient de GFS (extension `mots-cles-pdf`, voir
+      GFS-ETAT.md), jamais d'une balise ni d'un CDN de ce dépôt. Page par page, en rendant la main entre deux pages
+      (pdf.js tourne dans la page, pas dans un vrai `Worker`, dans le cadre isolé de GFS) : au plus 88 ms de gel mesurés
+      sur cinq PDF en page directe (le cadre isolé a été essayé, mais son gel n'a pas été mesuré cette fois). Plafonds : 80 pages et 400 000 signes par PDF, trois
+      pièces jointes par ligne, 80 Mo par fichier ; un fichier qui n'est pas un PDF (image) est ignoré, un PDF scanné
+      (aucun texte) est compté « sans texte lisible », jamais un mot-clé inventé.
+    - **L'écriture** : par lots de 20 lignes (un seul `applyUserActions`, une action `UpdateRecord` par ligne) ; une
+      erreur sur une ligne (PDF corrompu, pièce jointe introuvable) est comptée et listée, le travail continue ; un
+      refus d'écriture arrête tout ; « Arrêter » écrit ce qui est déjà prêt puis s'arrête.
+    - **Essais** : Node (`dev-tests/test-data.js` : plan des lignes, `keywordsForTask`, `runJob`, `readPdf`, pont Grist
+      avec un faux `fetch`, qualité de l'extraction, câblage de la fenêtre) ; navigateur avec **le vrai fichier
+      `pdfjs.js` de GFS et de vrais PDF** (page directe ET `<iframe sandbox="allow-scripts">`), un faux GFS
+      (`hosted`, `library`, `onExtensions`, `install`) qui ajoute puis retire l'extension pendant que la fenêtre est
+      ouverte (l'option PDF se dégrise, puis se regrise, sans rouvrir) ; l'app seule (grisée, « Comment l'avoir »,
+      colonne de texte qui marche) ; GFS sans `jeton` (refus clair AVANT toute écriture, aucune colonne créée) ; anglais.
+    - **Non vérifié, à relever dans un vrai Grist** (le faux `window.grist` de `dev-tests/` ne le prouve pas) :
+      (1) la forme exacte de la réponse de `getAccessToken({ readOnly: true })` (`baseUrl`, `token`, `ttlMsecs`) ;
+      (2) l'adresse de téléchargement `${baseUrl}/attachments/<id>/download?auth=<jeton>` et son comportement CORS depuis
+      le cadre du widget ; (3) la valeur que `AddColumn` rend (`retValues[0].colId`) — le code retombe sur le nom demandé
+      si elle manque, mais Grist peut avoir renommé la colonne ; (4) le comportement sur de VRAIS PDF de chercheurs
+      (colonnes multiples, en-têtes et pieds de page répétés qui peuvent gonfler un mot récurrent, formules, PDF
+      protégés) ; (5) le temps pour 100 000 lignes (lecture séquentielle, un PDF après l'autre : à mesurer, la fenêtre
+      permet d'arrêter et de reprendre, les lignes faites ne sont pas refaites) ; (6) **dans GFS** : le courtier refuse
+      `getAccessToken` sans la capacité `jeton` et l'écriture dans la table de la personne sans un motif `ecrit` —
+      deux demandes dans GFS-ETAT.md, la lecture d'un PDF ne marchera dans GFS qu'après leur déclaration.
+    - **Limites connues** : une ligne dont le PDF est un scan (ou ne se lit pas) est réessayée à chaque lancement (pas de
+      mémoire « déjà essayé » : ajouterait une colonne ou un état à tenir, à décider avec Antoine si les scans
+      sont nombreux) ; le français et l'anglais seulement (la langue se devine, ou se choisit) ; aucune recherche n'est
+      encore faite SUR ces mots-clés (la colonne est filtrable comme toute colonne ; un champ de recherche plein texte
+      sur l'index est la suite logique, avec DuckDB-WASM déjà vendorisé).
 
 - **Ambiance de GFS (04/11/2026, consigne GFS 004)** — GFS (Grist Factory Suite, l'hébergeur commun
   en préparation pour plusieurs apps Grist d'Antoine, voir `lombre33/grist-widget-GFS`) propose cinq

@@ -1,6 +1,6 @@
 # GFS-ETAT : Grist-BI
 
-Mis à jour le 2026-11-18 (consignes 019 à 021 : « Nuage de mots » branchée sur l'extension `nuage-de-mots` de GFS (`js/extensions.js`, grisée sans l'extension, jamais masquée), 019 pour « Mots-clés des PDF » pas encore branchée ; 020 lue, demande `_grist_DocInfo` sortie ; 021 lue, ma question sur le module graphique sort ; une question nouvelle sur l'adresse de GFS dans la fenêtre du grisé ; consignes 016 et 017 faites (SheetJS remplacé par ExcelJS 4.4.0, choix du porteur), 018 lue ; `consignes/bi/INDEX.md` à `a923997` ou plus récent). La
+Mis à jour le 2026-11-18 (consignes 019 à 021 : « Nuage de mots » branchée sur l'extension `nuage-de-mots` de GFS (`js/extensions.js`, grisée sans l'extension, jamais masquée), « Mots-clés des PDF » branchée sur l'extension `mots-cles-pdf` (`c97b614`, fenêtre « Mots-clés des publications » du menu Données, grisée sans l'extension) et deux déclarations demandées à GFS (`jeton`, écriture dans la table de travail) ; 020 lue, demande `_grist_DocInfo` sortie ; 021 lue, ma question sur le module graphique sort ; une question nouvelle sur l'adresse de GFS dans la fenêtre du grisé ; consignes 016 et 017 faites (SheetJS remplacé par ExcelJS 4.4.0, choix du porteur), 018 lue ; `consignes/bi/INDEX.md` à `a923997` ou plus récent). La
 011 n'a pas été lue (remplacée par la 012 avant lecture, consigne explicite d'Antoine).
 
 ## Consignes
@@ -296,6 +296,16 @@ Mis à jour le 2026-11-18 (consignes 019 à 021 : « Nuage de mots » branchée 
   retirée -> grisée de nouveau. **Non rejoué** : dans le vrai GFS ni avec le fichier que GFS sert vraiment (celui de mon essai est le paquet npm posé dans un faux `GfsPaquets`, pas ton
   `sha384`) ; **« Mots-clés des PDF »** : `js/pdf-text.js` lit déjà `GfsPaquets.pdfjs.modules['pdfjs-dist/build/pdf.min.mjs']`, mais rien n'est branché dans une page (la recherche sur
   publications est un autre chantier), donc la ligne `mots-cles-pdf` de « Demandes à GFS » viendra avec son commit, comme la consigne le dit. Voir « Demandes à GFS » et « Changements qui touchent GFS ».
+- 019 · suite, « Mots-clés des PDF » branchée (18/11/2026) · `c97b614` · menu Données > **Mots-clés des publications** (mode Édition, `js/keywords-panel.js`). **Grisé, jamais masqué (point 4)** : sans l'extension
+  `mots-cles-pdf`, l'option « Le PDF joint à la ligne » reste là, grisée, avec « Demande l'extension « Mots-clés des PDF » de Grist Factory Suite » ; dans GFS « Ajouter l'extension » appelle
+  `GristBI.extensions.requestInstall` (`GfsLink.install`) et la fenêtre se repeint à l'événement `extensions`, sans rouvrir (essayé, y compris au retrait de l'extension pendant que la fenêtre est ouverte) ; seule, « Comment l'avoir » ouvre
+  la fenêtre du grisé du guide, la même que « Nuage de mots ». L'option « Une colonne de texte » marche partout, sans extension. Le fichier de pdf.js vient de `GfsLink.library('pdfjs')` (`GristBI.extensions.load`),
+  jamais d'une balise, d'un `importmap` ni d'une adresse écrite ici ; il est lu avec `isEvalSupported: false` et `verbosity: 0`, **page par page en rendant la main** (la page ne gèle pas : 88 ms au plus
+  sur cinq PDF, mesuré en page directe), 80 pages et 400 000 signes au plus par PDF, trois pièces jointes au plus par ligne. **Ce qui est écrit** : une colonne de texte, choisie ou créée
+  (`Mots_cles_auto`) APRÈS une fenêtre de confirmation qui dit le nombre de lignes et la colonne ; une cellule déjà remplie n'est jamais touchée ; la colonne des mots saisis à la main n'est jamais modifiée ; aucune
+  formule, aucun `RemoveTable`, aucune table de plus. **Essais** : Node (algorithme, plan des lignes, travail par lots, annulation, erreurs par ligne, pont Grist avec un faux `fetch`) ; navigateur avec **le vrai fichier
+  `pdfjs.js` de GFS (1.0.0, empreinte vérifiée)** et de vrais PDF, dans une page directe ET dans un `<iframe sandbox="allow-scripts">`, avec un faux GFS (`hosted`, `library`, `onExtensions`, `install`). **Non rejoué** : dans le
+  vrai GFS, ni dans un vrai Grist (forme de la réponse de `getAccessToken`, adresse de téléchargement d'une pièce jointe, valeur rendue par `AddColumn`).
 - 020 · lue (18/11/2026) · aucun code, comme annoncé. Ma demande `_grist_DocInfo` sort de « Demandes à GFS » (la lecture est déclarée dans mon manifeste, en lecture seule ; merci de l'avoir
   mesurée avec `readColumnFormats('Clients')`). Reçu : `documentSettings` est un texte JSON (`{"locale":"en-US","engine":"python3"}`), ce que `js/format.js:parseDocSettings` lit déjà ; la
   réserve de `js/grist-api.js` est mise à jour en conséquence (vérifiée pour `documentSettings` par toi dans un vrai Grist ; **la devise du document n'est toujours pas mesurée**, je la
@@ -310,6 +320,11 @@ Mis à jour le 2026-11-18 (consignes 019 à 021 : « Nuage de mots » branchée 
   Publipostage+ viendra par une consigne de ta part, pas avant.
 
 ## Changements qui touchent GFS
+- 2026-11-18 · `c97b614` · **« Mots-clés des PDF » branchée (consigne 019, suite).** Aucune bibliothèque ajoutée, aucune adresse, aucune entrée d'`importmap`, aucune politique de sécurité : pdf.js arrive par `GfsLink.library('pdfjs')`
+  comme d3-cloud pour `nuage-de-mots`. Nouveau côté app : 4 fichiers (`js/publications.js`, `js/keywords.js` refait, `js/pdf-text.js`, `js/keywords-panel.js`), des `<script>` et une fenêtre dans `index.html`, des textes
+  `keywords.*`. **Ce qui touche GFS** : (1) dans GFS, lire le PDF d'une cellule demande `getAccessToken` (lecture seule) ; sans `permissions.jeton` l'app dit « GFS_REFUSE : getAccessToken demande la capacité jeton » AVANT d'écrire quoi que ce
+  soit ; (2) écrire les mots-clés dans la table de la personne (une colonne de texte ajoutée par `AddColumn`, puis des `UpdateRecord` sur cette seule colonne) demande un motif `ecrit` qui couvre cette table. Les deux sont demandées plus bas.
+  Aucun changement de table, de colonne ni de format de `BI_Dashboard_Config`.
 - 2026-11-18 · `dd314a1` · **Extensions de GFS (consigne 019) : `js/extensions.js`, tuile « Nuage de mots » branchée.** Aucune bibliothèque ajoutée ni retirée dans le dépôt, aucune adresse, aucune
   entrée d'`importmap`, aucune politique de sécurité changée : l'app charge `GfsLink.library('d3-cloud').src` par `<script type="module" integrity crossorigin="anonymous">` quand GFS la donne, et
   rien du tout sinon. Si ta politique des apps hébergées (`script-src`) doit nommer l'origine de ce `src`, c'est de ton côté : l'origine de mon essai n'est pas la tienne. Fichiers touchés : `js/extensions.js` (nouveau), `js/charts.js`, `js/data.js` (`importMapHas` retiré), `js/main.js`, `css/style.css`, `js/i18n.js`, `index.html` (une balise
@@ -368,7 +383,13 @@ Mis à jour le 2026-11-18 (consignes 019 à 021 : « Nuage de mots » branchée 
 
 ## Demandes à GFS
 - **nuage-de-mots** (extension, bibliothèque `d3-cloud` 2.0.0) · `dd314a1` · tuile branchée, grisée sans l'extension (`js/extensions.js`, `js/charts.js:renderWordCloud`). Non rejouée dans le vrai GFS.
-- **mots-cles-pdf** (extension, bibliothèque `pdfjs` 1.0.0, `pdfjs-dist` 6.5.438) · **pas encore branchée** : `js/pdf-text.js` lit déjà `GfsPaquets.pdfjs.modules['pdfjs-dist/build/pdf.min.mjs']` et
-  `js/extensions.js` sait charger et dire l'état de `mots-cles-pdf`, mais aucune page ne propose encore les mots-clés des PDF (chantier « recherche sur publications », qui a maintenant
-  l'extension). La ligne avec son commit viendra quand la fonction sera branchée, grisée sans l'extension. pdf.js 6 demande `Map.getOrInsertComputed` (Chrome/Edge 145, Firefox 144) : sur un
-  navigateur plus ancien l'app le dira, rien ne casse.
+- **mots-cles-pdf** · `c97b614` · branchée (extension, bibliothèque `pdfjs` 1.0.0, `pdfjs-dist` 6.5.438) : menu Données > « Mots-clés des publications » (`js/keywords-panel.js`), grisée sans l'extension. Non rejouée dans le vrai
+  GFS ni dans un vrai Grist. pdf.js 6 demande `Map.getOrInsertComputed` (Chrome/Edge 145, Firefox 144) : sur un navigateur plus ancien la ligne concernée est comptée en erreur dans le bilan, rien ne casse.
+- **`jeton`** (capacité, `lectureSeule: true`) · `js/grist-api.js:getAttachmentBytes` / `checkAttachmentAccess` · à quoi elle sert : lire le PDF joint à une ligne pour en extraire le texte (jamais envoyé ailleurs) :
+  `getAccessToken({ readOnly: true })` puis un `GET …/attachments/<id>/download?auth=<jeton>`. Texte proposé pour la fenêtre d'installation : « Lire les fichiers joints à vos lignes, pour en tirer des mots-clés
+  (le fichier reste dans votre navigateur). » / « Read the files attached to your rows to extract keywords (the file stays in your browser). ». Sans elle, la fonction « Le PDF joint à la ligne » dit pourquoi
+  elle ne marche pas, la colonne de texte marche. **Non mesuré** : la forme exacte de la réponse de `getAccessToken` (`baseUrl`, `ttlMsecs`) ni l'adresse de téléchargement, lues dans la documentation de Grist, pas dans un vrai document.
+- **Écriture dans la table de la personne** (`ecrit`) · `js/grist-api.js:addTextColumn` / `writeColumnValues` · à quoi elle sert : « Mots-clés des publications » ajoute UNE colonne de texte (`AddColumn`, `isFormula: false`, jamais une
+  formule) à la table que la personne choisit, puis y écrit les mots-clés (`UpdateRecord`, cette seule colonne), après une fenêtre de confirmation qui dit le nombre de lignes. Jamais `RemoveColumn`, `RemoveTable`, `ModifyColumn`.
+  Dis-moi quel motif `ecrit` couvre « la table que la personne choisit » (le manifeste ne peut pas nommer d'avance la table d'un document), ou si cette écriture doit passer par une autre voie. Sans cette déclaration, dans GFS, la
+  colonne ne se crée pas et l'app affiche le refus de GFS (`GFS_REFUSE`) avant d'avoir écrit quoi que ce soit.
