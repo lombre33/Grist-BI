@@ -185,6 +185,8 @@
   const wordCloudSplitCheckbox = document.getElementById('tile-wordcloud-split');
   const columnDimensionField = document.getElementById('tile-column-dimension-field');
   const columnDimensionSelect = document.getElementById('tile-column-dimension');
+  const seriesField = document.getElementById('tile-series-field');
+  const seriesSelect = document.getElementById('tile-series');
   const radarModeField = document.getElementById('tile-radar-mode-field');
   const radarModeSelect = document.getElementById('tile-radar-mode');
   const radarAxesField = document.getElementById('tile-radar-axes-field');
@@ -338,7 +340,7 @@
   // (demande explicite de l'utilisateur, voir js/combobox.js) — en mode strict : la valeur doit
   // rester l'une des colonnes réellement chargées, comme un <select>. `.nextElementSibling` est le
   // <ul class="combobox-list"> voisin dans le même wrapper `.combobox` (voir index.html/harness.html).
-  [dimensionSelect, columnDimensionSelect, measureSelect, measureYSelect, trendDimensionSelect, dateColumnSelect, filterColumnSelect,
+  [dimensionSelect, columnDimensionSelect, seriesSelect, measureSelect, measureYSelect, trendDimensionSelect, dateColumnSelect, filterColumnSelect,
    radarEntityColumnSelect, radarEntityValueSelect].forEach((input) => {
     GristBI.combobox.attach(input, input.nextElementSibling, { strict: true });
   });
@@ -432,6 +434,7 @@
     const cols = availableColumns(rows);
     fillCombobox(dimensionSelect, cols);
     fillCombobox(columnDimensionSelect, cols);
+    fillCombobox(seriesSelect, cols, { blankLabel: t('tileForm.none.f') });
     fillCombobox(measureSelect, cols);
     fillCombobox(measureYSelect, cols);
     drillLevelSelects.forEach((select) => fillCombobox(select, cols, { blankLabel: t('tileForm.none.m') }));
@@ -572,6 +575,7 @@
     if (p.isPivot) { key = 'tileTitle.pivot'; vars = { measure: p.measure, dimension: p.dimension, columnDimension: p.columnDimension }; }
     else if (p.isRadarColumns) { key = 'tileTitle.radarColumns'; vars = { axes: p.radarAxes.join(', ') }; }
     else if (p.isWordCloudSplit) { key = 'tileTitle.wordCloud'; vars = { dimension: p.dimension }; }
+    else if (p.hasDimension && p.seriesColumn) { key = 'tileTitle.measureByDimensionSeries'; vars = { measure: p.measure, dimension: p.dimension, series: p.seriesColumn }; }
     else if (p.hasDimension) { key = 'tileTitle.measureByDimension'; vars = { measure: p.measure, dimension: p.dimension }; }
     else if (p.measureMode) { key = MEASURE_MODE_TITLE_KEYS[p.measureMode]; vars = { agg: p.aggFn, measure: p.measure }; }
     if (!key) return { title: `${p.aggFn}(${p.measure})`, titleKey: undefined, titleVars: undefined };
@@ -1532,6 +1536,9 @@
     // une catégorie à trier ni à orienter, voir GristBI.data.isSortableTile).
     const isBarBrut = isBar && !hasMeasureMode;
     sortField.hidden = !GristBI.data.isSortableTile({ type, measureMode: measureModeSelect.value });
+    // Séries multiples : barres (hors mode mesure temporelle) et courbe/aire seulement (voir
+    // GristBI.data.isSeriesTile) — les autres types n'ont qu'une série par nature.
+    seriesField.hidden = !(isBarBrut || type === 'line');
     horizontalField.hidden = !isBarBrut;
     areaField.hidden = type !== 'line';
     donutField.hidden = type !== 'pie';
@@ -1591,6 +1598,7 @@
     setDrillLevels(tileDrillLevels(tile));
     drillCrossFilterCheckbox.checked = !!tile.drillCrossFilter;
     columnDimensionSelect.value = tile.columnDimension || '';
+    seriesSelect.value = tile.seriesColumn || '';
     measureYSelect.value = tile.measureY || '';
     gaugeMinInput.value = Number.isFinite(tile.gaugeMin) ? tile.gaugeMin : 0;
     gaugeMaxInput.value = Number.isFinite(tile.gaugeMax) ? tile.gaugeMax : 100;
@@ -1709,6 +1717,10 @@
     if (measureMode && !dateColumn) fail('tile-date-column', 'tileForm.alert.dateColumnRequired');
     if (isPivot && !columnDimension) fail('tile-column-dimension', 'tileForm.error.columnDimensionRequired'); // 2e dimension obligatoire pour un tableau croisé
     else if (isPivot && columnDimension === dimension) fail('tile-column-dimension', 'tileForm.alert.pivotDimsDiffer');
+    // Séries multiples : seulement pour les barres (hors mode mesure) et la courbe/aire ; jamais la
+    // dimension elle-même (chaque catégorie n'aurait qu'une série).
+    const seriesColumn = ((isBar && !measureMode) || type === 'line') ? seriesSelect.value : '';
+    if (seriesColumn && seriesColumn === dimension) fail('tile-series', 'tileForm.error.seriesSameAsDimension');
     const radarAxes = isRadarColumns ? radarAxisSelects.map((s) => s.value).filter(Boolean) : [];
     if (isRadarColumns && !radarAxes.length) fail('tile-radar-axis-1', 'tileForm.error.radarAxisRequired'); // au moins un axe requis
     else if (isRadarColumns && new Set(radarAxes).size !== radarAxes.length) fail('tile-radar-axis-1', 'tileForm.alert.radarAxesDuplicate');
@@ -1731,7 +1743,7 @@
     // rester figé dans celle de sa création.
     const auto = autoTileTitle({
       isPivot, isRadarColumns, isWordCloudSplit, hasDimension, measureMode,
-      measure, dimension, columnDimension, aggFn, radarAxes
+      measure, dimension, columnDimension, aggFn, radarAxes, seriesColumn
     });
     const customTitle = tileTitleInput.value.trim();
     const title = customTitle || auto.title;
@@ -1757,6 +1769,7 @@
     tileData.measureMode = measureMode;
     tileData.dateColumn = measureMode ? dateColumn : undefined;
     tileData.columnDimension = isPivot ? columnDimension : undefined;
+    tileData.seriesColumn = seriesColumn || undefined;
     tileData.radarAxisMode = (type === 'radar') ? (isRadarColumns ? 'columns' : 'dimension') : undefined;
     tileData.radarAxes = isRadarColumns ? radarAxes : undefined;
     // Comparaison élève/moyenne du groupe filtré (voir ROADMAP.md) : valable dans les deux modes
@@ -1883,6 +1896,7 @@
     aggSelect.value = 'sum';
     measureYSelect.value = '';
     columnDimensionSelect.value = '';
+    seriesSelect.value = '';
     resetDrillLevels();
     drillCrossFilterCheckbox.checked = false;
     measureModeSelect.value = 'brut';

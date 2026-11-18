@@ -8,8 +8,8 @@
   const GristBI = global.GristBI || (global.GristBI = {});
   const {
     groupByAggregate, sameValue, aggregateSingle, pivotTable, trendFromGroups, measureSeriesForTile,
-    waterfallSeries, sortGroups, isSortableTile, escapeHtml, tileDrillLevels, currentDimension, rowsForTile,
-    wordFrequency
+    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, splitBySeries, assembleSeries, escapeHtml,
+    tileDrillLevels, currentDimension, rowsForTile, wordFrequency
   } = GristBI.data;
   const { t } = GristBI.i18n;
 
@@ -51,6 +51,16 @@
       catch (e) { console.warn('[GristBI] DuckDB indisponible pour cette agrégation, repli sur le calcul JS', e); }
     }
     return groupByAggregate(rows, dimensionCol, measureCol, aggFn);
+  }
+
+  // Séries multiples (`tile.seriesColumn`) : une agrégation par série, chacune sur SES lignes — donc
+  // chacune au-dessus du seuil DuckDB seulement si elle le mérite — lancées en parallèle (même
+  // raisonnement que le nuage de points : une seule latence DuckDB à payer). Le résultat est aligné
+  // sur les catégories par `GristBI.data.assembleSeries` (js/data.js).
+  async function computeSeriesGroups(rows, dimensionCol, seriesColumn, measureCol, aggFn) {
+    return Promise.all(splitBySeries(rows, seriesColumn, t('chart.series.empty')).map(async (sr) => ({
+      name: sr.name, groups: await computeGroupBy(sr.rows, dimensionCol, measureCol, aggFn)
+    })));
   }
 
   async function computeAggregateSingle(rows, measureCol, aggFn) {
@@ -657,12 +667,14 @@
     // par axe, lancées en parallèle elles aussi, même raison. Radar + comparaison : la série de
     // l'entité comparée (ses propres lignes seulement) est elle aussi calculée en parallèle du
     // reste plutôt qu'après coup.
-    const [agg, aggY, radarColumnValues, radarEntityColumnValues, radarEntityAgg] = await Promise.all([
+    const hasSeries = isSeriesTile(tile);
+    const [agg, aggY, radarColumnValues, radarEntityColumnValues, radarEntityAgg, seriesGroups] = await Promise.all([
       isRadarColumns ? Promise.resolve(null) : computeGroupBy(rows, dimension, tile.measure, tile.aggFn),
       tile.type === 'scatter' ? computeGroupBy(rows, dimension, tile.measureY, tile.aggFn) : Promise.resolve(null),
       isRadarColumns ? Promise.all(radarAxesColumns.map((col) => computeAggregateSingle(rows, col, 'avg'))) : Promise.resolve(null),
       (isRadarColumns && hasRadarEntity) ? Promise.all(radarAxesColumns.map((col) => computeAggregateSingle(radarEntityRows, col, 'avg'))) : Promise.resolve(null),
-      (!isRadarColumns && tile.type === 'radar' && hasRadarEntity) ? computeGroupBy(radarEntityRows, dimension, tile.measure, tile.aggFn) : Promise.resolve(null)
+      (!isRadarColumns && tile.type === 'radar' && hasRadarEntity) ? computeGroupBy(radarEntityRows, dimension, tile.measure, tile.aggFn) : Promise.resolve(null),
+      hasSeries ? computeSeriesGroups(rows, dimension, tile.seriesColumn, tile.measure, tile.aggFn) : Promise.resolve(null)
     ]);
     if (isStale(tile.id, seq) || instance.isDisposed()) return; // rendu plus récent entre-temps
     // Inconditionnel, même raison que renderGauge ci-dessus : un rendu qui repasse sous le seuil
@@ -682,6 +694,12 @@
     // (qui garde son ordre d'apparition, piège n°14), et seulement pour les types qui s'y prêtent
     // (voir GristBI.data.isSortableTile) — `agg` reste tel quel pour tous les autres.
     const groups = isSortableTile(tile) ? sortGroups(agg, tile.sortMode) : agg;
+    // Séries multiples : catégories (triées sur le total des séries) et une série ECharts par valeur de
+    // la colonne « Séries ». `null` pour une tuile à série unique : les branches bar/line plus bas
+    // gardent alors EXACTEMENT leur construction d'avant.
+    const multi = seriesGroups ? assembleSeries(agg.map((d) => d.dimension), seriesGroups, tile.sortMode) : null;
+    const seriesLegend = multi && multi.series.length > 1 ? { top: 0, type: 'scroll' } : undefined;
+    const seriesGrid = seriesLegend ? { ...numericGrid, top: 40 } : numericGrid;
 
     let option;
     if (tile.type === 'pie') {
@@ -909,29 +927,39 @@
       // (handleTileClick) marche tel quel. L'ordre des points est celui des données (ou du tri
       // choisi) : pour une série temporelle, une dimension dérivée d'une date ("Date.Annee",
       // "Date.Mois") ou un tri « Libellé » donne l'ordre chronologique.
+      const lineCategories = multi ? multi.categories : groups.map((d) => d.dimension);
+      const lineSeries = multi
+        ? multi.series.map((sr) => ({ name: sr.name, values: sr.values }))
+        : [{ name: undefined, values: groups.map((d) => d.value) }];
       option = {
         color: CATEGORICAL_PALETTE,
-        grid: numericGrid,
+        grid: seriesGrid,
+        legend: seriesLegend,
         tooltip: { trigger: 'axis' },
-        xAxis: { type: 'category', data: groups.map((d) => d.dimension) },
+        xAxis: { type: 'category', data: lineCategories },
         yAxis: { type: 'value', axisLabel: { formatter: formatCompactNumber } },
-        series: [{
+        series: lineSeries.map((sr) => ({
           type: 'line',
+          name: sr.name,
           symbolSize: 8,
           ...(tile.areaFill ? { areaStyle: { opacity: 0.25 } } : {}),
-          data: groups.map((d) => ({ value: d.value, itemStyle: dim(d.dimension) }))
-        }]
+          data: sr.values.map((v, i) => ({ value: v, itemStyle: dim(lineCategories[i]) }))
+        }))
       };
     } else {
       // bar (par défaut). `tile.horizontal` : mêmes séries, axes permutés. L'axe des catégories est
       // inversé pour que la première catégorie (ou la plus grande avec le tri « Valeur décroissante »)
       // soit EN HAUT, comme une liste qu'on lit de haut en bas ; les libellés longs sont tronqués
       // (le survol — tooltip — garde le nom complet) plutôt que de rétrécir la zone du graphique.
-      const categoryLabels = groups.map((d) => d.dimension);
+      const categoryLabels = multi ? multi.categories : groups.map((d) => d.dimension);
+      const barSeries = multi
+        ? multi.series.map((sr) => ({ name: sr.name, values: sr.values }))
+        : [{ name: undefined, values: groups.map((d) => d.value) }];
       const valueAxis = { type: 'value', axisLabel: { formatter: formatCompactNumber } };
       option = {
         color: CATEGORICAL_PALETTE,
-        grid: numericGrid,
+        grid: seriesGrid,
+        legend: seriesLegend,
         tooltip: { trigger: 'axis' },
         ...(tile.horizontal
           ? {
@@ -942,10 +970,11 @@
             xAxis: { type: 'category', data: categoryLabels },
             yAxis: valueAxis
           }),
-        series: [{
+        series: barSeries.map((sr) => ({
           type: 'bar',
-          data: groups.map((d) => ({ value: d.value, itemStyle: dim(d.dimension) }))
-        }]
+          name: sr.name,
+          data: sr.values.map((v, i) => ({ value: v, itemStyle: dim(categoryLabels[i]) }))
+        }))
       };
     }
     instance.setOption(option, true);

@@ -99,6 +99,78 @@ const rows = [
   console.log('OK sortGroups / isSortableTile / tileExportSheet (tri d\'affichage, valeurs absentes en dernier, types non triables intacts)');
 }
 
+// Séries multiples (`tile.seriesColumn`) : barres (hors mode mesure) et courbe/aire.
+{
+  const sRows = [
+    { Region: 'Nord', Produit: 'A', Montant: 10 }, { Region: 'Nord', Produit: 'B', Montant: 5 },
+    { Region: 'Sud', Produit: 'A', Montant: 30 },
+    { Region: 'Est', Produit: 'B', Montant: 7 }, { Region: 'Est', Produit: 'A', Montant: 1 },
+    { Region: 'Ouest', Produit: '', Montant: 2 }, { Region: 'Ouest', Produit: null, Montant: 3 }
+  ];
+  const mk = (type, extra) => Object.assign({ id: 't', type, title: 'x', dimension: 'Region', measure: 'Montant', aggFn: 'sum', seriesColumn: 'Produit' }, extra);
+  // Types concernés : barres brutes et courbe/aire — jamais un type à une seule série par nature, ni sans colonne
+  assert.strictEqual(data.isSeriesTile(mk('bar')), true);
+  assert.strictEqual(data.isSeriesTile(mk('bar', { measureMode: 'brut' })), true);
+  assert.strictEqual(data.isSeriesTile(mk('bar', { measureMode: 'ytd' })), false, 'mode mesure temporelle : une seule série');
+  assert.strictEqual(data.isSeriesTile(mk('line')), true);
+  assert.strictEqual(data.isSeriesTile(mk('line', { areaFill: true })), true);
+  for (const type of ['pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'kpi', 'gauge', 'pivot', 'wordcloud']) {
+    assert.strictEqual(data.isSeriesTile(mk(type)), false, type);
+  }
+  assert.strictEqual(data.isSeriesTile(mk('bar', { seriesColumn: '' })), false);
+  assert.strictEqual(data.isSeriesTile(mk('bar', { seriesColumn: undefined })), false);
+  assert.strictEqual(data.isSeriesTile(null), false);
+
+  // splitBySeries : ordre de première apparition (piège n°14), cellule vide/null regroupées sous leur clé propre
+  const parts = data.splitBySeries(sRows, 'Produit', '(vide)');
+  assert.deepStrictEqual(parts.map((p) => p.name), ['A', 'B', '(vide)', '(vide)']);
+  assert.deepStrictEqual(parts.map((p) => p.rows.length), [3, 2, 1, 1]);
+  assert.strictEqual(data.splitBySeries([], 'Produit').length, 0);
+  assert.strictEqual(data.splitBySeries([{ P: 3 }], 'P')[0].name, '3', 'une valeur numérique devient son libellé texte');
+
+  // assembleSeries : trou = null (jamais 0), ordre des catégories = ordre d'apparition sans tri
+  const cats = data.groupByAggregate(sRows, 'Region', 'Montant', 'sum').map((d) => d.dimension);
+  const per = [
+    { name: 'A', groups: data.groupByAggregate(parts[0].rows, 'Region', 'Montant', 'sum') },
+    { name: 'B', groups: data.groupByAggregate(parts[1].rows, 'Region', 'Montant', 'sum') }
+  ];
+  const asm = data.assembleSeries(cats, per, undefined);
+  assert.deepStrictEqual(asm.categories, ['Nord', 'Sud', 'Est', 'Ouest']);
+  assert.deepStrictEqual(asm.series.map((x) => x.name), ['A', 'B']);
+  assert.deepStrictEqual(asm.series[0].values, [10, 30, 1, null]);
+  assert.deepStrictEqual(asm.series[1].values, [5, null, 7, null]);
+  // Tri sur le TOTAL des séries : Sud (30) > Nord (15) > Est (8) > Ouest (0)
+  const desc = data.assembleSeries(cats, per, 'value-desc');
+  assert.deepStrictEqual(desc.categories, ['Sud', 'Nord', 'Est', 'Ouest']);
+  assert.deepStrictEqual(desc.series[0].values, [30, 10, 1, null], 'les valeurs suivent leur catégorie dans chaque série');
+  assert.deepStrictEqual(desc.series[1].values, [null, 5, 7, null]);
+  assert.deepStrictEqual(data.assembleSeries(cats, per, 'label').categories, ['Est', 'Nord', 'Ouest', 'Sud']);
+  assert.deepStrictEqual(data.assembleSeries(cats, per, 'mode-futur-inconnu').categories, cats, 'mode inconnu : ordre d\'apparition');
+  // Jamais de mutation des entrées
+  assert.deepStrictEqual(cats, ['Nord', 'Sud', 'Est', 'Ouest']);
+  assert.strictEqual(per[0].groups.length, 3);
+  // Aucune catégorie : structure vide mais valide
+  const none = data.assembleSeries([], per, 'value-desc');
+  assert.deepStrictEqual(none.categories, []);
+  assert.deepStrictEqual(none.series.map((x) => x.values), [[], []]);
+
+  // Export Excel : une colonne par série, mêmes catégories/ordre que le rendu, cellule vide (pas 0) pour un trou
+  const st = { rows: sRows, activeFilters: [], advancedFilters: [], drillIns: {} };
+  const sheet = data.tileExportSheet(mk('bar'), st);
+  assert.deepStrictEqual(sheet.header, ['Region', 'A', 'B', '(vide)', '(vide)']);
+  assert.deepStrictEqual(sheet.rows[0], ['Nord', 10, 5, '', '']);
+  assert.deepStrictEqual(sheet.rows[1], ['Sud', 30, '', '', '']);
+  assert.deepStrictEqual(sheet.rows.map((r) => r[0]), ['Nord', 'Sud', 'Est', 'Ouest']);
+  assert.deepStrictEqual(data.tileExportSheet(mk('bar', { sortMode: 'value-desc' }), st).rows.map((r) => r[0]), ['Sud', 'Nord', 'Est', 'Ouest']);
+  // Sans colonne Séries : l'export historique (2 colonnes) est INCHANGÉ
+  assert.deepStrictEqual(data.tileExportSheet(mk('bar', { seriesColumn: '' }), st).header, ['Region', 'Montant']);
+  // Un filtre croisé s'applique avant le découpage : la série sans ligne restante disparaît
+  const filtered = data.tileExportSheet(mk('bar'), { rows: sRows, activeFilters: [{ column: 'Region', value: 'Sud' }], advancedFilters: [], drillIns: {} });
+  assert.deepStrictEqual(filtered.header, ['Region', 'A']);
+  assert.deepStrictEqual(filtered.rows, [['Sud', 30]]);
+  console.log('OK séries multiples — isSeriesTile / splitBySeries / assembleSeries (trous null, tri sur total, ordre d\'apparition) / export Excel');
+}
+
 {
   const agg = data.groupByAggregate(rows, 'Region', 'Montant', 'count');
   assert.strictEqual(agg.find((d) => d.dimension === 'Sud').value, 2);
@@ -2477,6 +2549,22 @@ const SAMPLE_TIME_SERIES = [
       const svg = welcome.previewSvg(pv, { lang: 'fr' });
       assert.ok(/^<svg viewBox="0 0 120 64"/.test(svg) && (svg.match(/<rect /g) || []).length === 4 && !/NaN|undefined|Infinity/.test(svg), svg);
       console.log('OK advice + welcome — entonnoir (défauts, avertissements, carte, miniature)');
+    }
+
+    // Séries multiples : un avertissement seulement quand il est juste.
+    {
+      const sr = [];
+      for (let i = 0; i < 40; i++) sr.push({ id: i + 1, Region: ['Nord', 'Sud'][i % 2], Prod: 'P' + (i % 10), V: 10 + i });
+      const chkS = (tile) => advice.adviceForTile(Object.assign({ type: 'bar', dimension: 'Region', measure: 'V', aggFn: 'sum', seriesColumn: 'Prod' }, tile), sr);
+      const tooManyS = chkS({});
+      assert.ok(tooManyS && tooManyS.key === 'advice.series.tooMany' && tooManyS.level === 'warn' && tooManyS.vars.n === 10, JSON.stringify(tooManyS));
+      const same = chkS({ seriesColumn: 'Region' });
+      assert.ok(same && same.key === 'advice.series.sameAsDimension', JSON.stringify(same));
+      const noSeries = chkS({ seriesColumn: undefined });
+      assert.ok(!noSeries || !/^advice\.series\./.test(noSeries.key), 'sans série : aucun avertissement de série');
+      const fewS = advice.adviceForTile({ type: 'line', dimension: 'Region', measure: 'V', aggFn: 'sum', seriesColumn: 'Region2' }, sr.map((r) => Object.assign({}, r, { Region2: r.id % 3 })));
+      assert.ok(!fewS || !/^advice\.series\./.test(fewS.key), 'trois séries : pas d\'avertissement de série');
+      console.log('OK advice — séries multiples (trop de séries, série = dimension)');
     }
 
     // adviceForTile : un avertissement à la fois, seulement quand il est juste.
