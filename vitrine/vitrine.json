@@ -7,8 +7,8 @@
     {
       "fichier": "1.webp",
       "legende": {
-        "fr": "Indicateurs, courbe, anneau et barres triées",
-        "en": "Indicators, area chart, donut and sorted bars"
+        "fr": "Indicateurs, jauge, barres et aire, en verre dépoli",
+        "en": "Indicators, gauge, bars and area chart, frosted glass"
       }
     },
     {
@@ -21,8 +21,8 @@
     {
       "fichier": "3.webp",
       "legende": {
-        "fr": "Cascade, comparaison N-1 et cumuls dans le temps",
-        "en": "Waterfall, prior-year comparison and running totals"
+        "fr": "Cascade, radar, tableau croisé et cumuls dans le temps",
+        "en": "Waterfall, radar, pivot table and running totals"
       }
     }
   ]
