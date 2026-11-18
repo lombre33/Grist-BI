@@ -88,7 +88,7 @@
 
 body {
   margin: 0;
-  padding: 16px;
+  padding: 0 16px 24px;
   min-height: 100vh;
   background-color: var(--bg);
   /* `--wash` (le décor d'une ambiance, un dégradé radial chez Pop par exemple) : `none` par défaut,
@@ -102,45 +102,250 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-.topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 14px;
+/* Lecteurs d'écran seulement (le titre `h1` : la barre n'a plus de place pour un titre visible, le
+   widget vit déjà sous le titre de sa page Grist). */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
-.topbar h1 {
-  font-family: var(--font-head, inherit);
-  font-size: var(--fs-head, 15px);
-  font-weight: var(--fw-head, 600);
-  letter-spacing: var(--ls-head, -0.01em);
-  text-transform: var(--tt-head, none);
-  margin: 0;
+/* Lecture / édition (audit UI/UX du 18/11/2026) : `body[data-mode]` est posé par js/main.js. En
+   lecture, tout ce qui sert à CONSTRUIRE le tableau de bord disparaît. `!important` : une règle
+   d'auteur `display:flex`/`inline-flex` sur l'élément battrait sinon ce `display:none` à
+   spécificité égale (même piège que `[hidden]`, CLAUDE.md §7 piège n°10). */
+body[data-mode="read"] .edit-only { display: none !important; }
+body[data-mode="edit"] .read-only { display: none !important; }
+
+/* La barre et les pastilles de filtre restent visibles quand on fait défiler les tuiles : sans cela
+   les filtres actifs disparaissent de l'écran dès la première rangée de graphiques. Pleine largeur
+   (marges négatives de `body`), fond opaque pour que les tuiles passent dessous sans transparaître. */
+.chrome {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  margin: 0 -16px 12px;
+  padding: 0 16px;
+  background: var(--bg);
+  background-image: var(--wash, none);
+  background-size: var(--wash-size, auto);
+  border-bottom: var(--bw, 1px) solid var(--border);
+}
+
+.appbar {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-height: 48px;
 }
+/* Tout reste sur UNE ligne au-dessus de 760 px : seuls la pastille « Données » et les onglets cèdent
+   de la place (le nom de table s'abrège, les onglets défilent), jamais les boutons d'action. */
+.appbar > * { flex-shrink: 0; }
+.appbar > .pill { flex-shrink: 1; min-width: 118px; }
+.appbar > .page-tabs { flex-shrink: 3; }
+.appbar-spacer { flex: 1 1 8px; }
+.appbar-sep { width: 1px; height: 20px; background: var(--border-strong); margin: 0 2px; }
 
-.badge-poc {
+/* Pastille « Données » : la table connectée et son volume, point d'entrée du menu Données. */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  max-width: 260px;
+  padding: 0 10px;
+  border: var(--bw, 1px) solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s var(--ease), border-color 0.12s var(--ease);
+}
+.pill:hover { background: var(--surface-sunken); border-color: var(--text-muted); }
+.pill-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.row-count { color: var(--text-secondary); font-weight: 400; font-size: 12px; white-space: nowrap; }
+.row-count:empty { display: none; }
+.render-time { color: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.icon-chev { width: 12px; height: 12px; color: var(--text-muted); }
+
+/* Boutons de la barre (Filtre, Vues, Exporter, Modifier/Terminer, « + » des pages). */
+.bar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border: var(--bw, 1px) solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s var(--ease), border-color 0.12s var(--ease);
+}
+.bar-btn:hover:not(:disabled) { background: var(--surface-sunken); }
+.bar-btn[aria-expanded="true"] { background: var(--accent-soft); color: var(--accent-ink); }
+.bar-btn:disabled { opacity: 0.5; cursor: default; }
+.bar-btn-icon { padding: 0 8px; color: var(--text-secondary); }
+.bar-count {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--fill);
+  color: var(--on-accent);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+.bar-count[hidden] { display: none; }
+/* « Modifier » est un bouton à contour (action principale du mode lecture) ; en édition il devient
+   « Terminer », plein. L'icône change avec l'état (crayon / coche). */
+.bar-btn-mode { border-color: var(--border-strong); background: var(--surface); }
+.bar-btn-mode .icon-mode-done { display: none; }
+body[data-mode="edit"] .bar-btn-mode { background: var(--fill); border-color: var(--fill); color: var(--on-accent); }
+body[data-mode="edit"] .bar-btn-mode:hover:not(:disabled) { background: var(--fill-hover); }
+body[data-mode="edit"] .bar-btn-mode .icon-mode-edit { display: none; }
+body[data-mode="edit"] .bar-btn-mode .icon-mode-done { display: inline-block; }
+
+.badge-alpha {
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   background: var(--surface-sunken);
-  color: var(--text-muted);
+  color: var(--text-secondary);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 2px 6px;
 }
 
-.topbar-info { display: flex; align-items: center; gap: 12px; }
-.row-count { color: var(--text-secondary); font-weight: 500; }
-.render-time { color: var(--text-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+/* Pastilles des filtres actifs (croisés + avancés), sous la barre. */
+.chips-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 0 0 8px;
+}
+.chips-row[hidden] { display: none; }
+.link-btn {
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  color: var(--accent-ink);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.link-btn[hidden] { display: none; }
 
-/* Bouton Réglages + logo Grist Factory : ajoutés en dernier dans .topbar-info (jamais entre des
-   contrôles existants) pour ne rien déplacer — non-régression, cadrage identité §1. */
+/* Panneaux des menus (js/appbar.js) : placés en `position: fixed` sous leur bouton, au-dessus des
+   tuiles et des modales du widget (z-index 1000), sous les fenêtres du kit (2000). */
+.popover {
+  position: fixed;
+  z-index: 1600;
+  box-sizing: border-box;
+  width: 340px;
+  max-width: calc(100vw - 16px);
+  overflow-y: auto;
+  padding: 12px;
+  background: var(--surface);
+  color: var(--text);
+  border: var(--bw, 1px) solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-float);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.popover[hidden] { display: none; }
+.popover:focus { outline: none; }
+.popover-views { width: 300px; }
+.popover-menu { width: 220px; padding: 4px; gap: 0; }
+.pop-title { margin: 0; font-size: 12.5px; font-weight: 700; }
+.pop-field { display: flex; flex-direction: column; gap: 5px; }
+.pop-field label, .pop-group > .pop-field label {
+  font-family: var(--font-label, inherit);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-label, 0.03em);
+}
+.pop-group { display: flex; flex-direction: column; gap: 10px; padding-top: 10px; border-top: var(--bw, 1px) solid var(--border); }
+.pop-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 10px; border-top: var(--bw, 1px) solid var(--border); }
+.pop-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.popover .combobox-input.combobox-input, .popover select { width: 100%; min-width: 0; }
+.popover select {
+  border: var(--bw, 1px) solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 6px 9px;
+  font-size: 12.5px;
+  font-family: inherit;
+  background: var(--surface);
+  color: var(--text);
+}
+.menu-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.menu-item:hover, .menu-item:focus-visible { background: var(--surface-sunken); }
+
+/* Le formulaire de filtre avancé, une fois dans son panneau : champs empilés, pleine largeur. */
+.filter-form { display: flex; flex-direction: column; gap: 10px; }
+.filter-form .field { width: 100%; }
+.filter-form .field select, .filter-form .field input[type="text"], .filter-form .combobox { width: 100%; min-width: 0; }
+.filter-form .range-inputs { width: 100%; }
+.filter-form .range-inputs input[type="number"], .filter-form .range-inputs input[type="date"] { flex: 1 1 0; width: auto; min-width: 0; }
+.filter-form .btn-secondary { align-self: flex-start; }
+
+/* Écran étroit (panneau Grist replié, téléphone) : les libellés des boutons disparaissent (leur nom
+   reste dans `aria-label`/`title`), les onglets de page passent sur leur propre ligne, défilables. */
+@media (max-width: 760px) {
+  .bar-label { display: none; }
+  .bar-btn { padding: 0 8px; }
+  .bar-btn-mode .bar-label { display: inline; }
+  .appbar > .pill { max-width: 200px; }
+  .page-tabs { order: 10; flex: 1 1 calc(100% - 44px); overflow-x: auto; flex-wrap: nowrap; padding-bottom: 6px; }
+  #add-page { order: 11; }
+  .appbar { flex-wrap: wrap; row-gap: 2px; }
+}
+/* Très étroit (téléphone, panneau Grist replié) : tout tient sur la 1re ligne, les onglets sur la 2e. */
+@media (max-width: 560px) {
+  .bar-btn-mode .bar-label, .badge-alpha, .appbar-sep { display: none; }
+  .bar-btn { padding: 0 6px; }
+  .appbar { gap: 4px; }
+  .appbar > .pill { max-width: 150px; }
+  .appbar > .pill .row-count { display: none; }
+}
+
+/* Bouton Réglages + logo Grist Factory : en bout de barre (`.appbar`), cadrage identité §1. */
 .settings-btn {
   display: inline-flex;
   align-items: center;
@@ -373,85 +578,51 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   padding: 1px 5px;
 }
 
-.table-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-.table-bar label {
-  font-family: var(--font-label, inherit);
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: var(--ls-label, 0.03em);
-}
-.table-bar .combobox-input { min-width: 220px; }
-.blend-bar { flex-wrap: wrap; }
-.blend-bar .combobox-input { min-width: 180px; }
-
-.pages-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-bottom: 10px;
-}
-.page-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+/* Onglets de page (barre) : un `tablist` ARIA — flèches ← → et Début/Fin dans js/main.js. Chaque
+   onglet est un `button`; sa croix de suppression (édition seulement, onglet actif) est un 2e bouton,
+   jamais un contrôle imbriqué dans le premier. */
+.page-tabs { display: flex; align-items: center; gap: 2px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.page-tabs::-webkit-scrollbar { display: none; }
+/* Plus d'onglets que de place : le bord droit s'estompe (posé par js/main.js:renderPageTabs) pour dire
+   qu'il y en a d'autres, et l'onglet actif est amené dans la vue. */
+.page-tabs.overflows { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); }
+.page-tab-group { display: inline-flex; align-items: center; border-radius: var(--radius-sm); border: 1px solid transparent; }
+.page-tab-group.active { background: var(--surface); border-color: var(--border); box-shadow: var(--shadow-ctl); }
 .page-tab {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  height: 30px;
   background: none;
-  border: 1px solid transparent;
+  border: none;
   border-radius: var(--radius-sm);
   color: var(--text-secondary);
   font-family: inherit;
   font-size: 12.5px;
   font-weight: 500;
-  padding: 6px 12px;
+  padding: 0 12px;
   cursor: pointer;
-  transition: background 0.12s var(--ease), color 0.12s var(--ease), border-color 0.12s var(--ease);
+  white-space: nowrap;
+  transition: background 0.12s var(--ease), color 0.12s var(--ease);
 }
 .page-tab:hover { background: var(--surface-sunken); color: var(--text); }
-.page-tab.active {
-  background: var(--surface);
-  border-color: var(--border);
-  color: var(--text);
-  box-shadow: var(--shadow-ctl);
-}
+.page-tab.active { color: var(--text); font-weight: 600; }
 .page-tab-remove {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  background: none;
+  border: none;
+  color: var(--text-muted);
   border-radius: 50%;
-  opacity: 0.6;
-  padding: 3px;
-  transition: opacity 0.12s var(--ease), background 0.12s var(--ease);
+  margin-right: 4px;
+  padding: 4px;
+  cursor: pointer;
+  transition: background 0.12s var(--ease), color 0.12s var(--ease);
 }
-.page-tab-remove:hover { opacity: 1; background: var(--accent-soft-strong); }
+.page-tab-remove:hover { background: var(--accent-soft-strong); color: var(--text); }
 .page-tab-remove .icon { width: 10px; height: 10px; }
 
-.bookmarks-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-bottom: 14px;
-}
-.bookmarks-bar select {
-  border: var(--bw, 1px) solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  padding: 6px 9px;
-  font-size: 12.5px;
-  font-family: inherit;
-  background: var(--surface);
-  color: var(--text);
-  min-width: 170px;
-}
-
-.add-tile-form, .advanced-filters-bar {
+.add-tile-form {
   display: flex;
   align-items: flex-end;
   gap: 12px;
@@ -463,7 +634,6 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   padding: 12px 14px;
   margin-bottom: 16px;
 }
-.advanced-filters-bar { margin-bottom: 8px; }
 
 .field { display: flex; flex-direction: column; gap: 5px; }
 /* Même bug que .warning-banner ci-dessus, retrouvé deux fois sur des champs différents au fil des
@@ -594,6 +764,9 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 .tile:hover { box-shadow: var(--shadow-float); }
 
 .tile-header {
+  /* `align-self: stretch` : la tuile KPI porte aussi la classe `.tile-kpi` (centrage en colonne) —
+     sans cela son en-tête se rétrécissait à son contenu et le titre flottait au milieu. */
+  align-self: stretch;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -609,6 +782,14 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 }
 
 .tile-actions { display: flex; align-items: center; gap: 1px; flex-shrink: 0; }
+/* Les boutons d'une tuile ne s'affichent qu'au survol ou au focus clavier (lecture : un titre propre) ;
+   toujours visibles en édition, sur un écran tactile (pas de survol) et quand la tuile a des
+   commentaires (le compteur doit se voir). */
+.tile-actions button { opacity: 0; transition: opacity 0.12s var(--ease), background 0.12s var(--ease), color 0.12s var(--ease); }
+.tile:hover .tile-actions button:not(:disabled), .tile:focus-within .tile-actions button:not(:disabled),
+body[data-mode="edit"] .tile-actions button:not(:disabled), .tile-actions .tile-comments.has-comments { opacity: 1; }
+body[data-mode="edit"] .tile-actions button:disabled { opacity: 0.3; }
+@media (hover: none) { .tile-actions button:not(:disabled) { opacity: 1; } }
 
 .tile-move-left, .tile-move-right, .tile-edit, .tile-remove, .tile-comments, .tile-detail {
   display: inline-flex;
