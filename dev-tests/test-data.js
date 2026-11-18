@@ -17,6 +17,7 @@ const pdfText = require('../js/pdf-text.js');
 const advice = require('../js/advice.js');
 const welcome = require('../js/welcome.js');
 const models = require('../js/models.js');
+const { readCharts } = require('./lib/helpers.js');
 
 const rows = [
   { id: 1, Region: 'Nord', Montant: 100 },
@@ -1595,7 +1596,7 @@ const rows = [
 {
   const nodeFs = require('fs'), nodePath = require('path');
   const main = nodeFs.readFileSync(nodePath.join(__dirname, '..', 'js', 'main.js'), 'utf8');
-  const charts = nodeFs.readFileSync(nodePath.join(__dirname, '..', 'js', 'charts.js'), 'utf8');
+  const charts = readCharts();
   assert.ok(!/data-tile-id="\$\{tile\.id\}"/.test(main), 'main.js : `data-tile-id` reçoit escapeHtml(tile.id), jamais tile.id nu');
   assert.ok(/data-tile-id="\$\{escapeHtml\(tile\.id\)\}"/.test(main));
   assert.ok(/const fmt = \(v\) => \(v == null \? '–' : escapeHtml\(String\(pivotFmt\.format\(v\)\)\)\);/.test(charts), 'charts.js : les valeurs du pivot sont échappées');
@@ -2234,7 +2235,7 @@ const SAMPLE_TIME_SERIES = [
   {
     const fs2 = require('fs');
     const path2 = require('path');
-    const charts = fs2.readFileSync(path2.join(__dirname, '..', 'js', 'charts.js'), 'utf8');
+    const charts = readCharts();
     assert.ok(!/Intl\.NumberFormat|toFixed\(/.test(charts), 'js/charts.js ne formate plus aucun nombre lui-même');
     assert.ok(!/formatNumber|formatCompactNumber|formatPercent/.test(charts), 'anciennes fonctions de format retirées');
     const index = fs2.readFileSync(path2.join(__dirname, '..', 'index.html'), 'utf8');
@@ -2399,7 +2400,7 @@ const SAMPLE_TIME_SERIES = [
   // une zone minuscule : les graduations ne tiennent pas, `overflow` le dit (l'appelant les retire)
   assert.strictEqual(format.gaugeLayout(120, 60, [{ frac: 0.5, w10: 30 }]).overflow, true);
   // câblage : la jauge n'a plus de graduations intermédiaires ni d'aiguille sur des libellés ; elle suit le redimensionnement
-  const charts = require('fs').readFileSync(require('path').join(__dirname, '..', 'js', 'charts.js'), 'utf8');
+  const charts = readCharts();
   assert.ok(/F\.gaugeTicks\(g\.min, g\.max, n\)/.test(charts) && /F\.gaugeTickBudget\(base\.r\)/.test(charts) && /F\.gaugeTickPlacement\(L, it\.frac\)/.test(charts), 'graduations calculées, plafonnées par la place, placées à l\'extérieur de l\'arc');
   assert.ok(/g\.fmt\.forScale\(g\.min, g\.max\)/.test(charts) && /scale\.format\(g\.value\)/.test(charts), 'jauge : bornes, graduations et valeur lues sur l\'échelle entière (années jamais compactées)');
   assert.ok(/histogramFormat\.forScale\(hist\.bins\[0\]\.lo, hist\.bins\[hist\.bins\.length - 1\]\.hi\)/.test(charts), 'histogramme : les bornes de classes forment une échelle');
@@ -2443,7 +2444,7 @@ const SAMPLE_TIME_SERIES = [
   // Une zone minuscule ne donne jamais un rayon nul ni négatif (le texte déborde alors, mais le polygone existe).
   assert.strictEqual(format.radarLayout(100, 60, true).r, 20);
   // câblage : légende défilante, place réservée par finalizeOption, recalcul au redimensionnement, couleur de légende conservée
-  const charts = fs.readFileSync(path.join(__dirname, '..', 'js', 'charts.js'), 'utf8');
+  const charts = readCharts();
   assert.ok(/legend: series\.length > 1\s*\? \{ top: 2, type: 'scroll'/.test(charts), 'la légende du radar est compacte et défilante (deux noms longs ne passent pas à la ligne)');
   assert.ok(/GristBI\.format\.radarLayout\(w, h, true\)/.test(charts) && /axisNameGap: L\.gap/.test(charts), 'finalizeOption place le polygone dans la place laissée par la légende');
   assert.ok(/instance\.__refit = placed \?/.test(charts), 'centre et rayon en pixels : recalculés par resizeAll (tuile agrandie)');
@@ -2489,7 +2490,7 @@ const SAMPLE_TIME_SERIES = [
   // Une tuile agrandie donne plus de place.
   assert.ok(format.radarNameRoom(938, 422, true, 2, 8) > format.radarNameRoom(283, 162, true, 2, 8));
   // câblage : le formatter du nom d'axe lit la taille de l'instance à chaque appel (agrandissement) et mesure le texte
-  const charts = fs.readFileSync(path.join(__dirname, '..', 'js', 'charts.js'), 'utf8');
+  const charts = readCharts();
   const fmtSrc = charts.slice(charts.indexOf('formatter: (name) => {\n            const text = String(name == null'), charts.indexOf('axisLine: Object.assign({ lineStyle: { color: th.grid } }, option.radar.axisLine)'));
   assert.ok(/GristBI\.format\.radarNameRoom\(w, h, !!option\.legend/.test(fmtSrc) && /instance\.getWidth\(\)/.test(fmtSrc) && /measureText\(/.test(fmtSrc), 'le nom d\'axe est coupé à la place réelle, mesurée en pixels');
   assert.ok(!/Math\.floor\(\(width \|\| 330\) \* 0\.34/.test(fmtSrc.slice(0, fmtSrc.indexOf('if (!w || !h')) ), 'la règle d\'un tiers de la largeur n\'est plus la règle principale');
@@ -2566,7 +2567,7 @@ const SAMPLE_TIME_SERIES = [
   const fs = require('fs');
   const path = require('path');
   const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
-  const charts = read('js/charts.js');
+  const charts = readCharts();
   const main = read('js/main.js');
   const css = read('css/style.css');
   // une seule dernière étape avant setOption, pour les sept chemins ECharts (graphiques, mesures temporelles, histogramme, carte de chaleur, boîte, flux, calendrier)
@@ -2595,7 +2596,7 @@ const SAMPLE_TIME_SERIES = [
   const path = require('path');
   const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
   const css = read('css/style.css');
-  const charts = read('js/charts.js');
+  const charts = readCharts();
   const main = read('js/main.js');
   // la règle d'auteur `display: flex` bat [hidden] : sans règle explicite, une piste grise vide reste visible sous la carte
   assert.ok(/\.tile-kpi-goal \{[^}]*display: flex/.test(css), 'précondition : .tile-kpi-goal est bien en display: flex');
@@ -2711,7 +2712,7 @@ const SAMPLE_TIME_SERIES = [
 
     // câblage : le type reste proposé (grisé), plus aucun import map ni import() pour d3-cloud
     const main = read('js/main.js');
-    const charts = read('js/charts.js');
+    const charts = readCharts();
     const html = read('index.html');
     const css = read('css/style.css');
     assert.ok(/'wordcloud'/.test(main.match(/const TYPE_CARDS = \[[^\]]*\]/)[0]), 'TYPE_CARDS garde wordcloud');
@@ -4583,7 +4584,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
       // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
       const mainSrc = fs.readFileSync(path.join(root, 'js', 'main.js'), 'utf8');
       const indexSrc = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
-      const chartsSrc = fs.readFileSync(path.join(root, 'js', 'charts.js'), 'utf8');
+      const chartsSrc = readCharts();
       assert.ok(/const TYPE_CARDS = \[[^\]]*'text'\]/.test(mainSrc), 'carte « Texte » dans l\'étape Choisir');
       assert.ok(/<option value="text"/.test(indexSrc) && /<textarea id="tile-text"[^>]*maxlength="2000"/.test(indexSrc), 'option + zone de texte plafonnée');
       assert.ok(/tile\.type === 'text'\) \{\s*(?:return )?renderText\(/.test(chartsSrc) || /tile\.type === 'text'\) \{\r?\n\s*(?:return )?renderText\(/.test(chartsSrc), 'renderTile aiguille vers renderText');
@@ -4661,7 +4662,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
           .forEach((k) => assert.ok(i18n.STRINGS[k] && i18n.STRINGS[k].fr && i18n.STRINGS[k].en, 'traduction fr/en : ' + k));
         // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
         const mainSrc2 = fs.readFileSync(path.join(root, 'js', 'main.js'), 'utf8');
-        const chartsSrc2 = fs.readFileSync(path.join(root, 'js', 'charts.js'), 'utf8');
+        const chartsSrc2 = readCharts();
         const indexSrc2 = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
         assert.ok(/const TYPE_CARDS = \[[^\]]*'table'/.test(mainSrc2) && /<option value="table"/.test(indexSrc2) && /id="tile-columns"/.test(indexSrc2));
         assert.ok(/tile\.type === 'table'\) \{\s*(?:return )?renderTable\(/.test(chartsSrc2), 'renderTile aiguille vers renderTable');
@@ -4731,7 +4732,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
           .forEach((k) => assert.ok(i18n.STRINGS[k] && i18n.STRINGS[k].fr && i18n.STRINGS[k].en, 'traduction fr/en : ' + k));
         // Câblage lu dans les sources.
         const mainSrc3 = fs.readFileSync(path.join(root, 'js', 'main.js'), 'utf8');
-        const chartsSrc3 = fs.readFileSync(path.join(root, 'js', 'charts.js'), 'utf8');
+        const chartsSrc3 = readCharts();
         const indexSrc3 = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
         assert.ok(/const TYPE_CARDS = \[[^\]]*'progress'/.test(mainSrc3) && /<option value="progress"/.test(indexSrc3) && /id="tile-target"/.test(indexSrc3) && /id="tile-sparkline"/.test(indexSrc3));
         assert.ok(/tile-kpi-spark/.test(mainSrc3) && /tile-kpi-goal/.test(mainSrc3), 'balisage de la carte KPI : courbe + objectif');
@@ -4805,7 +4806,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
             .forEach((k) => assert.ok(i18n.STRINGS[k] && i18n.STRINGS[k].fr && i18n.STRINGS[k].en, 'traduction fr/en : ' + k));
           // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
           const mainSrc4 = fs.readFileSync(path.join(root, 'js', 'main.js'), 'utf8');
-          const chartsSrc4 = fs.readFileSync(path.join(root, 'js', 'charts.js'), 'utf8');
+          const chartsSrc4 = readCharts();
           const indexSrc4 = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
           assert.ok(/const TYPE_CARDS = \[[^\]]*'combo'/.test(mainSrc4) && /<option value="combo"/.test(indexSrc4) && /id="tile-combo-mode"/.test(indexSrc4) && /id="tile-agg-y"/.test(indexSrc4));
           assert.ok(/tile\.type === 'combo'\) \{\s*\/\/ Combo barres/.test(chartsSrc4) && /yAxisIndex: 1/.test(chartsSrc4), 'branche combo de renderChart : 2 axes Y');
@@ -4937,7 +4938,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
           i18n.setLang('en'); assert.strictEqual(i18n.t('chart.histogram.rows', { n: 1, count: 1 }), '1 row'); i18n.setLang('fr');
           // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
           const mainSrc5 = fs.readFileSync(path.join(root, 'js', 'main.js'), 'utf8');
-          const chartsSrc5 = fs.readFileSync(path.join(root, 'js', 'charts.js'), 'utf8');
+          const chartsSrc5 = readCharts();
           const indexSrc5 = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
           assert.ok(/const TYPE_CARDS = \[[^\]]*'histogram'/.test(mainSrc5) && /<option value="histogram"/.test(indexSrc5) && /id="tile-bins"/.test(indexSrc5));
           assert.ok(/currentTile\.type === 'histogram'/.test(chartsSrc5) && /toggleRangeFilter\(currentTile\.measure/.test(chartsSrc5), 'le clic d\'une classe pose un filtre par plage');
@@ -5086,7 +5087,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
 
     // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
     const mainH = fsH.readFileSync(pathH.join(rootH, 'js', 'main.js'), 'utf8');
-    const chartsH = fsH.readFileSync(pathH.join(rootH, 'js', 'charts.js'), 'utf8');
+    const chartsH = readCharts();
     const indexH = fsH.readFileSync(pathH.join(rootH, 'index.html'), 'utf8');
     assert.ok(/const TYPE_CARDS = \[[^\]]*'heatmap'/.test(mainH) && /<option value="heatmap"/.test(indexH) && /id="tile-pivot-heat"/.test(indexH) && /'type-heatmap'/.test(mainH));
     assert.ok(/currentTile\.type === 'heatmap'/.test(chartsH) && /toggleCellFilters\(currentTile/.test(chartsH), 'le clic d\'une case pose les filtres de la ligne et de la colonne');
@@ -5178,7 +5179,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     }
     // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
     const mainR = fsR.readFileSync(pathR.join(rootR, 'js', 'main.js'), 'utf8');
-    const chartsR = fsR.readFileSync(pathR.join(rootR, 'js', 'charts.js'), 'utf8');
+    const chartsR = readCharts();
     const indexR = fsR.readFileSync(pathR.join(rootR, 'index.html'), 'utf8');
     assert.ok(/id="tile-refline"/.test(indexR) && /id="tile-refvalue"/.test(indexR) && /<label for="tile-refvalue"/.test(indexR), 'champs étiquetés');
     assert.ok(/supportsRefLine\(\{ type, measureMode/.test(mainR) && /tileData\.refLine = refKind \|\| undefined/.test(mainR));
@@ -5248,7 +5249,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
       .forEach((k) => assert.ok(i18n.STRINGS[k] && i18n.STRINGS[k].fr && i18n.STRINGS[k].en, 'traduction fr/en : ' + k));
     // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
     const mainD = fsD.readFileSync(pathD.join(rootD, 'js', 'main.js'), 'utf8');
-    const chartsD = fsD.readFileSync(pathD.join(rootD, 'js', 'charts.js'), 'utf8');
+    const chartsD = readCharts();
     const indexD = fsD.readFileSync(pathD.join(rootD, 'index.html'), 'utf8');
     for (const id of ['tile-stack-percent', 'tile-line-shape', 'tile-value-labels']) assert.ok(new RegExp(`id="${id}"`).test(indexD) && new RegExp(`<label for="${id}"`).test(indexD), 'champ étiqueté : ' + id);
     assert.ok(/stackPercentCheckbox\.addEventListener\('change', updateFormFieldsForType\)/.test(mainD) && /stackedCheckbox\.addEventListener\('change', updateFormFieldsForType\)/.test(mainD), 'cocher/décocher recalcule les champs visibles');
@@ -5375,7 +5376,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     i18n.setLang('en'); assert.strictEqual(i18n.t('chart.box.outliers', { n: 1, count: 1 }), '1 outlier'); i18n.setLang('fr');
     // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
     const mainB = fsB.readFileSync(pathB.join(rootB, 'js', 'main.js'), 'utf8');
-    const chartsB = fsB.readFileSync(pathB.join(rootB, 'js', 'charts.js'), 'utf8');
+    const chartsB = readCharts();
     const indexB = fsB.readFileSync(pathB.join(rootB, 'index.html'), 'utf8');
     assert.ok(/const TYPE_CARDS = \[[^\]]*'box'/.test(mainB) && /<option value="box"/.test(indexB) && /'type-box':/.test(mainB), 'carte, option et icône du type');
     assert.ok(/type !== 'box' && /.test(mainB), 'pas de drill-down (valeurs brutes, pas de niveau suivant)');
@@ -5467,7 +5468,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     i18n.setLang('fr'); assert.strictEqual(i18n.t('chart.sankey.capped', { shown: 60, total: 144 }), '60 flux les plus importants sur 144'); i18n.setLang('en'); assert.strictEqual(i18n.t('chart.sankey.capped', { shown: 60, total: 144 }), 'Top 60 flows of 144'); i18n.setLang('fr');
     // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
     const mainK = fsK.readFileSync(pathK.join(rootK, 'js', 'main.js'), 'utf8');
-    const chartsK = fsK.readFileSync(pathK.join(rootK, 'js', 'charts.js'), 'utf8');
+    const chartsK = readCharts();
     const indexK = fsK.readFileSync(pathK.join(rootK, 'index.html'), 'utf8');
     assert.ok(/const TYPE_CARDS = \[[^\]]*'sankey'/.test(mainK) && /<option value="sankey"/.test(indexK) && /'type-sankey':/.test(mainK), 'carte, option et icône du type');
     assert.ok(/type !== 'sankey' && type !== 'calendar'( && type !== 'gantt')?( && type !== 'sunburst')?; \}/.test(mainK), 'pas de drill-down (flux, calendrier)');
@@ -5544,7 +5545,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     i18n.setLang('en'); assert.strictEqual(i18n.t('tileTitle.bubble', { measure: 'Prix', measureY: 'Marge', dimension: 'Produit', measureSize: 'CA' }), 'Prix and Marge by Produit, size: CA'); i18n.setLang('fr');
     // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
     const mainB = fsB.readFileSync(pathB.join(rootB, 'js', 'main.js'), 'utf8');
-    const chartsB = fsB.readFileSync(pathB.join(rootB, 'js', 'charts.js'), 'utf8');
+    const chartsB = readCharts();
     const indexB = fsB.readFileSync(pathB.join(rootB, 'index.html'), 'utf8');
     assert.ok(/id="tile-measure-size"/.test(indexB) && /id="tile-agg-size"/.test(indexB) && /id="tile-series-label"/.test(indexB), 'champs de taille et libellé de la couleur');
     assert.ok(/measureSizeSelect, trendDimensionSelect/.test(mainB), 'la colonne de taille est un combobox strict');
@@ -5637,7 +5638,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     assert.strictEqual(i18n.t('chart.calendar.dayNames').split(',')[0], 'D', 'le tableau commence par dimanche (convention d\'ECharts), lundi en premier par `firstDay: 1`');
     // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
     const mainC = fsC.readFileSync(pathC.join(rootC, 'js', 'main.js'), 'utf8');
-    const chartsC = fsC.readFileSync(pathC.join(rootC, 'js', 'charts.js'), 'utf8');
+    const chartsC = readCharts();
     const indexC = fsC.readFileSync(pathC.join(rootC, 'index.html'), 'utf8');
     assert.ok(/const TYPE_CARDS = \[[^\]]*'calendar'/.test(mainC) && /<option value="calendar"/.test(indexC) && /'type-calendar':/.test(mainC), 'carte, option et icône du type');
     assert.ok(/inferColumnKind\(dimension\) !== 'date'\) fail\('tile-dimension', 'tileForm\.error\.calendarNotDate'\)/.test(mainC), 'la colonne doit contenir de vraies dates');
@@ -5757,7 +5758,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     assert.strictEqual(i18n.t('tileTitle.gantt', { dimension: 'Tâche' }), 'Planning (Tâche)');
     // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
     const mainG = fsG.readFileSync(pathG.join(rootG, 'js', 'main.js'), 'utf8');
-    const chartsG = fsG.readFileSync(pathG.join(rootG, 'js', 'charts.js'), 'utf8');
+    const chartsG = readCharts();
     const indexG = fsG.readFileSync(pathG.join(rootG, 'index.html'), 'utf8');
     const cssG = fsG.readFileSync(pathG.join(rootG, 'css', 'style.css'), 'utf8');
     assert.ok(/const TYPE_CARDS = \[[^\]]*'gantt'/.test(mainG) && /<option value="gantt"/.test(indexG) && /'type-gantt':/.test(mainG), 'carte, option et icône du type');
@@ -5861,7 +5862,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
 
     // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
     const mainS = fsS.readFileSync(pathS.join(rootS, 'js', 'main.js'), 'utf8');
-    const chartsS = fsS.readFileSync(pathS.join(rootS, 'js', 'charts.js'), 'utf8');
+    const chartsS = readCharts();
     const indexS = fsS.readFileSync(pathS.join(rootS, 'index.html'), 'utf8');
     assert.ok(/id="tile-small-multiples"/.test(indexS) && /id="tile-small-multiples-field"/.test(indexS) && /data-i18n="tileForm\.smallMultiples\.label"/.test(indexS), 'case et champ du formulaire');
     assert.ok(/smallMultiplesCheckbox\.addEventListener\('change', updateFormFieldsForType\)/.test(mainS), 'la case relance l\'affichage des champs qu\'elle exclut');
@@ -5871,7 +5872,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     assert.ok(/smallMultiplesCheckbox\.checked = !!tile\.smallMultiples/.test(mainS) && /smallMultiplesCheckbox\.checked = false;/.test(mainS), 'édition et réinitialisation');
     assert.ok(/const smallOn = !!multi && isSmallMultiplesTile\(tile\);\s*\n\s*if \(smallOn\) \{/.test(chartsS), 'branché dans la chaîne de renderChart (le nombre de finalizeOption/setOption ne change pas)');
     assert.ok(/instance\.__refit = undefined; \/\/ une géométrie en pixels/.test(chartsS) && /instance\.__refit = \(\) => \{\s*\n\s*const w = instance\.getWidth\(\);/.test(chartsS), 'la géométrie en pixels est reposée au redimensionnement, et levée quand la case est décochée');
-    const bs = chartsS.slice(chartsS.indexOf('function buildSmallMultiplesOption'), chartsS.indexOf('async function renderChart'));
+    const bs = chartsS.slice(chartsS.indexOf('function buildSmallMultiplesOption'), chartsS.indexOf('function addRefLine'));
     assert.ok(/String\(sr\.name\)/.test(bs) && !/innerHTML|formatter: \(/.test(bs.replace(/formatter: f\.axis/g, '')), 'le nom de série n\'est que du texte canvas, aucune chaîne en HTML');
     assert.ok(/xAxisIndex: i, yAxisIndex: i/.test(bs) && /min: range\.min,\s*\n\s*max: range\.max,\s*\n\s*interval: range\.step/.test(bs), 'chaque panneau a ses axes, tous sur la même échelle');
     assert.ok(!/Intl\.NumberFormat|toFixed/.test(chartsS), 'aucun format de nombre en dur dans charts.js');
@@ -5987,7 +5988,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     i18n.setLang('en'); assert.strictEqual(i18n.t('chart.sunburst.hidden', { n: 1 }), '1 small part not drawn'); assert.strictEqual(i18n.t('chart.sunburst.hidden', { n: 5 }), '5 small parts not drawn'); i18n.setLang('fr');
     // Câblage lu dans les sources (le navigateur le rejoue, voir TEST_PROTOCOL.md).
     const mainU = fsU.readFileSync(pathU.join(rootU, 'js', 'main.js'), 'utf8');
-    const chartsU = fsU.readFileSync(pathU.join(rootU, 'js', 'charts.js'), 'utf8');
+    const chartsU = readCharts();
     const indexU = fsU.readFileSync(pathU.join(rootU, 'index.html'), 'utf8');
     assert.ok(/<option value="sunburst" data-i18n="tileForm\.type\.sunburst"/.test(indexU) && /id="tile-drill-label"/.test(indexU), 'type et libellé des anneaux dans le formulaire');
     assert.ok(/'sunburst', 'funnel'/.test(mainU) && /'type-sunburst':/.test(mainU), 'carte de type et icône');
@@ -6286,7 +6287,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
       assert.deepStrictEqual(cloneState.drillIns, { T: [{ column: 'Annee', value: 2025 }], __xl_0: [{ column: 'Annee', value: 2025 }] });
       assert.strictEqual(liveState.activeFilters[0].sourceTileId, 'T', 'l\'état vivant n\'est jamais modifié');
       assert.strictEqual(cloneState.advancedFilters, liveState.advancedFilters);
-      const chartsSrcX = nodeFs.readFileSync(nodePath.join(repoRoot, 'js', 'charts.js'), 'utf8');
+      const chartsSrcX = readCharts();
       assert.ok(/return renderChart\(tile, rows, state, container, drillPath\);/.test(chartsSrcX), 'renderTile rend la promesse du dessin');
       const mainSrcX = nodeFs.readFileSync(nodePath.join(repoRoot, 'js', 'main.js'), 'utf8');
       const excelListener = mainSrcX.slice(mainSrcX.indexOf("exportExcelBtn.addEventListener('click'"), mainSrcX.indexOf("exportPdfBtn.addEventListener('click'"));
@@ -6408,7 +6409,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
       assert.ok(at('snapshot.js') > at('charts.js') && at('pdf-writer.js') > at('snapshot.js') && at('pdf-export.js') > at('pdf-writer.js'), f + ' : charts, snapshot, pdf-writer, pdf-export dans l\'ordre');
       assert.ok(at('snapshot.js') > 0 && at('snapshot.js') < at('main.js'), f + ' : snapshot.js avant main.js');
     }
-    assert.ok(/whenSettled/.test(read('js/charts.js')) && /GristBI\.charts = \{[^}]*whenSettled/.test(read('js/charts.js')), 'charts.js expose whenSettled (l\'export attend la fin des calculs)');
+    assert.ok(/whenSettled/.test(readCharts()) && /GristBI\.charts = \{[^}]*whenSettled/.test(readCharts()), 'charts.js expose whenSettled (l\'export attend la fin des calculs)');
     for (const key of ['export.pdf.failed', 'export.header.filters']) {
       assert.ok(i18n.STRINGS[key] && i18n.STRINGS[key].fr && i18n.STRINGS[key].en, key + ' : fr et en');
     }
@@ -6456,7 +6457,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
 
     // Attente des calculs avant la photographie : TOUT rendu asynchrone en vol est suivi (carte KPI et tableau croisé n'ont pas d'instance
     // ECharts), et chaque instance ECharts — jauge comprise, qui ne passe pas par getOrCreateChartInstance — est suivie par trackLoading.
-    const chartsSource = read('js/charts.js');
+    const chartsSource = readCharts();
     assert.strictEqual((chartsSource.match(/echarts\.init\(/g) || []).length, (chartsSource.match(/trackLoading\(instance\);/g) || []).length, 'chaque echarts.init est suivi par trackLoading');
     assert.ok(/pendingRenders\.size === 0/.test(chartsSource) && /const pending = drawTile\(tile, state, container\);\s*trackPending\(pending\);\s*return pending;/.test(chartsSource), 'renderTile suit chaque dessin en vol (whenSettled les attend) et rend la même promesse à l\'export Excel');
     assert.ok(/return renderKpi\(/.test(chartsSource) && /return renderPivot\(/.test(chartsSource) && /return renderGauge\(/.test(chartsSource), 'KPI, pivot et jauge rendent leur promesse');

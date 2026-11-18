@@ -24,7 +24,7 @@
 'use strict';
 const assert = require('assert');
 const path = require('path');
-const { read, plain, parseCssRules, loadApiWithFakeConfigTable } = require('./lib/helpers.js');
+const { read, readCharts, plain, parseCssRules, loadApiWithFakeConfigTable } = require('./lib/helpers.js');
 const styles = require('../js/styles.js');
 const i18n = require('../js/i18n.js');
 const data = require('../js/data.js');
@@ -580,7 +580,7 @@ const ALL = ['standard'].concat(NEW_STYLES);
     assert.strictEqual(grid.decls.padding, '1px 0 0 1px', 'le remplissage de la grille compense la marge négative des tuiles');
     assert.ok(rule(':root[data-dash-uniform] .tiles-focus-grid'), 'uni : la zone des tuiles agrandies aussi');
     assert.strictEqual(rule(':root[data-dash-uniform]').decls['--dash-tile-surface'], 'var(--bg)');
-    assert.ok(read('js', 'charts.js').includes("cssVar('--dash-tile-surface', '') || cssVar('--surface'"), 'chartTheme lit le fond réel de la tuile (uni)');
+    assert.ok(readCharts().includes("cssVar('--dash-tile-surface', '') || cssVar('--surface'"), 'chartTheme lit le fond réel de la tuile (uni)');
     assert.ok(read('js', 'main.js').includes("'--dash-tile-surface'"), 'watchChartTheme suit ce jeton');
     // Aucune option ne fixe de hauteur : piège n°8.
     for (const r of dashRules.filter((x) => x.selector.includes('data-dash-uniform'))) assert.strictEqual(r.decls.height, undefined, r.selector);
@@ -841,7 +841,7 @@ const ALL = ['standard'].concat(NEW_STYLES);
     const keysIn = (file, name) => JSON.parse(read('js', file).match(new RegExp(`${name} = (\\[[^\\]]*\\])`))[1].replace(/'/g, '"'));
     assert.deepStrictEqual(keysIn('state.js', 'DASH_STYLE_OPTION_KEYS'), styles.OPTION_KEYS);
     assert.deepStrictEqual(keysIn('grist-api.js', 'STYLE_OPTION_KEYS'), styles.OPTION_KEYS);
-    const charts = read('js', 'charts.js');
+    const charts = readCharts();
     assert.ok(charts.includes('GristBI.styles.applyToOption(option, GristBI.styles.current(), th)'), 'finalizeOption applique le style en dernier');
     console.log('OK styles — câblage : index.html et harnais (feuille, script, section Édition), render/chargement/sauvegarde, finalizeOption');
   }
