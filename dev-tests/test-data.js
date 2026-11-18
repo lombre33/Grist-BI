@@ -14,6 +14,7 @@ const pbixLayout = require('../js/pbix-layout.js');
 const csvImport = require('../js/csv-import.js');
 const keywords = require('../js/keywords.js');
 const pdfText = require('../js/pdf-text.js');
+const advice = require('../js/advice.js');
 
 const rows = [
   { id: 1, Region: 'Nord', Montant: 100 },
@@ -2146,6 +2147,296 @@ const SAMPLE_TIME_SERIES = [
     const { rows: r } = csvImport.parseCsvFile(csv);
     assert.strictEqual(r[1].Montant, null);
     console.log('OK csvImport.parseCsvFile — valeur numérique manquante -> null, jamais 0');
+  }
+
+  // --- js/advice.js : suggestions de tuiles, valeurs par défaut, avertissements de lisibilité -------
+  {
+    const fs = require('fs');
+    const path = require('path');
+    const withHierarchies = (rows) => Object.keys(rows[0]).filter((k) => k !== 'id')
+      .reduce((acc, col) => (data.parseDateValue(rows[0][col]) != null ? data.deriveDateHierarchyColumns(acc, col) : acc), rows);
+    const big = withHierarchies(demoData.buildLargeSampleRows());
+    const tr = (key, vars) => i18n.t(key, vars);
+    const sameKeys = (a, b) => assert.deepStrictEqual(Object.keys(a).sort(), Object.keys(b).sort());
+
+    // Profil des colonnes : rôle déduit des VALEURS (jamais d'un nom de colonne seul).
+    {
+      const roles = Object.fromEntries(advice.profileColumns(big).map((p) => [p.id, p.role]));
+      assert.strictEqual(roles.Region, 'category');
+      assert.strictEqual(roles.Produit, 'category');
+      assert.strictEqual(roles.Annee, 'category'); // 2020-2026 : une année, pas une mesure à additionner
+      assert.strictEqual(roles.Date, 'time');
+      assert.strictEqual(roles['Date.Annee'], 'timePart');
+      assert.strictEqual(roles['Date.Trimestre'], 'timePart');
+      assert.strictEqual(roles.Montant, 'measure');
+      assert.ok(advice.profileColumns(big).find((p) => p.id === 'Jour').ordinal, 'jour du mois 1-28 : ordinal, jamais une mesure vedette');
+      console.log('OK advice.profileColumns — Région/Produit catégories, Année année, Date temps, Montant mesure');
+    }
+    {
+      const table = Array.from({ length: 40 }, (_, i) => ({ id: i + 1, Numero: i + 1, Email: `p${i}@x.fr`, Salaire: 1000 + i * 37, Pays: 'FR', Commentaire: 'x'.repeat(60) + i }));
+      const roles = Object.fromEntries(advice.profileColumns(table).map((p) => [p.id, p.role]));
+      assert.strictEqual(roles.Numero, 'identifier'); // 1..40 consécutifs, un par ligne
+      assert.strictEqual(roles.Email, 'identifier'); // 40 valeurs toutes différentes : une clé, pas un axe
+      // (à 12 lignes, des noms tous différents restent une catégorie : une barre par personne est légitime)
+      assert.strictEqual(roles.Salaire, 'measure'); // entiers tous différents mais PAS consécutifs : une mesure, pas une clé
+      assert.strictEqual(roles.Pays, 'constant');
+      assert.strictEqual(roles.Commentaire, 'freeText');
+      console.log('OK advice.profileColumns — identifiant, mesure entière, colonne constante, texte libre');
+    }
+    // Vote d'échantillon (pas la seule première valeur) : une cellule égarée ne change pas le type.
+    assert.strictEqual(advice.columnKind(['12', 7, 'n/a', 'oui', 'non', 3]), 'text'); // moitié texte : texte (choix le plus sûr)
+    assert.strictEqual(advice.columnKind([12, 7, 3, 9, 4, 8, 6, 5, 2, 1, 11, 10, 14, 13, 15, 16, 17, 18, 19, 'n/a']), 'number');
+    assert.strictEqual(advice.columnKind(['2026-01-02', '2026-02-03']), 'date');
+
+    // suggestTiles : tableau vide, forme des résultats, limite, variété.
+    assert.deepStrictEqual(advice.suggestTiles([], undefined), []);
+    assert.deepStrictEqual(advice.suggestTiles(undefined, undefined), []);
+    {
+      const sugg = advice.suggestTiles(big, undefined, { t: tr });
+      assert.strictEqual(sugg.length, 3, '3 suggestions par défaut');
+      assert.deepStrictEqual(sugg.map((x) => x.type).sort(), ['bar', 'kpi', 'line'], 'trois types différents, pas trois barres');
+      sugg.forEach((x) => {
+        assert.ok(x.titleKey && x.reasonKey && x.tileData && x.tileData.title, 'clés d\'affichage + tuile prête pour addTile');
+        assert.ok(typeof x.score === 'number');
+        assert.ok(x.tileData.dimension === '' || Object.keys(big[0]).indexOf(x.tileData.dimension) !== -1, 'dimension = vraie colonne');
+        assert.ok(Object.keys(big[0]).indexOf(x.tileData.measure) !== -1, 'mesure = vraie colonne');
+        assert.notStrictEqual(x.tileData.dimension, x.tileData.measure);
+      });
+      const line = sugg.find((x) => x.type === 'line');
+      assert.strictEqual(line.tileData.dimension, 'Date.Annee');
+      assert.deepStrictEqual(line.tileData.drillDimensions, ['Date.Trimestre', 'Date.Mois', 'Date'], 'même drill-down que le bouton « Détailler par Année… »');
+      assert.strictEqual(line.tileData.measure, 'Montant', 'la vraie mesure, pas le numéro du jour');
+      const kpi = sugg.find((x) => x.type === 'kpi');
+      assert.strictEqual(kpi.tileData.trendDimension, 'Date.Annee', 'KPI avec tendance quand il y a au moins 2 années');
+      assert.strictEqual(advice.suggestTiles(big, undefined, { limit: 5 }).length, 5);
+      assert.strictEqual(advice.suggestTiles(big, undefined, { limit: 1 }).length, 1);
+      // Sans `opts.t` : repli neutre fait des noms de colonnes, jamais un mot de français en dur.
+      const bare = advice.suggestTiles(big)[0].tileData.title;
+      assert.ok(!/\bpar\b|\bby\b/i.test(bare), 'repli sans mot de la langue : ' + bare);
+      console.log('OK advice.suggestTiles — 3 types différents, vraies colonnes, drill-down et tendance');
+    }
+    // Tableau sans date : barres + KPI + anneau (peu de parts) ; avec une colonne « note » : moyenne.
+    {
+      const t1 = [
+        { id: 1, Region: 'Nord', Produit: 'Stylo', Montant: 100 }, { id: 2, Region: 'Nord', Produit: 'Cahier', Montant: 50 },
+        { id: 3, Region: 'Sud', Produit: 'Stylo', Montant: 30 }, { id: 4, Region: 'Sud', Produit: 'Cahier', Montant: 70 },
+        { id: 5, Region: 'Est', Produit: 'Stylo', Montant: 90 }, { id: 6, Region: 'Est', Produit: 'Cahier', Montant: 20 }
+      ];
+      const types = advice.suggestTiles(t1).map((x) => x.type);
+      assert.deepStrictEqual(types, ['bar', 'kpi', 'pie']);
+      const pie = advice.suggestTiles(t1).find((x) => x.type === 'pie');
+      assert.strictEqual(pie.tileData.donut, true);
+      assert.strictEqual(pie.tileData.showPct, true);
+      // Montants négatifs : plus d'anneau (un camembert ne peut pas les représenter).
+      const neg = t1.map((r, i) => (i === 0 ? Object.assign({}, r, { Montant: -5 }) : r));
+      assert.ok(!advice.suggestTiles(neg, undefined, { limit: 10 }).some((x) => x.type === 'pie'), 'pas d\'anneau avec une valeur négative');
+      const notes = t1.map((r, i) => Object.assign({}, r, { Moyenne_note: 10 + i / 2 }));
+      const kpi = advice.suggestTiles(notes, ['Region', 'Moyenne_note'], { limit: 5 }).find((x) => x.type === 'kpi');
+      assert.strictEqual(kpi.tileData.aggFn, 'avg', 'une colonne « note »/« moyenne » se moyenne plutôt que de s\'additionner');
+      assert.strictEqual(kpi.titleKey, 'advice.title.average');
+      console.log('OK advice.suggestTiles — sans date : barres/KPI/anneau ; négatif -> pas d\'anneau ; colonne « note » -> moyenne');
+    }
+    // Aucune colonne numérique : on compte les lignes plutôt que de proposer une somme impossible.
+    {
+      const textOnly = [{ id: 1, Ville: 'Paris', Pays: 'FR' }, { id: 2, Ville: 'Lyon', Pays: 'FR' }, { id: 3, Ville: 'Rome', Pays: 'IT' }];
+      const sugg = advice.suggestTiles(textOnly);
+      assert.ok(sugg.length >= 2);
+      sugg.forEach((x) => assert.strictEqual(x.tileData.aggFn, 'count'));
+      assert.ok(sugg.some((x) => x.type === 'kpi' && x.titleKey === 'advice.title.countAll'));
+      console.log('OK advice.suggestTiles — aucune colonne numérique : comptage de lignes');
+    }
+    // Compétences en colonnes (cas d'usage forum Grist) : un radar est proposé.
+    {
+      const eleves = ['Ana', 'Ben', 'Cléo', 'Dan', 'Eli', 'Fay'].map((n, i) => ({ id: i + 1, Eleve: n, Classe: i % 2 ? 'A' : 'B', Maths: 10 + i, Francais: 12 - i / 2, Histoire: 8 + i * 1.5, Anglais: 15 - i }));
+      const radar = advice.suggestTiles(eleves, undefined, { limit: 5 }).find((x) => x.type === 'radar');
+      assert.ok(radar, 'radar proposé pour des colonnes de notes sur une même échelle');
+      assert.strictEqual(radar.tileData.radarAxisMode, 'columns');
+      assert.deepStrictEqual(radar.tileData.radarAxes, ['Maths', 'Francais', 'Histoire', 'Anglais']);
+      const rich = eleves.map((r) => Object.assign({}, r, { CA: r.id * 1000000 }));
+      assert.ok(!advice.suggestTiles(rich, undefined, { limit: 10 }).some((x) => x.type === 'radar' && x.tileData.radarAxes.indexOf('CA') !== -1), 'jamais un chiffre d\'affaires mêlé à des notes');
+      console.log('OK advice.suggestTiles — radar « compétences en colonnes » sur une échelle commune');
+    }
+    // Une suggestion se laisse vraiment créer : addTile + groupByAggregate sur les vraies données.
+    {
+      const store = state.createStore();
+      advice.suggestTiles(big, undefined, { limit: 8, t: tr }).forEach((x, i) => store.addTile(Object.assign({ id: 'sugg-' + i }, x.tileData)));
+      assert.ok(store.getState().pages[0].tiles.length >= 3);
+      advice.suggestTiles(big, undefined, { limit: 8 }).forEach((x) => {
+        if (x.tileData.dimension) {
+          const groups = data.groupByAggregate(big, x.tileData.dimension, x.tileData.measure, x.tileData.aggFn);
+          assert.ok(groups.length >= 2 && groups.every((g) => Number.isFinite(g.value)), `${x.type} : agrégat valide`);
+        }
+      });
+      console.log('OK advice.suggestTiles — chaque suggestion s\'ajoute au store et s\'agrège sur les vraies données');
+    }
+    // Courbe suggérée sur des dates dans le désordre : tri par libellé posé d'office (jamais de zigzag).
+    {
+      const dates = ['2024-03-01', '2024-01-01', '2024-04-01', '2024-02-01', '2024-05-01'].map((d, i) => ({ id: i + 1, Jour: d, Montant: 10 * (i + 1), Region: 'N' + (i % 2) }));
+      const rows = data.deriveDateHierarchyColumns(dates, 'Jour');
+      const line = advice.suggestTiles(rows, undefined, { limit: 6 }).find((x) => x.type === 'line');
+      assert.ok(line, 'courbe proposée');
+      assert.strictEqual(line.tileData.dimension, 'Jour');
+      assert.strictEqual(line.tileData.sortMode, 'label');
+      assert.deepStrictEqual(data.sortGroups(data.groupByAggregate(rows, 'Jour', 'Montant', 'sum'), 'label').map((g) => g.dimension),
+        ['2024-01-01', '2024-02-01', '2024-03-01', '2024-04-01', '2024-05-01']);
+      console.log('OK advice.suggestTiles — dates dans le désordre : courbe triée par libellé');
+    }
+
+    // defaultsForType : jamais « Région / Région / Somme » ; une vraie colonne par rôle.
+    {
+      const d = advice.defaultsForType('bar', big);
+      assert.notStrictEqual(d.dimension, d.measure);
+      assert.strictEqual(d.measure, 'Montant');
+      assert.strictEqual(d.aggFn, 'sum');
+      const pie = advice.defaultsForType('pie', big);
+      assert.ok(pie.donut && pie.showPct);
+      assert.ok(big.length && new Set(big.map((r) => r[pie.dimension])).size <= 6, 'anneau sur une dimension à peu de parts');
+      const line = advice.defaultsForType('line', big);
+      assert.strictEqual(line.dimension, 'Date.Annee');
+      assert.deepStrictEqual(line.drillDimensions, ['Date.Trimestre', 'Date.Mois', 'Date']);
+      const kpi = advice.defaultsForType('kpi', big);
+      assert.strictEqual(kpi.dimension, '');
+      assert.strictEqual(kpi.trendDimension, 'Date.Annee');
+      const scatter = advice.defaultsForType('scatter', big);
+      assert.notStrictEqual(scatter.measure, scatter.measureY);
+      const pivot = advice.defaultsForType('pivot', big);
+      assert.ok(pivot.columnDimension && pivot.columnDimension !== pivot.dimension, 'pivot : deux dimensions différentes');
+      const gauge = advice.defaultsForType('gauge', big);
+      const total = data.aggregateSingle(big, gauge.measure, gauge.aggFn);
+      assert.ok(gauge.gaugeMax > total && gauge.gaugeMax < total * 3, 'borne max arrondie juste au-dessus de la valeur actuelle');
+      assert.strictEqual(gauge.gaugeMin, 0);
+      assert.strictEqual(advice.defaultsForType('inconnu', big), null);
+      assert.strictEqual(advice.defaultsForType('bar', []), null);
+      // Un seul jeu de colonnes (Région seulement) : pas de plantage, un repli plutôt qu'un champ vide.
+      const solo = advice.defaultsForType('bar', [{ id: 1, Region: 'Nord' }, { id: 2, Region: 'Sud' }]);
+      assert.strictEqual(solo.dimension, 'Region');
+      assert.strictEqual(solo.aggFn, 'count');
+      console.log('OK advice.defaultsForType — vraies colonnes par rôle, jauge bornée, repli sans colonne numérique');
+    }
+
+    // adviceForTile : un avertissement à la fois, seulement quand il est juste.
+    {
+      const many = Array.from({ length: 12 }, (_, i) => ({ id: i + 1, Cat: 'Catégorie ' + (i + 1), V: 10 + i }));
+      const neg = [{ id: 1, C: 'a', V: 5 }, { id: 2, C: 'b', V: -3 }, { id: 3, C: 'c', V: 2 }];
+      const chk = (tile, rows, key, level) => {
+        const a = advice.adviceForTile(tile, rows);
+        if (key === null) { assert.strictEqual(a, null, JSON.stringify(tile) + ' -> ' + JSON.stringify(a)); return; }
+        assert.ok(a, 'conseil attendu : ' + key);
+        assert.strictEqual(a.key, key);
+        if (level) assert.strictEqual(a.level, level);
+        assert.ok(a.vars && typeof a.vars === 'object');
+      };
+      chk({ type: 'pie', dimension: 'Cat', measure: 'V', aggFn: 'sum' }, many, 'advice.pie.tooManySlices', 'warn');
+      assert.strictEqual(advice.adviceForTile({ type: 'pie', dimension: 'Cat', measure: 'V', aggFn: 'sum' }, many).vars.n, 12);
+      chk({ type: 'pie', dimension: 'C', measure: 'V', aggFn: 'sum' }, neg, 'advice.pie.negative', 'warn');
+      chk({ type: 'treemap', dimension: 'C', measure: 'V', aggFn: 'sum' }, neg, 'advice.treemap.negative', 'warn');
+      chk({ type: 'bar', dimension: 'C', measure: 'V', aggFn: 'sum' }, neg, null); // des barres négatives sont légitimes
+      const m14 = Array.from({ length: 14 }, (_, i) => ({ id: i + 1, Cat: 'C' + i, V: i }));
+      chk({ type: 'bar', dimension: 'Cat', measure: 'V', aggFn: 'sum', sortMode: 'value-desc' }, m14, 'advice.bar.horizontal', 'tip');
+      chk({ type: 'bar', dimension: 'Cat', measure: 'V', aggFn: 'sum', sortMode: 'value-desc', horizontal: true }, m14, null);
+      const lbl = ['Direction régionale Nord', 'Direction régionale Sud', 'Direction Est', 'Direction Ouest'].map((c, i) => ({ id: i + 1, C: c, V: i + 1 }));
+      chk({ type: 'bar', dimension: 'C', measure: 'V', aggFn: 'sum', sortMode: 'value-desc' }, lbl, 'advice.bar.longLabels');
+      const six = Array.from({ length: 6 }, (_, i) => ({ id: i + 1, Cat: 'C' + i, V: i }));
+      chk({ type: 'bar', dimension: 'Cat', measure: 'V', aggFn: 'sum' }, six, 'advice.bar.unsorted', 'tip');
+      chk({ type: 'bar', dimension: 'Cat', measure: 'V', aggFn: 'sum', sortMode: 'value-desc' }, six, null);
+      // Courbe : exige un axe ordonné.
+      chk({ type: 'line', dimension: 'Cat', measure: 'V', aggFn: 'sum' }, six, 'advice.line.notTime', 'warn');
+      const dates = ['2024-03-01', '2024-01-01', '2024-02-01', '2024-04-01'].map((d, i) => ({ id: i + 1, D: d, V: i }));
+      chk({ type: 'line', dimension: 'D', measure: 'V', aggFn: 'sum' }, dates, 'advice.line.unordered', 'tip');
+      chk({ type: 'line', dimension: 'D', measure: 'V', aggFn: 'sum', sortMode: 'label' }, dates, null);
+      chk({ type: 'line', dimension: 'D', measure: 'V', aggFn: 'sum', sortMode: 'value-desc' }, dates, 'advice.line.valueSort', 'warn');
+      chk({ type: 'waterfall', dimension: 'D', measure: 'V', aggFn: 'sum' }, dates, 'advice.waterfall.unordered', 'tip');
+      const mois = ['Janvier', 'Février', 'Mars', 'Avril'].map((m, i) => ({ id: i + 1, M: m, V: i }));
+      chk({ type: 'line', dimension: 'M', measure: 'V', aggFn: 'sum' }, mois, null); // des mois sont un axe de temps ; jamais « triez par libellé » (Avril < Janvier)
+      chk({ type: 'line', dimension: 'A', measure: 'V', aggFn: 'sum' }, [{ id: 1, A: 2023, V: 1 }, { id: 2, A: 2024, V: 2 }], 'advice.line.fewPoints', 'tip');
+      // Radar, jauge, données incomplètes.
+      const axes = Array.from({ length: 10 }, (_, i) => 'c' + i);
+      const prow = { id: 1 };
+      axes.forEach((a) => { prow[a] = 5; });
+      chk({ type: 'radar', radarAxisMode: 'columns', radarAxes: axes }, [prow], 'advice.radar.tooManyAxes', 'warn');
+      chk({ type: 'radar', radarAxisMode: 'dimension', dimension: 'Cat', measure: 'V', aggFn: 'avg' }, many, 'advice.radar.tooManyAxes');
+      chk({ type: 'gauge', measure: 'V', aggFn: 'sum', gaugeMin: 0, gaugeMax: 50 }, many, 'advice.gauge.outOfRange', 'warn');
+      chk({ type: 'gauge', measure: 'V', aggFn: 'sum', gaugeMin: 0, gaugeMax: 500 }, many, null);
+      const sparse = Array.from({ length: 10 }, (_, i) => ({ id: i + 1, C: 'a' + (i % 3), V: i < 3 ? i : null }));
+      const empty = advice.adviceForTile({ type: 'bar', dimension: 'C', measure: 'V', aggFn: 'sum', sortMode: 'value-desc' }, sparse);
+      assert.strictEqual(empty.key, 'advice.data.mostlyEmpty');
+      assert.deepStrictEqual(empty.vars, { column: 'V', pct: 70 });
+      // KPI simple, aucune donnée, brouillon incomplet : pas de conseil, et jamais de plantage.
+      chk({ type: 'kpi', measure: 'V', aggFn: 'sum' }, many, null);
+      assert.strictEqual(advice.adviceForTile({ type: 'bar', dimension: 'Cat', measure: 'V' }, []), null);
+      assert.strictEqual(advice.adviceForTile(null, many), null);
+      assert.strictEqual(advice.adviceForTile({}, many), null);
+      assert.strictEqual(advice.adviceForTile({ type: 'bar' }, many), null);
+      // Les tuiles de démonstration du banc d'essai (bien faites) ne reçoivent aucun conseil.
+      demoData.defaultLargeTiles().forEach((tile) => assert.strictEqual(advice.adviceForTile(tile, big), null, tile.title));
+      // Ne mute jamais ses entrées.
+      const frozen = Object.freeze(many.map((r) => Object.freeze(Object.assign({}, r))));
+      advice.adviceForTile(Object.freeze({ type: 'pie', dimension: 'Cat', measure: 'V', aggFn: 'sum' }), frozen);
+      advice.suggestTiles(frozen);
+      console.log('OK advice.adviceForTile — anneau/radar/jauge/courbe/barres, mois jamais « triés par libellé », aucun faux positif sur les tuiles de démo');
+    }
+
+    // adviceForType : toujours un objet ; l'avertissement du type, sinon sa raison d'indisponibilité, sinon la ligne générique.
+    {
+      advice.TILE_TYPES.forEach((type) => {
+        const a = advice.adviceForType(type, big);
+        assert.ok(a && a.key && typeof a.vars === 'object' && ['info', 'warn', 'tip'].indexOf(a.level) !== -1, type);
+      });
+      assert.strictEqual(advice.adviceForType('bar', big).key, 'advice.use.bar');
+      const noDate = [{ id: 1, Region: 'Nord', Montant: 1 }, { id: 2, Region: 'Sud', Montant: 2 }, { id: 3, Region: 'Est', Montant: 3 }];
+      assert.strictEqual(advice.adviceForType('line', noDate).key, 'advice.fit.noTime');
+      assert.strictEqual(advice.adviceForType('scatter', noDate).key, 'advice.fit.needTwoMeasures');
+      assert.strictEqual(advice.adviceForType('pivot', noDate).key, 'advice.fit.needTwoDimensions');
+      const textOnly = [{ id: 1, Ville: 'Paris' }, { id: 2, Ville: 'Lyon' }, { id: 3, Ville: 'Rome' }];
+      assert.strictEqual(advice.adviceForType('kpi', textOnly).key, 'advice.fit.noMeasure');
+      assert.strictEqual(advice.adviceForType('wordcloud', [{ id: 1, N: 1 }, { id: 2, N: 2 }]).key, 'advice.fit.needText');
+      assert.strictEqual(advice.adviceForType('bar', []).key, 'advice.use.bar'); // pas de données : la ligne générique
+      assert.strictEqual(advice.adviceForType('inconnu', big).key, 'advice.use.bar');
+      console.log('OK advice.adviceForType — avertissement, indisponibilité ou ligne générique, jamais null');
+    }
+
+    // Aucun texte en dur + clés i18n complètes fr/en : toute clé citée par advice.js existe, toute
+    // clé `advice.*` du dictionnaire est utilisée, et chaque phrase se résout sans `{variable}` orpheline.
+    {
+      const source = fs.readFileSync(path.join(__dirname, '..', 'js', 'advice.js'), 'utf8');
+      const used = new Set((source.match(/'advice\.[A-Za-z]+\.[A-Za-z]+'/g) || []).map((k) => k.slice(1, -1)));
+      const defined = Object.keys(i18n.STRINGS).filter((k) => k.startsWith('advice.'));
+      used.forEach((k) => assert.ok(i18n.STRINGS[k], 'clé i18n manquante : ' + k));
+      defined.forEach((k) => assert.ok(used.has(k), 'clé i18n jamais utilisée par advice.js : ' + k));
+      defined.forEach((k) => assert.ok(i18n.STRINGS[k].fr && i18n.STRINGS[k].en, 'traduction manquante : ' + k));
+      advice.TILE_TYPES.forEach((type) => assert.ok(advice.USE_KEYS[type] && i18n.STRINGS[advice.USE_KEYS[type]], 'ligne « quand l\'utiliser » : ' + type));
+      // Mêmes variables dans les deux langues.
+      defined.forEach((k) => {
+        const vars = (s) => (s.match(/\{(\w+)\}/g) || []).sort().join(',');
+        assert.strictEqual(vars(i18n.STRINGS[k].fr), vars(i18n.STRINGS[k].en), 'variables différentes fr/en : ' + k);
+      });
+      // Tout ce que le module sait renvoyer se traduit complètement dans les deux langues.
+      const outputs = [];
+      advice.suggestTiles(big, undefined, { limit: 10 }).forEach((x) => outputs.push([x.titleKey, x.titleVars], [x.reasonKey, x.reasonVars]));
+      advice.TILE_TYPES.forEach((type) => outputs.push([advice.adviceForType(type, big).key, advice.adviceForType(type, big).vars]));
+      const sampleTiles = [
+        [{ type: 'pie', dimension: 'Cat', measure: 'V', aggFn: 'sum' }, Array.from({ length: 12 }, (_, i) => ({ id: i, Cat: 'C' + i, V: i + 1 }))],
+        [{ type: 'gauge', measure: 'V', aggFn: 'sum', gaugeMin: 0, gaugeMax: 3 }, [{ id: 1, V: 10 }, { id: 2, V: 20 }]],
+        [{ type: 'bar', dimension: 'C', measure: 'V', aggFn: 'sum', sortMode: 'value-desc' }, Array.from({ length: 10 }, (_, i) => ({ id: i, C: 'a' + (i % 3), V: i < 3 ? i : null }))]
+      ];
+      sampleTiles.forEach(([tile, rows]) => { const a = advice.adviceForTile(tile, rows); outputs.push([a.key, a.vars]); });
+      ['fr', 'en'].forEach((lang) => {
+        i18n.setLang(lang);
+        outputs.forEach(([key, vars]) => {
+          const text = i18n.t(key, vars);
+          assert.ok(text && text.indexOf('{') === -1 && text !== key, `${lang} ${key} : « ${text} »`);
+        });
+      });
+      i18n.setLang('fr');
+      // Seule exception au « zéro texte » : `opts.t` résout les titres persistés dans la langue courante.
+      i18n.setLang('en');
+      const en = advice.suggestTiles(big, undefined, { t: i18n.t })[0].tileData.title;
+      i18n.setLang('fr');
+      const fr = advice.suggestTiles(big, undefined, { t: i18n.t })[0].tileData.title;
+      assert.notStrictEqual(en, fr);
+      assert.ok(/ by /.test(en) && / par /.test(fr), `${en} / ${fr}`);
+      console.log(`OK advice — ${used.size} clés i18n, toutes définies et utilisées, fr/en à variables identiques, aucune {variable} orpheline`);
+    }
   }
 })().then(() => {
   console.log('\nTous les tests data.js/state.js/demo-data.js/combobox.js/duckdb-engine.js/i18n.js sont passés.');
