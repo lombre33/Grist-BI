@@ -23,12 +23,8 @@
  */
 'use strict';
 const assert = require('assert');
-const fs = require('fs');
 const path = require('path');
-const vm = require('vm');
-
-const ROOT = path.join(__dirname, '..');
-const read = (...p) => fs.readFileSync(path.join(ROOT, ...p), 'utf8');
+const { read, plain, parseCssRules, loadApiWithFakeConfigTable } = require('./lib/helpers.js');
 const styles = require('../js/styles.js');
 const i18n = require('../js/i18n.js');
 const data = require('../js/data.js');
@@ -441,31 +437,7 @@ const ALL = ['standard'].concat(NEW_STYLES);
   console.log('OK styles — passe ECharts : Standard intact, barres/valeurs/courbes/parts/axes de chaque style, rien d\'écrasé (palette, couleur du rendu, histogramme, combo)');
 
   // --- 4. CSS : jetons clair/sombre complets, contrastes, accord avec le kit et avec le rendu standard -------------------------
-  function parseCss(css) {
-    const text = css.replace(/\/\*[\s\S]*?\*\//g, '');
-    const rules = [];
-    (function walk(src, media) {
-      let i = 0;
-      while (i < src.length) {
-        const open = src.indexOf('{', i);
-        if (open === -1) break;
-        const head = src.slice(i, open).trim();
-        let depth = 1;
-        let j = open + 1;
-        while (j < src.length && depth > 0) { if (src[j] === '{') depth++; else if (src[j] === '}') depth--; j++; }
-        const body = src.slice(open + 1, j - 1);
-        if (head.startsWith('@media')) walk(body, head);
-        else if (!head.startsWith('@')) {
-          const decls = {};
-          body.split(';').forEach((d) => { const k = d.indexOf(':'); if (k > 0) decls[d.slice(0, k).trim()] = d.slice(k + 1).trim(); });
-          rules.push({ media, selector: head.replace(/\s+/g, ' '), decls });
-        }
-        i = j;
-      }
-    })(text, null);
-    return rules;
-  }
-  const dashRules = parseCss(read('css', 'dash-styles.css'));
+  const dashRules = parseCssRules(read('css', 'dash-styles.css'));
   const DARK = '@media (prefers-color-scheme: dark)';
   const tokenBlock = (id, dark) => dashRules.find((r) => (dark ? r.media === DARK : r.media === null)
     && r.selector.includes(`.style-swatch[data-dash-style="${id}"]`));
@@ -510,7 +482,7 @@ const ALL = ['standard'].concat(NEW_STYLES);
 
   // Console, toujours sombre : reprend les jetons que css/style.css ne définit que SOUS `prefers-color-scheme: dark`, avec les mêmes valeurs.
   {
-    const base = parseCss(read('css', 'style.css'));
+    const base = parseCssRules(read('css', 'style.css'));
     const baseDark = base.find((r) => r.media === DARK && r.selector === ':root');
     const cons = tokenBlock('console', false);
     for (const t of ['--accent-soft', '--good-ink', '--critical', '--pp-scrim', '--danger-ink', '--danger-soft', '--warning-bg', '--warning-text', '--warning-border']) {
@@ -565,7 +537,7 @@ const ALL = ['standard'].concat(NEW_STYLES);
 
   // La pastille « Standard » montre le rendu de css/style.css.
   {
-    const base = parseCss(read('css', 'style.css'));
+    const base = parseCssRules(read('css', 'style.css'));
     const rootLight = base.find((r) => r.media === null && r.selector === ':root');
     const swatchLight = tokenBlock('standard', false);
     for (const t of ['--bg', '--surface', '--text', '--text-muted']) assert.strictEqual(swatchLight.decls[t], rootLight.decls[t], `pastille Standard ${t}`);
@@ -738,38 +710,10 @@ const ALL = ['standard'].concat(NEW_STYLES);
 
   // --- 6. Configuration : aller-retour par grist-api.js (vrai module, faux `grist`) ---------------------------------------------
   {
-    const source = read('js', 'grist-api.js');
-    const sandbox = { console: { error() {}, log() {}, warn() {} }, setTimeout: (fn) => { fn(); return 0; } };
-    sandbox.window = sandbox;
-    sandbox.GristBI = { data, i18n, state: { DEFAULT_PAGE_ID: 'page_default' } };
-    const cfg = { id: [], TableId: [], ConfigJSON: [], Nom: [], TypeRapport: [], DateModif: [], ModifiePar: [] };
     const actions = [];
-    sandbox.grist = { docApi: {
-      listTables: async () => ['BI_Dashboard_Config'],
-      fetchTable: async () => JSON.parse(JSON.stringify(cfg)),
-      applyUserActions: async (list) => {
-        const out = { retValues: [] };
-        list.forEach((a) => {
-          actions.push(a);
-          if (a[0] === 'AddRecord') {
-            const id = cfg.id.length + 1;
-            cfg.id.push(id);
-            Object.keys(cfg).filter((k) => k !== 'id').forEach((k) => cfg[k].push(a[3][k] !== undefined ? a[3][k] : ''));
-            out.retValues.push(id);
-          } else if (a[0] === 'UpdateRecord') {
-            const i = cfg.id.indexOf(a[2]);
-            Object.keys(a[3]).forEach((k) => { cfg[k][i] = a[3][k]; });
-            out.retValues.push(null);
-          } else out.retValues.push(null);
-        });
-        return out;
-      }
-    } };
-    vm.runInNewContext(source, sandbox);
-    const api = sandbox.GristBI.api;
+    const { api, cfg } = loadApiWithFakeConfigTable(data, i18n, actions);
     const pages = [{ id: 'page_default', name: 'Page 1', tiles: [{ id: 't1', type: 'bar' }] }];
     const stored = () => JSON.parse(cfg.ConfigJSON[cfg.ConfigJSON.length - 1]);
-    const plain = (x) => JSON.parse(JSON.stringify(x)); // les objets d'un contexte vm n'ont pas le prototype d'ici
 
     assert.strictEqual((await api.loadConfig('T')).style, 'standard', 'document sans configuration');
     assert.strictEqual(api.blankConfig().style, 'standard');

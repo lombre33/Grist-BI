@@ -511,7 +511,7 @@ const rows = [
 
 // tableToRows exclut les colonnes techniques ajoutées par Grist lui-même (jamais demandées via
 // AddColumn côté widget) — `manualSort` en particulier fuitait dans les sélecteurs Dimension/
-// Mesure/Filtre du formulaire d'ajout de tuile en conditions réelles [BUG RÉEL, voir
+// Mesure/Filtre du formulaire d'ajout de tuile en conditions réelles [DÉFAUT RÉEL, voir
 // TEST_PROTOCOL.md #19]. `fetchTable()` la renvoie mêlée aux vraies colonnes du document.
 {
   const table = { id: [1, 2], Region: ['Nord', 'Sud'], Montant: [100, 50], manualSort: [1.0, 2.0] };

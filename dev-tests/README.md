@@ -24,6 +24,13 @@ Ce que l'outil d'audit mesure et qu'une modification peut défaire sans bruit (v
 `index.html` a une étiquette, aucun bouton n'est vide, un seul `<main>`, `SECURITY.md` existe, et `js/vendor/SOURCES.md` dit
 vrai (empreintes SHA-256 des bibliothèques embarquées).
 
+## Aides communes aux essais (`dev-tests/lib/helpers.js`)
+
+`test-layouts.js` et `test-styles.js` en tirent ce qu'ils recopiaient à l'identique : lecture d'un fichier du dépôt (`read`), lecteur de
+règles CSS (`parseCssRules`) et le vrai `js/grist-api.js` branché sur un faux `grist` qui tient `BI_Dashboard_Config` en mémoire
+(`loadApiWithFakeConfigTable`). Un nouvel essai qui a besoin de l'un d'eux l'importe d'ici plutôt que de le recopier (l'audit `gwaudit`
+compte les blocs dupliqués, A-DUP-01).
+
 ## Style global des tuiles (Node, aucune dépendance)
 
 ```

@@ -474,7 +474,7 @@
   // relit la liste des tables à CHAQUE ouverture du menu (pas seulement au démarrage/après un
   // changement de table réussi comme le fait refreshTablePicker par ailleurs) : une table créée
   // dans Grist après le chargement du widget doit rester atteignable sans recharger la page
-  // [BUG RÉEL, voir HYPOTHESES.md].
+  // [DÉFAUT RÉEL, voir HYPOTHESES.md].
   GristBI.combobox.attach(tableSelectInput, tableSelectInput.nextElementSibling, { strict: true, beforeOpen: refreshTablePicker });
 
   // Data blending multi-tables (ROADMAP.md Tier 2) : trois comboboxes de plus, même composant/même
@@ -2871,7 +2871,7 @@
   // Appelées SANS argument (via une flèche plutôt qu'en passant la fonction directement en callback)
   // : un `addEventListener` passe l'Event en 1er argument, qui satisferait silencieusement le
   // paramètre optionnel `rows` de `updateAdvancedFilterFieldsForColumn` à sa place (`rows` vaudrait
-  // l'Event, pas les lignes) — `distinctColumnValues` plante alors sur un Event non itérable [BUG
+  // l'Event, pas les lignes) — `distinctColumnValues` plante alors sur un Event non itérable [DÉFAUT
   // RÉEL trouvé en testant l'autocomplétion des valeurs, voir HYPOTHESES.md/TEST_PROTOCOL.md].
   filterDateModeSelect.addEventListener('change', () => updateAdvancedFilterFieldsForColumn());
 

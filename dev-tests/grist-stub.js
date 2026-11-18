@@ -131,7 +131,7 @@
   // chaque appel à `listTables()` renvoie `[]` (comme si la table n'existait pas encore) et
   // décrémente le compteur ; les tests qui veulent reproduire le bug l'arment explicitement via
   // `page.addInitScript()` (qui s'exécute AVANT ce script) — `typeof ... !== 'number'` pour ne PAS
-  // écraser cette valeur pré-armée [BUG DE TEST trouvé en écrivant table-race-test.js : une
+  // écraser cette valeur pré-armée [DÉFAUT DE TEST trouvé en écrivant table-race-test.js : une
   // affectation inconditionnelle ici annulait silencieusement l'armement fait par le test avant même
   // que ce script ne s'exécute, rendant la simulation de course totalement inopérante — le test
   // "passait" alors indépendamment de la présence du correctif, donc sans jamais rien vérifier].
@@ -216,7 +216,7 @@
             for (const col of columns) { t[col.id] = []; columnTypesByTable[actualTableId][col.id] = col.type; }
             // Grist ajoute lui-même `manualSort` à TOUTE table créée (position flottante pour le
             // glisser-déposer manuel des lignes) — jamais demandée dans `columns` ci-dessus, mais bien
-            // présente dans le `fetchTable()` réel. [BUG RÉEL, voir TEST_PROTOCOL.md #19] Absente de ce
+            // présente dans le `fetchTable()` réel. [DÉFAUT RÉEL, voir TEST_PROTOCOL.md #19] Absente de ce
             // mock jusqu'ici, donc aucun test ne pouvait exercer le filtre de `GristBI.data.tableToRows`
             // qui l'exclut des sélecteurs de colonne.
             t.manualSort = [];
