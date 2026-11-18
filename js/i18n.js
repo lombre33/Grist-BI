@@ -108,6 +108,10 @@
     'filters.range.label': { fr: 'Plage', en: 'Range' },
     'filters.min.placeholder': { fr: 'Min', en: 'Min' },
     'filters.max.placeholder': { fr: 'Max', en: 'Max' },
+    'filters.min.aria': { fr: 'Valeur minimale', en: 'Minimum value' },
+    'filters.max.aria': { fr: 'Valeur maximale', en: 'Maximum value' },
+    'filters.dateStart.aria': { fr: 'Date de début', en: 'Start date' },
+    'filters.dateEnd.aria': { fr: 'Date de fin', en: 'End date' },
     'filters.mode.label': { fr: 'Mode', en: 'Mode' },
     'filters.mode.dateRange': { fr: 'Plage de dates', en: 'Date range' },
     'filters.mode.relativeDate': { fr: 'Période relative', en: 'Relative period' },
@@ -324,6 +328,8 @@
       en: 'Preview: {columns} {columns|column|columns}, {rows} {rows|row|rows}.'
     },
     'pbixImport.csvTableName': { fr: 'Nom de la table', en: 'Table name' },
+    'pbixImport.fileAria': { fr: 'Fichier Power BI (.pbix ou .pbit)', en: 'Power BI file (.pbix or .pbit)' },
+    'pbixImport.csvFileAria': { fr: 'Fichier CSV exporté de Power BI', en: 'CSV file exported from Power BI' },
     'pbixImport.csvCreate': { fr: 'Créer la table', en: 'Create table' },
     'pbixImport.csvNameRequired': { fr: 'Choisissez un nom de table.', en: 'Choose a table name.' },
     'pbixImport.csvConfirmText': {
@@ -542,6 +548,7 @@
     'advice.line.unordered': { fr: 'Les valeurs de {dimension} ne sont pas dans l’ordre chronologique dans vos données : triez par libellé pour éviter une courbe en zigzag.', en: 'The values of {dimension} are not in chronological order in your data: sort by label to avoid a zigzag line.' },
     'advice.line.fewPoints': { fr: 'Seulement {n} points : des barres seraient plus claires qu’une courbe.', en: 'Only {n} points: bars would be clearer than a line.' },
     'advice.waterfall.unordered': { fr: 'Une cascade cumule dans l’ordre des données, et {dimension} n’y est pas chronologique : triez les lignes de votre table par date.', en: 'A waterfall accumulates in data order, and {dimension} isn’t chronological there: sort your table rows by date.' },
+    'advice.radar.mixedScales': { fr: 'Les colonnes « {small} » et « {big} » n\'ont pas le même ordre de grandeur : tous les axes partagent une échelle, la plus petite sera écrasée au centre. Gardez des colonnes de même unité.', en: 'Columns "{small}" and "{big}" are on very different scales: all axes share one scale, so the smaller one is squashed into the centre. Keep columns with the same unit.' },
     'advice.radar.tooManyAxes': { fr: '{n} axes : au-delà de 8, un radar devient illisible. Gardez les axes essentiels ou passez en barres.', en: '{n} axes: beyond 8, a radar becomes unreadable. Keep the essential axes or switch to bars.' },
     'advice.gauge.outOfRange': { fr: 'La valeur actuelle ({value}) sort de l’échelle {min} – {max} : ajustez le minimum et le maximum.', en: 'The current value ({value}) is outside the {min} – {max} scale: adjust the minimum and maximum.' },
     'advice.data.mostlyEmpty': { fr: '{column} est vide dans {pct} % des lignes : le graphique ne reflète qu’une partie des données.', en: '{column} is empty in {pct}% of rows: the chart only reflects part of the data.' },

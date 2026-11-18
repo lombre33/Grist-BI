@@ -171,8 +171,8 @@
       <div class="field" id="filter-number-field">
         <label for="filter-min" data-i18n="filters.range.label">Plage</label>
         <span class="range-inputs">
-          <input type="number" id="filter-min" data-i18n-placeholder="filters.min.placeholder" placeholder="Min" />
-          <input type="number" id="filter-max" data-i18n-placeholder="filters.max.placeholder" placeholder="Max" />
+          <input type="number" id="filter-min" data-i18n-aria="filters.min.aria" aria-label="Valeur minimale" data-i18n-placeholder="filters.min.placeholder" placeholder="Min" />
+          <input type="number" id="filter-max" data-i18n-aria="filters.max.aria" aria-label="Valeur maximale" data-i18n-placeholder="filters.max.placeholder" placeholder="Max" />
         </span>
       </div>
       <div class="field" id="filter-date-mode-field" hidden>
@@ -185,8 +185,8 @@
       <div class="field" id="filter-date-range-field" hidden>
         <label for="filter-date-start" data-i18n="filters.dateRange.label">Du / au</label>
         <span class="range-inputs">
-          <input type="date" id="filter-date-start" />
-          <input type="date" id="filter-date-end" />
+          <input type="date" id="filter-date-start" data-i18n-aria="filters.dateStart.aria" aria-label="Date de début" />
+          <input type="date" id="filter-date-end" data-i18n-aria="filters.dateEnd.aria" aria-label="Date de fin" />
         </span>
       </div>
       <div class="field" id="filter-relative-date-field" hidden>
@@ -221,7 +221,7 @@
       <p id="views-empty" class="filter-hint" data-i18n="views.empty" hidden>Aucune vue sauvegardée pour l'instant. Posez des filtres, puis sauvegardez-les ici pour y revenir en un clic.</p>
     </div>
     <div class="pop-actions pop-actions-stack">
-      <button id="update-bookmark" type="button" class="btn-primary" data-close-popover hidden></button>
+      <button id="update-bookmark" type="button" class="btn-primary" data-close-popover hidden>Mettre à jour la vue</button>
       <button id="save-bookmark" type="button" class="btn-secondary" data-close-popover>Sauvegarder la vue actuelle</button>
     </div>
   </div>
@@ -340,7 +340,7 @@
       <p class="pbix-import-hint" data-i18n="pbixImport.dataHint">Pour les vraies données du fichier (pas seulement sa mise en page) : exportez-les depuis Power BI
         (clic droit sur un visuel → « Exporter les données », ou « Analyser dans Excel »), puis déposez le CSV obtenu
         ci-dessous — ou importez-le via l'import natif de Grist. Les tuiles ci-dessus retrouveront alors les bonnes colonnes.</p>
-      <input type="file" id="pbix-import-file" accept=".pbix,.pbit" />
+      <input type="file" id="pbix-import-file" accept=".pbix,.pbit" data-i18n-aria="pbixImport.fileAria" aria-label="Fichier Power BI (.pbix ou .pbit)" />
       <p id="pbix-import-status" class="pbix-import-status"></p>
       <ul id="pbix-import-results" class="pbix-import-results"></ul>
       <button id="pbix-import-create" type="button" class="btn-primary" data-i18n="pbixImport.createSelected" hidden>Créer les tuiles sélectionnées</button>
@@ -350,7 +350,7 @@
       <p data-i18n="pbixImport.csvIntro">Déposez ici le CSV exporté depuis Power BI (clic droit sur un visuel → « Exporter les données », ou
         « Analyser dans Excel » puis enregistrement en CSV). Le widget détecte les colonnes et leur type et vous montre
         un aperçu ; la table n'est créée dans votre document Grist qu'après votre confirmation explicite.</p>
-      <input type="file" id="csv-import-file" accept=".csv" />
+      <input type="file" id="csv-import-file" accept=".csv" data-i18n-aria="pbixImport.csvFileAria" aria-label="Fichier CSV exporté de Power BI" />
       <p id="csv-import-status" class="pbix-import-status"></p>
       <div id="csv-import-preview" class="csv-import-preview" hidden>
         <label for="csv-import-table-name" data-i18n="pbixImport.csvTableName">Nom de la table</label>
@@ -383,7 +383,7 @@
   </p>
 
   <div class="workspace" id="workspace">
-  <div class="workspace-main" id="workspace-main">
+  <main class="workspace-main" id="workspace-main">
   <!-- Zone d'agrandissement (retours d'Antoine du 18/11/2026, point 8) : les tuiles agrandies (bouton
        « Agrandir » de chaque tuile) quittent la grille et s'affichent en grand ICI, au-dessus ; les autres
        restent en dessous. Pas une fenêtre : tout reste cliquable (filtres croisés, drill-down). js/main.js
@@ -397,7 +397,7 @@
     </div>
     <div id="tiles-focus-grid" class="tiles-focus-grid"></div>
   </section>
-  <main id="tiles" class="tiles" role="tabpanel"></main>
+  <div id="tiles" class="tiles" role="tabpanel"></div>
   <!-- `#welcome` : l'accueil d'un tableau de bord sans tuile (conseil + état de la connexion). Les
        suggestions de tuiles de js/advice.js s'y brancheront (PR 2b du fil « Assistant Data
        Visualisation » ; `#welcome-add` ouvre déjà le panneau latéral ci-dessous). -->
@@ -412,7 +412,7 @@
       <ul id="welcome-cards" class="welcome-cards"></ul>
     </div>
     <div class="welcome-actions">
-      <button id="welcome-add-all" type="button" class="btn-primary" hidden></button>
+      <button id="welcome-add-all" type="button" class="btn-primary" hidden>Ajouter ces visualisations</button>
       <button id="welcome-import" type="button" class="btn-secondary" data-i18n="welcome.importPbix">Importer un fichier Power BI…</button>
     </div>
   </div>
@@ -427,7 +427,7 @@
   </p>
   <button id="welcome-add" type="button" class="btn-primary edit-only" data-i18n="tilePanel.welcomeAdd" hidden>Ajouter une visualisation</button>
   </section>
-  </div>
+  </main>
 
   <!-- Panneau latéral « Ajouter / Modifier une visualisation » (audit UI/UX du 18/11/2026, lot 2) :
        étape « Choisir » (`#tile-panel-choose`, une carte par type — remplie par js/main.js) puis

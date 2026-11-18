@@ -45,6 +45,8 @@
   // caractères ne tiennent plus sous une barre verticale.
   const PIE_MAX_SLICES = 7;
   const RADAR_MAX_AXES = 8;
+  // Rapport entre la plus grande et la plus petite moyenne de colonne, au-delà duquel un radar « colonnes » écrase ses petits axes.
+  const RADAR_SCALE_RATIO = 20;
   const BAR_MAX_VERTICAL = 12;
   const FUNNEL_MAX_STAGES = 10;
   // Autant de séries que de couleurs de la palette du tableau de bord (js/charts.js:CATEGORICAL_PALETTE).
@@ -835,6 +837,19 @@
     if (type === 'radar') {
       const axes = tile.radarAxisMode === 'columns' ? (tile.radarAxes || []).length : n;
       if (axes > RADAR_MAX_AXES) return warn('advice.radar.tooManyAxes', { n: axes });
+      // Mode colonnes : tous les axes partagent la MÊME échelle (voulu : une compétence notée sur 20 ne se compare qu'à une
+      // autre notée sur 20). Des colonnes d'ordres de grandeur très différents (une quantité à 19 et un montant à 65 420)
+      // écrasent alors les petites au centre : un avertissement plutôt qu'une normalisation qui fausserait la comparaison.
+      if (tile.radarAxisMode === 'columns') {
+        const means = (tile.radarAxes || []).filter(Boolean)
+          .map((col) => ({ col, v: Math.abs(Number(data.aggregateSingle(rows, col, 'avg'))) }))
+          .filter((m) => Number.isFinite(m.v) && m.v > 0);
+        if (means.length > 1) {
+          const small = means.reduce((a, b) => (b.v < a.v ? b : a));
+          const big = means.reduce((a, b) => (b.v > a.v ? b : a));
+          if (big.v / small.v >= RADAR_SCALE_RATIO) return warn('advice.radar.mixedScales', { small: small.col, big: big.col });
+        }
+      }
     }
     if (type === 'gauge' && tile.measure && Number.isFinite(tile.gaugeMin) && Number.isFinite(tile.gaugeMax)) {
       const value = data.aggregateSingle(rows, tile.measure, tile.aggFn || 'sum');
