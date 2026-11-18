@@ -704,6 +704,56 @@
     return { groups, ignored };
   }
 
+  // --- Flux (`type: 'sankey'`) -----------------------------------------------------------------------
+  // Deux colonnes (source = `tile.dimension`, cible = `tile.columnDimension`) + une mesure : combien passe de chaque source vers
+  // chaque cible (canal -> statut, origine -> destination). Calcul en JS pur à tout volume : une passe, un groupement par PAIRE
+  // (jamais la matrice sources x cibles du tableau croisé, qui serait énorme sur deux colonnes à forte cardinalité).
+  //   - la source et la cible sont DEUX ensembles de nœuds distincts, même quand une valeur figure des deux côtés (une ville
+  //     d'origine ET de destination = deux nœuds, un à gauche, un à droite) : un Sankey à deux colonnes ne peut donc JAMAIS
+  //     contenir de cycle (A -> B et B -> A, que ECharts refuse), il n'y a rien à détecter ; un flux de A vers A reste un flux ;
+  //   - un flux n'a de hauteur que s'il est POSITIF : un flux nul, négatif ou non numérique n'est pas dessiné (`dropped`, et le
+  //     conseil le dit) mais reste dans `pairs`, que l'export Excel écrit en entier ;
+  //   - une ligne sans source ou sans cible n'a pas de flux (`ignored`) ; l'ordre est celui de première apparition ;
+  //   - `topFlows` limite ce qui est DESSINÉ (SANKEY_MAX_LINKS, les plus gros, dans l'ordre d'origine) : au-delà, le diagramme n'est
+  //     plus qu'un écheveau ; le nombre de nœuds lisibles (SANKEY_MAX_NODES) est une limite de conseil, pas de dessin.
+  const SANKEY_MAX_NODES = 15;
+  const SANKEY_MAX_LINKS = 60;
+
+  function sankeyFlows(rows, sourceColumn, targetColumn, measureColumn, aggFn) {
+    const aggregator = AGGREGATORS[aggFn] || AGGREGATORS.sum;
+    const byPair = new Map();
+    let ignored = 0;
+    for (const row of (rows || [])) {
+      const s = row[sourceColumn];
+      const t = row[targetColumn];
+      if (s == null || s === '' || t == null || t === '') { ignored++; continue; }
+      const key = String(s) + '\u0000' + String(t);
+      let entry = byPair.get(key);
+      if (!entry) { entry = { source: String(s), target: String(t), values: [] }; byPair.set(key, entry); }
+      entry.values.push(row[measureColumn]);
+    }
+    const pairs = [];
+    const flows = [];
+    let dropped = 0;
+    byPair.forEach((e) => {
+      const value = Number(aggregator(e.values));
+      if (!Number.isFinite(value)) { dropped++; return; }
+      pairs.push({ source: e.source, target: e.target, value });
+      if (value > 0) flows.push({ source: e.source, target: e.target, value }); else dropped++;
+    });
+    const sources = Array.from(new Set(flows.map((f) => f.source)));
+    const targets = Array.from(new Set(flows.map((f) => f.target)));
+    return { flows, pairs, sources, targets, total: flows.reduce((a, f) => a + f.value, 0), dropped, ignored };
+  }
+
+  // Les `max` plus gros flux, rangés dans leur ordre d'origine (à valeur égale, les premiers).
+  function topFlows(flows, max) {
+    const limit = Number.isFinite(max) && max >= 0 ? Math.floor(max) : SANKEY_MAX_LINKS;
+    if (flows.length <= limit) return flows;
+    const keep = new Set(flows.map((f, i) => ({ i, v: f.value })).sort((a, b) => (b.v - a.v) || (a.i - b.i)).slice(0, limit).map((x) => x.i));
+    return flows.filter((f, i) => keep.has(i));
+  }
+
   // --- Palettes de couleurs (`tile.palette`) -----------------------------------------------------
   // Six palettes au choix par tuile ; `standard` est la palette historique du tableau de bord (elle ne
   // change JAMAIS : une tuile sans `palette` doit rester identique). Toutes ont été passées au
@@ -732,7 +782,7 @@
   }
   // Types dont les couleurs viennent de la palette. Hors liste : la cascade (vert = hausse, rouge =
   // baisse : un sens, pas une identité), le KPI et le tableau croisé (aucune couleur de série).
-  const PALETTE_TILE_TYPES = ['bar', 'line', 'pie', 'funnel', 'treemap', 'scatter', 'radar', 'gauge', 'wordcloud', 'combo', 'histogram', 'heatmap', 'box'];
+  const PALETTE_TILE_TYPES = ['bar', 'line', 'pie', 'funnel', 'treemap', 'scatter', 'radar', 'gauge', 'wordcloud', 'combo', 'histogram', 'heatmap', 'box', 'sankey'];
   function supportsPalette(tile) {
     if (!tile) return false;
     // Tableau croisé : une palette n'a de sens que si ses cellules sont colorées (`pivotHeat`).
@@ -815,7 +865,7 @@
   // Types qui AFFICHENT une valeur numérique (donc concernés par `tile.numberFormat`, voir js/format.js) :
   // tout type de tuile nouveau qui montre un nombre s'ajoute ici, pour que le champ « Format des nombres »
   // du panneau apparaisse. Le nuage de mots n'y est que pour la valeur de son infobulle ; la table plate l'applique à chacune de ses colonnes numériques (`format.cellNumber`).
-  const NUMBER_FORMAT_TILE_TYPES = ['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo', 'histogram', 'heatmap', 'box'];
+  const NUMBER_FORMAT_TILE_TYPES = ['kpi', 'gauge', 'bar', 'line', 'pie', 'funnel', 'treemap', 'waterfall', 'radar', 'scatter', 'pivot', 'wordcloud', 'table', 'progress', 'combo', 'histogram', 'heatmap', 'box', 'sankey'];
   function supportsNumberFormat(tile) {
     return !!tile && NUMBER_FORMAT_TILE_TYPES.indexOf(tile.type) !== -1;
   }
@@ -1289,6 +1339,12 @@
         rows: box.groups.map((g) => [g.name, g.n, g.low, g.q1, g.median, g.q3, g.high, g.outlierCount])
       };
     }
+    // Flux (Sankey) : une ligne par paire source -> cible, TOUTES les paires (y compris nulles ou négatives, que le dessin écarte) ;
+    // les filtres des autres tuiles s'appliquent. En-têtes = les noms de colonnes.
+    if (tile.type === 'sankey') {
+      const sk = sankeyFlows(rows, tile.dimension, tile.columnDimension, tile.measure, tile.aggFn);
+      return { name: title, header: [tile.dimension, tile.columnDimension, tile.measure], rows: sk.pairs.map((f) => [f.source, f.target, f.value]) };
+    }
     // Séries multiples (barres/courbe/aire avec `seriesColumn`) : une colonne par série, dans le même
     // ordre de catégories que le rendu ; une cellule vide (pas 0) là où la série n'a aucune ligne.
     if (isSeriesTile(tile)) {
@@ -1532,7 +1588,7 @@
     importMapHas, tableToRows, epochSecondsToIsoDate, applyFilters, matchesFilter, sameValue, parseDateValue,
     relativeDateRange, RELATIVE_DATE_PRESETS, groupByAggregate, aggregateSingle, wordFrequency, pivotTable,
     distinctColumnValues, computeTrend, trendFromGroups, periodLabel, measureSeriesForTile,
-    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, comboModeOf, paretoSeries, comboSeries, niceStep, histogramBins, histogramFilter, histogramBinIsActive, HISTOGRAM_MAX_BINS, boxStatsByGroup, quantileSorted, BOX_MAX_OUTLIERS, BOX_MIN_RELIABLE, BOX_MAX_GROUPS, filterSelects, LINE_SHAPES, lineShapeOf, supportsValueLabels, isStackedPercentTile, shareOfTotal, stackShares, REF_LINE_KINDS, supportsRefLine, refLineKind, refLineValue, cellFilterToggles, HEAT_RAMPS, heatStops, heatColor, heatTextColor, heatRange, heatCellColors, isStackedTile, splitBySeries, assembleSeries, PALETTES, PALETTE_KEYS, paletteColors, supportsPalette, supportsNumberFormat, NUMBER_FORMAT_TILE_TYPES, escapeHtml,
+    waterfallSeries, sortGroups, isSortableTile, isSeriesTile, comboModeOf, paretoSeries, comboSeries, niceStep, histogramBins, histogramFilter, histogramBinIsActive, HISTOGRAM_MAX_BINS, boxStatsByGroup, quantileSorted, BOX_MAX_OUTLIERS, BOX_MIN_RELIABLE, BOX_MAX_GROUPS, sankeyFlows, topFlows, SANKEY_MAX_NODES, SANKEY_MAX_LINKS, filterSelects, LINE_SHAPES, lineShapeOf, supportsValueLabels, isStackedPercentTile, shareOfTotal, stackShares, REF_LINE_KINDS, supportsRefLine, refLineKind, refLineValue, cellFilterToggles, HEAT_RAMPS, heatStops, heatColor, heatTextColor, heatRange, heatCellColors, isStackedTile, splitBySeries, assembleSeries, PALETTES, PALETTE_KEYS, paletteColors, supportsPalette, supportsNumberFormat, NUMBER_FORMAT_TILE_TYPES, escapeHtml,
     tileDrillLevels, currentDimension, rowsForTile, tileExportSheet, tileExportKind, renderTextHtml, plainTextOf, TEXT_TILE_MAX,
     DEFAULT_GOOD_PCT, DEFAULT_WARN_PCT, targetProgress, progressRows, sparklineValues, sparklineGeometry,
     TABLE_TILE_MAX_ROWS, TABLE_EXPORT_MAX_ROWS, tableColumnsOf, cellText, compareCells, sortRowsBy, moveInOrder, nextSortDir, tableSheet,
