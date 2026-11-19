@@ -187,6 +187,10 @@ l'API widget Grist ne proposant pas de niveau intermédiaire entre "une seule ta
   (`_grist_Tables_column`, pour le type et le format) et, à la demande, les pièces jointes d'une colonne (fenêtre « Mots-clés des publications ») ;
 - il crée et écrit TROIS tables internes, jamais des données de la personne : `BI_Dashboard_Config` (le tableau de bord),
   `BI_Dashboard_Comments` (les commentaires) et `BI_Dashboard_UserProbe` (une ligne éphémère pour connaître l'adresse de la personne) ;
+- il LIT `_grist_Pages` et `_grist_Views_section` et RANGE (bêta) les pages de ses trois tables internes : à la création de chacune, Grist ajoute une page
+  au bout de la liste de gauche ; le widget les met en SOUS-PAGES de la page qui le porte, repliées par défaut (Grist 1.7.0 et suivants), une seule fois par
+  page (une page que la personne déplace ensuite n'est plus touchée). Rien n'est supprimé ni renommé, les tables restent dans « Données brutes » ; si Grist ou
+  l'hôte refuse (droits, GFS), un avertissement dans la console et les pages restent où Grist les a mises ;
 - il ne modifie la table de la personne que sur un geste explicite, après une fenêtre de confirmation : l'import d'un fichier
   Power BI (création d'une table) et l'ajout d'une colonne de mots-clés, puis l'écriture de ses cellules vides. Il n'utilise jamais
   `RemoveTable`, `RemoveColumn` ni `BulkRemoveRecord`.
@@ -227,7 +231,7 @@ dans une balise `<meta>` (le navigateur l'ignore) : GFS et Grist cadrent le widg
 - `node dev-tests/test-loader.js` — chargeur unique de code (politique, empreintes, modules par nom, garde-fous des sources).
 - `node dev-tests/test-csp.js` — politique de sécurité du contenu (directives, empreinte de l'`importmap`, aucun script ni gestionnaire en ligne).
 - `node dev-tests/test-browser.js` — **non-régression dans un vrai navigateur** : le vrai `index.html` avec sa politique de sécurité et un `grist-plugin-api.js` qui passe par `eval` (page directe puis cadre isolé) ; échoue sur toute erreur de console, violation de politique, requête vers un autre site, `grist` indéfini, tuile, DuckDB, ExcelJS ou kit qui ne se charge pas. Playwright et Chromium requis (`NODE_PATH=$(npm root -g)`).
-- **`sh dev-tests/run-all.sh` — tous les essais (les sept essais Node, puis celui du navigateur) : à lancer avant toute fusion et avant tout envoi vers un dépôt publié.**
+- **`sh dev-tests/run-all.sh` — tous les essais (les huit essais Node, puis celui du navigateur) : à lancer avant toute fusion et avant tout envoi vers un dépôt publié.**
 - `node dev-tests/test-audit.js` — garde-fous de l'audit `gwaudit` (champs étiquetés, empreintes des bibliothèques, ECharts modifié).
 - `dev-tests/harness.html` — rendu visuel dans un navigateur avec un faux `window.grist` et des
   données d'exemple, sans document Grist réel. Détails dans `dev-tests/README.md`.

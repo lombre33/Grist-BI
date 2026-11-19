@@ -2,7 +2,7 @@
  * Mock minimal de l'API Grist Custom Widget pour tester dev-tests/harness.html hors d'un
  * vrai document Grist. Couvre uniquement ce que ce POC utilise : grist.ready, grist.onRecords,
  * grist.docApi.{listTables,fetchTable,applyUserActions} avec
- * AddTable/AddRecord/UpdateRecord/RemoveRecord/AddColumn/RenameTable.
+ * AddTable/AddRecord/UpdateRecord/BulkUpdateRecord/RemoveRecord/AddColumn/RenameTable.
  * Ne PAS utiliser comme référence de l'API réelle — voir docs.getgrist.com pour la vraie surface.
  */
 (function () {
@@ -73,6 +73,29 @@
   })();
   if (!tables['_grist_DocInfo']) tables['_grist_DocInfo'] = { id: [1], documentSettings: ['{}'] };
 
+  // Arbre des PAGES du document (js/internal-pages.js, 19/11/2026) : `AddTable` fait créer à Grist une vue (`_grist_Views`) ET une page
+  // (`_grist_Pages`, au bout de la liste, indentation 0) par table, et pose `_grist_Tables.primaryViewId` — mesuré sur un vrai Grist (grist-core
+  // `useractions.py:doAddView`), `retValues[0].views` rend la vue créée. `BulkUpdateRecord` y applique des positions EXPLICITES (c'est tout ce
+  // dont le widget a besoin ; `null` = à la fin) : le mock ne rejoue PAS « une position égale à celle d'une autre page insère avant elle », le
+  // widget n'en dépend plus. Un préremplissage qui fournit déjà ces tables est respecté ; `_grist_Views_section` (pour retrouver la page d'un
+  // widget par son adresse) n'est jamais écrite par ce mock, seulement préremplie par un essai.
+  if (!tables['_grist_Views']) tables['_grist_Views'] = { id: [], name: [], type: [] };
+  if (!tables['_grist_Pages']) tables['_grist_Pages'] = { id: [], viewRef: [], indentation: [], pagePos: [], shareRef: [], options: [] };
+  if (!tables['_grist_Views_section']) tables['_grist_Views_section'] = { id: [], parentId: [], parentKey: [], options: [] };
+  if (!tables['_grist_Tables'].primaryViewId) tables['_grist_Tables'].primaryViewId = tables['_grist_Tables'].id.map(() => 0);
+  function addPageForTable(tableId, title) {
+    const views = tables['_grist_Views'];
+    const pages = tables['_grist_Pages'];
+    const viewId = nextRowId++;
+    views.id.push(viewId); views.name.push(title); views.type.push('raw_data');
+    const pagePos = pages.pagePos.reduce((max, v) => Math.max(max, v), 0) + 1;
+    pages.id.push(nextRowId++); pages.viewRef.push(viewId); pages.indentation.push(0); pages.pagePos.push(pagePos);
+    pages.shareRef.push(0); pages.options.push('');
+    const metaIdx = tables['_grist_Tables'].tableId.indexOf(tableId);
+    if (metaIdx >= 0) tables['_grist_Tables'].primaryViewId[metaIdx] = viewId;
+    return viewId;
+  }
+
   function metaTableRowId(tableId) {
     const idx = tables['_grist_Tables'].tableId.indexOf(tableId);
     return idx >= 0 ? tables['_grist_Tables'].id[idx] : null;
@@ -81,6 +104,7 @@
     const newId = nextRowId++;
     tables['_grist_Tables'].id.push(newId);
     tables['_grist_Tables'].tableId.push(tableId);
+    tables['_grist_Tables'].primaryViewId.push(0);
     return newId;
   }
   function registerMetaColumn(parentRowId, colId, type, widgetOptions) {
@@ -229,7 +253,8 @@
             // impact pratique ici : ni 'Date' ni 'DateTime', donc jamais retenue par
             // realDateColumnIds quelle que soit l'exactitude de cette chaîne précise).
             registerMetaColumn(parentRowId, 'manualSort', 'ManualSortPos');
-            retValues.push({ id: Object.keys(tables).length, table_id: actualTableId, columns: columns.map((c) => c.id) });
+            const viewId = addPageForTable(actualTableId, tableId);
+            retValues.push({ id: Object.keys(tables).length, table_id: actualTableId, columns: columns.map((c) => c.id), views: [{ id: viewId, sections: [] }] });
           } else if (kind === 'AddRecord') {
             const fields = action[3] || {};
             const t = tables[tableId];
@@ -251,6 +276,21 @@
             const t = tables[tableId];
             const idx = t.id.indexOf(rowId);
             if (idx >= 0) for (const key of Object.keys(fields)) t[key][idx] = toStoredValue(tableId, key, fields[key]);
+            retValues.push(null);
+          } else if (kind === 'BulkUpdateRecord') {
+            const rowIds = action[2] || [];
+            const colValues = action[3] || {};
+            const t = tables[tableId];
+            rowIds.forEach((rowId, k) => {
+              const idx = t.id.indexOf(rowId);
+              if (idx < 0) return;
+              for (const key of Object.keys(colValues)) {
+                let value = colValues[key][k];
+                // `null` sur une colonne de position = à la fin de la liste (comme le moteur) : plus grand que toutes les autres.
+                if (tableId === '_grist_Pages' && key === 'pagePos' && value === null) value = t.pagePos.reduce((max, v) => Math.max(max, v), 0) + 1;
+                t[key][idx] = toStoredValue(tableId, key, value);
+              }
+            });
             retValues.push(null);
           } else if (kind === 'RemoveRecord') {
             const rowId = action[2];

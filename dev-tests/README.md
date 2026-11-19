@@ -14,6 +14,17 @@ fixture de test Node pure, plus chargée par `index.html`/`dev-tests/harness.htm
 noms de colonne — la logique pure seulement, voir plus bas pour le moteur SQL réel) sans navigateur
 ni API Grist.
 
+## Rangement des pages des tables internes (Node, aucune dépendance)
+
+```
+node dev-tests/test-internal-pages.js
+```
+
+`js/internal-pages.js` (le plan) puis le vrai `js/grist-api.js` sur le faux Grist de `grist-stub.js` : un petit moteur écrit dans l'essai
+applique les actions comme Grist et relit l'arbre des pages comme le client (capture d'Antoine, document neuf, course avec `AddTable`,
+geste de la personne respecté, choix du parent, options hostiles). Ce que le faux Grist ne prouve pas : le comportement d'un vrai Grist
+(`HYPOTHESES.md` point 18).
+
 ## Garde-fous de l'audit `gwaudit` (Node, aucune dépendance)
 
 ```
@@ -59,7 +70,7 @@ un essai fait seulement dans une page directe ne voit pas ce défaut (`CLAUDE.md
 ## Non-régression dans un vrai navigateur, à lancer avant toute fusion et tout envoi
 
 ```
-sh dev-tests/run-all.sh          # les sept essais Node, puis l'essai du navigateur (≈ 1 min) ; sortie 0 = on peut fusionner / envoyer
+sh dev-tests/run-all.sh          # les huit essais Node, puis l'essai du navigateur (≈ 1 min) ; sortie 0 = on peut fusionner / envoyer
 NODE_PATH=$(npm root -g) node dev-tests/test-browser.js     # le seul essai du navigateur
 ```
 
