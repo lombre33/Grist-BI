@@ -9,7 +9,7 @@ signalés explicitement en fin de document.
 ## 1. Qu'est-ce que ce projet
 
 **Grist BI Dashboard** est un widget personnalisé [Grist](https://www.getgrist.com/), au stade
-**brouillon / preuve de concept (POC) — pas prêt pour un usage réel** (README.md:3). Il reprend, à
+**alpha** (publiée le 19/11/2026 ; le dépôt a d'abord été un brouillon / preuve de concept, statut retiré du README le 19/11/2026 — voir le callout « Version alpha » de `README.md`). Il reprend, à
 l'intérieur d'un seul widget, des mécaniques inspirées de **Power BI** et **DigDash** que Grist n'a
 pas nativement :
 
@@ -106,7 +106,7 @@ suivants lisent `GristBI.i18n.t()` comme un global déjà prêt.
 | `kit/` | **Sous-module Git** (`lombre33/grist-factory-kit`, public, GPL 3.0 — pas une bibliothèque tierce vendorisée comme la ligne ci-dessus, et pas davantage une « nouvelle bibliothèque » au sens du protocole GFS §8 : l'adresse de ce dépôt est documentée dans ses propres consignes, référencée directement sans passer par une demande à GFS). Pointe sur un commit ≥ `7aa030c` (Kit 0.24.0, depuis la consigne 016 : `GfsLink.opening()`/`onOpen` gardent `modele: { id }` ; avant, `8afa569`/Kit 0.6.0+ pour l'ambiance de GFS, puis `eaa2ae2`/0.9.0 pour `onClose`). Ce widget n'en importe pour l'instant que `kit/js/ambiance.js` et, depuis le 18/11/2026, `kit/js/dialogs.js` (+ `kit/css/windows.css`, voir la ligne `js/dialogs.js`) (`js/main-core.js`, tout en haut du fichier, par `GristBI.loader.module('kit-ambiance')` — le même chargeur que `js/duckdb-engine.js` pour un module ES, voir la ligne `js/loader.js`) : `Ambiance.start()` au démarrage, qui pose les jetons de couleur/forme de l'ambiance GFS choisie sur `<html>`, lus par `css/style.css` — voir §7/§8. N'importe aucun autre module du kit (pas encore de traduction/thème/fenêtres communs : ce lot ne couvre que l'ambiance, voir la consigne GFS 004). |
 | `vitrine/` | Carte et fiche de l'app dans la fenêtre « Apps et extensions » de GFS (consigne 014, 17/11/2026) : `vitrine.json` (description ≤ 280 caractères et trois légendes ≤ 60, fr/en) + `1.webp`/`2.webp`/`3.webp` (960 × 600, ≤ 60 Ko, données d'exemple sans nom de personne). Jamais chargé par `index.html` : GFS en copie les images chez lui. Prises avec le vrai `index.html` et le faux Grist du dépôt, PAS dans un vrai Grist — voir HYPOTHESES.md. |
 | `dev-tests/` | Harnais de test hors Grist — voir §5. `dev-tests/harness.html` est **régénéré** depuis `index.html` par `node dev-tests/sync-harness.js` (ne plus l'éditer à la main : `test-data.js` échoue s'il diverge). |
-| `README.md` | Vue d'ensemble produit, fonctionnalités, installation dans Grist, historique condensé des bugs réels corrigés. |
+| `README.md` + `docs/captures/` | **Page d'accueil publique**, réécrite le 19/11/2026 en langage courant (fr, avec un « English summary » en bas) : en bref, fonctionnalités, essai (URL de Pages), tutoriel en 7 étapes, 22 types de tuiles, limites connues de l'alpha, sécurité et confidentialité (tableau « Ce que le widget charge, et quand »), hébergement d'une copie, licence, crédits. **Il est publié tel quel sur le dépôt live** (`grist-factory/grist-widget-grist-BI`, version allégée sans `dev-tests/` ni notes de travail) : **il ne doit JAMAIS renvoyer vers un fichier de développement** (`HYPOTHESES.md`, `ROADMAP.md`, `TEST_PROTOCOL.md`, `CLAUDE.md`, `dev-tests/`, `AUDIT-GW.md`, `GFS-ETAT.md`, `SECURITY.md`, `js/vendor/SOURCES.md`) ; seuls `LICENSE` et `docs/captures/` sont liés en relatif. `docs/captures/` = 10 captures (PNG, 2 200 px, 3,3 Mo) prises sur la démo v3 le 18/11/2026 ; à refaire si l'interface change beaucoup. L'ancien historique des bugs réels, la liste des tests et le détail des fonctions vivent désormais ici (§5, §7), dans `HYPOTHESES.md` et `TEST_PROTOCOL.md`. Le nombre de types de tuiles (22 + le nuage de mots grisé) se recompte d'après `TYPE_CARDS` (`js/main-panel.js`) à chaque nouveau type. |
 | `ROADMAP.md` | **Source unique des priorités** — voir §6. |
 | `HYPOTHESES.md` | **Journal détaillé** de ce qui est implémenté/testé et de ce qui reste à valider en conditions réelles — voir §6. |
 | `TEST_PROTOCOL.md` | Protocole de test qui grandit à chaque feature — voir §5. |
@@ -217,7 +217,7 @@ sous-modules à la construction pour un dépôt public en `https://` (documentat
 vérifiée par GFS le 14/10/2026 — `lombre33/grist-widget-GFS:docs/faits-verifies.md`), donc sans
 action supplémentaire côté déploiement.
 
-**Dans Grist (conditions réelles)** — README.md:111-119 :
+**Dans Grist (conditions réelles)** — voir le tutoriel du `README.md` (« Tutoriel pas à pas », étape 1) :
 1. Publier ce dépôt en page statique (GitHub Pages : Settings → Pages → Deploy from branch → `main`
    / racine).
 2. Dans une page Grist, ajouter un widget personnalisé, coller l'URL GitHub Pages, le lier à une

@@ -1,309 +1,304 @@
-# Grist BI Dashboard (POC)
+<h1 align="center">Grist BI Dashboard</h1>
 
-**Brouillon / preuve de concept — pas prêt pour un usage réel.** Widget personnalisé
-[Grist](https://www.getgrist.com/) explorant un dashboard "façon Power BI" à l'intérieur d'un seul
-widget : plusieurs tuiles (graphiques + cartes KPI) lisant la même table, avec un
-**cross-filtering** au clic entre tuiles (cliquer sur une barre/un secteur filtre les autres tuiles,
-recliquer retire le filtre — comme un slicer Power BI). Le widget se connecte automatiquement, au
-chargement, à sa propre table de travail (un gros jeu de données de test, voir plus bas) : pas de
-bouton à cliquer ni de table à lier soi-même pour avoir un dashboard fonctionnel tout de suite.
+<p align="center">
+  <strong>Des tableaux de bord interactifs dans Grist, dans un seul widget.</strong><br>
+  Plusieurs graphiques et chiffres clés sur la même table, qui se filtrent entre eux d'un clic.
+</p>
 
-Ce projet fait suite à une discussion sur ce que Power BI a que Grist n'a pas nativement
-(cross-filtering entre visuels, mesures agrégées, mise en forme conditionnelle, etc.) — voir
-[HYPOTHESES.md](./HYPOTHESES.md) pour le détail de ce qui est démontré ici, ce qui est
-délibérément hors scope, et ce qui reste à valider en conditions réelles.
+<p align="center">
+  <img alt="Statut : alpha" src="https://img.shields.io/badge/statut-alpha-orange">
+  <img alt="Licence : GPL v3" src="https://img.shields.io/badge/licence-GPL%20v3-blue">
+  <img alt="Widget personnalisé Grist" src="https://img.shields.io/badge/Grist-widget%20personnalis%C3%A9-2a7de1">
+</p>
 
-Architecture reprise du widget [publipostageGrist](https://github.com/lombre33/publipostagegrist)
-du même auteur : page statique unique, **aucune étape de build**, config du dashboard stockée dans
-une table Grist interne cachée (`BI_Dashboard_Config`). ECharts 6.1.0 (la bibliothèque de graphiques) et
-ExcelJS 4.4.0 (l'export Excel, chargé seulement au premier export) sont embarqués directement dans le repo
-(`js/vendor/echarts/` Apache-2.0 et `js/vendor/exceljs/` MIT) plutôt que chargés depuis un CDN externe — un réseau qui
-filtre `cdnjs.cloudflare.com` (proxy d'entreprise/institution, etc.) laisserait sinon les tuiles
-graphiques vides (ou l'export Excel muet) sans erreur explicite. Même principe pour DuckDB-WASM
-(`js/vendor/duckdb/`, MIT — moteur SQL, fondation Tier 2, voir plus bas) et ses dépendances
-transitives Apache-Arrow/flatbuffers/tslib, elles aussi vendorisées localement plutôt que via un
-CDN, avec une différence importante : DuckDB-WASM pèse ~34 Mo (un vrai moteur SQL compilé en WASM),
-donc **chargé PARESSEUX uniquement** — rien n'est téléchargé tant qu'aucune feature ne l'utilise
-réellement (voir HYPOTHESES.md).
+<p align="center">
+  <a href="#essayer-le-widget">Essayer</a> ·
+  <a href="#tutoriel-pas-à-pas">Tutoriel</a> ·
+  <a href="#les-22-types-de-tuiles">Types de tuiles</a> ·
+  <a href="#limites-connues-de-lalpha">Limites</a> ·
+  <a href="#sécurité-et-confidentialité">Sécurité</a> ·
+  <a href="#english-summary">English</a>
+</p>
 
-## Fonctionnalités du POC
+<p align="center">
+  <img src="docs/captures/01-vue-ensemble.png" alt="Un tableau de bord Grist BI : chiffres clés avec tendance et objectif, jauge, barres, aire empilée, anneaux, treemap et progression" width="880">
+  <br>
+  <sub>Style « Verre dépoli », disposition « Planche ». Les captures de ce document montrent des données de démonstration fictives.</sub>
+</p>
 
-- 23 types de tuiles : barres (verticales ou horizontales, avec tri), histogramme (clic = filtre par plage), boîte à moustaches (médiane, quartiles et valeurs aberrantes par groupe, clic = filtre du groupe), flux / Sankey (d'une catégorie à une autre, clic = filtre du nœud ou du lien), calendrier (une case par jour, clic = filtre du jour), Gantt (une barre par tâche de sa date de début à sa date de fin, couleur par statut, repère « aujourd'hui », clic = filtre de la tâche ou du statut), courbe / aire, barres + courbe à double axe (ou Pareto), camembert (ou
-  anneau, avec pourcentages), treemap, soleil (anneaux hiérarchiques : un anneau par colonne, clic = filtre de chaque anneau jusqu'à la part), entonnoir, nuage de points (ou bulles : une 3e mesure en taille, une couleur par catégorie), cascade, radar, nuage de mots (extension de
-  Grist Factory Suite : **grisé, jamais masqué, dans « Ajouter une visualisation » tant que l'extension « Nuage de mots » n'est pas ajoutée** ; voir GFS-ETAT.md, consigne 019), carte KPI (avec courbe de tendance, objectif et seuils de couleur), jauge, progression (une barre par catégorie, en % de l'objectif), tableau croisé (cellules colorables selon leur valeur), carte de chaleur (le même calcul en cases colorées, clic = filtre ligne + colonne), table plate (colonnes au choix, tri d'un clic sur l'en-tête, 500 lignes affichées), texte (une note sans donnée : titre, liste, gras, jamais d'HTML brut). Ajout, édition
-  (bouton crayon) et **réorganisation** (◂ ▸, modifie l'ordre sans perdre les autres réglages de la
-  tuile). Le nuage de points est une version **agrégée** (un point par catégorie, deux mesures en
-  X/Y), pas ligne-à-ligne. La jauge compare une valeur agrégée à un Min/Max défini dans son
-  formulaire.
-- **Séries multiples, empilé, palettes** (Options avancées d'une tuile) : barres et courbe/aire peuvent
-  tracer une série par valeur d'une colonne (« Séries »), côte à côte ou **empilées** (barres et aire,
-  info-bulle avec le total) ou en **petits multiples** (un petit graphique par valeur de la colonne, tous
-  sur la même échelle, jusqu'à 12) ; chaque tuile peut aussi choisir sa **palette** (Standard 8 couleurs,
-  Okabe-Ito pour le daltonisme, ou un dégradé bleu/orange/vert/gris pour des catégories ordonnées).
-- Constructeur de tuile simple : dimension + mesure + agrégat (somme/moyenne/comptage/min/max) —
-  volontairement **pas** un langage de mesures façon DAX complet (voir HYPOTHESES.md). Une tuile
-  barres peut cependant activer un sous-ensemble ciblé (« Mode » : Cumul / YTD / Comparaison N-1,
-  voir plus bas).
-- **Filtres croisés cumulables** : cliquer sur un segment filtre les autres tuiles ; cliquer sur une
-  colonne différente cumule (ET) ; recliquer ou fermer un badge retire juste ce filtre-là.
-- **Tendance sur les cartes KPI** : une tuile KPI peut comparer sa valeur à la période précédente
-  (ex. Année) — delta en %, flèche verte/rouge.
-- **Drill-down à N niveaux** : une tuile barres/camembert peut déclarer autant de sous-dimensions
-  que voulu (jusqu'à 5, garde-fou d'ergonomie) via un bouton « + Niveau » dans son formulaire (ex.
-  Année → Mois → Jour → Région) ; cliquer un segment détaille progressivement cette tuile-là, avec
-  un fil d'Ariane cliquable à plusieurs segments pour remonter à un niveau donné. Au niveau le plus
-  profond, cliquer redevient un filtre croisé normal plutôt que de tenter un niveau supplémentaire.
-  Une même colonne ne peut pas apparaître deux fois dans le chemin (ni reprendre la dimension
-  racine) — une alerte le signale plutôt que de créer une hiérarchie incohérente. Par défaut,
-  détailler UNE tuile ne touche pas aux autres (comme le drill-down dans Power BI, qui ne
-  cross-filtre pas non plus automatiquement les autres visuels) — activable **par tuile** via la
-  case « Filtrer aussi les autres cartes en détaillant » dans son formulaire : chaque niveau franchi
-  filtre alors aussi les autres cartes, pas seulement le niveau le plus profond.
-- **Vues sauvegardées (bookmarks)** : « ★ Sauvegarder la vue actuelle » capture les filtres croisés
-  et l'état de drill-down courants sous un nom ; les retrouver dans le menu déroulant les réapplique
-  en un clic. Ne capture pas les tuiles elles-mêmes (déjà persistées à part).
-- **Dashboards multi-pages** : barre d'onglets au-dessus des tuiles, « + Page » en crée une nouvelle
-  (vide) et y navigue directement, double-clic sur un onglet pour le renommer, `×` sur l'onglet actif
-  pour le supprimer (avec confirmation, sauf s'il ne reste qu'une seule page). Chaque page a ses
-  propres tuiles ; les filtres croisés et le drill-down restent **globaux** entre les pages (choix
-  délibéré pour cette v1, voir ROADMAP.md).
-- **Filtres avancés** : une barre dédiée (au-dessus des tuiles) pour filtrer sur une colonne sans
-  passer par un clic sur une tuile — plage min/max pour une colonne numérique, plage de dates OU
-  période relative (7/30 derniers jours, ce mois-ci, cette année, 12 derniers mois) pour la colonne
-  `Date`, recherche texte (insensible à la casse) pour le reste. Le type de champ affiché s'adapte
-  automatiquement à la colonne choisie, en inspectant une valeur réelle (pas son nom). Se cumulent en
-  ET avec les filtres croisés existants et s'appliquent à toutes les tuiles.
-- **Export Excel** (refait le 18/11/2026) : « Exporter en Excel » télécharge un classeur `.xlsx` qui garde la mise en page du
-  tableau de bord. Pour **chaque page** : une feuille **« tableau de bord »** où chaque tuile est une image (la carte telle qu'on la voit,
-  style compris), posée **là où l'écran la met** (grille, Rapport, Planche, Vedette ou Rail), et une feuille **de données** où chaque
-  tuile est un **tableau Excel nommé** (filtres, tri, tableau croisé dynamique en deux clics), avec des liens d'une feuille à l'autre. Une
-  carte KPI, un tableau croisé ou une table plate sont des images comme les autres, et ont aussi leur tableau de données. Les données sont
-  agrégées exactement comme à l'écran — mêmes filtres croisés, filtres avancés et niveau de drill-down par tuile. Basé sur
-  [ExcelJS](https://github.com/exceljs/exceljs) embarqué localement (SheetJS jusqu'au 18/11/2026) ; les cartes sont redessinées hors écran
-  puis photographiées (quelques secondes pour un grand tableau de bord). Ce sont des images : pas des graphiques Excel modifiables, et une
-  disposition sans carte (Rapport, Planche, Rail) y apparaît avec l'habillage d'une carte. Le déclenchement du téléchargement depuis
-  l'iframe du widget n'est pas encore vérifié en conditions réelles Grist (voir HYPOTHESES.md). Une tuile en mode mesure (voir
-  ci-dessous) exporte ses vraies valeurs (Cumul/YTD/N-1, calculées via DuckDB-WASM comme
-  à l'écran), pas un texte d'excuse.
-- **Export PDF et PPTX** (refaits le 18/11/2026) : la page affichée est photographiée telle qu'elle est dessinée — même grille, même
-  disposition de page, même style (Standard, Fluide, Éditorial, Console, Verre dépoli), thème clair ou sombre, cartes KPI, tableaux et texte
-  compris. Le PDF (`dashboard-bi.pdf`) est une page à la largeur d'un A4 paysage avec un bandeau (nom de la page, jeu de données, date, vue
-  suivie, filtres actifs), écrite sans bibliothèque ; le PPTX (`dashboard-bi.pptx`) a la page en diapositive 1 puis une diapositive par tuile
-  (PptxGenJS, chargé à la demande depuis jsDelivr). Ce sont des images : le texte n'est pas sélectionnable, une tuile rognée à l'écran (tableau
-  croisé large) l'est aussi dans le fichier — l'agrandir avant d'exporter.
-- **Mesures façon DAX simplifié (Cumul / YTD / Comparaison N-1)** : sur une tuile barres, le champ
-  « Mode » remplace Dimension/Drill-down par « Colonne date » — l'axe devient le MOIS calculé depuis
-  cette colonne. « Cumul » = somme courante depuis le début de la série ; « Cumul annuel (YTD) » =
-  la même somme mais qui repart à zéro à chaque nouvelle année ; « Comparaison N-1 » = 2 séries
-  (valeur courante + valeur du même mois l'année précédente). Calculé via une vraie requête SQL
-  DuckDB-WASM (fonctions fenêtrées) — voir ROADMAP.md/HYPOTHESES.md pour le détail technique et le
-  périmètre volontairement réduit (granularité mensuelle fixe, non configurable). Depuis le
-  2026-10-21, ce même moteur DuckDB-WASM prend aussi le relais du calcul JS pur pour TOUTE tuile
-  (barres, camembert, treemap, nuage de points, KPI, jauge, tableau croisé) au-delà d'un certain
-  volume de lignes, avec repli automatique sur le calcul JS en dessous de ce seuil ou en cas
-  d'échec — voir HYPOTHESES.md.
-- **Autocomplétion partout où l'on choisit une colonne** : dimension, mesure, mesure Y, tendance
-  KPI, chaque niveau de drill-down et la colonne du filtre avancé sont des champs avec
-  autocomplétion (composant maison, `js/combobox.js`) plutôt que des menus déroulants bruts — on
-  tape pour filtrer, le texte tapé est surligné dans les suggestions, navigation clavier complète.
-  Confortable dès qu'une vraie table Grist a des dizaines de colonnes.
-- **Autocomplétion des VALEURS dans le filtre "Recherche"** : ce champ (filtre avancé `contient`)
-  suggère les valeurs réellement présentes dans la colonne choisie (texte libre, la liste n'est
-  qu'une suggestion — taper "cam" pour chercher "contient cam" reste possible même si "cam" seul
-  n'est la valeur exacte d'aucune ligne). Les champs min/max/date restent volontairement natifs
-  (`<input type="number/date">`) : une colonne numérique quasi unique ou un calendrier natif sont
-  déjà une meilleure UX qu'une liste de suggestions dans ces cas (voir HYPOTHESES.md).
-- **Sélecteur de table** (barre du haut, aussi en autocomplétion) : le widget peut se reconnecter à
-  n'importe quelle table du document Grist choisie manuellement, pas seulement sa table de test de
-  charge par défaut — une table quelconque démarre sur un dashboard vide à construire soi-même, avec
-  sa propre configuration sauvegardée indépendamment (persistance déjà par table, réutilisée telle
-  quelle). Revenir sur une table déjà visitée restaure ses tuiles.
-- **Bilingue fr/en** : bouton de bascule dans le bandeau du haut, toute la chrome de l'interface
-  (libellés, boutons, messages, badges) se traduit sans recharger la page, langue mémorisée d'une
-  session à l'autre (`localStorage`). Mécanisme `data-i18n` (`js/i18n.js`), même principe que le
-  widget frère [publipostageGrist](https://github.com/lombre33/publipostagegrist). Le contenu
-  généré à partir des noms de colonnes du document (titres de tuile, export Excel) n'est pas
-  concerné — voir HYPOTHESES.md.
-- Persistance de la configuration du dashboard (tuiles + vues sauvegardées) dans le document Grist
-  (par table liée), donc conservée entre deux ouvertures du widget.
-- **Connexion automatique à la première table du document** : au chargement, le widget appelle
-  `GristBI.api.listAvailableTables()` (`js/main.js:bootstrap`) et se connecte en lecture simple à la
-  première table renvoyée (jamais de création). Si le document n'a encore aucune table (hors les
-  tables internes de ce widget), le bandeau affiche un message explicite invitant à en créer une
-  dans Grist ou à en choisir une via le sélecteur une fois disponible — sans rien créer de son
-  propre chef. **Ce widget ne crée plus aucune table de données** : seules ses tables internes
-  (`BI_Dashboard_Config` pour la configuration du dashboard, `BI_Dashboard_Comments` pour les
-  commentaires collaboratifs, `BI_Dashboard_UserProbe` pour détecter l'utilisateur courant) sont
-  créées/complétées automatiquement, jamais la table de travail elle-même. **Jusqu'au 2026-10-21**,
-  ce widget créait et remplissait lui-même, au premier démarrage, sa propre table de test de charge
-  (`BI_StressTest`, ~47 040 lignes) avec 4 tuiles pré-configurées, et proposait un bouton "Restaurer
-  les tuiles par défaut" pour la repeupler si son dashboard se retrouvait vide ; ce mécanisme a été
-  retiré à la demande explicite de l'utilisateur (voir HYPOTHESES.md/ROADMAP.md) — l'utilisateur se
-  connecte désormais toujours à une table qu'il possède déjà dans son document. Si le schéma d'une
-  table interne doit se complexifier plus tard (colonnes en plus), `ensureColumnsUpToDate`
-  (`js/grist-api.js`) ajoute la colonne manquante à la table déjà présente (`AddColumn`) et remplit
-  les lignes déjà là avec de vraies valeurs calculées côté JS — jamais une nouvelle table à recréer
-  (voir HYPOTHESES.md pour l'historique de ce correctif, antérieur à ce retrait).
-- **Style des tuiles** (Réglages, en Lecture comme en Édition : le menu est le même dans les deux modes) : un réglage du tableau de bord, enregistré avec lui, qui change d'un coup l'apparence de TOUTES les
-  cartes et de leurs graphiques — Standard (le rendu d'origine, par défaut), Fluide/moderne, Éditorial, Console (toujours sombre, façon console de
-  supervision) et Verre dépoli (fond dégradé, cartes translucides, barres en dégradé). Deux options valent pour TOUS les styles, Standard compris :
-  « Tuiles sans bordure apparente » et « Tableau de bord uni » (une seule surface : les tuiles prennent le fond de la page et se touchent) — elles
-  valent pour la disposition « Grille » (voir ci-dessous). Clair et sombre, palettes de tuile, formats de nombres et exports inchangés ; une
-  ambiance GFS garde la main sur les couleurs de l'interface.
-- **Disposition de la page** (Réglages, en Lecture comme en Édition) : où se posent les tuiles, **réglée page par page** et enregistrée avec la page, en plus du style.
-  Cinq choix : **Grille** (des cartes de même taille côte à côte, le rendu d'origine, par défaut), **Rapport** (sans cartes : les chiffres en tête, deux
-  graphiques par ligne, un filet fin au-dessus de chaque bloc), **Planche** (une seule surface arrondie, bandeau de chiffres teinté, filets entre les
-  cellules), **Vedette** (les chiffres en tête, un grand graphique — le premier en barres, courbe ou combo — et deux plus petits à côté, le reste en
-  lignes de trois) et **Rail** (une colonne de chiffres et de jauges à gauche, les graphiques à droite). Les chiffres passent devant les graphiques ;
-  une dernière ligne incomplète se partage la largeur ; l'ordre enregistré des tuiles ne change pas (les flèches ◀ ▶ échangent une tuile avec la
-  suivante du même groupe). Sur une zone étroite (moins de 640, 900 ou 1 040 px de large selon la disposition, panneau « Ajouter » ouvert compris),
-  la grille d'origine reprend : jamais de graphiques écrasés.
-- **Identité Grist Factory** : logo discret dans le bandeau du haut (juste à droite de « Réglages »)
-  et panneau « Crédits » (Auteur / Site / Licence / Bio) accessible depuis ce même bouton — cadrage
-  repris de [Publipostage+](https://github.com/lombre33/publipostagegrist), même éditeur pour tous
-  les widgets Grist Factory. Voir aussi la section Licence plus bas.
+## En bref
 
-## Installation dans Grist
+**Grist BI Dashboard** est un widget personnalisé pour [Grist](https://www.getgrist.com/). Il transforme une table de votre document en tableau de bord : des graphiques et des cartes de chiffres clés côte à côte, qui réagissent les uns aux autres, avec détail progressif (drill-down), vues sauvegardées et exports Excel, PDF et PowerPoint.
 
-1. Publier ce dépôt en page statique (GitHub Pages : Settings → Pages → Deploy from branch → `main`
-   / racine), comme pour publipostageGrist.
-2. Dans une page Grist, ajouter un widget personnalisé, coller l'URL GitHub Pages. Lier le widget à
-   une table (n'importe laquelle, même vide) est nécessaire pour l'ajout du widget, mais le widget
-   n'en tient pas compte : il se connecte tout seul à sa propre table de travail (voir plus haut).
-3. Accepter la demande d'accès du widget au chargement (voir *Sécurité et permissions* ci-dessous) :
-   le dashboard se construit alors automatiquement, sans autre action.
+Il reprend des mécaniques de **Power BI** et de **DigDash** que Grist n'a pas nativement. Comme un widget Grist ne peut pas en piloter un autre sur la même page, tout vit dans un seul widget, avec ses propres tuiles.
 
-## Sécurité et permissions
+- **Aucun serveur, aucun compte, aucune installation.** Une page web statique : vos données restent dans votre document Grist.
+- **Pas besoin de savoir coder.** On choisit un type de graphique, deux colonnes, et l'aperçu se met à jour en direct.
+- **Libre** (licence GPL v3), en français et en anglais.
 
-`requiredAccess: 'full'` — même justification que publipostageGrist : la création/lecture de la
-table interne `BI_Dashboard_Config` (config du dashboard) nécessite un accès complet au document,
-l'API widget Grist ne proposant pas de niveau intermédiaire entre "une seule table en lecture" et
-"accès complet". Comme pour l'autre widget, la restriction fine des données doit se faire via les
-**Règles d'accès** natives de Grist, pas dans la configuration du widget.
+> [!NOTE]
+> **Version alpha.** Le widget est utilisable, mais il a surtout été essayé sur des données de démonstration. Un essai dans un vrai document Grist (47 000 lignes, filtrage croisé, drill-down) s'est bien passé ; les fonctions plus récentes n'ont pas encore été éprouvées dans beaucoup de vrais documents. Testez-le sur une copie de vos données et dites-nous ce qui casse : voir [Limites connues](#limites-connues-de-lalpha) et [Donner un retour](#donner-un-retour).
 
-**Ce que le widget lit et écrit avec cet accès** (rien d'autre) :
+## Ce qu'il sait faire
 
-- il LIT la table de travail que la personne choisit (la première du document au démarrage), les métadonnées de ses colonnes
-  (`_grist_Tables_column`, pour le type et le format) et, à la demande, les pièces jointes d'une colonne (fenêtre « Mots-clés des publications ») ;
-- il crée et écrit TROIS tables internes, jamais des données de la personne : `BI_Dashboard_Config` (le tableau de bord),
-  `BI_Dashboard_Comments` (les commentaires) et `BI_Dashboard_UserProbe` (une ligne éphémère pour connaître l'adresse de la personne) ;
-- il ne modifie la table de la personne que sur un geste explicite, après une fenêtre de confirmation : l'import d'un fichier
-  Power BI (création d'une table) et l'ajout d'une colonne de mots-clés, puis l'écriture de ses cellules vides. Il n'utilise jamais
-  `RemoveTable`, `RemoveColumn` ni `BulkRemoveRecord`.
+- **Filtrage croisé au clic**, comme un slicer Power BI : cliquer une barre ou une part filtre toutes les autres tuiles. Les filtres se cumulent et se retirent d'un clic.
+- **Drill-down** par tuile, avec fil d'Ariane cliquable : sur une colonne date, année, trimestre et mois sont proposés automatiquement.
+- **22 types de tuiles** : barres, courbes, anneaux, treemap, soleil, flux (Sankey), calendrier, Gantt, histogramme, boîte à moustaches, radar, carte de chaleur, tableau croisé… ([liste complète](#les-22-types-de-tuiles)).
+- **Cartes de chiffres clés** avec tendance (par rapport à la période précédente), courbe, objectif et seuils de couleur.
+- **Mesures temporelles** : cumul, cumul annuel (YTD) et comparaison à l'année précédente.
+- **Cinq styles d'affichage** (Standard, Fluide, Éditorial, Console, Verre dépoli) et **cinq dispositions de page** (Grille, Rapport, Planche, Vedette, Rail), réglables page par page.
+- **Filtres avancés** : plage de valeurs, plage de dates, dates relatives (30 derniers jours, ce mois-ci…), recherche dans le texte.
+- **Plusieurs pages** par tableau de bord et **vues sauvegardées** : on mémorise un état de filtres et de drill-down, on le retrouve en un clic.
+- **Assistant de démarrage** : sur un tableau de bord vide, des visualisations sont suggérées d'après vos colonnes.
+- **Jointure** avec une deuxième table du même document.
+- **Commentaires par tuile**, stockés dans une table du document.
+- **Mots-clés des publications** (menu de la table, en mode édition) : remplit une colonne de mots-clés à partir d'une colonne de texte (titre, résumé…), après confirmation.
+- **Exports** Excel, PDF et PowerPoint, fidèles à l'écran.
+- **Gros volumes** : au-delà de 5 000 lignes, un moteur SQL (DuckDB-WASM) prend le relais dans le navigateur.
+- **Import d'un fichier Power BI** (`.pbix` ou `.pbit`) : reprend les visuels (type, colonnes, titre) comme tuiles de départ. Les données et les mesures DAX ne sont pas reprises ; un CSV exporté de Power BI peut être importé pour les données.
 
-**Ce que le widget charge, et quand** (la liste exhaustive : un code qui se charge ne se lit pas ailleurs) :
+<p align="center">
+  <img src="docs/captures/02-filtre-croise-drill.png" alt="Style Éditorial : après un clic sur Nord puis sur 2025, toutes les tuiles se recalculent et la tuile des années descend en trimestres" width="880">
+  <br>
+  <sub>Un clic sur « Nord » puis sur « 2025 » : toutes les tuiles se recalculent, la tuile des années descend en trimestres, et les filtres actifs s'affichent en pastilles. Style « Éditorial », disposition « Vedette ».</sub>
+</p>
+
+## Essayer le widget
+
+L'adresse du widget, à coller dans Grist (voir le tutoriel ci-dessous) :
+
+```text
+https://grist-factory.github.io/grist-widget-grist-BI/
+```
+
+Il faut un document Grist que vous pouvez modifier, et le niveau d'accès « accès complet » (voir [Sécurité et confidentialité](#sécurité-et-confidentialité) pour savoir pourquoi, et ce que le widget en fait). Le widget ne crée ni ne modifie vos tables de données.
+
+## Tutoriel pas à pas
+
+### 1. Ajouter le widget dans votre document
+
+1. Dans votre document Grist, ouvrez une page et ajoutez un widget : **Ajouter** → **Ajouter un widget à la page** (*Add widget to page*).
+2. Choisissez le widget **Personnalisé** (*Custom*). Grist demande une table à lier : prenez n'importe laquelle, même vide. Le widget n'en tient pas compte, il se connecte lui-même à sa table de travail (étape 2).
+3. Dans le panneau de droite, choisissez **URL personnalisée** (*Custom URL*) et collez l'adresse du widget (voir ci-dessus).
+4. Réglez le niveau d'accès sur **Accès complet au document** (*Full document access*) et acceptez la demande de Grist.
+
+Astuce : donnez-lui une page entière, un tableau de bord a besoin de place.
+
+### 2. Choisir la table de travail
+
+Au chargement, le widget se connecte tout seul à la **première table** du document. Pour en choisir une autre, cliquez sur le bouton en haut à gauche (il porte le nom de la table), puis sur **Table de travail**. Chaque table garde sa propre configuration : revenir sur une table déjà visitée restaure ses tuiles.
+
+Si le document ne contient encore aucune table, le widget le dit et attend : créez une table dans Grist, puis choisissez-la.
+
+En mode édition, ce même menu permet de **joindre une deuxième table** du document : vous indiquez la colonne clé de chaque table, et les colonnes de la seconde apparaissent (préfixées de son nom) dans tous les sélecteurs.
+
+### 3. Construire le tableau de bord
+
+Cliquez sur **Modifier** (en haut à droite) pour passer en mode édition. Sur un tableau de bord vide, le widget propose des visualisations d'après vos colonnes : un clic sur **Ajouter** suffit, vous pourrez les modifier ensuite.
+
+<p align="center">
+  <img src="docs/captures/07-accueil-suggestions.png" alt="Premier lancement : trois visualisations suggérées d'après les colonnes de la table, et un bouton pour importer un fichier Power BI" width="880">
+  <br>
+  <sub>Premier lancement : des visualisations suggérées, ou l'import d'un fichier Power BI.</sub>
+</p>
+
+Pour composer vous-même, cliquez sur **Ajouter** dans la barre du haut. Le panneau « Ajouter une visualisation » s'ouvre à droite, en deux étapes :
+
+1. **Choisir** : une carte par type de tuile, avec une ligne qui dit à quoi il sert.
+2. **Régler** : la dimension (ce qu'on regroupe), la mesure (ce qu'on calcule), l'agrégat (somme, moyenne, comptage, minimum, maximum) et un titre facultatif. L'**aperçu** se met à jour en direct. Les *Options avancées* ouvrent le reste : séries, empilage, palette, format des nombres, ligne de repère, étiquettes de valeur, niveaux de drill-down…
+
+<p align="center">
+  <img src="docs/captures/05-ajouter-choisir.png" alt="Le panneau « Ajouter une visualisation », étape Choisir : une carte par type de tuile" width="880">
+</p>
+
+<p align="center">
+  <img src="docs/captures/06-ajouter-regler.png" alt="Le panneau « Ajouter une visualisation », étape Régler : dimension Produit, mesure Montant, agrégat Somme, avec l'aperçu en direct" width="880">
+  <br>
+  <sub>On choisit un type, deux colonnes, et l'aperçu se met à jour en direct.</sub>
+</p>
+
+En mode édition, chaque tuile porte ses boutons : flèches pour la déplacer, crayon pour la modifier, agrandir, commentaire, détail (les lignes brutes) et croix pour la supprimer. Cliquez sur **Terminer** pour revenir en lecture : c'est le mode des personnes qui consultent le tableau de bord.
+
+### 4. Explorer : filtres croisés, drill-down, filtres avancés
+
+- **Cliquez sur une barre, une part d'anneau, une case…** : les autres tuiles se filtrent. Les valeurs non retenues s'estompent dans la tuile cliquée. Cliquer sur une autre colonne cumule les filtres ; cliquer à nouveau sur la même valeur, ou sur la croix de sa pastille, retire juste ce filtre. **Effacer les filtres** les retire tous. Sur un histogramme, un clic sur une classe filtre par plage de valeurs.
+- **Détailler** : sur une tuile avec drill-down, la mention « cliquer pour détailler par… » sous le titre annonce le niveau suivant. Un clic descend d'un niveau (par exemple année → trimestre → mois), le fil d'Ariane permet de remonter. Au niveau le plus profond, un clic redevient un filtre croisé.
+- **Filtrer sans cliquer sur une tuile** : le bouton **Filtre** de la barre liste vos colonnes ; selon la colonne, on règle une plage de valeurs, une plage de dates, une période relative ou une recherche dans le texte.
+- **Agrandir** une tuile pour la lire en grand, ou ouvrir son **détail** pour voir les lignes brutes qui la composent.
+- **Commenter** : chaque tuile peut porter des commentaires, visibles de toutes les personnes qui ouvrent le document.
+
+### 5. Mémoriser : vues sauvegardées et pages
+
+<p align="center">
+  <img src="docs/captures/08-vues-sauvegardees.png" alt="Le menu Vues : quatre vues sauvegardées, la vue active est cochée et signalée" width="880">
+  <br>
+  <sub>Le menu Vues : un état de filtres se retrouve en un clic ; la vue active est suivie, et signalée quand vos filtres s'en écartent.</sub>
+</p>
+
+- **Vues** : une vue mémorise l'état des filtres croisés, des filtres avancés et du drill-down sous un nom. Le menu **Vues** permet de la réappliquer, de la mettre à jour ou de la supprimer.
+- **Pages** : en mode édition, le bouton **+** de la barre ajoute une page, un double-clic sur un onglet la renomme. Chaque page a ses propres tuiles ; les filtres, eux, restent communs à toutes les pages.
+
+### 6. Mettre en forme : style et disposition
+
+Le bouton **Réglages** (la roue dentée) ouvre le choix du **style** (comment s'habillent les tuiles : Standard, Fluide, Éditorial, Console, Verre dépoli) et de la **disposition de la page** (où elles se posent : Grille, Rapport, Planche, Vedette, Rail). Le style vaut pour tout le tableau de bord, la disposition se choisit page par page, et les deux sont enregistrés avec le tableau de bord. C'est aussi là qu'on change la langue (français ou anglais).
+
+<p align="center">
+  <img src="docs/captures/11-reglages-style-disposition.png" alt="La fenêtre Réglages : cinq styles de tuiles, cinq dispositions de page, deux options pour la grille, la langue et les crédits" width="880">
+</p>
+
+<p align="center">
+  <img src="docs/captures/03-analyse-avancee.png" alt="Style Console, toujours sombre : courbes, barres empilées, cascade, radar, tableau croisé, nuage de points, cumul et comparaison à l'année précédente" width="430">
+  <img src="docs/captures/04-segments-canaux.png" alt="Style Fluide, disposition Rapport : entonnoir, anneau, barres empilées, courbes, tableau croisé, treemap, radar et table plate" width="430">
+  <br>
+  <sub>À gauche, le style « Console » (toujours sombre) : analyses avancées. À droite, « Fluide » en disposition « Rapport » : segments et canaux.</sub>
+</p>
+
+### 7. Exporter
+
+Le menu **Exporter** propose trois formats. Dans les trois cas, le fichier reprend ce que vous voyez : mêmes filtres, mêmes niveaux de drill-down, même style.
+
+| Format | Contenu |
+|---|---|
+| **Excel** (`.xlsx`) | Pour chaque page : une feuille « tableau de bord » où chaque tuile est une image, posée là où l'écran la met ; et une feuille de données où chaque tuile est un **tableau Excel nommé** (filtres, tri, tableau croisé dynamique en deux clics), avec des liens d'une feuille à l'autre. |
+| **PDF** | La page affichée, en une seule page à la largeur d'un A4 paysage, avec un bandeau (nom de la page, jeu de données, date, vue suivie, filtres actifs). |
+| **PowerPoint** (`.pptx`) | La page affichée en première diapositive, puis une diapositive par tuile. |
+
+Ce sont des **images** de vos tuiles, pas des graphiques modifiables : c'est ce qui garantit le même visuel qu'à l'écran. Voir les [limites](#limites-connues-de-lalpha).
+
+<p align="center">
+  <img src="docs/captures/10-repartition.png" alt="Barres et courbe à double axe (Pareto) et histogramme : un clic sur une classe de l'histogramme filtre les autres tuiles" width="880">
+  <br>
+  <sub>Barres + courbe (Pareto et double axe) et histogramme : un clic sur une classe filtre toutes les autres tuiles.</sub>
+</p>
+
+## Les 22 types de tuiles
+
+Tous se choisissent dans « Ajouter une visualisation ». Chacun est proposé avec une ligne d'aide, et l'assistant avertit quand le choix se prête mal à vos données (un anneau de vingt parts, par exemple).
+
+| Pour… | Types de tuiles |
+|---|---|
+| **Comparer et classer** | Barres (verticales ou horizontales, triées, en séries, empilées ou en 100 %, en petits multiples) · Barres + courbe (double axe, ou diagramme de Pareto) · Cascade · Entonnoir · Progression (une barre par catégorie, en % d'un objectif) |
+| **Suivre dans le temps** | Courbe / aire (lissée ou en escalier) · Calendrier (une case par jour) · Gantt (une barre par tâche, couleur par statut, repère « aujourd'hui ») |
+| **Montrer des parts d'un tout** | Camembert / anneau · Treemap · Soleil (anneaux hiérarchiques) · Flux / Sankey (d'une catégorie à une autre) |
+| **Étudier une répartition** | Histogramme · Boîte à moustaches (médiane, quartiles, valeurs aberrantes) · Nuage de points (ou bulles : taille et couleur en plus) · Radar |
+| **Afficher un chiffre** | Carte KPI (tendance, courbe, objectif, seuils de couleur) · Jauge |
+| **Lire des valeurs** | Tableau croisé (cellules colorables) · Carte de chaleur · Table plate (colonnes au choix, tri d'un clic) |
+| **Expliquer** | Texte : une note sans données (titre, liste, gras) |
+
+Un vingt-troisième type, le **nuage de mots**, apparaît grisé dans la version autonome (voir les [limites](#limites-connues-de-lalpha)).
+
+## Limites connues de l'alpha
+
+Voici ce qu'il vaut mieux savoir avant de l'adopter.
+
+- **Peu éprouvé en conditions réelles.** Les essais en vrai Grist ont porté sur une table de 47 000 lignes (filtrage croisé, drill-down, dates, colonnes Référence, mesures temporelles, commentaires), puis sur un document de démonstration (commentaires, exports PDF et PowerPoint). Le reste (les nouveaux types de tuiles, les styles et dispositions, l'export Excel refait, le format des nombres « comme dans la colonne », l'import Power BI, les mots-clés) n'a été vérifié que sur des données de démonstration, avec un faux Grist. Attendez-vous à des défauts, surtout avec beaucoup de colonnes, des colonnes Référence, des dates et heures, ou de très grosses tables.
+- **Accès complet demandé.** Grist n'offre pas de palier intermédiaire à un widget qui enregistre sa propre configuration. Le widget crée trois tables internes, visibles dans les Données brutes (`BI_Dashboard_Config`, `BI_Dashboard_Comments`, `BI_Dashboard_UserProbe`). Pour restreindre ce qu'il peut lire, utilisez les règles d'accès natives de Grist.
+- **Les exports sont des images.** Les tuiles exportées en Excel, PDF et PowerPoint sont des photos de l'écran : pas de graphiques Excel ou PowerPoint modifiables, texte non sélectionnable dans le PDF, et une tuile rognée à l'écran (un tableau croisé très large) l'est aussi dans le fichier : agrandissez-la avant d'exporter. Une disposition sans cartes (Rapport, Planche, Rail) apparaît dans Excel avec l'habillage d'une carte.
+- **L'export PowerPoint demande une connexion** : sa bibliothèque est chargée à la demande depuis un CDN (version figée, empreinte vérifiée). Les exports Excel et PDF n'appellent aucun service extérieur.
+- **Le premier gros calcul est un peu lent.** Au-delà de 5 000 lignes, le moteur SQL (environ 34 Mo) se télécharge la première fois qu'il sert. Si ce moteur ne peut pas se charger, le calcul se fait en JavaScript (plus lent sur de gros volumes), sauf les mesures temporelles, qui exigent le moteur SQL.
+- **Nuage de mots et lecture de PDF : pas dans cette version.** Ces deux fonctions demandent des extensions fournies par l'hôte Grist Factory Suite : elles sont grisées dans l'interface quand le widget tourne seul, et un clic l'explique. Les mots-clés calculés à partir d'une colonne de texte, eux, ne dépendent d'aucune extension.
+- **Mesures temporelles simplifiées.** Cumul, YTD et comparaison N-1 se règlent sur une tuile en barres, par mois uniquement : ce n'est pas un langage de mesures complet façon DAX.
+- **Quelques choix de conception.** Le nuage de points est agrégé (un point par catégorie, pas par ligne) ; le radar ne filtre pas les autres tuiles ; une table plate affiche 500 lignes au plus ; les filtres croisés et le drill-down sont communs à toutes les pages.
+- **Textes tirés de vos données non traduits.** Seule l'interface est bilingue : les titres de tuile composés à partir de noms de colonnes et les en-têtes des exports gardent le nom de vos colonnes.
+- **Pas encore essayé** : le widget avec un compte en lecture seule (on s'attend à ce que les clics de filtrage fonctionnent dans le navigateur, mais que l'enregistrement des vues, des commentaires et de la configuration soit refusé), la reconnaissance automatique de l'auteur d'un commentaire (sinon, le nom se saisit à la main), et l'usage sur téléphone.
+- **Navigateurs.** Le widget a surtout été essayé sous Chromium (Chrome, Edge). Firefox et Safari n'ont pas été vérifiés.
+
+## Sécurité et confidentialité
+
+**Vos données ne quittent pas votre navigateur, hors de Grist.** Le widget n'a pas de serveur et n'envoie aucune donnée ailleurs : les seules adresses qu'il contacte sont celles du tableau ci-dessous. Tout se calcule dans la page, y compris les gros volumes (DuckDB-WASM) et les exports.
+
+### Ce que le widget lit et écrit avec l'accès complet
+
+- Il **lit** la table de travail que vous choisissez (la première du document au démarrage), les métadonnées de ses colonnes (type, format) et, à la demande, les pièces jointes d'une colonne.
+- Il **écrit** dans trois tables internes, jamais dans vos données : `BI_Dashboard_Config` (le tableau de bord), `BI_Dashboard_Comments` (les commentaires) et `BI_Dashboard_UserProbe` (une ligne éphémère pour connaître l'adresse de la personne qui commente).
+- Il ne modifie vos tables que sur un **geste explicite, après une fenêtre de confirmation** : la création d'une table à l'import d'un CSV exporté de Power BI, et l'ajout d'une colonne de mots-clés puis l'écriture de ses cellules vides.
+- Il n'utilise jamais `RemoveTable`, `RemoveColumn` ni `BulkRemoveRecord`.
+
+### Ce que le widget charge, et quand
 
 | Quoi | D'où | Quand |
 |---|---|---|
-| API de widget de Grist (`grist-plugin-api.js`) | `docs.getgrist.com` (balise de `index.html`) | au démarrage |
-| ECharts 6.1.0, DuckDB-WASM 1.32.0, ExcelJS 4.4.0, Apache Arrow, FlatBuffers, tslib | copies dans `js/vendor/` (même site, jamais un CDN ; empreintes dans `js/vendor/SOURCES.md`) | ECharts au démarrage ; DuckDB au premier gros calcul ; ExcelJS au premier export Excel |
-| Kit des apps Grist Factory (`kit/`, sous-module Git) | même site | au démarrage (ambiance, lien avec GFS) et à la première fenêtre de confirmation |
-| PptxGenJS 4.0.1 | `cdn.jsdelivr.net`, version figée et empreinte SRI (sha384) | au premier export PPTX |
-| Extensions de GFS (`d3-cloud`, `pdf.js`) | l'adresse et l'empreinte que GFS donne, seulement quand le widget est dans GFS et que l'extension est ajoutée | à la première tuile nuage de mots ou au premier lot de mots-clés |
-| Pièces jointes d'une publication | l'API du document, à l'adresse que Grist donne avec le jeton (`getAccessToken`, lecture seule) ; adresse refusée si elle n'est pas en https, ou porte un identifiant, une requête ou un fragment | à chaque PDF d'un lot de mots-clés |
+| API de widget de Grist (`grist-plugin-api.js`) | `docs.getgrist.com` | au démarrage |
+| La page du widget, ses scripts, ECharts 6.1.0 | le site qui héberge le widget | au démarrage |
+| DuckDB-WASM 1.32.0 (et ses dépendances Apache Arrow, FlatBuffers, tslib) | copies dans `js/vendor/`, même site | au premier gros calcul (plus de 5 000 lignes) |
+| ExcelJS 4.4.0 | copie dans `js/vendor/`, même site | au premier export Excel |
+| Kit des apps Grist Factory (`kit/`) : fenêtres de confirmation, ambiance | même site | au démarrage, puis à la première fenêtre de confirmation |
+| PptxGenJS 4.0.1 | `cdn.jsdelivr.net`, version figée, empreinte d'intégrité (SRI, sha384) | au premier export PowerPoint |
+| Extensions de l'hôte Grist Factory Suite (`d3-cloud`, `pdf.js`) | l'adresse et l'empreinte que l'hôte donne | seulement si le widget est lancé dans cet hôte et que l'extension est ajoutée : jamais en version autonome |
+| Pièces jointes d'une publication | l'API du document, à l'adresse que Grist donne avec un jeton en lecture seule (refusée si elle n'est pas en https) | à chaque PDF d'un lot de mots-clés, avec l'extension seulement |
 
-Tout code qui se charge à l'exécution passe par UN chargeur : `js/loader.js` (un seul `createElement('script')` du dépôt : https hors du
-site de la page, empreinte `integrity` obligatoire pour tout autre site, hôte de la liste, aucun identifiant dans l'adresse) et `js/modules.js`
-(les modules ES, en chemins littéraux, demandés par nom). Tout balisage écrit dans la page passe par `js/safe-html.js` (liste blanche de
-balises, d'attributs et de styles ; jamais `innerHTML`). Les données de la personne ne quittent jamais le navigateur hors de Grist : aucune
-requête sortante ne les porte (les seules adresses contactées sont celles du tableau ci-dessus).
+Chaque dossier de `js/vendor/` contient la licence de la bibliothèque qu'il embarque.
 
-**Politique de sécurité du contenu** (balise `<meta http-equiv="Content-Security-Policy">` en tête d'`index.html`, le filet quand une autre défense
-cède) : tout est refusé par défaut (`default-src 'none'`), puis ouvert au strict nécessaire. Les scripts ne viennent que du site lui-même
-(`'self'`), de l'empreinte de l'unique script en ligne (l'`importmap` de DuckDB-WASM) et d'adresses `https:` (le script d'API de Grist, PptxGenJS, les
-extensions de GFS : leurs adresses ne sont pas connues d'avance, le chargeur exige une empreinte `integrity` pour tout autre site) ; jamais
-`'unsafe-inline'` ni `'unsafe-eval'` (DuckDB-WASM n'a besoin que de `'wasm-unsafe-eval'`). Aucun formulaire ne part (`form-action 'none'`), aucun
-objet ni `<base>` détourné, le Worker de DuckDB ne vient que du site ou d'une adresse `blob:`. Les styles en ligne restent permis
-(`style-src 'unsafe-inline'` : la photographie du tableau de bord pour les exports et ECharts en posent). `frame-ancestors` ne peut pas s'écrire
-dans une balise `<meta>` (le navigateur l'ignore) : GFS et Grist cadrent le widget comme avant. `node dev-tests/test-csp.js` fige la politique.
+### Comment c'est verrouillé
 
-## Tests
+- **Un seul chargeur de code.** Tout code chargé à l'exécution passe par `js/loader.js` : https obligatoire hors du site lui-même, empreinte d'intégrité exigée pour tout autre site, aucun identifiant dans l'adresse. Les modules ES se demandent par nom, depuis une liste fermée (`js/modules.js`).
+- **Un seul chemin pour écrire du HTML.** Tout balisage écrit dans la page passe par `js/safe-html.js` (liste blanche de balises, d'attributs et de styles), jamais par `innerHTML`. Les valeurs de vos cellules et la configuration lue dans le document sont traitées comme des entrées non fiables et échappées.
+- **Une politique de sécurité du contenu** (balise `<meta>` en tête d'`index.html`) refuse tout par défaut, puis n'ouvre que le nécessaire : les scripts du site lui-même et d'adresses https, un seul script en ligne vérifié par empreinte, jamais `eval`, aucun formulaire qui part. Les styles en ligne restent permis, car la photographie des tuiles pour les exports et ECharts en posent.
 
-- `node dev-tests/test-data.js` — logique pure (agrégation, filtrage, store), sans navigateur.
-- `node dev-tests/test-styles.js` — style global des tuiles (registre, passe ECharts, CSS clair/sombre, configuration).
-- `node dev-tests/test-layouts.js` — dispositions de page (plan, ordre affiché, flèches, store par page, configuration, CSS et seuils de largeur).
-- `node dev-tests/test-safe-html.js` — écriture de HTML dans la page (liste blanche) ; `dev-tests/safe-html-test.html` rejoue 51 charges dans un navigateur.
-- `node dev-tests/test-loader.js` — chargeur unique de code (politique, empreintes, modules par nom, garde-fous des sources).
-- `node dev-tests/test-csp.js` — politique de sécurité du contenu (directives, empreinte de l'`importmap`, aucun script ni gestionnaire en ligne).
-- `node dev-tests/test-audit.js` — garde-fous de l'audit `gwaudit` (champs étiquetés, empreintes des bibliothèques, ECharts modifié).
-- `dev-tests/harness.html` — rendu visuel dans un navigateur avec un faux `window.grist` et des
-  données d'exemple, sans document Grist réel. Détails dans `dev-tests/README.md`.
+Une faille se signale **sans ouvrir d'issue publique** : onglet « Security » du dépôt GitHub, puis « Report a vulnerability » (signalement privé).
 
-Voir HYPOTHESES.md pour ce qui a été (et n'a pas pu être) testé en conditions réelles avant ce
-premier commit.
+## Héberger votre propre copie
 
-## État du projet
+Le widget est une **page statique** : pas de `package.json`, pas d'étape de build, pas de serveur applicatif. Pour l'héberger vous-même, copiez le dépôt sur n'importe quel hébergement statique en https (GitHub Pages, un serveur web, un stockage objet…) et collez son adresse dans Grist à la place de celle ci-dessus.
 
-Plusieurs allers-retours avec un usage réel, seize vrais bugs remontés/trouvés et corrigés : un souci
-de chargement d'ECharts sur réseau filtré (HYPOTHESES.md point 3), un `KeyError` de génération de
-données de démo dû à un schéma de table obsolète (point 9), un bug CSS où plusieurs champs du
-formulaire de tuile (`.hidden = true` en JS) ne se masquaient en réalité jamais à l'écran, des
-libellés d'axe tronqués sur de grandes valeurs, des graduations de jauge qui se chevauchaient, un
-point de scatter qui aurait rendu le clic muet sans un champ `name` explicite, des tuiles qui
-s'étiraient à l'infini vers le bas (boucle resize↔layout entre `.tile`/ECharts, remontée par
-l'utilisateur en conditions réelles), et un combobox qui ne commitait rien en tapant puis Entrée
-sans navigation clavier préalable (trouvé en migrant le vrai formulaire, pas par les tests du
-composant isolé), une sauvegarde de configuration perdue en revenant sur une table déjà visitée
-(race condition sur le debounce de sauvegarde, invisible tant que le widget ne changeait jamais de
-table en cours de session), un combobox en mode texte libre qui pouvait se faire écraser sa saisie
-par un rafraîchissement de suggestions, un paramètre de fonction silencieusement écrasé par
-l'`Event` du navigateur sur un `addEventListener` direct, et — le plus significatif — un Entrée sur
-une saisie de combobox strict sans AUCUNE correspondance qui laissait fuiter l'évènement `change`
-natif du navigateur avec la valeur brute invalide, contournant toute la validation (révélait au
-passage que le sélecteur de table, déjà "vert", ne fonctionnait en réalité que grâce à ce bug), et
-des éléments graphiques qui débordaient sous les cartes (`min-height` sur `.tile-chart` resté
-incohérent après le passage de `.tile` à une hauteur fixe, remonté par l'utilisateur en conditions
-réelles), et — le plus grave trouvé à ce jour — une course au démarrage entre `grist.ready()`
-(qui ne renvoie pas de promesse) et le tout premier appel `docApi`, pouvant faire recréer/remplir
-une table qui existe déjà à chaque réouverture du widget, avec un vrai risque de duplication de
-données dans le document réel de l'utilisateur (remonté DEUX FOIS en conditions réelles, un premier
-correctif à délai fixe s'étant révélé insuffisant — corrigé par un budget d'attente renforcé PLUS un
-filet de sécurité indépendant basé sur la collision `AddTable`, garanti sans duplication quel que
-soit le délai réel, voir HYPOTHESES.md), qui a aussi révélé un renommage de table legacy pouvant être
-sauté par la même course sur son propre contrôle d'existence, jamais reproductible dans ce sandbox
-avant coup puisque le mock n'a aucune vraie négociation réseau à rater — la plupart repérés
-uniquement en vérifiant le rendu réel (visibilité/capture d'écran), jamais via une simple absence
-d'erreur JS. Depuis : édition et réorganisation de
-tuile, `ResizeObserver`, tri chronologique, filtres croisés cumulables, tendance KPI, vues
-sauvegardées, drill-down étendu à N niveaux (avec cross-filtering optionnel PAR TUILE à chaque
-niveau franchi), un jeu de données "test de charge" (~47 040 lignes) avec envoi par lots, une
-connexion **idempotente** aux tables générées (un clic/chargement ne renvoie les données à Grist
-que si la table n'existe pas encore), le passage à une **connexion automatique** à cette table
-comme UNIQUE table de travail au démarrage (plus de boutons « Générer », plus de bascule
-démo/table liée — voir HYPOTHESES.md), une **refonte visuelle sobre et épurée** (palette
-catégorielle validée colorblind-safe, ombres douces, typographie affinée), 3 nouveaux types de
-tuiles (treemap plat, nuage de points agrégé, jauge), des **dashboards multi-pages** (filtres
-croisés/drill-down délibérément globaux entre pages, format de config persisté rétrocompatible avec
-les deux formats antérieurs), des **filtres avancés typés** (plage numérique, plage de dates,
-dates relatives, recherche texte — une colonne `Date` ISO a été ajoutée aux jeux de données pour les
-rendre démontrables), un **export Excel** (SheetJS à l'origine, ExcelJS depuis le 18/11/2026, embarqué localement, par page, un tableau de bord en images posées comme à l'écran
-et une feuille de données en tableaux Excel, reflétant exactement les filtres/drill-down actifs à l'écran), une **autocomplétion** (composant
-Combobox maison) sur tous les sélecteurs de colonne du formulaire de tuile et de la barre de
-filtres, un **sélecteur de table** (Combobox également) permettant de reconnecter le widget à
-n'importe quelle table du document — la connexion automatique à `BI_StressTest` reste le
-comportement par défaut au démarrage, mais n'est plus la seule table possible en cours de session —
-et une **autocomplétion des valeurs** dans le filtre "Recherche" (suggestions des valeurs réelles de
-la colonne choisie, texte libre). Puis, sur demande explicite de l'utilisateur : le retrait complet
-de l'ancienne table de démo "rapide" (`BI_Demo_Ventes`, du code mort côté produit depuis la
-connexion automatique unique) — `BI_StressTest` est désormais la SEULE table que ce widget puisse
-créer — et un bouton "Restaurer les tuiles par défaut" en libre-service quand son dashboard se
-retrouve vide. La Roadmap Tier 1 **et le Tier 1.5** sont désormais **entièrement
-terminés** — voir [ROADMAP.md](./ROADMAP.md)
-pour la suite (Tier 2 : moteur DuckDB, mesures façon DAX, tableau croisé dynamique...) priorisée par
-valeur x risque de faisabilité, avec un
-[TEST_PROTOCOL.md](./TEST_PROTOCOL.md) associé qui grandit à chaque nouvelle feature. Voir
-HYPOTHESES.md pour la liste des points encore à valider, notamment la validation en conditions
-réelles du round-trip réseau sur le gros volume dès le premier chargement et du déclenchement de
-l'export Excel depuis l'iframe du widget.
+Deux points d'attention : selon la façon dont Grist cadre le widget, ses modules ES se chargent en mode CORS, donc le serveur doit envoyer l'en-tête `Access-Control-Allow-Origin` (GitHub Pages le fait) ; sans lui, le moteur SQL et les fenêtres de confirmation ne se chargent pas et le widget retombe sur ses solutions de repli (calcul en JavaScript, boîtes de dialogue du navigateur). Et ouvert directement dans un navigateur, hors de Grist, il n'affiche rien d'utile : il a besoin de l'API de Grist pour lire une table.
+
+## Sous le capot
+
+JavaScript sans framework ni étape de build ; la configuration du tableau de bord est stockée dans la table Grist interne `BI_Dashboard_Config`. Graphiques : [Apache ECharts](https://echarts.apache.org/) 6.1.0. Gros volumes : [DuckDB-WASM](https://github.com/duckdb/duckdb-wasm) 1.32.0. Export Excel : [ExcelJS](https://github.com/exceljs/exceljs) 4.4.0. Export PowerPoint : [PptxGenJS](https://gitbrent.github.io/PptxGenJS/) 4.0.1. L'export PDF est écrit sans bibliothèque. Les bibliothèques embarquées sont des copies locales dans `js/vendor/`, jamais chargées depuis un CDN (un réseau d'entreprise qui filtre un CDN laisserait sinon les graphiques vides, sans erreur), à l'exception de PptxGenJS.
+
+## Donner un retour
+
+Les retours sont ce qui manque le plus à cette alpha. Ouvrez une *issue* sur ce dépôt en disant : ce que vous attendiez, ce qui s'est passé, le navigateur utilisé, la taille approximative de la table (lignes et colonnes) et, si vous le pouvez, une capture d'écran. Évitez d'y coller des données sensibles. Cherchés en priorité : de vraies tables avec beaucoup de colonnes, des colonnes Référence, des dates et heures, de gros volumes, et tout ce qui est confus dans l'interface.
 
 ## Licence
 
-**GNU GPL v3.0** pour le code de ce dépôt (texte complet dans [LICENSE](./LICENSE), identité Grist
-Factory — passé de MIT le 2026-09-29, à la demande d'Antoine). `js/vendor/echarts/` contient [Apache ECharts](https://echarts.apache.org/)
-(Apache-2.0) et `js/vendor/exceljs/` contient [ExcelJS](https://github.com/exceljs/exceljs) 4.4.0 (MIT), tous deux
-embarqués tels quels (licence incluse dans chaque dossier). `js/vendor/duckdb/` contient
-[DuckDB-WASM](https://github.com/duckdb/duckdb-wasm) (MIT), `js/vendor/apache-arrow/` contient
-[Apache Arrow](https://arrow.apache.org/) et `js/vendor/flatbuffers/` contient
-[FlatBuffers](https://flatbuffers.dev/) (tous deux Apache-2.0, dépendances transitives de
-DuckDB-WASM), `js/vendor/tslib/` contient [tslib](https://github.com/Microsoft/tslib) (0BSD) —
-mêmes conditions, licence incluse dans chaque dossier.
+Le code de ce dépôt est publié sous **GNU GPL v3.0** : voir [LICENSE](./LICENSE). Les bibliothèques embarquées gardent leur propre licence, incluse dans chaque dossier de `js/vendor/` :
+
+| Bibliothèque | Licence |
+|---|---|
+| Apache ECharts, Apache Arrow, FlatBuffers | Apache-2.0 |
+| DuckDB-WASM, ExcelJS | MIT |
+| tslib | 0BSD |
+
+## Crédits
+
+Conçu et développé par **[Grist Factory](https://grist-factory.fr)**, qui réalise des widgets libres pour Grist. Merci à l'équipe de [Grist](https://www.getgrist.com/) pour la plateforme et son API de widgets, et aux auteurs des bibliothèques libres citées plus haut.
+
+---
+
+## English summary
+
+**Grist BI Dashboard** is a custom [Grist](https://www.getgrist.com/) widget that turns a table of your document into an interactive dashboard, borrowing mechanics from Power BI and DigDash: several charts and KPI cards on the same table that **filter each other on click** (cross-filtering), **drill-down** with a breadcrumb, saved views, multiple pages, and **Excel, PDF and PowerPoint exports**. It is a static web page: no server, no build step, and your data stays in your Grist document.
+
+> [!NOTE]
+> **Alpha.** Usable, but mostly tested on demo data (one real-document trial on a 47,000-row table). Try it on a copy of your data, and please report what breaks.
+
+**Try it:** in a Grist page, add a *Custom* widget, choose *Custom URL*, paste the address below and grant *Full document access*.
+
+```text
+https://grist-factory.github.io/grist-widget-grist-BI/
+```
+
+**Quick start**
+
+1. The widget connects by itself to the **first table** of your document; use the button at the top left to pick another one (it can also join a second table).
+2. Click **Edit**. On an empty dashboard it suggests visualizations based on your columns; or click **Add**, pick a tile type, choose columns and watch the live preview.
+3. Click a bar or a slice to filter every other tile; click again to clear. Click a year to drill down to quarters and months. Use **Filter** for ranges, dates and text search.
+4. Save a **view** to come back to a filtered state in one click; add **pages** for more tiles.
+5. In **Settings** (gear icon), pick one of five tile **styles**, one of five page **layouts**, and the interface language (French or English).
+6. **Export** to Excel (one dashboard sheet of tile images laid out like the screen, plus one data sheet of named Excel tables per page), PDF or PowerPoint.
+
+**What it offers:** 22 tile types (bars, lines and areas, combo with Pareto, pies and donuts, treemap, sunburst, Sankey, calendar, Gantt, histogram, box plot, bubble and scatter, radar, waterfall, funnel, gauge, KPI, progress, pivot table, heatmap, flat table, text note); KPI cards with trend, sparkline and target; cumulative, year-to-date and previous-year measures; advanced filters; comments per tile; import of a Power BI file's layout (`.pbix`/`.pbit`); automatic switch to an in-browser SQL engine (DuckDB-WASM) above 5,000 rows.
+
+**Known limits of the alpha**
+
+- Few real-world trials so far: expect rough edges with wide tables, Reference columns, date-times and very large tables.
+- Full document access is required (Grist has no intermediate level for a widget that saves its own configuration). The widget creates three internal tables (`BI_Dashboard_Config`, `BI_Dashboard_Comments`, `BI_Dashboard_UserProbe`) and never creates or edits your data tables without an explicit confirmation.
+- Exports are **images** of the tiles, not editable Excel or PowerPoint charts; the PowerPoint export needs an internet connection to load its library.
+- The first heavy calculation downloads the SQL engine (about 34 MB).
+- The word cloud and PDF reading need extensions that are not part of this standalone version; they appear greyed out.
+- Mostly tried in Chromium-based browsers; read-only accounts and phones have not been tried.
+- Only the interface is bilingual; titles and export headers built from your column names are not translated.
+
+**License:** GNU GPL v3.0, see [LICENSE](./LICENSE). Bundled libraries keep their own licenses (Apache-2.0, MIT, 0BSD), included in each `js/vendor/` folder. Made by [Grist Factory](https://grist-factory.fr).
