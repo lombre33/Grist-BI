@@ -1142,6 +1142,16 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 - [x] **Démo v3 dans le navigateur** (cadre isolé, clic réel dans le menu Exporter) : 6 feuilles (3 pages x tableau de bord + données), 29 images, 28 tableaux ; converti par LibreOffice (PDF -> image) : tableau de bord identique à l'écran sur les 3 pages, aucune carte recouverte, tableaux nommés lisibles ; thème sombre (2 pages relues) ; Planche + verre dépoli, Rail + Console, Rapport + Éditorial, Vedette + Fluide (1re page relue) 🌐
 - [ ] Ouverture dans un **vrai Excel** (liens `HYPERLINK`, tableaux, ancres `twoCell`), vrai Grist, vrai GFS, Firefox/Safari ⬜ **[NON TESTABLE ICI]**
 
+### Alpha : export Excel grisé, PDF et PPTX ouverts (19/11/2026 ; Node ; Playwright contre `dev-tests/harness.html`)
+
+- [x] `index.html` : `#export-excel` est `disabled` + `aria-disabled="true"` et porte `<span class="menu-item-soon" data-i18n="export.soon">` ; `#export-pdf` et `#export-pptx` n'ont ni l'un ni l'autre ; les trois gardent leur libellé et `data-close-popover` ✅ (Node, bloc « Exports » de `test-data.js`)
+- [x] `export.soon` : « bientôt disponible » / « coming soon » ; `.menu-item-soon` défini dans `css/style.css` ✅
+- [x] `EXCEL_EXPORT_AVAILABLE = false` ; `setTableDependentControlsEnabled` ne rouvre pas Excel mais rouvre PDF/PPTX ; l'écouteur Excel sort d'abord si le drapeau est faux, et le code de l'export (`exportDashboardToExcel`) y est toujours ✅ (Node, lu dans les sources)
+- [x] Aucun `EXPORTS_AVAILABLE` nulle part (le drapeau des trois exports a disparu) ✅
+- [x] **Navigateur** (harnais, fr puis en) : après connexion d'une table, Excel grisé avec la mention, PDF et PPTX ouverts, un clic sur Excel n'appelle pas l'export, 0 erreur de page, capture du menu relue ✅ 🌐
+- [ ] Menu Exporter dans le vrai Grist / le vrai GFS ⬜ **[NON TESTABLE ICI]**
+- **Pour la bêta** : remettre le drapeau à `true`, retirer `disabled aria-disabled` + la mention, et retourner l'assertion du bloc « Exports » ; rouvrir le classeur dans un vrai Excel.
+
 ### `js/snapshot.js` + `js/pdf-writer.js` + `js/pdf-export.js` + `js/pptx-export.js` + `js/charts.js` — exports PDF et PPTX (18/11/2026 ; Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js` préremplie avec la démo v3, page directe ET `<iframe sandbox="allow-scripts allow-downloads">`)
 
 - [x] `pageSizeFor` : largeur A4 paysage, hauteur au rapport, plafond de 14 400 pt, jamais NaN ✅ ; `rgbaToRgb`, `pdfTextString` (UTF-16BE) ✅
