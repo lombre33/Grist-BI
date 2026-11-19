@@ -86,6 +86,8 @@ proxy de l'environnement de développement le refuse, 403 : à faire depuis un p
 
 **Windows** : `.gitattributes` force LF (sinon `core.autocrlf=true` fait échouer `test-data.js` sur `harness.html` et `test-audit.js` sur les empreintes de `js/vendor/`). Dans un clone fait avant : `git rm --cached -r . && git reset --hard` (efface les modifications non committées), ou le recloner.
 
+**Relais des appels bloqués à GFS (règle S8, consigne 026)** : trois scénarios supplémentaires avec une page parente qui fait le faux GFS (`/__host.html`, `?gfs=0` dans l'adresse du cadre, cadre `sandbox="allow-scripts allow-downloads"`). Hébergée, la page dit « relais actif » puis, pour un `fetch` et une image vers `http://exemple.test/…?secret=…` (bloqués par `connect-src` et `img-src`), `exemple.test` SEUL arrive au parent ; seule, elle n'écrit rien ; sans la ligne du relais (`/__norelay.html`), rien n'arrive. L'essai est en `http:` parce que `connect-src https:` (exception de la règle S3 pour la pièce jointe désignée par Grist) laisse passer tout `https:`.
+
 **Contrôle négatif** : une copie d'`index.html` sans `'unsafe-eval'` doit être refusée par la même vérification (sinon l'essai ne voit plus rien). Sortie 2 = Playwright ou Chromium introuvable : ce n'est pas un succès.
 **Ce que l'essai ne prouve pas** : le comportement du VRAI Grist et du vrai GFS (leur propre politique sur le cadre, l'accès réel). Avant de publier : ouvrir le widget dans un vrai Grist, console ouverte, et chercher « Content Security Policy » /
 « Refused to ». Historique : `CLAUDE.md` §7 piège n°51 et `TEST_PROTOCOL.md` bug réel n°57.
