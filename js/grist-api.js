@@ -175,6 +175,40 @@
     return (rv && rv.table_id) || null;
   }
 
+  // Rangement des PAGES des tables internes (demande d'Antoine, 19/11/2026, bêta) : `AddTable` fait créer à Grist une page de plus par
+  // table, au bout de la liste de gauche. Les trois tables internes se retrouvent donc entre les vraies pages du document ; on les range
+  // en sous-pages REPLIÉES d'une page parente, UNE SEULE FOIS par page. Tout le calcul (quelle page est le parent, que déplacer, ce qu'on
+  // ne touche plus) est dans `js/internal-pages.js`, pur et testé sous Node ; ici seulement la lecture des tables système, l'écriture et le
+  // filet : toute erreur (droits en lecture seule, règles d'accès, GFS qui refuse d'écrire `_grist_Pages`) est attrapée et dite UNE fois dans la
+  // console — le widget marche pareil, ses pages restent simplement où Grist les a mises. Les appels sont SÉRIALISÉS (deux créations de table
+  // rapprochées lisent chacune l'arbre dans l'état laissé par l'autre) et jamais attendus par leur appelant.
+  let _organizeChain = Promise.resolve();
+  let _organizeWarned = false;
+  async function runOrganizeInternalPages() {
+    try {
+      if (typeof grist === 'undefined' || !GristBI.internalPages) return null;
+      const [tables, pages, sections] = await Promise.all([
+        grist.docApi.fetchTable('_grist_Tables'),
+        grist.docApi.fetchTable('_grist_Pages'),
+        grist.docApi.fetchTable('_grist_Views_section')
+      ]);
+      const result = GristBI.internalPages.plan({ tables, pages, sections, selfUrl: global.location && global.location.href });
+      if (result.actions.length) await grist.docApi.applyUserActions(result.actions);
+      return result;
+    } catch (e) {
+      if (!_organizeWarned) {
+        _organizeWarned = true;
+        console.warn('[GristBI] Rangement des pages des tables internes impossible (les pages restent où Grist les a créées) :', (e && e.message) || e);
+      }
+      return null;
+    }
+  }
+  function organizeInternalPages() {
+    const run = _organizeChain.then(runOrganizeInternalPages);
+    _organizeChain = run.catch(() => {});
+    return run;
+  }
+
   // [DÉFAUT RÉEL trouvé le 21/10/2026, lors de l'audit UX/UI, sur un document VRAIMENT vide (aucune
   // table utilisateur)] `loadConfig()` et `saveConfig()` appellent CHACUNE `ensureConfigTableExists()`
   // — hors, dans `main.js:switchTable`, `store.clearFilter()`/`store.clearAdvancedFilter()` (avant
@@ -212,6 +246,7 @@
           // avant, voir sa documentation) — même garde que `loadOrCreateTable` plus bas, même
           // raison. Table toute neuve, déjà au schéma CONFIG_COLUMNS complet : rien à migrer.
           if (_rawTables) _rawTables.push(CONFIG_TABLE);
+          organizeInternalPages();
           return;
         }
       }
@@ -660,8 +695,12 @@
   // serait ajoutée à COMMENTS_COLUMNS). Cette table reste créée par ce widget (contrairement à la
   // table de données elle-même, voir CLAUDE.md §1/§7) : elle ne porte que les commentaires, jamais
   // les données de travail de l'utilisateur.
-  function loadOrCreateComments(onProgress) {
-    return loadOrCreateTable(COMMENTS_TABLE, COMMENTS_COLUMNS, () => [], () => ({}), onProgress);
+  async function loadOrCreateComments(onProgress) {
+    const result = await loadOrCreateTable(COMMENTS_TABLE, COMMENTS_COLUMNS, () => [], () => ({}), onProgress);
+    // Appelée UNE fois par session, au démarrage, qu'on vienne de créer la table ou non : c'est ce qui range aussi les pages d'un document
+    // que l'alpha a déjà rempli de tables internes (Config, Comments, UserProbe), sans attendre qu'on en recrée une.
+    organizeInternalPages();
+    return result;
   }
 
   // Mémorisée pour toute la session (comme les commentaires, voir main.js:bootstrap) : l'identité de
@@ -692,6 +731,7 @@
       );
     }
     _rawTables = null;
+    organizeInternalPages();
   }
 
   // Table-sonde à formule déclenchée (voir USER_PROBE_COLUMNS ci-dessus) : AddRecord déclenche le
@@ -990,7 +1030,7 @@
   GristBI.api = {
     init, loadConfig, saveConfig, loadConfigById, blankConfig,
     listAvailableTables, loadTable, loadOrCreateComments, addComment, refColumnsForTable,
-    getCurrentUserEmail, createTableFromRows, readColumnFormats,
+    getCurrentUserEmail, createTableFromRows, readColumnFormats, organizeInternalPages,
     checkAttachmentAccess, getAttachmentBytes, fetchRawTable, addTextColumn, writeColumnValues, safeAttachmentBase
   };
 })(window);
