@@ -80,9 +80,11 @@ NODE_PATH=$(npm root -g) node dev-tests/test-browser.js     # le seul essai du n
 proxy de l'environnement de développement le refuse, 403 : à faire depuis un poste qui y accède). Il joue deux fois, en page directe puis dans un `<iframe sandbox="allow-scripts allow-downloads">`, et **échoue** sur :
 
 - une erreur de console (`EvalError` comprise), une exception de page, une violation de politique (`securitypolicyviolation`) ;
-- une requête échouée ou une réponse 4xx/5xx (un dossier `kit/` vide, c'est-à-dire un sous-module non récupéré, en donne trois : `git submodule update --init`) ;
+- une requête échouée ou une réponse 4xx/5xx (un dossier `kit/` vide, c'est-à-dire un sous-module non récupéré, en donne trois : `git submodule update --init`). **Seule exception** : une réponse que la PAGE annule en cours de route (`net::ERR_ABORTED` avec une réponse déjà reçue : DuckDB-WASM lâche le flux de son `.wasm` après compilation, selon la machine) est relevée (« remarque ») mais n'est pas un défaut ; l'essai la rejoue lui-même à chaque lancement pour prouver que le tri la voit, et six cas de tri sont figés (refus de connexion, `ERR_BLOCKED_BY_CSP`, réponse jamais arrivée… restent des défauts) ;
 - une requête vers un autre site que `docs.getgrist.com` ;
 - `grist` indéfini, aucune ligne chargée, une tuile qui ne se dessine pas (barres, camembert, chiffre, table plate), DuckDB (init + une agrégation), ExcelJS ou les fenêtres du kit qui ne se chargent pas.
+
+**Windows** : `.gitattributes` force LF (sinon `core.autocrlf=true` fait échouer `test-data.js` sur `harness.html` et `test-audit.js` sur les empreintes de `js/vendor/`). Dans un clone fait avant : `git rm --cached -r . && git reset --hard` (efface les modifications non committées), ou le recloner.
 
 **Contrôle négatif** : une copie d'`index.html` sans `'unsafe-eval'` doit être refusée par la même vérification (sinon l'essai ne voit plus rien). Sortie 2 = Playwright ou Chromium introuvable : ce n'est pas un succès.
 **Ce que l'essai ne prouve pas** : le comportement du VRAI Grist et du vrai GFS (leur propre politique sur le cadre, l'accès réel). Avant de publier : ouvrir le widget dans un vrai Grist, console ouverte, et chercher « Content Security Policy » /

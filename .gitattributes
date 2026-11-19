@@ -1,0 +1,13 @@
+# Fins de ligne : toujours LF dans la copie de travail, même sous Windows (core.autocrlf=true convertirait tout en CRLF,
+# et dev-tests/test-data.js échoue alors sur harness.html, régénéré en LF depuis index.html).
+* text=auto eol=lf
+
+# Bibliothèques tierces : octet pour octet, jamais converties (leurs empreintes SHA-256 sont dans js/vendor/SOURCES.md
+# et comparées par dev-tests/test-audit.js).
+js/vendor/** -text
+
+# Fichiers binaires.
+*.wasm binary
+*.png binary
+*.jpg binary
+*.webp binary
