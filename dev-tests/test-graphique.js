@@ -6,7 +6,7 @@
  *    le formulaire de Grist BI écrit (extraits de js/main-form.js : un champ ajouté au formulaire sans l'être ici fait échouer cet essai) ;
  *  - les colonnes qu'une définition demande (dérivées d'une date, jointures, genres) ;
  *  - le calcul des points : « aucun », nulls jamais lus comme 0, ordre d'apparition, listes dont le premier élément est « L », dates avec heure ;
- *  - la lecture d'un rapport (les trois formes historiques, comparée au VRAI `js/grist-api.js`) et d'un graphique de Publipostage+ (v1).
+ *  - la lecture d'un rapport (les trois formes historiques, comparée au VRAI `js/grist-api.js`).
  * `node dev-tests/test-graphique.js`
  */
 'use strict';
@@ -58,7 +58,7 @@ function longueursDeFonctions(source) {
 
   // --- Hygiène ------------------------------------------------------------------------------------------------------------
   {
-    assert.ok(fichiers.length >= 7, `${fichiers.length} fichiers dans js/graphique/`);
+    assert.ok(fichiers.length >= 6, `${fichiers.length} fichiers dans js/graphique/`);
     const connus = new Set(fichiers.map((f) => f.file));
     for (const { file, text } of fichiers) {
       assert.match(text, /^\/\/ \S/, `${file} : commentaire de tête`);
@@ -104,7 +104,7 @@ function longueursDeFonctions(source) {
     for (const bad of [{ type: 'hexagon' }, { type: '' }, { type: undefined }, {}, { type: ['bar'] }]) assert.deepStrictEqual(m.lireDefinition(bad), { ok: false, raison: 'forme' }, JSON.stringify(bad));
     for (const bad of [null, undefined, 'bar', 42, [], [{ type: 'bar' }]]) assert.deepStrictEqual(m.lireDefinition(bad), { ok: false, raison: 'invalide' }, String(bad));
 
-    // La version : plus récente = grisée avec sa raison, jamais mal dessinée ; la v1 est celle de Publipostage+.
+    // La version : plus récente = grisée avec sa raison, jamais mal dessinée ; une `v: 1` est refusée (Publipostage+ n'en a jamais écrit dans un document).
     assert.deepStrictEqual(m.lireDefinition({ v: 3, type: 'bar' }), { ok: false, raison: 'version' });
     assert.deepStrictEqual(m.lireDefinition({ v: 1, kind: 'bar' }), { ok: false, raison: 'v1' });
     for (const v of [0, -1, 2.5, '2', null]) assert.deepStrictEqual(m.lireDefinition({ v, type: 'bar' }), { ok: false, raison: 'invalide' }, `v = ${JSON.stringify(v)}`);
@@ -345,38 +345,6 @@ function longueursDeFonctions(source) {
     assert.strictEqual(m.lireRapport({ config: formats.courant }).tronque, false);
     assert.strictEqual(m.lireRapport({ config: JSON.stringify({ tiles: [], blend: { table: 'X' } }) }).jointure, true, 'une jointure configurée est dite (elle n\'est pas lue)');
     console.log('OK rapport — trois formes historiques comme alpha, tuiles grisées avec leur raison, ids sûrs et uniques, bornes');
-  }
-
-  // --- Un graphique de Publipostage+ (v1) -------------------------------------------------------------------------------------------
-  {
-    const v1 = (spec) => m.lireV1(JSON.stringify(Object.assign({ v: 1, table: 'Notes', label: 'Eleve' }, spec)));
-    const barres = v1({ kind: 'bar', values: ['Maths'] });
-    assert.deepStrictEqual(barres, { ok: true, definition: { v: 2, type: 'bar', dimension: 'Eleve', aggFn: 'none', measure: 'Maths' }, table: 'Notes', ignores: [] });
-    assert.deepStrictEqual(v1({ kind: 'bar', values: ['Maths', 'Francais'], colors: { Maths: '#112233' }, mix: { Francais: 'line' }, stack: true, horizontal: true, labels: true, title: ' Notes ', palette: 'warm' }).definition,
-      { v: 2, type: 'bar', dimension: 'Eleve', aggFn: 'none', measures: [{ column: 'Maths', color: '#112233' }, { column: 'Francais', type: 'line' }], horizontal: true, stacked: true, valueLabels: true, title: 'Notes', palette: 'grist-warm' });
-    assert.deepStrictEqual(v1({ kind: 'bar', values: ['Maths'], colors: { Maths: '#112233' } }).definition.measures, [{ column: 'Maths', color: '#112233' }], 'une couleur posée sur l\'unique colonne passe par `measures`');
-    assert.deepStrictEqual(v1({ kind: 'line', values: ['Maths'] }).definition, { v: 2, type: 'line', dimension: 'Eleve', aggFn: 'none', measure: 'Maths', sortMode: 'axis' }, 'courbe : aucun + tri par abscisse');
-    assert.deepStrictEqual(v1({ kind: 'area', values: ['Maths'], stack: true }).definition, { v: 2, type: 'line', dimension: 'Eleve', aggFn: 'none', measure: 'Maths', sortMode: 'axis', areaFill: true, stacked: true }, 'aire = courbe remplie');
-    for (const kind of ['pie', 'donut', 'funnel']) assert.strictEqual(v1({ kind, values: ['Maths'] }).definition.aggFn, 'sum', `${kind} : somme (la v1 additionne les lignes de même étiquette)`);
-    assert.deepStrictEqual(v1({ kind: 'pie' }).definition, { v: 2, type: 'pie', dimension: 'Eleve', aggFn: 'count' }, 'sans colonne de valeurs : un comptage');
-    assert.deepStrictEqual(v1({ kind: 'donut', values: ['Maths'] }).definition, { v: 2, type: 'pie', dimension: 'Eleve', aggFn: 'sum', measure: 'Maths', donut: true });
-    assert.deepStrictEqual(v1({ kind: 'radar', values: ['Maths', 'Francais'] }).definition, { v: 2, type: 'radar', dimension: 'Eleve', aggFn: 'none', measures: [{ column: 'Maths' }, { column: 'Francais' }], radarAxisMode: 'dimension' });
-    assert.deepStrictEqual(v1({ kind: 'waterfall', values: ['Delta'], total: true }).definition, { v: 2, type: 'waterfall', dimension: 'Eleve', aggFn: 'none', measure: 'Delta', total: true });
-    assert.deepStrictEqual(v1({ kind: 'scatter', label: 'Age', values: ['Taille'] }).definition, { v: 2, type: 'scatter', aggFn: 'none', measure: 'Age', measureY: 'Taille' }, 'nuage : l\'étiquette est l\'abscisse');
-    assert.deepStrictEqual(v1({ kind: 'scatter', label: 'Age', values: ['Taille', 'Poids'] }).definition.measures, [{ column: 'Taille' }, { column: 'Poids' }], 'plusieurs nuages : les Y en `measures`');
-    assert.strictEqual(v1({ kind: 'bar', values: ['A'], palette: 'standard' }).definition.palette, 'grist', 'le « standard » de Publipostage+ n\'est pas celui de Grist BI');
-    assert.strictEqual(v1({ kind: 'bar', values: ['A'] }).definition.palette, undefined, 'sans palette : rien (l\'hôte donne le défaut)');
-    assert.strictEqual(v1({ kind: 'bar', values: Array.from({ length: 12 }, (_, i) => `C${i}`) }).definition.measures.length, 8);
-    // Refus, avec raison.
-    assert.deepStrictEqual(v1({ kind: 'gauge', values: ['Score'], max: 20 }), { ok: false, raison: 'jauge' });
-    assert.deepStrictEqual(v1({ kind: 'sunburst' }), { ok: false, raison: 'forme' });
-    assert.deepStrictEqual(v1({ kind: 'bar', v: 2 }), { ok: false, raison: 'version' });
-    for (const bad of [null, '', 'pas du json', '[]', '{"kind":"bar"}', JSON.stringify({ kind: 'bar', label: 'A' }), 'x'.repeat(5000)]) assert.strictEqual(m.lireV1(bad).ok, false, String(bad).slice(0, 20));
-    assert.strictEqual(m.lireV1({ v: 1, kind: 'bar', table: 'T', label: 'A', values: ['B'] }).ok, true, 'un objet se lit aussi');
-    // Une v1 lue est ensuite une définition comme une autre : ses colonnes sont celles que l'hôte remappe.
-    assert.deepStrictEqual(m.colonnesDeDefinition(v1({ kind: 'bar', values: ['Maths', 'Francais'] }).definition), [{ id: 'Eleve' }, { id: 'Maths', genre: 'number' }, { id: 'Francais', genre: 'number' }]);
-    assert.deepStrictEqual(m.colonnesDeDefinition(v1({ kind: 'scatter', label: 'Age', values: ['Taille'] }).definition), [{ id: 'Age', genre: 'number' }, { id: 'Taille', genre: 'number' }]);
-    console.log('OK lecture v1 — barres, courbe, aire, secteurs, anneau, entonnoir, radar, cascade, nuage ; jauge refusée avec sa raison');
   }
 
   console.log('\nTous les essais du module graphique sont passés.');
