@@ -70,9 +70,11 @@ un essai fait seulement dans une page directe ne voit pas ce défaut (`CLAUDE.md
 ## Non-régression dans un vrai navigateur, à lancer avant toute fusion et tout envoi
 
 ```
-sh dev-tests/run-all.sh          # les neuf essais Node (dont test-graphique), puis l'essai du navigateur (≈ 1 min) ; sortie 0 = on peut fusionner / envoyer
+sh dev-tests/run-all.sh          # les dix essais Node (dont test-graphique et test-graphique-dessin), puis les deux essais du navigateur (≈ 2 min) ; sortie 0 = on peut fusionner / envoyer
 NODE_PATH=$(npm root -g) node dev-tests/test-browser.js     # le seul essai du navigateur
 ```
+
+**Le dessin du module `js/graphique/`** (`CLAUDE.md` §2) a deux essais : `node dev-tests/test-graphique-dessin.js` (Node, faux ECharts : formats comparés à `js/format.js` sur 23 520 combinaisons, options, refus, `image()`, vue, modèle Office) et `NODE_PATH=$(npm root -g) node dev-tests/test-graphique-navigateur.js` (Chromium : le module est comparé PIXEL À PIXEL au dessin de Grist BI pour dix tuiles, puis 500 images de suite avec contrôle du tas JS et de la mémoire des processus de rendu). Mesures de volume du second : `MESURES=1 TAILLES=5000,20000,50000,500000 NODE_PATH=$(npm root -g) node dev-tests/test-graphique-navigateur.js` ; sans `MESURES`, seuls la parité et la charge sont jouées. La charge sans libération des toiles monte à 2,9 Go : l'essai la voit.
 
 `dev-tests/test-browser.js` charge le **vrai `index.html`** (pas `harness.html`), avec sa politique de sécurité du contenu, servi par un petit serveur local avec `Access-Control-Allow-Origin: *`. Il remplace
 `https://docs.getgrist.com/grist-plugin-api.js` par un fichier qui s'exécute **par `eval` et `Function`** comme le bundle de Grist, et qui pose le faux `grist` de `dev-tests/grist-stub.js` ; une table de démonstration (`Ventes`) est préremplie
