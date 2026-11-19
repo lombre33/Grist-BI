@@ -213,6 +213,7 @@ Voici ce qu'il vaut mieux savoir avant de l'adopter.
 - Il **lit** la table de travail que vous choisissez (la première du document au démarrage), les métadonnées de ses colonnes (type, format) et, à la demande, les pièces jointes d'une colonne.
 - Il **écrit** dans trois tables internes, jamais dans vos données : `BI_Dashboard_Config` (le tableau de bord), `BI_Dashboard_Comments` (les commentaires) et `BI_Dashboard_UserProbe` (une ligne éphémère pour connaître l'adresse de la personne qui commente).
 - Il ne modifie vos tables que sur un **geste explicite, après une fenêtre de confirmation** : la création d'une table à l'import d'un CSV exporté de Power BI, et l'ajout d'une colonne de mots-clés puis l'écriture de ses cellules vides.
+- **(Bêta)** Il **lit** `_grist_Pages` et `_grist_Views_section` et **range** les pages de ses trois tables internes : Grist ajoute une page par table au bout de la liste de gauche, le widget les met en sous-pages de la page qui le porte, repliées par défaut (Grist 1.7.0 et suivants), une seule fois par page (une page que vous déplacez ensuite n'est plus touchée). Rien n'est supprimé ni renommé ; si Grist ou l'hôte refuse, un avertissement dans la console et les pages restent où Grist les a mises.
 - Il n'utilise jamais `RemoveTable`, `RemoveColumn` ni `BulkRemoveRecord`.
 
 ### Ce que le widget charge, et quand
