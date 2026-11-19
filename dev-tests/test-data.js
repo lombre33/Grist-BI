@@ -6419,28 +6419,45 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
       assert.ok(/GristBI\.buildTileElement = buildTileElement;/.test(mainSrcX), 'main.js offre la carte d\'une tuile à l\'export');
       const excelListener = mainSrcX.slice(mainSrcX.indexOf("exportExcelBtn.addEventListener('click'"), mainSrcX.indexOf("exportPdfBtn.addEventListener('click'"));
       assert.ok(/dataset\.busy/.test(excelListener) && /finally \{/.test(excelListener), 'pas de second export pendant le premier ; le bouton est rendu même après un échec');
-      assert.ok(!/EXPORTS_AVAILABLE/.test(excelListener), 'l\'export Excel est rouvert : il ne dépend plus du drapeau des autres');
+      assert.ok(!/EXPORTS_AVAILABLE/.test(excelListener), 'l\'export Excel ne dépend pas du drapeau (disparu) des trois exports');
+      assert.ok(/!EXCEL_EXPORT_AVAILABLE \|\| exportExcelBtn\.dataset\.busy/.test(excelListener), 'alpha : le clic est coupé tant que l\'export Excel est grisé (le code reste en place)');
+      assert.ok(/GristBI\.exportExcel\.exportDashboardToExcel\(store\.getState\(\)\)/.test(excelListener), 'le code de l\'export Excel est conservé pour la bêta');
       assert.ok(/page\.slots = GristBI\.layouts\.slots\(page\.layout, page\.blocks\.map\(\(b\) => b\.tile\), DASH_WIDTH, \{ minGap: DASH_MIN_GAP \}\)/.test(xl), 'la mise en page de chaque page vient de la disposition de la page, sur une largeur fixe (le même fichier quelle que soit la fenêtre)');
       assert.ok(/dataMode: 'perPage'/.test(xl), 'rangement des données par défaut : une feuille par page');
     }
     console.log('OK export Excel — par page : tableau de bord (images ancrées à leur place, 5 dispositions, sans recouvrement) + feuille de données (tableaux Excel nommés), 3 rangements, liens HYPERLINK échappés, cellules (types, NaN, grands entiers, objets, formats), texte = formule jamais, noms uniques, bout en bout, photographie lue dans les sources');
   }
 
-  // Les trois exports sont ouverts (18/11/2026) : l'Excel refait par un autre fil (une feuille par page, graphiques en images), le PDF et le PPTX
-  // refaits ici (la page est photographiée). Plus aucun bouton grisé ni drapeau `EXPORTS_AVAILABLE` : ni dans `js/main.js`, ni dans `index.html`.
+  // Exports (19/11/2026, demande d'Antoine : « pdf et power point actifs dans l'alpha, on garde export Excel pour la bêta ») : PDF et PPTX ouverts
+  // (refaits le 18/11 : la page est photographiée), Excel GRISÉ avec « bientôt disponible » mais tout son code conservé. Aucun drapeau `EXPORTS_AVAILABLE` :
+  // seul `EXCEL_EXPORT_AVAILABLE` (js/main-render.js) garde le bouton Excel fermé quand une table se connecte.
   {
     const fsE = require('fs');
     const pathE = require('path');
     const indexE = fsE.readFileSync(pathE.join(__dirname, '..', 'index.html'), 'utf8');
     const mainE = readMain();
-    for (const [id, label] of [['export-excel', 'bookmarks.exportExcel'], ['export-pdf', 'bookmarks.exportPdf'], ['export-pptx', 'bookmarks.exportPptx']]) {
-      const m = indexE.match(new RegExp('<button id="' + id + '"[^>]*>'));
+    for (const [id, label, open] of [['export-excel', 'bookmarks.exportExcel', false], ['export-pdf', 'bookmarks.exportPdf', true], ['export-pptx', 'bookmarks.exportPptx', true]]) {
+      const m = indexE.match(new RegExp('<button id="' + id + '"[^>]*>(.*?)</button>'));
       assert.ok(m, id + ' : bouton présent');
-      assert.ok(!/\sdisabled\b/.test(m[0]) && !/aria-disabled/.test(m[0]), id + ' : rouvert, sans mention « bientôt disponible »');
+      const tag = m[0].slice(0, m[0].indexOf('>') + 1);
       assert.ok(m[0].indexOf('data-i18n="' + label + '"') > 0, id + ' : son libellé');
+      if (open) {
+        assert.ok(!/\sdisabled\b/.test(tag) && !/aria-disabled/.test(tag), id + ' : ouvert (alpha)');
+        assert.ok(!/export\.soon/.test(m[0]), id + ' : sans mention « bientôt disponible »');
+      } else {
+        assert.ok(/\sdisabled\b/.test(tag) && /aria-disabled="true"/.test(tag), id + ' : grisé pour l\'alpha (disabled + aria-disabled)');
+        assert.ok(/<span class="menu-item-soon" data-i18n="export\.soon">/.test(m[0]), id + ' : la mention « bientôt disponible » est dans le bouton');
+      }
     }
-    assert.ok(!/EXPORTS_AVAILABLE/.test(mainE) && !/EXPORTS_AVAILABLE/.test(indexE), 'plus aucun drapeau de désactivation des exports');
-    assert.ok(!/export\.soon/.test(indexE) && !i18n.STRINGS['export.soon'], 'plus de mention « bientôt disponible »');
+    assert.ok(!/EXPORTS_AVAILABLE/.test(mainE) && !/EXPORTS_AVAILABLE/.test(indexE), 'plus aucun drapeau de désactivation des TROIS exports');
+    assert.ok(/const EXCEL_EXPORT_AVAILABLE = false;/.test(mainE), 'alpha : l\'export Excel est fermé par un drapeau (à remettre à true pour la bêta)');
+    const setEnabled = mainE.slice(mainE.indexOf('function setTableDependentControlsEnabled'), mainE.indexOf('// Mode Lecture / Édition'));
+    assert.ok(/if \(!EXCEL_EXPORT_AVAILABLE\) exportExcelBtn\.disabled = true;/.test(setEnabled), 'la connexion d\'une table ne rouvre pas l\'export Excel');
+    assert.ok(/exportPdfBtn, exportPptxBtn/.test(setEnabled) && !/if \(!EXCEL_EXPORT_AVAILABLE\)[^\n]*exportPdfBtn/.test(setEnabled), 'PDF et PPTX suivent la connexion d\'une table, rien d\'autre');
+    assert.ok(/data-close-popover/.test(indexE.match(/<button id="export-excel"[^>]*>/)[0]), 'le menu se referme comme pour les autres exports');
+    // La mention : fr ET en, et le libellé du bouton ne change pas.
+    assert.ok(i18n.STRINGS['export.soon'] && i18n.STRINGS['export.soon'].fr === 'bientôt disponible' && i18n.STRINGS['export.soon'].en === 'coming soon', 'mention « bientôt disponible » / « coming soon »');
+    assert.ok(/\.menu-item-soon/.test(fsE.readFileSync(pathE.join(__dirname, '..', 'css', 'style.css'), 'utf8')), 'la mention a son style');
     // Textes du classeur Excel : fr ET en, variables identiques.
     for (const key of ['export.xlsx.subtitle', 'export.xlsx.filters', 'export.xlsx.noImage', 'export.xlsx.noRows', 'export.xlsx.truncated', 'export.xlsx.cut', 'export.xlsx.dataSuffix', 'export.xlsx.dataSheet', 'export.xlsx.toData', 'export.xlsx.toDashboard', 'export.xlsx.preparing']) {
       const entry = i18n.STRINGS[key];

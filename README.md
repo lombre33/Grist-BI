@@ -73,7 +73,7 @@ réellement (voir HYPOTHESES.md).
   `Date`, recherche texte (insensible à la casse) pour le reste. Le type de champ affiché s'adapte
   automatiquement à la colonne choisie, en inspectant une valeur réelle (pas son nom). Se cumulent en
   ET avec les filtres croisés existants et s'appliquent à toutes les tuiles.
-- **Export Excel** (refait le 18/11/2026) : « Exporter en Excel » télécharge un classeur `.xlsx` qui garde la mise en page du
+- **Export Excel — grisé dans l'alpha (« bientôt disponible »), de retour pour la bêta** (19/11/2026 ; le code est conservé, seul le bouton est fermé ; l'export PDF et l'export PPTX, eux, sont ouverts). Refait le 18/11/2026 : « Exporter en Excel » télécharge un classeur `.xlsx` qui garde la mise en page du
   tableau de bord. Pour **chaque page** : une feuille **« tableau de bord »** où chaque tuile est une image (la carte telle qu'on la voit,
   style compris), posée **là où l'écran la met** (grille, Rapport, Planche, Vedette ou Rail), et une feuille **de données** où chaque
   tuile est un **tableau Excel nommé** (filtres, tri, tableau croisé dynamique en deux clics), avec des liens d'une feuille à l'autre. Une

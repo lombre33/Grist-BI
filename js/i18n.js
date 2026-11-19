@@ -74,6 +74,7 @@
     'bookmarks.exportPdf': { fr: 'Exporter en PDF', en: 'Export to PDF' },
     'bookmarks.exportPptx': { fr: 'Exporter en PPTX', en: 'Export to PPTX' },
     'export.none': { fr: 'Aucune tuile à exporter.', en: 'No tile to export.' },
+    'export.soon': { fr: 'bientôt disponible', en: 'coming soon' },
     'export.failed': { fr: "Échec de l'export Excel — voir la console (F12).", en: 'Excel export failed — see the console (F12).' },
     // Classeur Excel (js/export.js) : par page, une feuille « tableau de bord » (une image par tuile, à sa place) et une feuille de données (un tableau Excel par tuile).
     'export.xlsx.subtitle': { fr: 'Exporté le {date} · {rows} {rows|ligne|lignes} de données', en: 'Exported on {date} · {rows} data {rows|row|rows}' },
