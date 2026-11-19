@@ -154,8 +154,8 @@ function lireMesures(brut, definition, ignores) {
   return null;
 }
 
-// Lit une définition (ou une tuile enregistrée, qui en est une). Rend `{ ok: true, definition, ignores }` ou `{ ok: false, raison, champ? }` : `invalide` (pas un objet), `v1` (c'est le format de Publipostage+ : voir
-// lecture-v1.js), `version` (écrite par une version plus récente du module), `forme` (forme inconnue), `agregat`, `valeur`, `series`. Une définition refusée s'affiche grisée avec sa raison, jamais mal dessinée.
+// Lit une définition (ou une tuile enregistrée, qui en est une). Rend `{ ok: true, definition, ignores }` ou `{ ok: false, raison, champ? }` : `invalide` (pas un objet), `v1` (le format que Publipostage+ n'a jamais écrit dans un
+// document : refusé, jamais lu), `version` (écrite par une version plus récente du module), `forme` (forme inconnue), `agregat`, `valeur`, `series`. Une définition refusée s'affiche grisée avec sa raison, jamais mal dessinée.
 export function lireDefinition(brut) {
   if (!estObjet(brut)) return refus('invalide');
   if (possede(brut, 'v')) {
