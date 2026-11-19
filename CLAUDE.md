@@ -480,6 +480,7 @@ Cette liste condense les bugs réels les plus instructifs (détail complet dans 
     était invisible (audit UI/UX du 18/11/2026). Ne plus jamais les appeler : `GristBI.dialogs.*` (`js/dialogs.js`,
     fenêtres du kit), avec `await`. Un test qui ne tourne que dans une page directe ne voit pas ce défaut : le
     rejouer dans un `<iframe sandbox="allow-scripts">`.
+    **Mise à jour du 19/11/2026 (consigne GFS 027)** : GFS dit que son sous-cadre porte aujourd'hui `allow-scripts allow-forms allow-popups allow-modals allow-downloads` (jamais `allow-same-origin`), plus large que ce qui avait été observé le 18/11 ; rien n'est retiré pour autant (le widget marche dans les deux cas, `dev-tests/test-browser.js` joue le cadre le plus strict, `allow-scripts allow-downloads`).
 18. **Une tuile mise en cache ne doit jamais capturer l'objet `tile` de sa création dans ses écouteurs ni son
     en-tête** : `buildTileElement` n'est appelé qu'une fois, donc après `store.updateTile` l'en-tête gardait l'ancien
     titre et « Modifier » rechargeait les anciennes valeurs. Relire la tuile vive (`store.getState().tiles`) à
@@ -501,7 +502,7 @@ Cette liste condense les bugs réels les plus instructifs (détail complet dans 
     une page directe ne le voit pas — rejouer dans un `<iframe sandbox="allow-scripts">`. Deuxième piège du même lot : un combobox
     ouvre sa liste au focus ; donner le focus à un champ combobox par programme (ouverture du panneau, focus d'une erreur) recouvre
     les champs suivants. Le panneau focalise donc le conteneur d'étape (`tabindex="-1"`, `preventScroll`) et, après avoir mis le focus
-    sur un combobox en erreur, ferme sa liste par un Échap synthétique.
+    sur un combobox en erreur, ferme sa liste par un Échap synthétique. **Même mise à jour que le piège n°17** : GFS annonce aujourd'hui `allow-forms` dans son sous-cadre (consigne 027, 19/11/2026) ; `bindFormSubmit` reste la règle (il marche dans les deux cas, et rien ne prouve que Grist, lui, l'ait).
 
 21. **Monter ECharts, c'est changer des DÉFAUTS, pas seulement des numéros** (5.x -> 6.1.0, 18/11/2026). La v6 a un autre thème et
     d'autres cadres par défaut : treemap sans cadre explicite = marges fixes 20/50 px (62 px de haut dans une tuile de 224 px, au lieu de
