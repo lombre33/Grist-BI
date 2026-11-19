@@ -59,7 +59,7 @@ un essai fait seulement dans une page directe ne voit pas ce défaut (`CLAUDE.md
 ## Non-régression dans un vrai navigateur, à lancer avant toute fusion et tout envoi
 
 ```
-sh dev-tests/run-all.sh          # les huit essais Node (dont test-graphique, sur la branche bêta), puis l'essai du navigateur (≈ 1 min) ; sortie 0 = on peut fusionner / envoyer
+sh dev-tests/run-all.sh          # les huit essais Node (dont test-graphique), puis l'essai du navigateur (≈ 1 min) ; sortie 0 = on peut fusionner / envoyer
 NODE_PATH=$(npm root -g) node dev-tests/test-browser.js     # le seul essai du navigateur
 ```
 

@@ -1,5 +1,5 @@
 /*
- * Essais du module graphique commun (js/graphique/, branche bêta : pas encore branché à l'interface, voir GFS-ETAT.md « Module graphique commun avec Publipostage+ ») :
+ * Essais du module graphique commun (js/graphique/, sur main du dépôt de dev, absent de l'alpha publiée : pas encore branché à l'interface, voir GFS-ETAT.md « Module graphique commun avec Publipostage+ ») :
  *  - HYGIÈNE : les règles que GFS applique au module du calendrier du kit et a dites s'appliquer à celui-ci (consigne 021) — modules ES par chemins relatifs, ni `import()` ni adresse,
  *    ni HTML par chaîne, ni `eval`, ni `window`/`grist`/stockage, 600 lignes au plus par fichier, moins de 81 par fonction ;
  *  - la définition v2 (lecture défensive, version, agrégat « aucun » et agrégat inconnu REFUSÉ, `measures` / `seriesColumn` exclusifs, aller-retour) et sa couverture de TOUS les champs que
