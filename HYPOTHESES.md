@@ -3797,6 +3797,13 @@ Constat (en testant le style global des tuiles) : sur une courbe ou des barres v
 - **Non vérifié** : un vrai Grist/GFS (le téléchargement dans leur cadre) ; **l'ouverture dans un vrai Excel** — notamment la navigation par les liens internes `HYPERLINK`, les tableaux nommés et les ancres `twoCell` n'ont été vus que dans LibreOffice et par inspection du XML ; Firefox/Safari (la photographie utilise `foreignObject`).
 - **Limites assumées** : les images sont des PNG, pas des graphiques Excel modifiables ; une disposition sans carte (Rapport, Planche, Rail) apparaît avec l'habillage d'une carte (la position est celle de la disposition, l'habillage celui de la carte) ; le fond de la feuille reste blanc autour d'une carte sombre ; la zone de travail est fixée à 1 200 px (le même fichier quelle que soit la fenêtre), donc une page en Rail (seuil 1 040 px) s'affiche en Rail même dans une fenêtre qui l'aurait repliée en grille.
 
+### Alpha : export Excel grisé, PDF et PPTX ouverts (19/11/2026, demande d'Antoine : « pour les export, tu peux réactiver dans l'alpha pdf et power point. On garde export exel pour la beta »)
+
+- **Décision** : l'alpha publiée garde PDF et PPTX actifs (validés par Antoine dans un vrai Grist le 18/11) ; l'export Excel refait (PR #121/#127) n'a jamais été ouvert dans un vrai Excel ni retéléchargé depuis un vrai Grist/GFS : il est **grisé avec « bientôt disponible »** et revient pour la bêta. Le code est conservé en entier ; rien de l'export Excel n'est retiré ni modifié.
+- **Ce qui change** : `#export-excel` est `disabled aria-disabled="true"` dans `index.html` avec une mention `export.soon` (fr « bientôt disponible », en « coming soon ») ; `js/main-render.js:EXCEL_EXPORT_AVAILABLE = false` le garde fermé quand une table se connecte (`setTableDependentControlsEnabled` ré-active sinon tous les boutons) et coupe son écouteur ; style `.menu-item-soon`. PDF et PPTX : aucune ligne de leur code touchée.
+- **Testé** (Node + Playwright contre `dev-tests/harness.html`) : bouton Excel grisé avec la mention en fr ET en, PDF/PPTX ouverts, la connexion d'une table ne rouvre pas Excel, un clic sur Excel n'appelle pas l'export, aucune erreur de page ; capture du menu relue. **Jamais vérifié** dans un vrai Grist/GFS (comme tout ce qui est visuel dans ce dépôt).
+- **Pour la bêta** : `EXCEL_EXPORT_AVAILABLE = true`, retirer `disabled aria-disabled` et la mention de `#export-excel`, `node dev-tests/sync-harness.js`, remettre l'assertion du bloc « Exports » de `dev-tests/test-data.js` sur « ouvert », puis faire ouvrir le classeur dans un vrai Excel (liens `HYPERLINK`, tableaux nommés, ancres `twoCell`) : c'est la réserve de l'entrée précédente, toujours entière.
+
 ### Exports PDF et PPTX refaits — la page est photographiée (18/11/2026, retour d'Antoine : « complètement cassé, il faut garder le côté tableau de bord »)
 
 - **Exports PDF et PPTX refaits : la page est photographiée, pas recomposée** (`js/snapshot.js`, `js/pdf-writer.js`, `js/pdf-export.js`,
@@ -3832,7 +3839,7 @@ Constat (en testant le style global des tuiles) : sur une courbe ou des barres v
   - **Fait** : (1) tout balisage écrit dans la page passe par `js/safe-html.js` (liste blanche, PR #130) ; (2) tout code chargé à l'exécution passe par `js/loader.js` (https, empreinte `integrity` pour un autre
     site, liste d'hôtes) ou `js/modules.js` (modules ES en chemins littéraux) ; (3) ECharts perd son `document.write` et son `window.open` non filtré, DuckDB reçoit un en-tête de provenance ; (4) l'adresse de
     téléchargement d'une pièce jointe n'est suivie que bien formée et en https ; (5) `index.html` porte une **politique de sécurité du contenu** (`<meta http-equiv="Content-Security-Policy">`,
-    `default-src 'none'`, scripts `'self'` + `'wasm-unsafe-eval'` + empreinte de l'`importmap` + `https:`, `form-action 'none'`, `worker-src 'self' blob:`, jamais `'unsafe-inline'` ni `'unsafe-eval'`).
+    `default-src 'none'`, scripts `'self'` + `'unsafe-eval'` (ajouté le 19/11 : le `grist-plugin-api.js` de Grist s'exécute par `eval`, voir `CLAUDE.md` §7 piège n°51) + `'wasm-unsafe-eval'` + empreinte de l'`importmap` + `https:`, `form-action 'none'`, `worker-src 'self' blob:`, jamais `'unsafe-inline'`).
   - **Choix et pièges** (CLAUDE.md §7 n°49 et n°50) : un `import()` écrit dans un script CLASSIQUE n'a pas d'adresse de base dans le cadre isolé de GFS (d'où `js/modules.js`, un module) ; un navigateur ignore une
     empreinte `integrity` mal formée (le chargeur la refuse lui-même) ; `https:` reste dans `script-src` et `connect-src` (adresses d'extension de GFS, de pièce jointe et de PptxGenJS inconnues d'avance) ;
     `style-src 'unsafe-inline'` (la photographie des exports, ECharts) ; `frame-ancestors` ne s'écrit pas dans un `<meta>` ; **l'empreinte de l'`importmap` doit suivre son texte** (sinon DuckDB ne se charge plus, sans
@@ -4164,6 +4171,8 @@ Constat (en testant le style global des tuiles) : sur une courbe ou des barres v
     https attendu : sinon la lecture des PDF est refusée avec un message, voir `safeAttachmentBase`) et l'adresse réelle d'une extension de GFS (https, avec son empreinte) ; (d) Firefox et Safari (la politique et `'wasm-unsafe-eval'`
     ont été essayés dans Chromium seulement). Vérification : ouvrir le widget dans un vrai Grist puis dans GFS avec la console ouverte, chercher « Content Security Policy » ou « Refused to » ; lancer un calcul de plus de
     5 000 lignes (DuckDB), un export Excel puis PPTX, une fenêtre de confirmation, et la fenêtre « Mots-clés des publications » si l'extension est ajoutée.
+    **Ce point a déjà coûté cher (19/11/2026)** : la politique du 18/11 n'avait pas `'unsafe-eval'` et le `grist-plugin-api.js` de Grist s'exécute par `eval` : le widget ne démarrait pas dans un vrai Grist (`grist` indéfini). Les essais d'alors
+    n'utilisaient qu'un faux `grist` sans `eval`. Corrigé ; `dev-tests/test-browser.js` rejoue maintenant la page avec un `eval` et `sh dev-tests/run-all.sh` se lance avant toute fusion et tout envoi. Ce point 17 reste la seule façon de savoir ce que fait un VRAI Grist (ou GFS) de la politique : ne jamais publier sans l'avoir ouvert une fois.
 
 ## Prochaines étapes suggérées
 

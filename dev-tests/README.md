@@ -56,6 +56,27 @@ bonne et à fausse empreinte, les refus, DuckDB au-delà de 5 000 lignes, la fen
 dans un script CLASSIQUE n'a pas d'adresse de base dans ce cadre (« The base URL is about:blank »), alors qu'écrit dans un module il se résout ;
 un essai fait seulement dans une page directe ne voit pas ce défaut (`CLAUDE.md` §7 piège n°49).
 
+## Non-régression dans un vrai navigateur, à lancer avant toute fusion et tout envoi
+
+```
+sh dev-tests/run-all.sh          # les sept essais Node, puis l'essai du navigateur (≈ 1 min) ; sortie 0 = on peut fusionner / envoyer
+NODE_PATH=$(npm root -g) node dev-tests/test-browser.js     # le seul essai du navigateur
+```
+
+`dev-tests/test-browser.js` charge le **vrai `index.html`** (pas `harness.html`), avec sa politique de sécurité du contenu, servi par un petit serveur local avec `Access-Control-Allow-Origin: *`. Il remplace
+`https://docs.getgrist.com/grist-plugin-api.js` par un fichier qui s'exécute **par `eval` et `Function`** comme le bundle de Grist, et qui pose le faux `grist` de `dev-tests/grist-stub.js` ; une table de démonstration (`Ventes`) est préremplie
+(le widget ne crée aucune table de données : sans elle il affiche « aucune table »). Pour jouer le VRAI fichier de Grist : `curl -o /tmp/api.js https://docs.getgrist.com/grist-plugin-api.js` puis `GRIST_PLUGIN_API_FILE=/tmp/api.js` (le
+proxy de l'environnement de développement le refuse, 403 : à faire depuis un poste qui y accède). Il joue deux fois, en page directe puis dans un `<iframe sandbox="allow-scripts allow-downloads">`, et **échoue** sur :
+
+- une erreur de console (`EvalError` comprise), une exception de page, une violation de politique (`securitypolicyviolation`) ;
+- une requête échouée ou une réponse 4xx/5xx (un dossier `kit/` vide, c'est-à-dire un sous-module non récupéré, en donne trois : `git submodule update --init`) ;
+- une requête vers un autre site que `docs.getgrist.com` ;
+- `grist` indéfini, aucune ligne chargée, une tuile qui ne se dessine pas (barres, camembert, chiffre, table plate), DuckDB (init + une agrégation), ExcelJS ou les fenêtres du kit qui ne se chargent pas.
+
+**Contrôle négatif** : une copie d'`index.html` sans `'unsafe-eval'` doit être refusée par la même vérification (sinon l'essai ne voit plus rien). Sortie 2 = Playwright ou Chromium introuvable : ce n'est pas un succès.
+**Ce que l'essai ne prouve pas** : le comportement du VRAI Grist et du vrai GFS (leur propre politique sur le cadre, l'accès réel). Avant de publier : ouvrir le widget dans un vrai Grist, console ouverte, et chercher « Content Security Policy » /
+« Refused to ». Historique : `CLAUDE.md` §7 piège n°51 et `TEST_PROTOCOL.md` bug réel n°57.
+
 ## Politique de sécurité du contenu (`index.html`)
 
 ```
@@ -63,7 +84,7 @@ node dev-tests/test-csp.js
 ```
 
 La balise `<meta http-equiv="Content-Security-Policy">` d'`index.html` : une seule, dans `<head>`, avant toute balise de script, de feuille ou de style ; les directives exactes
-(`default-src 'none'`, `script-src` = `'self'` + `'wasm-unsafe-eval'` + `https:` + une empreinte, jamais `'unsafe-inline'`/`'unsafe-eval'`/joker/`data:`/`blob:`/`http:`, `form-action 'none'`, `worker-src 'self' blob:`) ;
+(`default-src 'none'`, `script-src` = `'self'` + `'unsafe-eval'` (REQUIS : `grist-plugin-api.js` de Grist s'exécute par `eval`) + `'wasm-unsafe-eval'` + `https:` + une empreinte, jamais `'unsafe-inline'`/joker/`data:`/`blob:`/`http:`, `form-action 'none'`, `worker-src 'self' blob:`) ;
 **l'empreinte de l'`importmap` recalculée sur son texte réel** (retoucher l'`importmap` sans changer l'empreinte empêche DuckDB de se charger, et le widget retombe en silence sur le calcul JS) ; aucun
 `on…=`, `javascript:`, `<style>` ni `<iframe>` ; `frame-ancestors`/`report-uri`/`sandbox` absents (ignorés dans une balise `<meta>`). Ce que la politique laisse passer ou bloque se mesure dans un navigateur :
 
@@ -71,7 +92,7 @@ La balise `<meta http-equiv="Content-Security-Policy">` d'`index.html` : une seu
   `<iframe sandbox="allow-scripts allow-downloads">` ; écouter `securitypolicyviolation` (`document.addEventListener`, ajouté par `page.addInitScript`) et attendre 0 violation sur le parcours : 22 types de tuile,
   DuckDB au-delà de 5 000 lignes (Worker `blob:`, `.wasm`), fenêtre du kit, menus, exports Excel / PPTX (vraie bibliothèque servie à la place de jsDelivr, `context.route()`) / PDF, extension à bonne puis à fausse empreinte.
 - **Prouver que la politique bloque** : `page.evaluate` de Playwright CONTOURNE la politique (`eval` y paraît permis) — la sonde doit être un fichier SERVI par le site (`/__probe.js`, `<script src>`) qui tente `eval`, `new Function`,
-  un script et un gestionnaire en ligne, et lit `securitypolicyviolation`. Mesuré : tous bloqués.
+  un script et un gestionnaire en ligne, et lit `securitypolicyviolation`. Mesuré le 18/11 : `eval`/`new Function` bloqués, depuis le 19/11 permis exprès (`'unsafe-eval'`, voir plus haut) ; script et gestionnaire en ligne toujours bloqués.
 - Piège : une extension de GFS d'essai se sert par `context.route('https://gfs.test/…')` avec `access-control-allow-origin: *` (sinon l'empreinte `integrity` refuse la réponse).
 
 Voir `CLAUDE.md` §7 piège n°50.

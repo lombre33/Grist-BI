@@ -64,6 +64,12 @@
     echartsWarning.hidden = false;
   }
 
+  // Export Excel grisé pour l'ALPHA (19/11/2026, demande d'Antoine : « on garde export Excel pour la bêta »). Le bouton du menu Exporter est grisé
+  // dans index.html (« bientôt disponible ») ; ce drapeau le garde fermé quand une table se connecte (setTableDependentControlsEnabled) et coupe son
+  // écouteur. TOUT le code de l'export est conservé (js/export.js, GristBI.exportExcel, ses tests) : remettre à `true` ET retirer `disabled
+  // aria-disabled` de #export-excel dans index.html (avec la mention) pour la bêta. PDF et PPTX restent ouverts.
+  const EXCEL_EXPORT_AVAILABLE = false;
+
   // Désactive les contrôles qui n'ont de sens qu'avec une table de travail connectée (formulaire
   // d'ajout de tuile, filtre avancé, data blending, vues sauvegardées/exports, +Page) tant que
   // `currentTableId` reste `null` (document sans aucune table utilisateur, voir bootstrap()) —
@@ -84,6 +90,8 @@
                        blendSecondaryTableInput, blendPrimaryColumnInput, blendSecondaryColumnInput]) {
       el.disabled = !enabled;
     }
+    // Export Excel grisé pour l'alpha (voir EXCEL_EXPORT_AVAILABLE) : la connexion d'une table ne le rouvre jamais.
+    if (!EXCEL_EXPORT_AVAILABLE) exportExcelBtn.disabled = true;
   }
 
   // Mode Lecture / Édition (audit UI/UX du 18/11/2026) : `body[data-mode]` masque en lecture tout ce
@@ -692,7 +700,7 @@
   // conditions réelles Grist que le téléchargement se déclenche bien depuis l'iframe du widget (voir HYPOTHESES.md) —
   // fonctionne dans ce harness et un navigateur standard, l'iframe n'étant pas sandboxée (voir ROADMAP.md).
   exportExcelBtn.addEventListener('click', async () => {
-    if (exportExcelBtn.dataset.busy) return;
+    if (!EXCEL_EXPORT_AVAILABLE || exportExcelBtn.dataset.busy) return;
     exportExcelBtn.dataset.busy = '1';
     exportExcelBtn.disabled = true;
     if (renderTimeEl) renderTimeEl.textContent = t('export.xlsx.preparing');
@@ -704,7 +712,7 @@
       showError(t('export.failed'));
     } finally {
       delete exportExcelBtn.dataset.busy;
-      exportExcelBtn.disabled = !(Boolean(S.currentTableId) && S.dashboardReady);
+      exportExcelBtn.disabled = !EXCEL_EXPORT_AVAILABLE || !(Boolean(S.currentTableId) && S.dashboardReady);
       if (renderTimeEl && renderTimeEl.textContent === t('export.xlsx.preparing')) renderTimeEl.textContent = '';
     }
   });

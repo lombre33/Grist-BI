@@ -130,16 +130,23 @@ Le lot 3 ne change aucune note : il corrige un vrai défaut que l'outil ne sait 
   jamais vers une adresse que Grist n'a pas donnée en bonne forme. L'outil continue de compter le `fetch` (adresse calculée par nature).
 - **Documentation** : le README liste ce que le widget charge, d'où et quand (« Sécurité et permissions ») ; `GFS-ETAT.md` dit ce qui change pour GFS (modules en CORS, empreinte exigée d'une extension).
 
+### Correction du 19/11/2026 : la politique du lot 5 bis empêchait le widget de démarrer dans un vrai Grist
+
+- **Ce qui s'est passé** : Antoine a ouvert la version fusionnée dans un vrai Grist : `EvalError: call to eval() blocked by CSP` dans `grist-plugin-api.js`, `grist` indéfini, aucune table connectée. Le fichier que Grist sert s'exécute par `eval`, et la politique du 18/11 n'avait pas `'unsafe-eval'`.
+- **Correction** : `'unsafe-eval'` ajouté à `script-src` (l'outil d'audit le tient pour légitime à cause de cette API : `C-CSP-01` et `C-CSP-02` ne bougent pas). La politique garde tout le reste : pas de script en ligne hors l'`importmap` à empreinte, `default-src 'none'`, `form-action 'none'`, `object-src 'none'`, `base-uri 'self'`, `worker-src 'self' blob:`. Ce que le lot 5 bis a perdu : un `eval` ou un `new Function` qui s'exécuterait dans la page ne serait plus bloqué.
+- **Pourquoi aucun essai ne l'a vu** : `test-csp.js` lisait le texte (et exigeait l'absence de `'unsafe-eval'`) ; les passes navigateur posaient un faux `grist` sans `eval` ; elles n'étaient pas dans le dépôt. **Ce qui change** : `dev-tests/test-browser.js` (le vrai `index.html`, sa politique, un `grist-plugin-api.js` qui passe par `eval`, page directe et cadre isolé, échec sur toute erreur de console / violation / requête hors site, contrôle négatif) et `sh dev-tests/run-all.sh` (tous les essais, avant toute fusion et tout envoi). Voir `CLAUDE.md` §7 piège n°51.
+- **Le « mesuré dans Chromium » du lot 5 bis valait pour un faux `grist` sans `eval`** : il ne prouvait pas que le widget démarre dans un vrai Grist. Il reste à jouer le vrai Grist et le vrai GFS (`HYPOTHESES.md` point 17).
+
 ### Lot 5 bis : politique de sécurité du contenu (18/11/2026, nuit)
 
 - **C-CSP-01** : une balise `<meta http-equiv="Content-Security-Policy">` en tête d'`index.html` (avant toute balise de script ou de feuille de style, sinon le navigateur ne l'applique pas à ce qui la précède) :
-  `default-src 'none'` ; `script-src 'self' 'wasm-unsafe-eval' 'sha256-…' https:` (le script en ligne unique de la page, l'`importmap` de DuckDB, n'est autorisé que par son empreinte ; jamais `'unsafe-inline'` ni
-  `'unsafe-eval'`) ; `worker-src 'self' blob:` ; `style-src 'self' 'unsafe-inline'` ; `img-src 'self' data: blob:` ; `font-src 'self' data:` ; `connect-src 'self' https: blob: data:` ; `object-src 'none'` ; `base-uri 'self'` ; `form-action 'none'`.
+  `default-src 'none'` ; `script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' 'sha256-…' https:` (le script en ligne unique de la page, l'`importmap` de DuckDB, n'est autorisé que par son empreinte ; jamais `'unsafe-inline'` ; `'unsafe-eval'` a été
+  ajouté le 19/11 parce que le `grist-plugin-api.js` de Grist s'exécute par `eval`, voir la correction plus bas) ; `worker-src 'self' blob:` ; `style-src 'self' 'unsafe-inline'` ; `img-src 'self' data: blob:` ; `font-src 'self' data:` ; `connect-src 'self' https: blob: data:` ; `object-src 'none'` ; `base-uri 'self'` ; `form-action 'none'`.
   **Deux compromis assumés** : `https:` reste dans `script-src` et `connect-src` parce que trois adresses ne sont pas connues d'avance (les extensions de GFS, la pièce jointe que Grist désigne, PptxGenJS sur
   `cdn.jsdelivr.net` — le chargeur exige déjà l'empreinte `integrity` de tout script d'un autre site, voir le lot 5) ; `style-src 'unsafe-inline'` parce que la photographie du tableau de bord et ECharts posent des styles en ligne.
   `frame-ancestors`, `report-uri` et `sandbox` ne s'écrivent pas dans une balise `<meta>` (ignorés) : ils ne sont pas écrits, pour ne pas donner l'impression d'une protection qui n'existe pas. C-CSP-02 (joker ou `'unsafe-inline'`
   dans `script-src`/`default-src`) n'est pas déclenché.
-- **Garde** : `node dev-tests/test-csp.js` (une seule balise, placée avant tout script, directives exactes, aucune source de script hors `'self'` / `'wasm-unsafe-eval'` / `https:` / empreinte, **l'empreinte de l'`importmap`
+- **Garde** : `node dev-tests/test-csp.js` (une seule balise, placée avant tout script, directives exactes, aucune source de script hors `'self'` / `'unsafe-eval'` / `'wasm-unsafe-eval'` / `https:` / empreinte, **l'empreinte de l'`importmap`
   recalculée sur le texte réel** : si on retouche l'`importmap` sans mettre l'empreinte à jour, DuckDB ne se charge plus et le widget retombe sur le calcul JS sans le dire ; aucun `on…=`, `javascript:`, `<style>` ni `<iframe>`).
   Essai de mutation fait sur les gardes principales (jeton retiré, empreinte changée, balise déplacée après un script) : l'essai échoue.
 - **Mesuré dans Chromium** (page directe et `<iframe sandbox="allow-scripts allow-downloads">` servi en CORS, écouteur `securitypolicyviolation`) : 22 types de tuile, DuckDB au-delà de 5 000 lignes (Worker `blob:`, `.wasm`),
@@ -207,6 +214,6 @@ liste du combobox).
   palier d'accès intermédiaire ou hébergeait son API de widget sous l'instance, ou si GFS corrigeait ses constats. La valeur du lot est dans ce que les contrôles empêchent (XSS par la configuration, script non prévu, jeton envoyé ailleurs), pas dans la note.
 - **C-CSP-01** : posée au lot 5 bis (voir plus haut) ; reste à la **confirmer dans un vrai Grist et dans le vrai GFS** (l'hôte peut ajouter sa propre politique). **Deux copies de code qui compile une chaîne**
   restent dans `js/vendor/` : le worker de DuckDB (`duckdb-browser-eh.worker.js`) embarque sa propre copie d'Apache Arrow, avec le même `createIsValidFunction` que celui qu'on a remplacé dans `apache-arrow/`
-  (copie non modifiée : l'outil ne la voit pas, elle est chargée dans un `Worker`, et ce widget n'y déclare jamais de valeurs nulles), et ExcelJS (voir `SOURCES.md`). La politique n'accorde que `'wasm-unsafe-eval'`, jamais
-  `'unsafe-eval'` : un `new Function` qui s'exécuterait dans la page échouerait (mesuré : bloqué), il ne s'exécute pas.
+  (copie non modifiée : l'outil ne la voit pas, elle est chargée dans un `Worker`, et ce widget n'y déclare jamais de valeurs nulles), et ExcelJS (voir `SOURCES.md`). La politique accorde `'unsafe-eval'` (pour l'API de Grist, voir la correction du 19/11) : un `new Function` qui s'exécuterait dans la page ne serait donc PAS bloqué ;
+  il ne s'exécute pas (`dev-tests/test-loader.js` et `test-safe-html.js` n'en trouvent aucun dans `js/`).
 - **B-VERB-01** (13 750 lignes de code exécutées : l'ampleur du widget, pas un défaut à corriger) et **F-ECO-01** : voir le rapport.

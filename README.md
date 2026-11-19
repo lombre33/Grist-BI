@@ -28,7 +28,7 @@
 
 ## En bref
 
-**Grist BI Dashboard** est un widget personnalisé pour [Grist](https://www.getgrist.com/). Il transforme une table de votre document en tableau de bord : des graphiques et des cartes de chiffres clés côte à côte, qui réagissent les uns aux autres, avec détail progressif (drill-down), vues sauvegardées et exports Excel, PDF et PowerPoint.
+**Grist BI Dashboard** est un widget personnalisé pour [Grist](https://www.getgrist.com/). Il transforme une table de votre document en tableau de bord : des graphiques et des cartes de chiffres clés côte à côte, qui réagissent les uns aux autres, avec détail progressif (drill-down), vues sauvegardées et exports PDF et PowerPoint.
 
 Il reprend des mécaniques de **Power BI** et de **DigDash** que Grist n'a pas nativement. Comme un widget Grist ne peut pas en piloter un autre sur la même page, tout vit dans un seul widget, avec ses propres tuiles.
 
@@ -53,7 +53,7 @@ Il reprend des mécaniques de **Power BI** et de **DigDash** que Grist n'a pas n
 - **Jointure** avec une deuxième table du même document.
 - **Commentaires par tuile**, stockés dans une table du document.
 - **Mots-clés des publications** (menu de la table, en mode édition) : remplit une colonne de mots-clés à partir d'une colonne de texte (titre, résumé…), après confirmation.
-- **Exports** Excel, PDF et PowerPoint, fidèles à l'écran.
+- **Exports PDF et PowerPoint**, fidèles à l'écran (l'export Excel, déjà écrit, est grisé dans l'alpha : « bientôt disponible »).
 - **Gros volumes** : au-delà de 5 000 lignes, un moteur SQL (DuckDB-WASM) prend le relais dans le navigateur.
 - **Import d'un fichier Power BI** (`.pbix` ou `.pbit`) : reprend les visuels (type, colonnes, titre) comme tuiles de départ. Les données et les mesures DAX ne sont pas reprises ; un CSV exporté de Power BI peut être importé pour les données.
 
@@ -155,13 +155,13 @@ Le bouton **Réglages** (la roue dentée) ouvre le choix du **style** (comment s
 
 ### 7. Exporter
 
-Le menu **Exporter** propose trois formats. Dans les trois cas, le fichier reprend ce que vous voyez : mêmes filtres, mêmes niveaux de drill-down, même style.
+Le menu **Exporter** propose deux formats actifs. Dans les deux cas, le fichier reprend ce que vous voyez : mêmes filtres, mêmes niveaux de drill-down, même style.
 
 | Format | Contenu |
 |---|---|
-| **Excel** (`.xlsx`) | Pour chaque page : une feuille « tableau de bord » où chaque tuile est une image, posée là où l'écran la met ; et une feuille de données où chaque tuile est un **tableau Excel nommé** (filtres, tri, tableau croisé dynamique en deux clics), avec des liens d'une feuille à l'autre. |
 | **PDF** | La page affichée, en une seule page à la largeur d'un A4 paysage, avec un bandeau (nom de la page, jeu de données, date, vue suivie, filtres actifs). |
 | **PowerPoint** (`.pptx`) | La page affichée en première diapositive, puis une diapositive par tuile. |
+| **Excel** (`.xlsx`) | **Bientôt disponible** : le bouton est grisé dans l'alpha. L'export est écrit (un classeur avec, pour chaque page, une feuille « tableau de bord » en images et des tableaux Excel nommés pour les données) mais n'a pas encore été essayé dans un vrai Excel : il reviendra avec la bêta. |
 
 Ce sont des **images** de vos tuiles, pas des graphiques modifiables : c'est ce qui garantit le même visuel qu'à l'écran. Voir les [limites](#limites-connues-de-lalpha).
 
@@ -191,10 +191,11 @@ Un vingt-troisième type, le **nuage de mots**, apparaît grisé dans la version
 
 Voici ce qu'il vaut mieux savoir avant de l'adopter.
 
-- **Peu éprouvé en conditions réelles.** Les essais en vrai Grist ont porté sur une table de 47 000 lignes (filtrage croisé, drill-down, dates, colonnes Référence, mesures temporelles, commentaires), puis sur un document de démonstration (commentaires, exports PDF et PowerPoint). Le reste (les nouveaux types de tuiles, les styles et dispositions, l'export Excel refait, le format des nombres « comme dans la colonne », l'import Power BI, les mots-clés) n'a été vérifié que sur des données de démonstration, avec un faux Grist. Attendez-vous à des défauts, surtout avec beaucoup de colonnes, des colonnes Référence, des dates et heures, ou de très grosses tables.
+- **Peu éprouvé en conditions réelles.** Les essais en vrai Grist ont porté sur une table de 47 000 lignes (filtrage croisé, drill-down, dates, colonnes Référence, mesures temporelles, commentaires), puis sur un document de démonstration (commentaires, exports PDF et PowerPoint). Le reste (les nouveaux types de tuiles, les styles et dispositions, le format des nombres « comme dans la colonne », l'import Power BI, les mots-clés) n'a été vérifié que sur des données de démonstration, avec un faux Grist. Attendez-vous à des défauts, surtout avec beaucoup de colonnes, des colonnes Référence, des dates et heures, ou de très grosses tables.
 - **Accès complet demandé.** Grist n'offre pas de palier intermédiaire à un widget qui enregistre sa propre configuration. Le widget crée trois tables internes, visibles dans les Données brutes (`BI_Dashboard_Config`, `BI_Dashboard_Comments`, `BI_Dashboard_UserProbe`). Pour restreindre ce qu'il peut lire, utilisez les règles d'accès natives de Grist.
-- **Les exports sont des images.** Les tuiles exportées en Excel, PDF et PowerPoint sont des photos de l'écran : pas de graphiques Excel ou PowerPoint modifiables, texte non sélectionnable dans le PDF, et une tuile rognée à l'écran (un tableau croisé très large) l'est aussi dans le fichier : agrandissez-la avant d'exporter. Une disposition sans cartes (Rapport, Planche, Rail) apparaît dans Excel avec l'habillage d'une carte.
-- **L'export PowerPoint demande une connexion** : sa bibliothèque est chargée à la demande depuis un CDN (version figée, empreinte vérifiée). Les exports Excel et PDF n'appellent aucun service extérieur.
+- **Les exports sont des images.** Les tuiles exportées en PDF et PowerPoint sont des photos de l'écran : pas de graphiques PowerPoint modifiables, texte non sélectionnable dans le PDF, et une tuile rognée à l'écran (un tableau croisé très large) l'est aussi dans le fichier : agrandissez-la avant d'exporter.
+- **L'export Excel n'est pas ouvert.** Le bouton est grisé (« bientôt disponible ») : l'export n'a jamais été ouvert dans un vrai Excel, il revient avec la bêta.
+- **L'export PowerPoint demande une connexion** : sa bibliothèque est chargée à la demande depuis un CDN (version figée, empreinte vérifiée). L'export PDF n'appelle aucun service extérieur.
 - **Le premier gros calcul est un peu lent.** Au-delà de 5 000 lignes, le moteur SQL (environ 34 Mo) se télécharge la première fois qu'il sert. Si ce moteur ne peut pas se charger, le calcul se fait en JavaScript (plus lent sur de gros volumes), sauf les mesures temporelles, qui exigent le moteur SQL.
 - **Nuage de mots et lecture de PDF : pas dans cette version.** Ces deux fonctions demandent des extensions fournies par l'hôte Grist Factory Suite : elles sont grisées dans l'interface quand le widget tourne seul, et un clic l'explique. Les mots-clés calculés à partir d'une colonne de texte, eux, ne dépendent d'aucune extension.
 - **Mesures temporelles simplifiées.** Cumul, YTD et comparaison N-1 se règlent sur une tuile en barres, par mois uniquement : ce n'est pas un langage de mesures complet façon DAX.
@@ -221,7 +222,7 @@ Voici ce qu'il vaut mieux savoir avant de l'adopter.
 | API de widget de Grist (`grist-plugin-api.js`) | `docs.getgrist.com` | au démarrage |
 | La page du widget, ses scripts, ECharts 6.1.0 | le site qui héberge le widget | au démarrage |
 | DuckDB-WASM 1.32.0 (et ses dépendances Apache Arrow, FlatBuffers, tslib) | copies dans `js/vendor/`, même site | au premier gros calcul (plus de 5 000 lignes) |
-| ExcelJS 4.4.0 | copie dans `js/vendor/`, même site | au premier export Excel |
+| ExcelJS 4.4.0 | copie dans `js/vendor/`, même site | au premier export Excel : l'export étant grisé dans l'alpha, elle n'est pas chargée pour l'instant |
 | Kit des apps Grist Factory (`kit/`) : fenêtres de confirmation, ambiance | même site | au démarrage, puis à la première fenêtre de confirmation |
 | PptxGenJS 4.0.1 | `cdn.jsdelivr.net`, version figée, empreinte d'intégrité (SRI, sha384) | au premier export PowerPoint |
 | Extensions de l'hôte Grist Factory Suite (`d3-cloud`, `pdf.js`) | l'adresse et l'empreinte que l'hôte donne | seulement si le widget est lancé dans cet hôte et que l'extension est ajoutée : jamais en version autonome |
@@ -233,7 +234,7 @@ Chaque dossier de `js/vendor/` contient la licence de la bibliothèque qu'il emb
 
 - **Un seul chargeur de code.** Tout code chargé à l'exécution passe par `js/loader.js` : https obligatoire hors du site lui-même, empreinte d'intégrité exigée pour tout autre site, aucun identifiant dans l'adresse. Les modules ES se demandent par nom, depuis une liste fermée (`js/modules.js`).
 - **Un seul chemin pour écrire du HTML.** Tout balisage écrit dans la page passe par `js/safe-html.js` (liste blanche de balises, d'attributs et de styles), jamais par `innerHTML`. Les valeurs de vos cellules et la configuration lue dans le document sont traitées comme des entrées non fiables et échappées.
-- **Une politique de sécurité du contenu** (balise `<meta>` en tête d'`index.html`) refuse tout par défaut, puis n'ouvre que le nécessaire : les scripts du site lui-même et d'adresses https, un seul script en ligne vérifié par empreinte, jamais `eval`, aucun formulaire qui part. Les styles en ligne restent permis, car la photographie des tuiles pour les exports et ECharts en posent.
+- **Une politique de sécurité du contenu** (balise `<meta>` en tête d'`index.html`) refuse tout par défaut, puis n'ouvre que le nécessaire : les scripts du site lui-même et d'adresses https, un seul script en ligne vérifié par empreinte, aucun formulaire qui part. `'unsafe-eval'` y est permis, car le script d'API que Grist sert (`grist-plugin-api.js`) s'exécute par `eval` et le widget ne démarrerait pas dans Grist sans cela ; aucun code de ce dépôt n'appelle `eval` ni `new Function`. Les styles en ligne restent permis, car la photographie des tuiles pour les exports et ECharts en posent.
 
 Une faille se signale **sans ouvrir d'issue publique** : onglet « Security » du dépôt GitHub, puis « Report a vulnerability » (signalement privé).
 
@@ -245,7 +246,7 @@ Deux points d'attention : selon la façon dont Grist cadre le widget, ses module
 
 ## Sous le capot
 
-JavaScript sans framework ni étape de build ; la configuration du tableau de bord est stockée dans la table Grist interne `BI_Dashboard_Config`. Graphiques : [Apache ECharts](https://echarts.apache.org/) 6.1.0. Gros volumes : [DuckDB-WASM](https://github.com/duckdb/duckdb-wasm) 1.32.0. Export Excel : [ExcelJS](https://github.com/exceljs/exceljs) 4.4.0. Export PowerPoint : [PptxGenJS](https://gitbrent.github.io/PptxGenJS/) 4.0.1. L'export PDF est écrit sans bibliothèque. Les bibliothèques embarquées sont des copies locales dans `js/vendor/`, jamais chargées depuis un CDN (un réseau d'entreprise qui filtre un CDN laisserait sinon les graphiques vides, sans erreur), à l'exception de PptxGenJS.
+JavaScript sans framework ni étape de build ; la configuration du tableau de bord est stockée dans la table Grist interne `BI_Dashboard_Config`. Graphiques : [Apache ECharts](https://echarts.apache.org/) 6.1.0. Gros volumes : [DuckDB-WASM](https://github.com/duckdb/duckdb-wasm) 1.32.0. Export Excel (grisé dans l'alpha) : [ExcelJS](https://github.com/exceljs/exceljs) 4.4.0. Export PowerPoint : [PptxGenJS](https://gitbrent.github.io/PptxGenJS/) 4.0.1. L'export PDF est écrit sans bibliothèque. Les bibliothèques embarquées sont des copies locales dans `js/vendor/`, jamais chargées depuis un CDN (un réseau d'entreprise qui filtre un CDN laisserait sinon les graphiques vides, sans erreur), à l'exception de PptxGenJS.
 
 ## Donner un retour
 
@@ -269,7 +270,7 @@ Conçu et développé par **[Grist Factory](https://grist-factory.fr)**, qui ré
 
 ## English summary
 
-**Grist BI Dashboard** is a custom [Grist](https://www.getgrist.com/) widget that turns a table of your document into an interactive dashboard, borrowing mechanics from Power BI and DigDash: several charts and KPI cards on the same table that **filter each other on click** (cross-filtering), **drill-down** with a breadcrumb, saved views, multiple pages, and **Excel, PDF and PowerPoint exports**. It is a static web page: no server, no build step, and your data stays in your Grist document.
+**Grist BI Dashboard** is a custom [Grist](https://www.getgrist.com/) widget that turns a table of your document into an interactive dashboard, borrowing mechanics from Power BI and DigDash: several charts and KPI cards on the same table that **filter each other on click** (cross-filtering), **drill-down** with a breadcrumb, saved views, multiple pages, and **PDF and PowerPoint exports**. It is a static web page: no server, no build step, and your data stays in your Grist document.
 
 > [!NOTE]
 > **Alpha.** Usable, but mostly tested on demo data (one real-document trial on a 47,000-row table). Try it on a copy of your data, and please report what breaks.
@@ -287,7 +288,7 @@ https://grist-factory.github.io/grist-widget-grist-BI/
 3. Click a bar or a slice to filter every other tile; click again to clear. Click a year to drill down to quarters and months. Use **Filter** for ranges, dates and text search.
 4. Save a **view** to come back to a filtered state in one click; add **pages** for more tiles.
 5. In **Settings** (gear icon), pick one of five tile **styles**, one of five page **layouts**, and the interface language (French or English).
-6. **Export** to Excel (one dashboard sheet of tile images laid out like the screen, plus one data sheet of named Excel tables per page), PDF or PowerPoint.
+6. **Export** to PDF or PowerPoint (the page as drawn on screen). The Excel export is written but greyed out ("coming soon") in the alpha; it returns with the beta.
 
 **What it offers:** 22 tile types (bars, lines and areas, combo with Pareto, pies and donuts, treemap, sunburst, Sankey, calendar, Gantt, histogram, box plot, bubble and scatter, radar, waterfall, funnel, gauge, KPI, progress, pivot table, heatmap, flat table, text note); KPI cards with trend, sparkline and target; cumulative, year-to-date and previous-year measures; advanced filters; comments per tile; import of a Power BI file's layout (`.pbix`/`.pbit`); automatic switch to an in-browser SQL engine (DuckDB-WASM) above 5,000 rows.
 
@@ -295,7 +296,7 @@ https://grist-factory.github.io/grist-widget-grist-BI/
 
 - Few real-world trials so far: expect rough edges with wide tables, Reference columns, date-times and very large tables.
 - Full document access is required (Grist has no intermediate level for a widget that saves its own configuration). The widget creates three internal tables (`BI_Dashboard_Config`, `BI_Dashboard_Comments`, `BI_Dashboard_UserProbe`) and never creates or edits your data tables without an explicit confirmation.
-- Exports are **images** of the tiles, not editable Excel or PowerPoint charts; the PowerPoint export needs an internet connection to load its library.
+- PDF and PowerPoint exports are **images** of the tiles, not editable charts; the PowerPoint export needs an internet connection to load its library. The Excel export is not open in the alpha.
 - The first heavy calculation downloads the SQL engine (about 34 MB).
 - The word cloud and PDF reading need extensions that are not part of this standalone version; they appear greyed out.
 - Mostly tried in Chromium-based browsers; read-only accounts and phones have not been tried.
