@@ -215,6 +215,7 @@ Voici ce qu'il vaut mieux savoir avant de l'adopter.
 - Il ne modifie vos tables que sur un **geste explicite, après une fenêtre de confirmation** : la création d'une table à l'import d'un CSV exporté de Power BI, et l'ajout d'une colonne de mots-clés puis l'écriture de ses cellules vides.
 - **(Bêta)** Il **lit** `_grist_Pages` et `_grist_Views_section` et **range** les pages de ses trois tables internes : Grist ajoute une page par table au bout de la liste de gauche, le widget les met en sous-pages de la page qui le porte, repliées par défaut (Grist 1.7.0 et suivants), une seule fois par page (une page que vous déplacez ensuite n'est plus touchée). Rien n'est supprimé ni renommé ; si Grist ou l'hôte refuse, un avertissement dans la console et les pages restent où Grist les a mises.
 - Il n'utilise jamais `RemoveTable`, `RemoveColumn` ni `BulkRemoveRecord`.
+- Il garde deux choix dans le **`localStorage`** de votre navigateur : la langue de l'interface (`gristbi_lang`) et le nom que vous donnez à vos commentaires (`gristbi_comment_author`) ; le kit des apps Grist Factory qu'il embarque peut y garder, lui aussi, des choix d'affichage (thème, langue). Rien du contenu de votre document n'y est écrit, et le code du widget n'écrit ni cookie, ni `sessionStorage`, ni IndexedDB. Lancé dans la Grist Factory Suite, ces choix sont gardés chez elle plutôt que dans le navigateur.
 
 ### Ce que le widget charge, et quand
 
@@ -297,6 +298,7 @@ https://grist-factory.github.io/grist-widget-grist-BI/
 
 - Few real-world trials so far: expect rough edges with wide tables, Reference columns, date-times and very large tables.
 - Full document access is required (Grist has no intermediate level for a widget that saves its own configuration). The widget creates three internal tables (`BI_Dashboard_Config`, `BI_Dashboard_Comments`, `BI_Dashboard_UserProbe`) and never creates or edits your data tables without an explicit confirmation.
+- The widget keeps two preferences in your browser's `localStorage` (the interface language and the name you give your comments; the Grist Factory kit it embeds may keep display choices there too), never the content of your document, and writes no cookie, `sessionStorage` or IndexedDB. Inside Grist Factory Suite, those choices are kept by the suite instead.
 - PDF and PowerPoint exports are **images** of the tiles, not editable charts; the PowerPoint export needs an internet connection to load its library. The Excel export is not open in the alpha.
 - The first heavy calculation downloads the SQL engine (about 34 MB).
 - The word cloud and PDF reading need extensions that are not part of this standalone version; they appear greyed out.
