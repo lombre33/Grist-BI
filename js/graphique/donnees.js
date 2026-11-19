@@ -49,6 +49,29 @@ export function trierParAbscisse(points, genre) {
     .map(({ point }) => point);
 }
 
+// Les modes de tri par valeur ou par libellé (`sortMode`) ; `axis` (par abscisse) est `trierParAbscisse`.
+export const MODES_DE_TRI = ['value-desc', 'value-asc', 'label'];
+
+function comparerLibelles(a, b) {
+  if (typeof a === 'number' && typeof b === 'number' && !Number.isNaN(a) && !Number.isNaN(b)) return a - b;
+  // `numeric` : « 2 » avant « 10 », « T2 » avant « T10 » ; `sensitivity: 'base'` ignore casse et accents.
+  return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
+}
+
+// Trie des points `{ dimension, value }` par valeur (décroissante ou croissante) ou par libellé ; un autre mode rend les points tels quels. Jamais en place. Une valeur absente va toujours en dernier,
+// quel que soit le sens : elle n'est ni la plus grande ni la plus petite.
+export function trierGroupes(points, mode) {
+  if (!MODES_DE_TRI.includes(mode)) return points;
+  const copie = points.slice();
+  if (mode === 'label') return copie.sort((x, y) => comparerLibelles(x.dimension, y.dimension));
+  const sens = mode === 'value-desc' ? -1 : 1;
+  const absente = (v) => v === null || v === undefined || Number.isNaN(v);
+  return copie.sort((x, y) => {
+    if (absente(x.value) || absente(y.value)) return (absente(x.value) ? 1 : 0) - (absente(y.value) ? 1 : 0);
+    return sens * (x.value - y.value);
+  });
+}
+
 // Une date lue de l'hôte, ramenée au JOUR `AAAA-MM-JJ` : une date reste telle quelle, une date et heure (`AAAA-MM-JJTHH:MM:SS`, l'heure du mur de la colonne) perd son heure, rien d'autre n'est une date.
 // Le dessin de Grist BI regroupe, trie et filtre par jour : l'heure n'est lue nulle part.
 export function jour(valeur) {
