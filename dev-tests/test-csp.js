@@ -62,7 +62,8 @@ for (const source of script) {
     'source de script inattendue : ' + source);
 }
 assert.deepStrictEqual(directives['object-src'], ["'none'"]);
-assert.deepStrictEqual(directives['base-uri'], ["'self'"]);
+assert.deepStrictEqual(directives['base-uri'], ["'none'"], 'règle S2 de GFS : aucune balise <base>');
+assert.ok(!/<base[\s>]/i.test(html), "aucune balise <base> dans index.html (base-uri 'none')");
 assert.deepStrictEqual(directives['form-action'], ["'none'"], 'aucun formulaire ne part : les envois passent par bindFormSubmit (CLAUDE.md §7 piège n°20)');
 assert.deepStrictEqual(directives['worker-src'], ["'self'", 'blob:'], 'DuckDB lance son Worker depuis une adresse blob:');
 for (const name of Object.keys(directives)) {
