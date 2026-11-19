@@ -185,10 +185,21 @@ const refusedWith = (fn, pattern, why) => assert.throws(fn, (e) => e.code === 'L
       const tag = (name) => html.search(new RegExp('<script src="(\\.\\./)?js/' + name.replace('.', '\\.') + '"></script>'));
       assert.ok(tag('safe-html.js') >= 0 && tag('safe-html.js') < tag('loader.js') && tag('loader.js') < tag('i18n.js'), f + ' : safe-html, puis le chargeur, puis le reste');
       assert.ok(/<script type="module" src="(\.\.\/)?js\/modules\.js"><\/script>/.test(html), f + ' : js/modules.js déclaré en module ES');
+      // Règle S8 de GFS (consigne 026) : le relais des appels bloqués démarre AVANT js/modules.js, en module ES à part (si kit/ manque, seul lui échoue)
+      const relay = html.search(/<script type="module" src="(\.\.\/)?js\/relais-securite\.js"><\/script>/);
+      const entry = html.search(/<script type="module" src="(\.\.\/)?js\/modules\.js"><\/script>/);
+      assert.ok(relay >= 0 && relay < entry, f + ' : js/relais-securite.js déclaré en module ES avant js/modules.js');
+      assert.strictEqual((html.match(/<script type="module"/g) || []).length, 2, f + ' : deux modules ES seulement (le relais, puis js/modules.js)');
       for (const caller of ['dialogs.js', 'duckdb-engine.js', 'main-core.js', 'export.js', 'pptx-export.js', 'pdf-text.js', 'extensions.js']) {
         assert.ok(tag(caller) > tag('loader.js'), f + ' : le chargeur précède ' + caller);
       }
     }
+
+    // Le relais de la règle S8 : une ligne, l'import du kit, rien d'autre (ni import() ni chargeur), et le fichier du kit existe
+    const relayCode = stripComments(read('js/relais-securite.js')).trim();
+    assert.strictEqual(relayCode, "import '../kit/js/violations-start.js';", 'js/relais-securite.js : l\'import du relais du kit, et rien d\'autre');
+    assert.ok(fs.existsSync(path.join(ROOT, 'kit/js/violations-start.js')), 'kit/js/violations-start.js existe (kit 0.25.0 ou après ; git submodule update --init)');
+    console.log('OK loader — relais S8 : js/relais-securite.js importe kit/js/violations-start.js avant js/modules.js, dans index.html et le harnais');
 
     // ECharts : plus de document.write, plus d'open() à arguments, un lien javascript: ou data: n'est plus ouvert
     const echarts = read('js/vendor/echarts/echarts.min.js');

