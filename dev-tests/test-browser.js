@@ -7,7 +7,7 @@
  * les passes navigateur d'alors posaient un faux `grist` qui n'utilise pas `eval`. Cet essai charge `index.html` (pas le harnais), sert
  * à sa place du `grist-plugin-api.js` qui passe par `eval` (ou le vrai fichier, voir plus bas), et échoue sur :
  *  - toute violation de la politique (`securitypolicyviolation`), toute erreur de console (`EvalError` comprise), toute exception de page ;
- *  - toute requête qui échoue, toute réponse 4xx/5xx (un sous-module `kit/` vide en donne trois) ;
+ *  - toute requête qui échoue (sauf une réponse que la PAGE annule en cours de route, voir `isPageCancel`), toute réponse 4xx/5xx (un sous-module `kit/` vide en donne trois) ;
  *  - toute requête vers un autre site que `docs.getgrist.com` (l'API Grist) : rien d'autre ne doit sortir ;
  *  - `grist` indéfini, aucune ligne chargée, une tuile qui ne se dessine pas, DuckDB, ExcelJS ou les fenêtres du kit qui ne se chargent pas.
  * Il joue deux fois : en page directe puis dans un `<iframe sandbox="allow-scripts allow-downloads">` (le cadre de Grist et de GFS).
@@ -104,6 +104,19 @@ function startServer() {
   });
 }
 
+/**
+ * Une requête qui « échoue » n'est pas toujours une panne. `net::ERR_ABORTED` avec une réponse déjà reçue veut dire que la PAGE a fermé
+ * le flux avant sa fin (lecteur annulé) : DuckDB-WASM lit son binaire (34 Mo) par `fetch` -> `pipeThrough` -> `WebAssembly.instantiateStreaming`
+ * et V8 peut lâcher le flux dès que le module est compilé, avant d'avoir lu le marqueur de fin. Selon la machine (vu sur Windows, Chromium 1243 :
+ * un seul GET de `duckdb-eh.wasm`, annulé ~0,4 s plus tard, alors que DuckDB répond) l'annulation tombe avant ou après la fin du flux : un faux
+ * défaut une fois sur deux. Une vraie panne reste un défaut : réponse jamais arrivée (connexion refusée, coupée), blocage par la politique
+ * (`net::ERR_BLOCKED_BY_CSP`, et la violation est relevée à part), 4xx/5xx (relevés par l'événement `response`). Et si la ressource manque
+ * vraiment, les vérifications de ce qu'elle porte (DuckDB, ExcelJS, kit, tuiles) échouent à leur tour.
+ */
+function isPageCancel(errorText, wasAnswered) {
+  return errorText === 'net::ERR_ABORTED' && wasAnswered === true;
+}
+
 /** Joue une page et rend la liste des défauts (vide = tout va bien) et un résumé de ce qui a été vérifié. */
 async function scenario(browser, origin, { name, url, framed }) {
   const problems = [];
@@ -127,8 +140,19 @@ async function scenario(browser, origin, { name, url, framed }) {
   const page = await context.newPage();
   page.on('console', (m) => { if (m.type() === 'error') problems.push('console : ' + m.text().slice(0, 240)); });
   page.on('pageerror', (e) => problems.push('exception de page : ' + String(e.message || e).slice(0, 240)));
-  page.on('requestfailed', (r) => { if (new URL(r.url()).hostname === '127.0.0.1') problems.push('requête échouée : ' + r.url().replace(origin, '')); });
-  page.on('response', (r) => { if (r.status() >= 400) problems.push('réponse ' + r.status() + ' : ' + r.url().replace(origin, '')); });
+  const answered = new WeakSet(); // requêtes dont la réponse est arrivée (l'événement `response` précède toujours `requestfailed`)
+  const notes = []; // réponses annulées par la page : relevées, jamais comptées comme un défaut (voir `isPageCancel`)
+  page.on('requestfailed', (r) => {
+    if (new URL(r.url()).hostname !== '127.0.0.1') return;
+    const text = (r.failure() && r.failure().errorText) || 'cause inconnue';
+    const where = r.url().replace(origin, '');
+    if (isPageCancel(text, answered.has(r))) notes.push('réponse annulée par la page : ' + where);
+    else problems.push('requête échouée : ' + where + ' (' + text + ')');
+  });
+  page.on('response', (r) => {
+    answered.add(r.request());
+    if (r.status() >= 400) problems.push('réponse ' + r.status() + ' : ' + r.url().replace(origin, ''));
+  });
   const verified = [];
   try {
     await page.goto(origin + url, { waitUntil: 'load' });
@@ -195,13 +219,25 @@ async function scenario(browser, origin, { name, url, framed }) {
     else verified.push('ExcelJS');
     if (loaded.kit !== 'object') problems.push('kit/ (fenêtres, `git submodule update --init`) : ' + (loaded.kitError || loaded.kit));
     else verified.push('kit');
-    await frame.waitForTimeout(500);
+
+    // 4. Le cas qui a donné un faux défaut sur Windows : une réponse que la page annule en cours de route. Rejoué ici à coup sûr, sur toute
+    // machine, pour prouver que le gestionnaire la relève (note) sans la compter comme une panne.
+    const notesBefore = notes.length;
+    await frame.evaluate(async () => {
+      const reader = (await fetch('js/vendor/duckdb/duckdb-eh.wasm')).body.getReader();
+      await reader.read();
+      await reader.cancel();
+    });
+    await frame.waitForTimeout(300);
+    if (notes.length === notesBefore) problems.push('contrôle de l\'annulation : une réponse annulée par la page n\'a pas été relevée comme telle');
+    else verified.push('réponse annulée tolérée');
+    await frame.waitForTimeout(200);
   } catch (e) {
     problems.push('essai interrompu : ' + String((e && e.message) || e).slice(0, 240));
   } finally {
     await context.close();
   }
-  return { problems, verified };
+  return { problems, verified, notes };
 }
 
 (async () => {
@@ -223,8 +259,18 @@ async function scenario(browser, origin, { name, url, framed }) {
       for (const p of [...new Set(result.problems)]) console.error('   - ' + p);
     } else {
       console.log('OK : ' + label + ' : ' + result.verified.join(', ') + ' ; 0 erreur, 0 violation, 0 requête hors site');
+      const notes = [...new Set(result.notes || [])];
+      if (notes.length) console.log('   remarque (pas un défaut) : ' + notes.join(' ; '));
     }
   };
+  // Le tri des requêtes échouées sait-il encore voir une vraie panne ? Seule une annulation PAR LA PAGE, réponse reçue, est tolérée.
+  const tri = [
+    ['net::ERR_ABORTED', true, true], ['net::ERR_ABORTED', false, false], ['net::ERR_BLOCKED_BY_CSP', true, false],
+    ['net::ERR_CONNECTION_REFUSED', false, false], ['net::ERR_CONNECTION_RESET', true, false], ['net::ERR_FILE_NOT_FOUND', false, false],
+  ];
+  const mauvais = tri.filter(([text, answered, expected]) => isPageCancel(text, answered) !== expected);
+  if (mauvais.length) { failed = true; console.error('ÉCHEC : tri des requêtes échouées : ' + JSON.stringify(mauvais)); }
+  else console.log('OK : tri des requêtes échouées : seule une annulation par la page, réponse reçue, est tolérée (' + tri.length + ' cas)');
   try {
     report('page directe', await scenario(browser, origin, { name: 'direct', url: '/index.html', framed: false }));
     report('cadre isolé (sandbox="allow-scripts allow-downloads")', await scenario(browser, origin, { name: 'cadre', url: '/__frame.html', framed: true }));
