@@ -3,11 +3,14 @@
 <head>
 <meta charset="UTF-8" />
 <!-- Politique de sécurité du contenu (audit `gwaudit` C-CSP-01, 18/11/2026) : le filet quand une autre défense cède (js/safe-html.js, js/loader.js).
-     Aucun script en ligne ni `eval` : seul l'`importmap` ci-dessous est autorisé, par son empreinte (à refaire si son texte change : dev-tests/test-csp.js).
+     Aucun script en ligne : seul l'`importmap` ci-dessous est autorisé, par son empreinte (à refaire si son texte change : dev-tests/test-csp.js).
+     `'unsafe-eval'` en script-src : le fichier que Grist sert (`grist-plugin-api.js`, un bundle webpack) s'exécute par `eval` ; sans cela `grist` reste indéfini et le
+     widget ne démarre pas (régression du 18/11, corrigée le 19/11). NE PAS LE RETIRER : `dev-tests/test-browser.js` charge cette page avec un `eval` et échoue sinon.
+     Aucun code de ce dépôt n'appelle `eval` ni `new Function` (`dev-tests/test-safe-html.js`, `test-loader.js`).
      `https:` en script-src : GFS donne l'adresse de ses bibliothèques (extensions) à l'exécution et nous ne la connaissons pas ; le chargeur y exige une empreinte
      `integrity`. `connect-src https:` : l'adresse de téléchargement d'une pièce jointe est celle que Grist donne avec le jeton. `style-src 'unsafe-inline'` : les
      styles posés par script (ECharts, photographie de la page). `frame-ancestors` n'existe pas dans une balise `<meta>` : GFS et Grist cadrent le widget comme avant. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' 'sha256-32b09qgfkzdc6GLAfiouEFY+XmfAMUxoerF0iSh3O/w=' https:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https: blob: data:; object-src 'none'; base-uri 'self'; form-action 'none'" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' 'sha256-32b09qgfkzdc6GLAfiouEFY+XmfAMUxoerF0iSh3O/w=' https:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https: blob: data:; object-src 'none'; base-uri 'self'; form-action 'none'" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Grist BI Dashboard (POC)</title>
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>

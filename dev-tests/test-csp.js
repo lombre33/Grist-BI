@@ -5,8 +5,10 @@
  * (`js/safe-html.js`, `js/loader.js`). Ce que ces essais figent, et qu'une retouche d'`index.html` peut défaire SANS erreur :
  *  - la balise existe, est dans `<head>` et AVANT toute balise `<script>` ou `<link>` (sinon Chromium ne l'applique pas à
  *    ce qui la précède) ;
- *  - `script-src` n'a ni `'unsafe-inline'`, ni `'unsafe-eval'`, ni joker, ni `data:`/`blob:`/`http:` ; il garde `'self'` et
- *    `'wasm-unsafe-eval'` (DuckDB-WASM) ;
+ *  - `script-src` n'a ni `'unsafe-inline'`, ni joker, ni `data:`/`blob:`/`http:` ; il garde `'self'`, `'wasm-unsafe-eval'` (DuckDB-WASM) et
+ *    `'unsafe-eval'` : le fichier que Grist sert (`grist-plugin-api.js`, bundle webpack) s'exécute par `eval`, sans quoi `grist` reste
+ *    indéfini et le widget ne démarre pas (régression du 18/11/2026, corrigée le 19/11). Ce texte EXIGE donc `'unsafe-eval'` ; que la page
+ *    démarre vraiment avec la vraie politique se mesure dans `dev-tests/test-browser.js` ;
  *  - le SEUL script en ligne de la page (l'`importmap` de DuckDB) est autorisé par son EMPREINTE : si son texte change sans que
  *    l'empreinte suive, DuckDB ne se charge plus et le widget retombe sur le calcul JS sans le dire — cet essai le dit ;
  *  - aucun attribut `on…=` ni `javascript:` dans la page ;
@@ -48,14 +50,15 @@ for (const part of content.split(';')) {
 assert.deepStrictEqual(directives['default-src'], ["'none'"], 'tout ce qui n\'est pas nommé est refusé');
 const script = directives['script-src'];
 assert.ok(script, 'script-src');
-for (const bad of ["'unsafe-inline'", "'unsafe-eval'", "'unsafe-hashes'", '*', 'data:', 'blob:', 'http:', "'strict-dynamic'"]) {
+for (const bad of ["'unsafe-inline'", "'unsafe-hashes'", '*', 'data:', 'blob:', 'http:', "'strict-dynamic'"]) {
   assert.ok(!script.includes(bad), `script-src ne contient pas ${bad}`);
 }
 assert.ok(script.includes("'self'"), "script-src : 'self'");
-assert.ok(script.includes("'wasm-unsafe-eval'"), "script-src : 'wasm-unsafe-eval' (DuckDB-WASM, jamais 'unsafe-eval')");
+assert.ok(script.includes("'wasm-unsafe-eval'"), "script-src : 'wasm-unsafe-eval' (DuckDB-WASM)");
+assert.ok(script.includes("'unsafe-eval'"), "script-src : 'unsafe-eval' est NÉCESSAIRE : grist-plugin-api.js, que Grist sert, s'exécute par eval ; sans lui le widget ne démarre pas dans Grist (dev-tests/test-browser.js)");
 assert.ok(script.includes('https:'), 'script-src : https: (adresse des extensions de GFS, inconnue d\'avance ; le chargeur exige une empreinte)');
 for (const source of script) {
-  assert.ok(source === "'self'" || source === "'wasm-unsafe-eval'" || source === 'https:' || /^'sha256-[A-Za-z0-9+/]{43}='$/.test(source),
+  assert.ok(source === "'self'" || source === "'unsafe-eval'" || source === "'wasm-unsafe-eval'" || source === 'https:' || /^'sha256-[A-Za-z0-9+/]{43}='$/.test(source),
     'source de script inattendue : ' + source);
 }
 assert.deepStrictEqual(directives['object-src'], ["'none'"]);
