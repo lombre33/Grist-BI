@@ -3843,6 +3843,12 @@ Constat (en testant le style global des tuiles) : sur une courbe ou des barres v
     chargeur, **0 violation de la politique** ; `eval`, `new Function`, script et gestionnaire en ligne bloqués.
   - **Pas vérifié** : voir le point 17 ci-dessous.
 
+- **Module graphique commun avec Publipostage+ (19/11/2026, branche bêta, `js/graphique/`, non branché à l'interface)** — suite des consignes GFS 021/022 ; rien sur l'alpha (demande d'Antoine).
+  - **Implémenté** : lecture d'une définition (v2 = tuile de Grist BI + `aggFn: 'none'`, `measures`, `total`, `sortMode: 'axis'`), colonnes demandées par une définition (réponse à la question de Publipostage+ sur le remappage), calcul des points, lecture d'un rapport (`BI_Dashboard_Config`) et d'un graphique de Publipostage+ (v1). Le dessin et le panneau d'ajout ne le sont pas.
+  - **Mesuré avant d'écrire** (sondes Node sur `js/data.js` et `js/format.js`) : la moyenne et le minimum lisent une cellule vide comme 0 (minimum de [10, vide, 20] = 0, moyenne 10 au lieu de 15) ; `cellText(['L','M'])` rend « M » ; `parseDateValue` refuse une date avec heure ; un agrégat inconnu devient une somme sans rien dire. Le module ne reprend aucun de ces quatre comportements ; sans cellule vide, ses résultats sont identiques à `groupByAggregate` (essai).
+  - **Choix** : mêmes noms que Grist BI plutôt qu'un vocabulaire neuf (pas de migration de `ConfigJSON`, pas de perte : essai d'aller-retour sur les tuiles du jeu de charge) ; refus plutôt que repli pour tout ce qui change le calcul (version, forme, agrégat, mode de mesure) ; un réglage d'aspect inconnu est ignoré et dit (`ignores`) ; la jauge de la v1 (une par ligne) est refusée plutôt que devinée.
+  - **Pas vérifié** : la lecture v1 vient du code de Publipostage+ (`chart-make.js`), non de ses essais ; rien dans un vrai Grist, le vrai GFS ni chez Publipostage+ ; les noms de palette (`grist`, `grist-*`) sont provisoires ; l'hygiène est celle que GFS a DITE : rejouée avec le propre test du kit (`kit/test/calendrier-hygiene.test.mjs` et `hygiene.test.mjs`, sur une COPIE du kit où le dossier est posé et où le test du calendrier est pointé sur `graphique/` : 5 et 9 essais passent), jamais sur le vrai kit de GFS ; sans `lien-kit.js` ni feuille de style, qui n'existent pas encore.
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée
