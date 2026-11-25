@@ -61,11 +61,27 @@ function parseCssRules(css) {
  * (`cfg`, colonnes de `BI_Dashboard_Config`). `actions`, s'il est donné, reçoit chaque action envoyée à `applyUserActions`.
  * Rend `{ api, cfg }`.
  */
-function loadApiWithFakeConfigTable(data, i18n, actions) {
+// `names` : le jeu de noms des colonnes de BI_Dashboard_Config que le faux document porte au départ (consigne GFS 030) — `'en'` (défaut : Name,
+// ReportType, ModifiedAt, ModifiedBy), `'fr'` (Nom, TypeRapport, DateModif, ModifiePar : un document d'avant la consigne), `'both'` (les deux jeux) ou
+// un objet de colonnes {id: [], …} donné tel quel. `cfg` rend les colonnes comme `fetchTable` ; `renameColumn(ancien, nouveau)` joue le renommage d'un autre onglet.
+const CONFIG_SETS = {
+  en: ['Name', 'ReportType', 'ModifiedAt', 'ModifiedBy'],
+  fr: ['Nom', 'TypeRapport', 'DateModif', 'ModifiePar']
+};
+function configColumnsFor(names) {
+  if (names && typeof names === 'object') return names;
+  const ids = names === 'both' ? CONFIG_SETS.en.concat(CONFIG_SETS.fr) : CONFIG_SETS[names || 'en'];
+  const cfg = { id: [], TableId: [], ConfigJSON: [] };
+  ids.forEach((id) => { cfg[id] = []; });
+  return cfg;
+}
+
+function loadApiWithFakeConfigTable(data, i18n, actions, names) {
   const sandbox = { console: { error() {}, log() {}, warn() {} }, setTimeout: (fn) => { fn(); return 0; } };
   sandbox.window = sandbox;
   sandbox.GristBI = { data, i18n, state: { DEFAULT_PAGE_ID: 'page_default' } };
-  const cfg = { id: [], TableId: [], ConfigJSON: [], Nom: [], TypeRapport: [], DateModif: [], ModifiePar: [] };
+  vm.runInNewContext(read('js', 'config-names.js'), sandbox);
+  const cfg = configColumnsFor(names);
   sandbox.grist = { docApi: {
     listTables: async () => ['BI_Dashboard_Config'],
     fetchTable: async () => plain(cfg),
@@ -73,6 +89,9 @@ function loadApiWithFakeConfigTable(data, i18n, actions) {
       const out = { retValues: [] };
       list.forEach((a) => {
         if (actions) actions.push(a);
+        // Comme Grist, une colonne qui n'existe pas fait échouer l'écriture (« introuvable ») : c'est ce que voit une page restée ouverte sur les anciens noms.
+        const unknown = (a[0] === 'AddRecord' || a[0] === 'UpdateRecord') && Object.keys(a[3] || {}).find((k) => !(k in cfg));
+        if (unknown) throw new Error(`[Sandbox] KeyError '${unknown}'`);
         if (a[0] === 'AddRecord') {
           const id = cfg.id.length + 1;
           cfg.id.push(id);
@@ -82,13 +101,21 @@ function loadApiWithFakeConfigTable(data, i18n, actions) {
           const i = cfg.id.indexOf(a[2]);
           Object.keys(a[3]).forEach((k) => { cfg[k][i] = a[3][k]; });
           out.retValues.push(null);
+        } else if (a[0] === 'AddColumn') {
+          cfg[a[2]] = cfg.id.map(() => null);
+          out.retValues.push({ colId: a[2] });
+        } else if (a[0] === 'BulkUpdateRecord') {
+          a[2].forEach((rowId, k) => { const i = cfg.id.indexOf(rowId); Object.keys(a[3]).forEach((col) => { cfg[col][i] = a[3][col][k]; }); });
+          out.retValues.push(null);
         } else out.retValues.push(null);
       });
       return out;
     }
   } };
   vm.runInNewContext(read('js', 'grist-api.js'), sandbox);
-  return { api: sandbox.GristBI.api, cfg };
+  // L'autre onglet qui renomme une colonne (le fichier qui sert la page ouverte garde les noms qu'il a lu avant).
+  const renameColumn = (from, to) => { cfg[to] = cfg[from]; delete cfg[from]; };
+  return { api: sandbox.GristBI.api, cfg, renameColumn };
 }
 
 module.exports = { ROOT, read, readCharts, CHARTS_FILES, readMain, MAIN_FILES, plain, parseCssRules, loadApiWithFakeConfigTable };

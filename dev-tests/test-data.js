@@ -3436,7 +3436,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     let tokenCount = 0;
     const sandbox = { console: { error() {}, log() {}, warn() {} }, setTimeout: (fn) => { fn(); return 0; }, encodeURIComponent, URL };
     sandbox.window = sandbox;
-    sandbox.GristBI = { data };
+    sandbox.GristBI = { data, configNames: require('../js/config-names.js') };
     sandbox.fetch = async (url, init) => {
       calls.urls.push(url);
       calls.inits.push(init);
@@ -3487,7 +3487,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
 
     // sans jeton (GFS sans la capacité `jeton`) : un refus clair avant tout travail
     const refused = { console: { error() {}, log() {}, warn() {} }, setTimeout: (fn) => { fn(); return 0; } };
-    refused.window = refused; refused.GristBI = { data };
+    refused.window = refused; refused.GristBI = { data, configNames: require('../js/config-names.js') };
     refused.grist = { docApi: { getAccessToken: async () => { throw new Error('GFS_REFUSE : getAccessToken demande la capacité jeton'); } } };
     vm.runInNewContext(source, refused);
     const check = await refused.GristBI.api.checkAttachmentAccess();
@@ -4240,7 +4240,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
       const calls = [];
       const sandbox = { console: { error() {}, log() {}, warn() {} }, setTimeout: (fn) => { fn(); return 0; } };
       sandbox.window = sandbox;
-      sandbox.GristBI = { data };
+      sandbox.GristBI = { data, configNames: require('../js/config-names.js') };
       let probeReads = 0;
       let modified = false;
       let nextId = 1;
@@ -4319,7 +4319,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
       const warns = [];
       const sandbox = { console: { error() {}, log() {}, warn: (...a) => warns.push(a.join(' ')) }, setTimeout: (fn) => { fn(); return 0; } };
       sandbox.window = sandbox;
-      sandbox.GristBI = { data, format };
+      sandbox.GristBI = { data, format, configNames: require('../js/config-names.js') };
       sandbox.grist = { docApi: { fetchTable } };
       vm.runInNewContext(source, sandbox);
       const out = await sandbox.GristBI.api.readColumnFormats(tableId);
