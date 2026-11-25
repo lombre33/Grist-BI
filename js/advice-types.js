@@ -165,6 +165,7 @@
   }
 
   // Histogramme : comment se répartissent les valeurs d'une colonne numérique (une vraie mesure, pas un rang ni une note de 1 à 5).
+  const WATERFALL_BY_TIME_SCORE = 5; // cascade d'une période : derrière celle des postes (6,5), au niveau d'un histogramme
   const SECOND_MEASURE_STEP = 0.8; // le même pas que js/advice.js (7 - i x 0,8 pour le chiffre clé, 9 - i x 0,8 pour la courbe)
   function histogramCandidates(rows, ctx, opts, core) {
     return realMeasures(ctx).filter(spreadable).slice(0, 2).map((p, i) => core.candidate({
@@ -224,9 +225,12 @@
     dims.filter((dimension) => dimension !== measure.id).forEach((dimension) => {
       if (out.length >= 2 || !insights.waterfallStats(core.groupsFor(ctx, dimension, measure.id, 'sum'))) return;
       const vars = { measure: measure.id, dimension };
+      // Une cascade par POSTE montre de quoi le solde est fait (la forme d'un compte de résultat) ; par période elle ne fait que cumuler une
+      // courbe : elle passe derrière.
+      const byTime = !!ctx.time && dimension === ctx.time.dimension;
       out.push(core.candidate({
         type: 'waterfall',
-        score: 6.5,
+        score: byTime ? WATERFALL_BY_TIME_SCORE : 6.5,
         dims: [dimension],
         measures: [measure.id],
         tileData: { type: 'waterfall', dimension, measure: measure.id, aggFn: 'sum', title: core.resolveTitle(opts, 'advice.title.waterfall', vars, `${measure.id} / ${dimension}`) },

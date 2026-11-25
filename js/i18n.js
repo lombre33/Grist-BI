@@ -817,6 +817,7 @@
     'advice.insight.pieTopThreeCount': { fr: '{top} représente {pct} % des lignes ; les trois premières parts en font {pct3} %.', en: '{top} makes up {pct}% of the rows; the top three shares make up {pct3}%.' },
     'advice.insight.spread': { fr: '{measure} est {ratio} fois plus élevé pour {high} que pour {low}.', en: '{measure} is {ratio} times higher for {high} than for {low}.' },
     'advice.insight.spreadCount': { fr: '{high} compte {ratio} fois plus de lignes que {low}.', en: '{high} has {ratio} times as many rows as {low}.' },
+    'advice.insight.signed': { fr: '{high} est le plus haut ({highValue}), {low} le plus bas ({lowValue}).', en: '{high} is the highest ({highValue}) and {low} the lowest ({lowValue}).' },
     'advice.insight.flat': { fr: 'Les {n} valeurs de {dimension} sont proches : il y a peu de différences à voir ici.', en: 'The {n} values of {dimension} are close together: there is little to tell them apart here.' },
     'advice.insight.lineUp': { fr: '{measure} augmente de {pct} % entre {from} et {to}.', en: '{measure} rises {pct}% from {from} to {to}.' },
     'advice.insight.lineDown': { fr: '{measure} baisse de {pct} % entre {from} et {to}.', en: '{measure} falls {pct}% from {from} to {to}.' },
