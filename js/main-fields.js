@@ -10,7 +10,7 @@
   const { escapeHtml } = GristBI.data;
   const { t } = GristBI.i18n;
   const {
-    addDrillLevelBtn, addRadarAxisBtn, aggSelect, columnDimensionSelect, dateColumnSelect, dimensionSelect,
+    addDrillLevelBtn, addRadarAxisBtn, aggSelect, columnDimensionSelect, columnPickEl, dateColumnSelect, dimensionSelect,
     drillCrossFilterCheckbox, drillCrossFilterField, drillLevelsContainer, endColumnSelect, measureModeSelect,
     measureSelect, measureSizeSelect, measureYSelect, numFmtCompact, numFmtCustom, numFmtDecimals, numFmtHint,
     numFmtSelect, paletteHint, paletteSelect, paletteSwatch, pivotHeatCheckbox, radarAxesContainer,
@@ -21,6 +21,7 @@
   // Définies dans un fichier chargé plus tard : liaison tardive, résolue à l'appel.
   const renderFilterColumns = (...args) => parts.renderFilterColumns(...args);
   const updateAdvancedFilterFieldsForColumn = (...args) => parts.updateAdvancedFilterFieldsForColumn(...args);
+  const hideColumnResults = (...args) => parts.hideColumnResults(...args);
   Object.assign(parts, {
     autoTileTitle, availableColumns, blendJoinColumns, createDrillLevelSelect, createRadarAxisSelect, fillCombobox,
     formHasNoDimension, genTileId, inferColumnKind, isRadarColumnsMode, isWordCloudSplitMode, numberFormatFromForm,
@@ -53,7 +54,7 @@
   // rester l'une des colonnes réellement chargées, comme un <select>. `.nextElementSibling` est le
   // <ul class="combobox-list"> voisin dans le même wrapper `.combobox` (voir index.html/harness.html).
   [dimensionSelect, columnDimensionSelect, startColumnSelect, endColumnSelect, seriesSelect, measureSelect, measureYSelect, measureSizeSelect, trendDimensionSelect, dateColumnSelect,
-   radarEntityColumnSelect, radarEntityValueSelect, targetColumnSelect].forEach((input) => {
+   radarEntityColumnSelect, radarEntityValueSelect, targetColumnSelect, columnPickEl].forEach((input) => {
     GristBI.combobox.attach(input, input.nextElementSibling, { strict: true });
   });
 
@@ -114,6 +115,11 @@
     fillCombobox(radarEntityColumnSelect, cols, { blankLabel: t('tileForm.none.f') });
     updateRadarEntityValueOptions(rows);
     fillCombobox(dateColumnSelect, cols);
+    // « Que faire avec cette colonne ? » : les colonnes de la table (sans les dérivées d'une date) ; une colonne choisie sur la table
+    // d'AVANT (autres lignes, même du même nom), ou qui a disparu, n'est plus une réponse : champ et résultats sont vidés.
+    const pickable = GristBI.adviceColumn ? GristBI.adviceColumn.pickableColumns(cols) : cols;
+    fillCombobox(columnPickEl, pickable);
+    if (columnPickEl.value && (pickable.indexOf(columnPickEl.value) === -1 || (S.columnHelperRows && S.columnHelperRows !== rows))) { columnPickEl.value = ''; hideColumnResults(); }
     refreshColumnsPicker(cols);
     renderFilterColumns(rows);
     updateAdvancedFilterFieldsForColumn(rows);

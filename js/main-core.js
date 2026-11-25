@@ -427,6 +427,14 @@
   const tileCompleteEl = document.getElementById('tile-complete');
   const tileCompleteListEl = document.getElementById('tile-complete-list');
   const tileCompleteLiveEl = document.getElementById('tile-complete-live');
+  // « Que faire avec cette colonne ? » (étape « Choisir » du panneau, js/advice-column.js).
+  const tileColumnEl = document.getElementById('tile-column');
+  const columnPickEl = document.getElementById('tile-column-pick');
+  const columnProfileEl = document.getElementById('tile-column-profile');
+  const columnUsedEl = document.getElementById('tile-column-used');
+  const columnEmptyEl = document.getElementById('tile-column-empty');
+  const columnListEl = document.getElementById('tile-column-list');
+  const columnLiveEl = document.getElementById('tile-column-live');
 
   const typeLineNameEl = document.getElementById('tile-type-line-name');
 
@@ -682,6 +690,7 @@
     sparklineField, stackField, stackPercentCheckbox, stackPercentField, stackedCheckbox, startColumnField,
     startColumnSelect, store, styleOptionsEl, submitTileBtn, suggestDateHierarchyBtn, tableSelectInput,
     targetColumnField, targetColumnSelect, targetField, targetInput, thresholdsField, tileAdviceEl, tileColumnsField, tileCompleteEl, tileCompleteListEl, tileCompleteLiveEl,
+    tileColumnEl, columnPickEl, columnProfileEl, columnUsedEl, columnEmptyEl, columnListEl, columnLiveEl,
     tileColumnsList, tilePanel, tilePanelCloseBtn, tilePanelTitle, tilePreviewEl, tilePreviewEmptyEl, tileTextField,
     tileTextInput, tileTitleInput, tileTypeSelect, tilesContainer, trendDimensionSelect, trendField, typeGridEl,
     typeLineNameEl, updateBookmarkBtn, valueLabelsCheckbox, valueLabelsField, viewChipEl, viewChipLeaveBtn,

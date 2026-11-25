@@ -247,7 +247,56 @@ async function scenario(browser, origin, { name, url, framed }) {
     else verified.push('réponse annulée tolérée');
     await frame.waitForTimeout(200);
 
-    // 5. Le panneau « Ajouter une visualisation » (niveau 3 des suggestions) dans la vraie page, sous sa politique, avec de vrais clics : la liste
+    // 5. « Que faire avec cette colonne ? » (niveau 3 des suggestions), dans la vraie page, sous sa politique, avec de VRAIS gestes : le bloc se
+    // déplie, la colonne se choisit dans le champ à autocomplétion (frappe + Entrée), la phrase du rôle et des cartes apparaissent, un clic de souris
+    // sur « Ajouter » pose UNE tuile (le navigateur déclenche un 2e `change` à la perte du focus : refaire la liste à ce moment retirait le bouton
+    // entre le bouton enfoncé et relâché, le clic se perdait — défaut trouvé par ce pas), la liste se recalcule, le focus reste dans le panneau.
+    // `Mois` n'est lue par aucune des quatre tuiles posées plus haut : des propositions existent.
+    await frame.evaluate(() => {
+      if (document.body.dataset.mode !== 'edit') document.getElementById('mode-toggle').click();
+      GristBI.openTilePanel({ step: 'choose' });
+    });
+    await frame.click('#tile-column > summary');
+    await frame.click('#tile-column-pick');
+    await page.keyboard.type('Moi');
+    await page.keyboard.press('Enter');
+    const picked = await frame.waitForSelector('#tile-column-list button[data-column-add]', { state: 'visible', timeout: 8000 }).then(() => true, () => false);
+    if (!picked) problems.push('« Que faire avec cette colonne ? » : aucune carte après le choix de « Mois »');
+    else {
+      const first = await frame.evaluate(() => ({
+        value: document.getElementById('tile-column-pick').value,
+        profile: document.getElementById('tile-column-profile').textContent,
+        cards: document.querySelectorAll('#tile-column-list .complete-card').length,
+        live: document.getElementById('tile-column-live').textContent,
+        tiles: GristBI.store.getState().tiles.length,
+      }));
+      if (first.value !== 'Mois') problems.push('« Que faire avec cette colonne ? » : le champ vaut « ' + first.value + ' » au lieu de « Mois »');
+      if (!/Mois/.test(first.profile)) problems.push('« Que faire avec cette colonne ? » : la phrase du rôle ne nomme pas la colonne : « ' + first.profile + ' »');
+      if (first.cards < 1 || first.cards > 3) problems.push('« Que faire avec cette colonne ? » : ' + first.cards + ' cartes (1 à 3 attendues)');
+      if (!first.live) problems.push('« Que faire avec cette colonne ? » : aucune annonce écrite');
+      await frame.click('#tile-column-list button[data-column-add="0"]');
+      await frame.waitForFunction((n) => GristBI.store.getState().tiles.length === n + 1, first.tiles, { timeout: 5000 }).catch(() => {});
+      await frame.waitForTimeout(700);
+      const second = await frame.evaluate(() => {
+        const active = document.activeElement;
+        return {
+          tiles: GristBI.store.getState().tiles.length,
+          used: document.getElementById('tile-column-used').textContent,
+          cards: document.querySelectorAll('#tile-column-list .complete-card').length,
+          focusInPanel: !!(active && active.closest && active.closest('#tile-panel')),
+          focusTag: active ? active.tagName : '',
+        };
+      });
+      if (second.tiles !== first.tiles + 1) problems.push('« Que faire avec cette colonne ? » : « Ajouter » ' + first.tiles + ' -> ' + second.tiles + ' tuiles (une seule attendue ; un clic perdu ?)');
+      if (!/1/.test(second.used)) problems.push('« Que faire avec cette colonne ? » : la tuile posée n\'est pas comptée (« ' + second.used + ' »)');
+      if (!second.focusInPanel || second.focusTag === 'BODY') problems.push('« Que faire avec cette colonne ? » : le focus a quitté le panneau (' + second.focusTag + ')');
+      await frame.evaluate(() => GristBI.closeTilePanel(false));
+      const closed = await frame.evaluate(() => ({ value: document.getElementById('tile-column-pick').value, cards: document.querySelectorAll('#tile-column-list .complete-card').length, profile: document.getElementById('tile-column-profile').textContent }));
+      if (closed.value || closed.cards || closed.profile) problems.push('panneau fermé : le choix de colonne et ses résultats restent (' + JSON.stringify(closed) + ')');
+      if (!problems.some((p) => /Que faire|panneau fermé/.test(p))) verified.push('« Que faire avec cette colonne ? » : choix, phrase, ' + first.cards + ' cartes, un clic réel = une tuile, focus, fermeture');
+    }
+
+    // 6. Le panneau « Ajouter une visualisation » (niveau 3 des suggestions) dans la vraie page, sous sa politique, avec de vrais clics : la liste
     // « Pour compléter ce tableau de bord » apparaît après le calcul différé, les types qu'elle utilise portent le badge « Recommandé » (jamais une
     // carte grisée), « Ajouter » pose UNE tuile, la liste se recalcule et le focus reste dans le panneau, l'annonce est écrite.
     await frame.evaluate(() => {

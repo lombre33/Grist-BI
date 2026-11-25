@@ -355,11 +355,11 @@ console.log(`OK propriétés — ${propertyChecks.tables} tables x 3 tableaux de
   assert.ok(/GristBI\.adviceComplete\.complete\(/.test(main), 'le panneau appelle le module');
   assert.ok(/function renderCompletion\(/.test(main) && /renderTypeCards\(\);\s*renderCompletion\(\);/.test(main), 'rempli à l\'ouverture du panneau et au changement de langue');
   assert.ok((main.match(/renderCompletion\(/g) || []).length >= 4, 'ouverture, changement de langue, ajout d\'une carte, définition');
-  assert.ok(/hideCompletion\(\);\s*workspaceEl\.classList\.remove\('panel-open'\)/.test(main), 'masquée et annulée à la fermeture du panneau');
+  assert.ok(/hideCompletion\(\);[^}]*workspaceEl\.classList\.remove\('panel-open'\)/.test(main), 'masquée et annulée à la fermeture du panneau');
   assert.ok(/S\.editingTileId \|\| !state\.rows\.length/.test(main), 'ni en modification d\'une tuile, ni sans ligne');
   assert.ok(/paintCompletion\([^)]*tiles\.length > 0\)/.test(main) && /tileCompleteEl\.hidden = !showList \|\| !items\.length/.test(main), 'la liste « Pour compléter » seulement avec des tuiles posées (les badges valent aussi sur un tableau de bord vide)');
-  assert.ok(/state\.pages\.reduce\(/.test(main), 'toutes les pages comptent');
-  assert.ok(/data-complete=/.test(main) && /flashTile\(id\)/.test(main) && /tilePanel\.complete\.added/.test(main), 'ajout, clignotement de la tuile posée, annonce');
+  assert.ok(/tilesOfAllPages = \(state\) => state\.pages\.reduce\(/.test(main) && /function renderCompletion\([\s\S]{0,400}const tiles = tilesOfAllPages\(state\)/.test(main), 'toutes les pages comptent');
+  assert.ok(/'data-complete'/.test(main) && /\$\{attr\}="\$\{i\}"/.test(main) && /flashTile\(id\)/.test(main) && /tilePanel\.complete\.added/.test(main), 'ajout, clignotement de la tuile posée, annonce');
   assert.ok(/token !== completionToken \|\| tilePanel\.hidden/.test(main), 'un calcul périmé ou un panneau refermé n\'écrit rien');
   // Niveau 3b : le badge « Recommandé » des cartes de type.
   assert.ok(/function markRecommended\(/.test(main) && /markRecommended\(items\)/.test(main), 'les badges sont posés par la peinture de la liste');
