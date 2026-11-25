@@ -146,7 +146,8 @@ const find = (list, id) => list.find((p) => p.id === id);
   assert.deepStrictEqual(radar.tileData.radarAxes, ['Maths', 'Francais', 'Anglais', 'Histoire', 'Sport'], 'les cinq matières, dans l\'ordre de la table');
   assert.ok(top3.some((s) => s.type === 'radar'), 'le radar est parmi les trois premières suggestions');
   all.filter((s) => s.tileData.measure && /^(Maths|Francais|Anglais|Histoire|Sport)$/.test(s.tileData.measure)).forEach((s) => {
-    assert.ok(s.tileData.aggFn === 'avg' || s.type === 'radar', `une note se moyenne (${s.type} ${s.tileData.aggFn})`);
+    // (Un histogramme ou des boîtes lisent les valeurs brutes : aucun agrégat, donc rien qu'on additionne.)
+    assert.ok(s.tileData.aggFn === 'avg' || s.type === 'radar' || s.type === 'histogram' || s.type === 'box', `une note se moyenne (${s.type} ${s.tileData.aggFn})`);
   });
   assert.ok(!all.some((s) => s.type === 'pie'), 'pas d\'anneau de moyennes');
   // Avant : « Maths par Français » et « Maths par Maths ».
@@ -243,7 +244,7 @@ const find = (list, id) => list.find((p) => p.id === id);
   const nine = suggest(sales, 9);
   assert.ok(nine.length >= 6, `au moins six suggestions sur la table RH (${nine.length})`);
   nine.forEach((s) => {
-    assert.ok(/^(overview|trend|compare|share|relation|cross|profile)$/.test(s.intent), `intention : ${s.intent}`);
+    assert.ok(/^(overview|trend|compare|share|relation|cross|profile|concentrate|distribution|change|stages)$/.test(s.intent), `intention : ${s.intent}`);
     assert.strictEqual(s.intentKey, advice.INTENT_KEYS[s.intent]);
   });
   assert.strictEqual(new Set(nine.map((s) => s.type + '|' + s.tileData.dimension + '|' + s.tileData.measure)).size, nine.length, 'aucune suggestion en double');

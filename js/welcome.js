@@ -104,6 +104,64 @@
       + `<polygon points="${values.map((v, k) => at(k, Math.max(0.08, v))).join(' ')}" fill="${PALETTE[0]}" fill-opacity="0.25" stroke="${PALETTE[0]}" stroke-width="2" stroke-linejoin="round"/>`;
   }
 
+  // Barres (la plus grande = pleine hauteur) et courbe par-dessus : un Pareto (part cumulée) ou deux mesures. Valeurs de 0 à 1.
+  function barLineShapes(bars, line) {
+    const n = bars.length;
+    const innerW = W - 2 * PAD;
+    const innerH = H - 2 * PAD;
+    const bw = innerW / n;
+    const rects = bars.map((v, i) => {
+      const h = Math.max(2, v * innerH);
+      return `<rect x="${round2(PAD + i * bw + bw * 0.15)}" y="${round2(H - PAD - h)}" width="${round2(bw * 0.7)}" height="${round2(h)}" rx="1.5" fill="${PALETTE[0]}"/>`;
+    }).join('');
+    const pts = line.map((v, i) => `${round2(PAD + i * bw + bw / 2)},${round2(H - PAD - v * innerH)}`);
+    return rects
+      + `<polyline points="${pts.join(' ')}" fill="none" stroke="${PALETTE[1]}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`
+      + pts.map((pt) => `<circle cx="${pt.split(',')[0]}" cy="${pt.split(',')[1]}" r="2" fill="${PALETTE[1]}"/>`).join('');
+  }
+
+  // Histogramme : des barres collées, une par classe.
+  function histogramShapes(values) {
+    const n = values.length;
+    const innerW = W - 2 * PAD;
+    const innerH = H - 2 * PAD;
+    const bw = innerW / n;
+    return values.map((v, i) => {
+      const h = Math.max(1, v * innerH);
+      return `<rect x="${round2(PAD + i * bw)}" y="${round2(H - PAD - h)}" width="${round2(Math.max(1, bw - 1))}" height="${round2(h)}" fill="${PALETTE[0]}"/>`;
+    }).join('');
+  }
+
+  // Boîtes à moustaches verticales : moustache (bas-haut), boîte (Q1-Q3), médiane. Valeurs de 0 (bas) à 1 (haut).
+  function boxShapes(boxes) {
+    const n = boxes.length;
+    const innerW = W - 2 * PAD;
+    const innerH = H - 2 * PAD;
+    const slot = innerW / n;
+    const y = (v) => round2(H - PAD - v * innerH);
+    return boxes.map((b, i) => {
+      const cx = round2(PAD + i * slot + slot / 2);
+      const bw = round2(Math.min(18, slot * 0.6));
+      const x = round2(cx - bw / 2);
+      return `<line x1="${cx}" y1="${y(b.low)}" x2="${cx}" y2="${y(b.high)}" stroke="${PALETTE[0]}" stroke-width="1.5"/>`
+        + `<rect x="${x}" y="${y(b.q3)}" width="${bw}" height="${round2(Math.max(1.5, y(b.q1) - y(b.q3)))}" rx="1.5" fill="${PALETTE[0]}" fill-opacity="0.35" stroke="${PALETTE[0]}" stroke-width="1.5"/>`
+        + `<line x1="${x}" y1="${y(b.median)}" x2="${round2(x + bw)}" y2="${y(b.median)}" stroke="${PALETTE[0]}" stroke-width="2"/>`;
+    }).join('');
+  }
+
+  // Cascade : chaque marche flotte entre `from` et `to` (0 = bas, 1 = haut) ; hausse en vert, baisse en rouge (les couleurs de la tuile).
+  function waterfallShapes(steps) {
+    const n = steps.length;
+    const innerW = W - 2 * PAD;
+    const innerH = H - 2 * PAD;
+    const bw = innerW / n;
+    return steps.map((st, i) => {
+      const top = H - PAD - Math.max(st.from, st.to) * innerH;
+      const h = Math.max(1.5, Math.abs(st.to - st.from) * innerH);
+      return `<rect x="${round2(PAD + i * bw + bw * 0.12)}" y="${round2(top)}" width="${round2(bw * 0.76)}" height="${round2(h)}" rx="1" fill="${st.to >= st.from ? PALETTE[2] : PALETTE[7]}"/>`;
+    }).join('');
+  }
+
   // Miniature SVG (chaîne) d'un aperçu de js/advice.js:previewFor ; '' quand il n'y en a pas.
   // `opts.lang` : langue du nombre affiché sur une carte KPI.
   function previewSvg(p, opts) {
@@ -142,6 +200,18 @@
         break;
       case 'funnel':
         body = funnelShapes(p.values);
+        break;
+      case 'barline':
+        body = barLineShapes(p.bars, p.line);
+        break;
+      case 'histogram':
+        body = histogramShapes(p.values);
+        break;
+      case 'boxes':
+        body = boxShapes(p.boxes);
+        break;
+      case 'waterfall':
+        body = waterfallShapes(p.steps);
         break;
       case 'value': {
         const text = new Intl.NumberFormat(lang === 'en' ? 'en-US' : 'fr-FR', { notation: 'compact', maximumFractionDigits: 1 }).format(p.value);
