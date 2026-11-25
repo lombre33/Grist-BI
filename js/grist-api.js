@@ -17,20 +17,21 @@
   const CONFIG_TABLE = 'BI_Dashboard_Config';
   // Un rapport est une LIGNE de cette table, repérée par son `id` Grist (consigne GFS 007, point
   // 2) — plusieurs rapports peuvent partager le même `TableId` (plusieurs tableaux de bord pour la
-  // même table de travail). `Nom`/`TypeRapport`/`DateModif`/`ModifiePar` sont les noms attendus par
+  // même table de travail). `Name`/`ReportType`/`ModifiedAt`/`ModifiedBy` sont les noms attendus par
   // le manifeste de GFS pour que l'explorateur liste/renomme chaque ligne comme un fichier ; posés
   // par `AddColumn` sur une table déjà existante (jamais recréée, voir CLAUDE.md §3/§8), jamais
   // backfillés en masse pour les lignes déjà là — seulement à LEUR PROCHAIN enregistrement, sur un
   // geste réel de la personne (voir saveConfig plus bas), jamais au démarrage.
-  const CONFIG_COLUMNS = [
-    { id: 'TableId', type: 'Text' },
-    { id: 'ConfigJSON', type: 'Text' },
-    { id: 'Nom', type: 'Text' }, // nom du rapport, affiché/renommable dans l'explorateur de GFS (F2) et dans ce widget
-    { id: 'TypeRapport', type: 'Text' }, // toujours 'rapport' pour les lignes posées par ce widget
-    { id: 'DateModif', type: 'DateTime' }, // secondes depuis l'epoch UTC, comme une colonne Date/DateTime Grist
-    { id: 'ModifiePar', type: 'Text' } // adresse détectée, ou "Nom <adresse>" (voir js/main.js:currentReportAuthorLabel)
-  ];
-  const CONFIG_REPORT_TYPE = 'rapport'; // seule valeur de TypeRapport que ce widget pose/reconnaît
+  // CONSIGNE GFS 030 (25/11/2026, « tout en anglais ») : ces quatre colonnes s'appelaient `Nom`, `TypeRapport`, `DateModif` et
+  // `ModifiePar`. Les documents déjà en service portent encore ces noms : ce fichier lit et écrit sous LES NOMS QUE LE DOCUMENT A
+  // (colonne par colonne, `js/config-names.js`), ne crée jamais une colonne anglaise à côté d'une française, et le passage d'un jeu à
+  // l'autre ne se fait que par la fenêtre commune du kit (`js/main-session.js:runNamesUpdate`, jamais ici, jamais en silence).
+  const CN = GristBI.configNames;
+  // Les colonnes de la table créée à neuf : les noms anglais (tout document créé depuis cette version).
+  const CONFIG_COLUMNS = CN.newColumns();
+  // Les noms que le document porte MAINTENANT (nouveau ou ancien jeu, par colonne), relus à chaque lecture de la table : null tant qu'elle n'a pas été lue.
+  let _configCols = null;
+  const CONFIG_REPORT_TYPE = 'rapport'; // seule valeur de ReportType (ex-TypeRapport) que ce widget pose/reconnaît : la VALEUR ne change pas avec le nom de la colonne
   // Table dédiée aux commentaires collaboratifs (ROADMAP.md Tier 2, 2026-09-29) : 1 LIGNE PAR
   // COMMENTAIRE, plutôt qu'un champ de plus dans le blob JSON de BI_Dashboard_Config — ce blob est
   // une seule ligne par table de travail, donc deux commentaires ajoutés en même temps par deux
@@ -76,7 +77,7 @@
 
   let _rawTables = null;
   let _configRowIdByTable = {};
-  // Lignes de BI_Dashboard_Config déjà confirmées "nommées" (Nom non vide) cette session — évite de
+  // Lignes de BI_Dashboard_Config déjà confirmées "nommées" (Name/Nom non vide) cette session — évite de
   // relire toute la table à CHAQUE sauvegarde une fois qu'un rapport a reçu son nom par défaut (voir
   // saveConfig plus bas) : seule la toute première sauvegarde d'un rapport donné, par session, paie
   // cette lecture supplémentaire.
@@ -245,6 +246,7 @@
           // `_rawTables` peut valoir `null` ici (budget de `tableExistsConfirmed` épuisé juste
           // avant, voir sa documentation) — même garde que `loadOrCreateTable` plus bas, même
           // raison. Table toute neuve, déjà au schéma CONFIG_COLUMNS complet : rien à migrer.
+          _configCols = CN.resolve(CONFIG_COLUMNS.map((c) => c.id));
           if (_rawTables) _rawTables.push(CONFIG_TABLE);
           organizeInternalPages();
           return;
@@ -259,17 +261,45 @@
     return _configTableExistsPromise;
   }
 
-  // Ajoute à BI_Dashboard_Config les colonnes de CONFIG_COLUMNS encore manquantes, sans toucher aux
-  // lignes déjà présentes (contrairement à `ensureColumnsUpToDate` plus bas, utilisée par
-  // BI_Dashboard_Comments : ici, aucune valeur n'est calculée pour les lignes déjà là — leur Nom/
-  // TypeRapport/DateModif/ModifiePar restent vides tant que `saveConfig` ne les a pas backfillés à
-  // leur propre prochain enregistrement, sur un geste réel de la personne, jamais au démarrage).
+  // Ajoute à BI_Dashboard_Config les colonnes encore manquantes, sans toucher aux lignes déjà présentes (contrairement à
+  // `ensureColumnsUpToDate` plus bas, utilisée par BI_Dashboard_Comments : ici, aucune valeur n'est calculée pour les lignes déjà là —
+  // leur Name/ReportType/ModifiedAt/ModifiedBy restent vides tant que `saveConfig` ne les a pas backfillés à leur propre prochain
+  // enregistrement, sur un geste réel de la personne, jamais au démarrage).
+  // Une colonne est « là » sous l'un OU l'autre de ses deux noms (`Name` ou `Nom`…) : on n'ajoute JAMAIS la colonne anglaise à côté
+  // de la française (consigne GFS 030 : ce serait deux jeux dans un document, que la fenêtre commune refuse ensuite de renommer) —
+  // seulement celle dont aucun des deux noms n'existe, sous son nom anglais.
   async function ensureConfigColumnsExist() {
     const table = await grist.docApi.fetchTable(CONFIG_TABLE);
-    const existingIds = new Set(Object.keys(table).filter((k) => k !== 'id'));
-    const missing = CONFIG_COLUMNS.filter((c) => !existingIds.has(c.id));
+    const existingIds = Object.keys(table).filter((k) => k !== 'id');
+    _configCols = CN.resolve(existingIds);
+    const have = new Set(existingIds.map((id) => id.toLowerCase()));
+    const missing = CONFIG_COLUMNS.filter((c) => {
+      const key = CN.KEYS.find((k) => CN.NAMES[k][0] === c.id);
+      return key ? !_configCols[key].present : !have.has(c.id.toLowerCase());
+    });
     if (!missing.length) return;
     await grist.docApi.applyUserActions(missing.map((c) => ['AddColumn', CONFIG_TABLE, c.id, { type: c.type }]));
+    _configCols = CN.resolve(existingIds.concat(missing.map((c) => c.id)));
+  }
+
+  // Relit les noms de colonnes de BI_Dashboard_Config (après un échec « introuvable » : un renommage est passé dans un autre onglet ou par une autre personne).
+  async function refreshConfigNames() {
+    const table = await grist.docApi.fetchTable(CONFIG_TABLE);
+    _configCols = CN.resolve(Object.keys(table).filter((k) => k !== 'id'));
+    return table;
+  }
+
+  // Une écriture sur BI_Dashboard_Config sous les noms que le document a maintenant. `build()` est rappelée pour CHAQUE essai (les champs dépendent des noms) ;
+  // une erreur « introuvable » juste après un renommage venu d'ailleurs : relit les noms et recommence UNE fois (guide des apps de GFS, 1.1 point 15) ; sinon
+  // l'erreur remonte telle quelle, rien d'autre n'est écrit (l'appelant dit « Rechargez la page », voir `GristBI.api.isNameError`).
+  async function writeConfig(build) {
+    try {
+      return await grist.docApi.applyUserActions(build(_configCols || CN.resolve([])));
+    } catch (e) {
+      if (!CN.isNameError(e)) throw e;
+      await refreshConfigNames();
+      return grist.docApi.applyUserActions(build(_configCols));
+    }
   }
 
   // "Rapport BI N" / "BI report N" (consigne GFS 007, point 2 : dans la langue de la personne) pour
@@ -339,6 +369,7 @@
     try {
       await ensureConfigTableExists();
       const configTable = await grist.docApi.fetchTable(CONFIG_TABLE);
+      _configCols = CN.resolve(Object.keys(configTable || {}).filter((k) => k !== 'id'));
       const ids = (configTable && configTable.id) || [];
       for (let i = 0; i < ids.length; i++) {
         if (configTable.TableId[i] === tableId) {
@@ -377,27 +408,29 @@
     const json = JSON.stringify(Object.assign({ pages, currentPageId, bookmarks: bookmarks || [], blend: blend || null },
       styleValue !== 'standard' ? { style: styleValue } : {},
       Object.keys(optionsValue).length ? { styleOptions: optionsValue } : {}));
-    const fields = { ConfigJSON: json, DateModif: Math.floor(Date.now() / 1000) };
-    if (authorLabel) fields.ModifiePar = authorLabel;
+    // Champs LOGIQUES (`modifiedAt`…) : `CN.fieldsFor` les écrit sous les noms que le document a maintenant (Name ou Nom…), à chaque essai de `writeConfig`.
+    const logical = { ConfigJSON: json, modifiedAt: Math.floor(Date.now() / 1000) };
+    if (authorLabel) logical.modifiedBy = authorLabel;
+    const physical = (cols, extra) => CN.fieldsFor(cols, Object.assign({}, logical, extra));
 
     let rowId = null;
     if (typeof reportId === 'number') rowId = reportId; // GfsLink.opening()/onOpen : cible CETTE ligne
     else if (reportId !== 'new') rowId = _configRowIdByTable[tableId]; // comportement historique
     if (rowId && _namedReportRowIds.has(rowId)) {
-      // Déjà confirmé nommé plus tôt cette session (voir plus bas) : inutile de relire Nom/
-      // TypeRapport à chaque sauvegarde — seul un renommage externe (F2 dans GFS) pourrait différer,
+      // Déjà confirmé nommé plus tôt cette session (voir plus bas) : inutile de relire Name/
+      // ReportType à chaque sauvegarde — seul un renommage externe (F2 dans GFS) pourrait différer,
       // et cette table interne n'est relue qu'au prochain chargement de ce rapport, jamais en cours
       // de session (même convention que `_configRowIdByTable` ci-dessus).
-      await grist.docApi.applyUserActions([['UpdateRecord', CONFIG_TABLE, rowId, fields]]);
+      await writeConfig((cols) => [['UpdateRecord', CONFIG_TABLE, rowId, physical(cols)]]);
       _configRowIdByTable[tableId] = rowId;
       return rowId;
     }
 
     // Première sauvegarde de la session pour cette ligne (rapport neuf, rapport déjà existant mais
-    // pas encore vu cette session, ou ligne d'avant cette consigne sans Nom) : relit l'état réel de
-    // BI_Dashboard_Config pour savoir s'il faut poser Nom/TypeRapport, et pour le garde-fou
-    // "TypeRapport inconnu" ci-dessous (consigne GFS 007, guide des apps, test "Inconnu").
-    const savedTable = await grist.docApi.fetchTable(CONFIG_TABLE);
+    // pas encore vu cette session, ou ligne d'avant cette consigne sans nom) : relit l'état réel de
+    // BI_Dashboard_Config pour savoir s'il faut poser Name/ReportType, et pour le garde-fou
+    // "ReportType inconnu" ci-dessous (consigne GFS 007, guide des apps, test "Inconnu").
+    const savedTable = await refreshConfigNames();
     const ids = (savedTable && savedTable.id) || [];
     let idx = -1;
     if (rowId) {
@@ -408,29 +441,30 @@
       // créer une ligne séparée même si ce TableId en porte déjà une autre.
       for (let i = 0; i < ids.length; i++) if (savedTable.TableId[i] === tableId) { idx = i; rowId = ids[i]; break; }
     }
-    const existingType = idx !== -1 && savedTable.TypeRapport ? savedTable.TypeRapport[idx] : '';
+    const existingType = idx !== -1 ? CN.cell(savedTable, _configCols, 'reportType', idx) : '';
     if (existingType && existingType !== CONFIG_REPORT_TYPE) {
-      // Un TypeRapport que ce widget ne connaît pas n'est ni ouvert, ni réenregistré (consigne GFS
+      // Un ReportType que ce widget ne connaît pas n'est ni ouvert, ni réenregistré (consigne GFS
       // 007) — ne devrait jamais arriver en pratique (seul Grist-BI écrit dans cette table), gardé
       // par précaution plutôt que d'écraser silencieusement la ligne d'une autre app/un futur type.
       console.error(
-        `[GristBI] ligne ${rowId} de "${CONFIG_TABLE}" avec TypeRapport="${existingType}" inconnu — ` +
+        `[GristBI] ligne ${rowId} de "${CONFIG_TABLE}" avec ReportType="${existingType}" inconnu — ` +
         'sauvegarde ignorée pour ne pas l\'écraser.'
       );
       return rowId || null;
     }
-    const existingName = idx !== -1 && savedTable.Nom ? savedTable.Nom[idx] : '';
+    const existingName = idx !== -1 ? CN.cell(savedTable, _configCols, 'name', idx) : '';
+    const naming = {};
     if (!existingName) {
-      const existingNames = new Set((savedTable.Nom || []).filter(Boolean));
-      fields.Nom = idx !== -1 ? uniqueDefaultName(tableId, existingNames) : nextNewReportName(existingNames);
-      fields.TypeRapport = CONFIG_REPORT_TYPE;
+      const existingNames = new Set(CN.values(savedTable, _configCols, 'name'));
+      naming.name = idx !== -1 ? uniqueDefaultName(tableId, existingNames) : nextNewReportName(existingNames);
+      naming.reportType = CONFIG_REPORT_TYPE;
     }
 
     if (idx !== -1) {
-      await grist.docApi.applyUserActions([['UpdateRecord', CONFIG_TABLE, rowId, fields]]);
+      await writeConfig((cols) => [['UpdateRecord', CONFIG_TABLE, rowId, physical(cols, naming)]]);
     } else {
-      const result = await grist.docApi.applyUserActions([
-        ['AddRecord', CONFIG_TABLE, null, Object.assign({ TableId: tableId }, fields)]
+      const result = await writeConfig((cols) => [
+        ['AddRecord', CONFIG_TABLE, null, Object.assign({ TableId: tableId }, physical(cols, naming))]
       ]);
       rowId = result.retValues[0];
     }
@@ -441,18 +475,18 @@
 
   // Charge UN rapport précis par sa ligne (consigne GFS 007, point 3 : `GfsLink.opening()`/
   // `onOpen` donnent un `id` de ligne, en texte, jamais un `TableId`) — `null` si la ligne n'existe
-  // plus, ou si son `TypeRapport` est connu et différent de 'rapport' (un type que ce widget ne
+  // plus, ou si son `ReportType` (ex-`TypeRapport`) est connu et différent de 'rapport' (un type que ce widget ne
   // connaît pas n'est jamais ouvert, même règle que le garde-fou de saveConfig ci-dessus).
   async function loadConfigById(reportId) {
     const numericId = Number(reportId);
     if (!Number.isInteger(numericId)) return null;
     await ensureConfigTableExists();
-    const reportTable = await grist.docApi.fetchTable(CONFIG_TABLE);
+    const reportTable = await refreshConfigNames();
     const idx = (reportTable.id || []).indexOf(numericId);
     if (idx === -1) return null;
-    const typeRapport = reportTable.TypeRapport ? reportTable.TypeRapport[idx] : '';
-    if (typeRapport && typeRapport !== CONFIG_REPORT_TYPE) return null;
-    const name = reportTable.Nom ? reportTable.Nom[idx] : '';
+    const reportType = CN.cell(reportTable, _configCols, 'reportType', idx);
+    if (reportType && reportType !== CONFIG_REPORT_TYPE) return null;
+    const name = CN.cell(reportTable, _configCols, 'name', idx);
     if (name) _namedReportRowIds.add(numericId);
     let config;
     try { config = normalizeConfig(JSON.parse(reportTable.ConfigJSON[idx] || '[]')); }
@@ -1027,7 +1061,26 @@
     await grist.docApi.applyUserActions(entries.map((e) => ['UpdateRecord', tableId, e.id, { [colId]: e.value }]));
   }
 
+  // « Réunir » (consigne GFS 030, point 4c) : un document qui porte les DEUX jeux de noms de BI_Dashboard_Config (par exemple une version d'avant
+  // cette consigne, restée ouverte, a recréé `Nom` à côté de `Name` après le renommage d'un autre onglet) n'est jamais renommé — Grist ajouterait
+  // « 2 » au nom pris. Le widget le lit déjà réuni (`CN.cell` : le premier nom non vide) ; ceci dit s'il reste des valeurs à copier dans le nouveau
+  // nom, et les copie SEULEMENT après la confirmation de la personne (`js/main-session.js:offerMergeConfigNames`), dans un seul lot, jamais sur une
+  // cellule déjà remplie, sans supprimer l'ancienne colonne (RemoveColumn n'est jamais utilisé par ce widget).
+  async function configNamesStatus() {
+    await ensureConfigTableExists();
+    const table = await refreshConfigNames();
+    const actions = CN.mergePlan(table);
+    return { both: CN.KEYS.filter((k) => _configCols[k].both), rows: new Set(actions.flatMap((a) => a[2])).size, cells: actions.reduce((n, a) => n + a[2].length, 0) };
+  }
+  async function mergeConfigNames() {
+    const table = await refreshConfigNames();
+    const actions = CN.mergePlan(table);
+    if (actions.length) await grist.docApi.applyUserActions(actions);
+    return { cells: actions.reduce((n, a) => n + a[2].length, 0) };
+  }
+
   GristBI.api = {
+    configNamesStatus, mergeConfigNames, refreshConfigNames, isNameError: CN.isNameError,
     init, loadConfig, saveConfig, loadConfigById, blankConfig,
     listAvailableTables, loadTable, loadOrCreateComments, addComment, refColumnsForTable,
     getCurrentUserEmail, createTableFromRows, readColumnFormats, organizeInternalPages,

@@ -372,7 +372,7 @@ const antoine = () => world([
       const sandbox = { console: { error() {}, log() {}, warn: (...a) => warnings.push(a.join(' ')) }, setTimeout: (fn) => { fn(); return 0; }, URL, location: { href: SELF } };
       sandbox.window = sandbox;
       vm.runInNewContext(read('dev-tests', 'grist-stub.js'), sandbox);
-      sandbox.GristBI = { data, i18n, state: { DEFAULT_PAGE_ID: 'page_default' } };
+      sandbox.GristBI = { data, i18n, state: { DEFAULT_PAGE_ID: 'page_default' }, configNames: require('../js/config-names.js') };
       if (withPlan) vm.runInNewContext(read('js', 'internal-pages.js'), sandbox);
       vm.runInNewContext(read('js', 'grist-api.js'), sandbox);
       return { sandbox, api: sandbox.GristBI.api, warnings };

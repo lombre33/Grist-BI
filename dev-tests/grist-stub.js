@@ -213,131 +213,177 @@
         return tables[tableId] ? cloneColumnar(tables[tableId]) : { id: [] };
       },
       async applyUserActions(actions) {
-        const retValues = [];
-        for (const action of actions) {
-          const kind = action[0];
-          const tableId = action[1];
-          if (kind === 'AddTable') {
-            const columns = action[2];
-            let actualTableId = tableId;
-            const forceCollide = window.__gristStubCollideOnAddTable;
-            // Collision RÉELLE (le tableId demandé existe déjà côté "document", typiquement via
-            // __gristStubPreseed) : comportement PAR DÉFAUT désormais, pas seulement sur demande
-            // explicite — [trouvé par une revue adversariale du correctif de course, pas par
-            // l'utilisateur] un comportement opt-in seulement laissait n'importe quel AUTRE test futur
-            // créant une table qui se trouve déjà exister passer à côté de ce filet de sécurité sans
-            // même s'en rendre compte, contrairement au vrai moteur Grist qui suffixe TOUJOURS,
-            // inconditionnellement. `__gristStubCollideOnAddTable` reste disponible pour FORCER une
-            // collision artificielle sur un nom qui n'entrerait sinon pas en collision.
-            if (tables[tableId] || forceCollide === true || forceCollide === tableId) {
-              // Table DÉJÀ existante côté "document" : ne JAMAIS l'écraser — c'est exactement ce que
-              // ce filet de sécurité doit protéger. Le moteur réel suffixe l'id nouvellement créé, pas
-              // l'existant.
-              actualTableId = `${tableId}${nextCollisionSuffix++}`;
-              window.__gristStubCollideOnAddTable = null;
-            }
-            const t = { id: [] };
-            columnTypesByTable[actualTableId] = {};
-            for (const col of columns) { t[col.id] = []; columnTypesByTable[actualTableId][col.id] = col.type; }
-            // Grist ajoute lui-même `manualSort` à TOUTE table créée (position flottante pour le
-            // glisser-déposer manuel des lignes) — jamais demandée dans `columns` ci-dessus, mais bien
-            // présente dans le `fetchTable()` réel. [DÉFAUT RÉEL, voir TEST_PROTOCOL.md #19] Absente de ce
-            // mock jusqu'ici, donc aucun test ne pouvait exercer le filtre de `GristBI.data.tableToRows`
-            // qui l'exclut des sélecteurs de colonne.
-            t.manualSort = [];
-            tables[actualTableId] = t;
-            const parentRowId = registerMetaTable(actualTableId);
-            for (const col of columns) registerMetaColumn(parentRowId, col.id, col.type, col.widgetOptions);
-            // `ManualSortPos` : type interne réel de la colonne `manualSort` côté moteur Grist —
-            // affirmé de mémoire, jamais revérifié contre un vrai document dans cette session (sans
-            // impact pratique ici : ni 'Date' ni 'DateTime', donc jamais retenue par
-            // realDateColumnIds quelle que soit l'exactitude de cette chaîne précise).
-            registerMetaColumn(parentRowId, 'manualSort', 'ManualSortPos');
-            const viewId = addPageForTable(actualTableId, tableId);
-            retValues.push({ id: Object.keys(tables).length, table_id: actualTableId, columns: columns.map((c) => c.id), views: [{ id: viewId, sections: [] }] });
-          } else if (kind === 'AddRecord') {
-            const fields = action[3] || {};
-            const t = tables[tableId];
-            const newId = nextRowId++;
-            t.id.push(newId);
-            const idx = t.id.length - 1;
-            for (const key of Object.keys(fields)) {
-              if (!t[key]) t[key] = [];
-              t[key][idx] = toStoredValue(tableId, key, fields[key]);
-            }
-            // Le moteur réel assigne lui-même une position `manualSort` à chaque ligne ajoutée, que le
-            // widget la fournisse ou non dans `fields` (jamais le cas ici) — voir la note sur `AddTable`
-            // ci-dessus.
-            if (t.manualSort && fields.manualSort === undefined) t.manualSort[idx] = idx + 1;
-            retValues.push(newId);
-          } else if (kind === 'UpdateRecord') {
-            const rowId = action[2];
-            const fields = action[3] || {};
-            const t = tables[tableId];
-            const idx = t.id.indexOf(rowId);
-            if (idx >= 0) for (const key of Object.keys(fields)) t[key][idx] = toStoredValue(tableId, key, fields[key]);
-            retValues.push(null);
-          } else if (kind === 'BulkUpdateRecord') {
-            const rowIds = action[2] || [];
-            const colValues = action[3] || {};
-            const t = tables[tableId];
-            rowIds.forEach((rowId, k) => {
-              const idx = t.id.indexOf(rowId);
-              if (idx < 0) return;
-              for (const key of Object.keys(colValues)) {
-                let value = colValues[key][k];
-                // `null` sur une colonne de position = à la fin de la liste (comme le moteur) : plus grand que toutes les autres.
-                if (tableId === '_grist_Pages' && key === 'pagePos' && value === null) value = t.pagePos.reduce((max, v) => Math.max(max, v), 0) + 1;
-                t[key][idx] = toStoredValue(tableId, key, value);
-              }
-            });
-            retValues.push(null);
-          } else if (kind === 'RemoveRecord') {
-            const rowId = action[2];
-            const t = tables[tableId];
-            const idx = t.id.indexOf(rowId);
-            if (idx >= 0) for (const key of Object.keys(t)) t[key].splice(idx, 1);
-            retValues.push(null);
-          } else if (kind === 'AddColumn') {
-            const colId = action[2];
-            const colOpts = action[3] || {};
-            const t = tables[tableId];
-            t[colId] = new Array(t.id.length).fill(null);
-            if (!columnTypesByTable[tableId]) columnTypesByTable[tableId] = {};
-            columnTypesByTable[tableId][colId] = colOpts.type;
-            const parentRowId = metaTableRowId(tableId);
-            if (parentRowId != null) registerMetaColumn(parentRowId, colId, colOpts.type, colOpts.widgetOptions);
-            // Le vrai moteur rend `{ colRef, colId }` (l'identifiant réel, qu'il peut changer si le nom est pris) :
-            // js/grist-api.js:addTextColumn le lit. Forme affirmée de mémoire, non revérifiée sur un vrai document.
-            retValues.push({ colRef: nextRowId++, colId });
-          } else if (kind === 'RenameTable') {
-            const oldTableId = action[1];
-            let newTableId = action[2];
-            // Même mécanisme d'unicité que AddTable (vérifié contre le moteur Grist réel — voir
-            // js/grist-api.js:migrateLegacyTableName) : si `newTableId` existe déjà réellement, le
-            // moteur suffixe silencieusement la DESTINATION, jamais l'existant. `RenameTable` ne
-            // renvoie rien côté vrai moteur (`retValues` reste `null` même en cas de collision) —
-            // contrairement à AddTable, ce mock ne peut donc PAS renvoyer l'id réel au code testé, qui
-            // doit s'en apercevoir autrement (voir le contrôle post-renommage dans grist-api.js).
-            const forceCollide = window.__gristStubCollideOnRenameTable;
-            if (tables[newTableId] || forceCollide === true || forceCollide === newTableId) {
-              newTableId = `${newTableId}${nextCollisionSuffix++}`;
-              window.__gristStubCollideOnRenameTable = null;
-            }
-            tables[newTableId] = tables[oldTableId];
-            delete tables[oldTableId];
-            columnTypesByTable[newTableId] = columnTypesByTable[oldTableId];
-            delete columnTypesByTable[oldTableId];
-            const metaIdx = tables['_grist_Tables'].tableId.indexOf(oldTableId);
-            if (metaIdx >= 0) tables['_grist_Tables'].tableId[metaIdx] = newTableId;
-            retValues.push(null);
-          } else {
-            console.warn('[grist-stub] action non gérée par le mock:', kind);
-            retValues.push(null);
+        // Un lot qui renomme une colonne est ATOMIQUE comme dans Grist (tout passe ou rien ne change : un refus au milieu du lot rend le document tel qu'il était) :
+        // la copie n'est prise que pour ces lots-là (rares), jamais à chaque sauvegarde.
+        const atomic = actions.some((a) => a[0] === 'RenameColumn' || a[0] === 'ModifyColumn');
+        const snapshot = atomic ? JSON.stringify({ tables, columnTypesByTable }) : null;
+        try {
+          return await applyAll(actions);
+        } catch (error) {
+          if (snapshot) {
+            const back = JSON.parse(snapshot);
+            for (const k of Object.keys(tables)) delete tables[k];
+            Object.assign(tables, back.tables);
+            for (const k of Object.keys(columnTypesByTable)) delete columnTypesByTable[k];
+            Object.assign(columnTypesByTable, back.columnTypesByTable);
           }
+          throw error;
         }
-        return { retValues };
       }
     }
   };
+
+  async function applyAll(actions) {
+    const retValues = [];
+    for (const action of actions) {
+      const kind = action[0];
+      const tableId = action[1];
+      if (kind === 'AddTable') {
+        const columns = action[2];
+        let actualTableId = tableId;
+        const forceCollide = window.__gristStubCollideOnAddTable;
+        // Collision RÉELLE (le tableId demandé existe déjà côté "document", typiquement via
+        // __gristStubPreseed) : comportement PAR DÉFAUT désormais, pas seulement sur demande
+        // explicite — [trouvé par une revue adversariale du correctif de course, pas par
+        // l'utilisateur] un comportement opt-in seulement laissait n'importe quel AUTRE test futur
+        // créant une table qui se trouve déjà exister passer à côté de ce filet de sécurité sans
+        // même s'en rendre compte, contrairement au vrai moteur Grist qui suffixe TOUJOURS,
+        // inconditionnellement. `__gristStubCollideOnAddTable` reste disponible pour FORCER une
+        // collision artificielle sur un nom qui n'entrerait sinon pas en collision.
+        if (tables[tableId] || forceCollide === true || forceCollide === tableId) {
+          // Table DÉJÀ existante côté "document" : ne JAMAIS l'écraser — c'est exactement ce que
+          // ce filet de sécurité doit protéger. Le moteur réel suffixe l'id nouvellement créé, pas
+          // l'existant.
+          actualTableId = `${tableId}${nextCollisionSuffix++}`;
+          window.__gristStubCollideOnAddTable = null;
+        }
+        const t = { id: [] };
+        columnTypesByTable[actualTableId] = {};
+        for (const col of columns) { t[col.id] = []; columnTypesByTable[actualTableId][col.id] = col.type; }
+        // Grist ajoute lui-même `manualSort` à TOUTE table créée (position flottante pour le
+        // glisser-déposer manuel des lignes) — jamais demandée dans `columns` ci-dessus, mais bien
+        // présente dans le `fetchTable()` réel. [DÉFAUT RÉEL, voir TEST_PROTOCOL.md #19] Absente de ce
+        // mock jusqu'ici, donc aucun test ne pouvait exercer le filtre de `GristBI.data.tableToRows`
+        // qui l'exclut des sélecteurs de colonne.
+        t.manualSort = [];
+        tables[actualTableId] = t;
+        const parentRowId = registerMetaTable(actualTableId);
+        for (const col of columns) registerMetaColumn(parentRowId, col.id, col.type, col.widgetOptions);
+        // `ManualSortPos` : type interne réel de la colonne `manualSort` côté moteur Grist —
+        // affirmé de mémoire, jamais revérifié contre un vrai document dans cette session (sans
+        // impact pratique ici : ni 'Date' ni 'DateTime', donc jamais retenue par
+        // realDateColumnIds quelle que soit l'exactitude de cette chaîne précise).
+        registerMetaColumn(parentRowId, 'manualSort', 'ManualSortPos');
+        const viewId = addPageForTable(actualTableId, tableId);
+        retValues.push({ id: Object.keys(tables).length, table_id: actualTableId, columns: columns.map((c) => c.id), views: [{ id: viewId, sections: [] }] });
+      } else if (kind === 'AddRecord') {
+        const fields = action[3] || {};
+        const t = tables[tableId];
+        const newId = nextRowId++;
+        t.id.push(newId);
+        const idx = t.id.length - 1;
+        for (const key of Object.keys(fields)) {
+          if (!t[key]) t[key] = [];
+          t[key][idx] = toStoredValue(tableId, key, fields[key]);
+        }
+        // Le moteur réel assigne lui-même une position `manualSort` à chaque ligne ajoutée, que le
+        // widget la fournisse ou non dans `fields` (jamais le cas ici) — voir la note sur `AddTable`
+        // ci-dessus.
+        if (t.manualSort && fields.manualSort === undefined) t.manualSort[idx] = idx + 1;
+        retValues.push(newId);
+      } else if (kind === 'UpdateRecord') {
+        const rowId = action[2];
+        const fields = action[3] || {};
+        const t = tables[tableId];
+        const idx = t.id.indexOf(rowId);
+        if (idx >= 0) for (const key of Object.keys(fields)) t[key][idx] = toStoredValue(tableId, key, fields[key]);
+        retValues.push(null);
+      } else if (kind === 'BulkUpdateRecord') {
+        const rowIds = action[2] || [];
+        const colValues = action[3] || {};
+        const t = tables[tableId];
+        rowIds.forEach((rowId, k) => {
+          const idx = t.id.indexOf(rowId);
+          if (idx < 0) return;
+          for (const key of Object.keys(colValues)) {
+            let value = colValues[key][k];
+            // `null` sur une colonne de position = à la fin de la liste (comme le moteur) : plus grand que toutes les autres.
+            if (tableId === '_grist_Pages' && key === 'pagePos' && value === null) value = t.pagePos.reduce((max, v) => Math.max(max, v), 0) + 1;
+            t[key][idx] = toStoredValue(tableId, key, value);
+          }
+        });
+        retValues.push(null);
+      } else if (kind === 'RemoveRecord') {
+        const rowId = action[2];
+        const t = tables[tableId];
+        const idx = t.id.indexOf(rowId);
+        if (idx >= 0) for (const key of Object.keys(t)) t[key].splice(idx, 1);
+        retValues.push(null);
+      } else if (kind === 'AddColumn') {
+        const colId = action[2];
+        const colOpts = action[3] || {};
+        const t = tables[tableId];
+        t[colId] = new Array(t.id.length).fill(null);
+        if (!columnTypesByTable[tableId]) columnTypesByTable[tableId] = {};
+        columnTypesByTable[tableId][colId] = colOpts.type;
+        const parentRowId = metaTableRowId(tableId);
+        if (parentRowId != null) registerMetaColumn(parentRowId, colId, colOpts.type, colOpts.widgetOptions);
+        // Le vrai moteur rend `{ colRef, colId }` (l'identifiant réel, qu'il peut changer si le nom est pris) :
+        // js/grist-api.js:addTextColumn le lit. Forme affirmée de mémoire, non revérifiée sur un vrai document.
+        retValues.push({ colRef: nextRowId++, colId });
+      } else if (kind === 'RenameColumn') {
+        // `RenameColumn [table, ancien, nouveau]` (consigne GFS 030, fenêtre commune de mise à jour des noms) : comme le moteur de Grist, un nom
+        // d'arrivée DÉJÀ PRIS (sans tenir compte des capitales) n'est pas refusé, il reçoit « 2 » (faits vérifiés de GFS, 158) ; `__gristStubOwner`
+        // et `__gristStubRefuseRenames` (essais) simulent un refus. Le libellé suit l'identifiant tant qu'il en était la copie (colonne liée).
+        const t = tables[tableId];
+        const oldId = action[2];
+        let newId = action[3];
+        if (window.__gristStubRefuseRenames) throw new Error('GFS_REFUSE : renommage refusé par le courtier');
+        if (!t || !(oldId in t)) throw new Error(`[Sandbox] KeyError '${oldId}'`);
+        const taken = (id) => Object.keys(t).some((k) => k.toLowerCase() === id.toLowerCase() && k !== oldId);
+        if (taken(newId)) { let n = 2; while (taken(`${newId}${n}`)) n++; newId = `${newId}${n}`; }
+        const rebuilt = {};
+        for (const key of Object.keys(t)) rebuilt[key === oldId ? newId : key] = t[key];
+        tables[tableId] = rebuilt;
+        if (columnTypesByTable[tableId] && oldId in columnTypesByTable[tableId]) {
+          columnTypesByTable[tableId][newId] = columnTypesByTable[tableId][oldId];
+          delete columnTypesByTable[tableId][oldId];
+        }
+        const parentRowId = metaTableRowId(tableId);
+        const meta = tables['_grist_Tables_column'];
+        meta.id.forEach((rowId, i) => { if (meta.parentId[i] === parentRowId && meta.colId[i] === oldId) meta.colId[i] = newId; });
+        retValues.push(null);
+      } else if (kind === 'ModifyColumn') {
+        // Seul le libellé (et le type) d'une colonne : rien à tenir à jour ici, le mock ne modélise pas les libellés.
+        const t = tables[tableId];
+        if (!t || !(action[2] in t)) throw new Error(`[Sandbox] KeyError '${action[2]}'`);
+        retValues.push(null);
+      } else if (kind === 'RenameTable') {
+        const oldTableId = action[1];
+        let newTableId = action[2];
+        // Même mécanisme d'unicité que AddTable (vérifié contre le moteur Grist réel — voir
+        // js/grist-api.js:migrateLegacyTableName) : si `newTableId` existe déjà réellement, le
+        // moteur suffixe silencieusement la DESTINATION, jamais l'existant. `RenameTable` ne
+        // renvoie rien côté vrai moteur (`retValues` reste `null` même en cas de collision) —
+        // contrairement à AddTable, ce mock ne peut donc PAS renvoyer l'id réel au code testé, qui
+        // doit s'en apercevoir autrement (voir le contrôle post-renommage dans grist-api.js).
+        const forceCollide = window.__gristStubCollideOnRenameTable;
+        if (tables[newTableId] || forceCollide === true || forceCollide === newTableId) {
+          newTableId = `${newTableId}${nextCollisionSuffix++}`;
+          window.__gristStubCollideOnRenameTable = null;
+        }
+        tables[newTableId] = tables[oldTableId];
+        delete tables[oldTableId];
+        columnTypesByTable[newTableId] = columnTypesByTable[oldTableId];
+        delete columnTypesByTable[oldTableId];
+        const metaIdx = tables['_grist_Tables'].tableId.indexOf(oldTableId);
+        if (metaIdx >= 0) tables['_grist_Tables'].tableId[metaIdx] = newTableId;
+        retValues.push(null);
+      } else {
+        console.warn('[grist-stub] action non gérée par le mock:', kind);
+        retValues.push(null);
+      }
+    }
+    return { retValues };
+  }
 })();
