@@ -362,6 +362,66 @@ const resolve = (s, lang) => { i18n.setLang(lang); const text = i18n.t(s.reasonK
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------
+// 5bis. Un compte de résultat : la cascade des postes, et la barre de signes mêlés qui dit son plus haut et son plus bas (lot du 25/11/2026)
+// ---------------------------------------------------------------------------------------------------------------------------------
+{
+  const resultat = table('resultat');
+  const top = suggest(resultat, { limit: 9 });
+  const waterfallRank = (dimension) => top.findIndex((s) => s.type === 'waterfall' && s.tileData.dimension === dimension);
+  // (a) La cascade des POSTES (de quoi le solde est fait) est dans les trois premières, avec la barre des mêmes colonnes ; celle des mois — un
+  // cumul qui double la courbe — vient derrière. Avant ce lot : la cascade des mois au rang 2, celle des postes au rang 8.
+  assert.ok(waterfallRank('Poste') >= 0 && waterfallRank('Poste') < 3, `cascade des postes dans les trois premières (rang ${waterfallRank('Poste') + 1})`);
+  assert.ok(waterfallRank('Mois') === -1 || waterfallRank('Mois') > waterfallRank('Poste'), 'la cascade des mois derrière celle des postes');
+  const bar = top.findIndex((s) => s.type === 'bar' && s.tileData.dimension === 'Poste' && s.tileData.measure === 'Montant');
+  assert.ok(bar >= 0 && bar < 3, 'la barre des postes reste dans les trois premières : une cascade et une barre ne se remplacent pas');
+
+  // (b) Des groupes de signes mêlés n'ont pas de rapport, mais un plus haut et un plus bas : la phrase les nomme, avec leurs valeurs.
+  const groups = groupsOf(resultat.rows, 'Poste', 'Montant', 'sum');
+  const hi = groups.reduce((a, b) => (b.value > a.value ? b : a));
+  const lo = groups.reduce((a, b) => (b.value < a.value ? b : a));
+  assert.ok(lo.value < 0 && hi.value > 0, 'le jeu de données mêle bien les signes');
+  const barSuggestion = top[bar];
+  assert.strictEqual(barSuggestion.insightKey, 'advice.insight.signed', 'la barre des postes a sa phrase');
+  const digits = (text) => text.replace(/[^\d]/g, '');
+  ['fr', 'en'].forEach((lang) => {
+    // Les nombres de la phrase sont écrits à l'appel (séparateur de la langue) : on redemande les suggestions dans la langue.
+    const suggestion = suggest(resultat, { limit: 9, lang }).find((s) => s.type === 'bar' && s.tileData.dimension === 'Poste' && s.tileData.measure === 'Montant');
+    const text = resolve(suggestion, lang);
+    assert.ok(text.includes(hi.name) && text.includes(lo.name), `${lang} : les deux noms (${text})`);
+    assert.ok(digits(text).includes(String(Math.round(hi.value))) && digits(text).includes(String(Math.abs(Math.round(lo.value)))), `${lang} : les deux valeurs (${text})`);
+    assert.ok(/-|−/.test(text.slice(text.indexOf(lo.name))), `${lang} : la valeur négative garde son signe (${text})`);
+    assert.ok(!/\{|\}|NaN|undefined/.test(text), `${lang} : sans variable orpheline`);
+  });
+  // Tous positifs : jamais cette phrase (une part ou un rapport la remplace) ; un seul groupe ou des signes mêlés sur un seul groupe : rien.
+  tables.filter((t) => t.name !== 'resultat').forEach((t) => suggest(t).filter((s) => s.type === 'bar').forEach((s) => {
+    const sums = groupsOf(t.rows, s.tileData.dimension, s.tileData.measure, s.tileData.aggFn).map((g) => g.value);
+    if (sums.length && Math.min.apply(null, sums) >= 0) assert.notStrictEqual(s.insightKey, 'advice.insight.signed', `${t.name} : jamais « plus haut / plus bas » sur des valeurs positives`);
+  }));
+
+  // Des postes de même total négatif n'ont ni plus haut ni plus bas : la phrase se tait (jamais « A le plus haut (-60), B le plus bas (-60) »).
+  const tied = [];
+  [['Loyer', [-10, -20, -30]], ['Salaires', [-30, -20, -10]], ['Impôts', [-20, -20, -20]], ['Achats', [-15, -25, -20]]].forEach(([poste, valeurs]) => {
+    valeurs.forEach((v, i) => tied.push({ Poste: poste, Montant: v, Mois: `2025-0${i + 1}`, Note: `ligne ${tied.length}` }));
+  });
+  const tiedBars = suggest(tied).filter((s) => s.type === 'bar' && s.tileData.dimension === 'Poste');
+  assert.ok(tiedBars.length > 0, 'le jeu de postes à égalité propose une barre par poste');
+  tiedBars.forEach((s) => assert.notStrictEqual(s.insightKey, 'advice.insight.signed', 'aucun plus haut ni plus bas entre des totaux égaux'));
+
+  // (c) Une barre, un anneau ou un treemap des MÊMES colonnes restent un doublon (jamais deux d'entre eux dans les trois premières) ; seule la
+  // cascade, qui répond à une autre question, échappe à cette règle.
+  tables.forEach((t) => {
+    const firstThree = suggest(t, { limit: 3 }).filter((s) => ['bar', 'pie', 'treemap'].indexOf(s.type) !== -1);
+    const seen = new Set();
+    firstThree.forEach((s) => {
+      const key = [s.tileData.dimension, s.tileData.measure, s.tileData.aggFn].join('|');
+      assert.ok(!seen.has(key), `${t.name} : ${key} deux fois dans les trois premières`);
+      seen.add(key);
+    });
+  });
+  console.log(`OK compte de résultat — cascade des postes au rang ${waterfallRank('Poste') + 1} (celle des mois derrière), barre des postes : « ${hi.name} le plus haut, ${lo.name} le plus bas » avec leurs valeurs fr/en ; jamais sur des valeurs positives ; barre/anneau/treemap des mêmes colonnes toujours dédoublonnés`);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------
 // 5. Robustesse et hygiène
 // ---------------------------------------------------------------------------------------------------------------------------------
 {

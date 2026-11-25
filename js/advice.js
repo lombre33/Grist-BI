@@ -969,6 +969,9 @@
             insight = shareReason(c, share, ctx, c.type !== 'bar');
           } else if (spread && spread.ratio !== null && spread.ratio >= SPREAD_MIN_RATIO) {
             insight = { key: c.countMeasure ? 'advice.insight.spreadCount' : 'advice.insight.spread', vars: { measure, high: spread.maxName, low: spread.minName, ratio: fmt(spread.ratio, ctx, 1) } };
+          } else if (c.type === 'bar' && spread && spread.ratio === null && spread.minValue < 0 && spread.maxValue !== spread.minValue) {
+            // Groupes de signes mêlés (recettes et dépenses) : pas de rapport, mais un plus haut et un plus bas qui se disent.
+            insight = { key: 'advice.insight.signed', vars: { high: spread.maxName, low: spread.minName, highValue: fmt(spread.maxValue, ctx, 0), lowValue: fmt(spread.minValue, ctx, 0) } };
           } else if (c.type === 'bar' && spread && spread.ratio !== null) {
             // « Proches » seulement quand le rapport existe (la plus petite valeur est positive) : des groupes de signes mêlés (un poste de
             // recettes et un poste de dépenses) ne sont jamais « proches », ils n'ont simplement pas de rapport.
@@ -1049,6 +1052,7 @@
   // retenus pèsent contre un nouveau candidat — trois « barres par région » ne montrent rien de plus
   // qu'une seule. Une même INTENTION (comparer, répartir, suivre dans le temps…) pèse un peu aussi : la
   // personne veut voir trois choses différentes, pas trois réponses à la même question.
+  const ANOTHER_QUESTION = new Set(['waterfall']);
   function pickDiverse(candidates, limit) {
     const chosen = [];
     const pool = candidates.slice();
@@ -1062,7 +1066,10 @@
           if (k.intent === c.intent) s -= 0.75;
           if (c.dims.some((d) => k.dims.indexOf(d) !== -1)) s -= 1.5;
           // Les MÊMES colonnes dites autrement (une barre et un anneau de « Salaire par Service », avec la même phrase) : la 2e n'apprend rien.
-          if (c.dims.length && c.dims.length === k.dims.length && c.dims.every((d) => k.dims.indexOf(d) !== -1)
+          // Sauf une cascade : elle pose une AUTRE question sur les mêmes colonnes (de quoi le solde est fait) — la barre des postes et la
+          // cascade des postes ne se remplacent pas (une barre ne dit pas le solde).
+          if (!ANOTHER_QUESTION.has(c.type) && !ANOTHER_QUESTION.has(k.type)
+            && c.dims.length && c.dims.length === k.dims.length && c.dims.every((d) => k.dims.indexOf(d) !== -1)
             && c.measures.length === k.measures.length && c.measures.every((m) => k.measures.indexOf(m) !== -1)) s -= 2.5;
           if (c.measures.some((m) => k.measures.indexOf(m) !== -1)) s -= 0.25;
         });
