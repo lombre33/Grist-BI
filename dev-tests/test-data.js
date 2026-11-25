@@ -3240,9 +3240,9 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     assert.deepStrictEqual(c.textSource, ['Titre', 'Resume', 'Auto']);
     assert.deepStrictEqual(c.target, ['Titre', 'Resume', 'Auto'], 'on n\'écrit que dans du texte');
     assert.deepStrictEqual(c.manual, ['Titre', 'Resume', 'Mots', 'Auto'], 'les mots saisis se lisent aussi dans une liste de choix');
-    assert.strictEqual(publications.freshColumnName(['Titre', 'Mots_cles_auto']), 'Mots_cles_auto_2');
-    assert.strictEqual(publications.freshColumnName(['mots_cles_AUTO', 'Mots_cles_auto_2']), 'Mots_cles_auto_3', 'insensible à la casse comme Grist');
-    assert.strictEqual(publications.freshColumnName(['A']), 'Mots_cles_auto');
+    assert.strictEqual(publications.freshColumnName(['Titre', 'Auto_keywords']), 'Auto_keywords_2');
+    assert.strictEqual(publications.freshColumnName(['auto_KEYWORDS', 'Auto_keywords_2']), 'Auto_keywords_3', 'insensible à la casse comme Grist');
+    assert.strictEqual(publications.freshColumnName(['A']), 'Auto_keywords');
 
     const table = {
       id: [1, 2, 3, 4, 5],
@@ -3476,12 +3476,12 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     assert.strictEqual(tokenCount, 2, 'un seul jeton demandé pour toute la série, renouvelé une fois après le 401');
 
     // colonne : l'identifiant rendu par Grist gagne sur celui demandé
-    assert.strictEqual(await api.addTextColumn('Pubs', 'Mots_cles_auto'), 'Mots_cles_auto_2');
-    same(calls.actions[0], ['AddColumn', 'Pubs', 'Mots_cles_auto', { type: 'Text', isFormula: false }], 'une colonne de données, jamais une formule');
+    assert.strictEqual(await api.addTextColumn('Pubs', 'Auto_keywords'), 'Auto_keywords_2');
+    same(calls.actions[0], ['AddColumn', 'Pubs', 'Auto_keywords', { type: 'Text', isFormula: false }], 'une colonne de données, jamais une formule');
     // écriture : un UpdateRecord par ligne, en un seul appel
     calls.actions.length = 0;
-    await api.writeColumnValues('Pubs', 'Mots_cles_auto_2', [{ id: 4, value: 'a, b' }, { id: 7, value: 'c' }]);
-    same(calls.actions, [['UpdateRecord', 'Pubs', 4, { Mots_cles_auto_2: 'a, b' }], ['UpdateRecord', 'Pubs', 7, { Mots_cles_auto_2: 'c' }]]);
+    await api.writeColumnValues('Pubs', 'Auto_keywords_2', [{ id: 4, value: 'a, b' }, { id: 7, value: 'c' }]);
+    same(calls.actions, [['UpdateRecord', 'Pubs', 4, { Auto_keywords_2: 'a, b' }], ['UpdateRecord', 'Pubs', 7, { Auto_keywords_2: 'c' }]]);
     await api.writeColumnValues('Pubs', 'X', []);
     assert.strictEqual(calls.actions.length, 2, 'rien à écrire = aucun appel');
 
