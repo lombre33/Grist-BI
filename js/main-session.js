@@ -260,12 +260,14 @@
   // colonne de l'ancienne table ne s'applique jamais à une colonne de même nom d'une autre. Un échec de lecture
   // laisse le registre vide (Automatique partout) sans jamais bloquer l'affichage.
   async function refreshColumnFormats(tableId, clearFirst) {
-    if (clearFirst) GristBI.format.setColumnInfo({}, null);
+    if (clearFirst) { GristBI.format.setColumnInfo({}, null); if (GristBI.advice) GristBI.advice.setColumnInfo({}); }
     if (!GristBI.api.readColumnFormats) return;
     try {
       const info = await GristBI.api.readColumnFormats(tableId);
       if (tableId !== S.currentTableId) return; // l'utilisateur a changé de table pendant la lecture
       GristBI.format.setColumnInfo(info.columns, info.docSettings);
+      // Les mêmes types Grist servent aux suggestions (js/advice.js) : une colonne Référence n'est jamais une mesure.
+      if (GristBI.advice) GristBI.advice.setColumnInfo(info.columns);
     } catch (e) {
       console.warn('[GristBI] format des colonnes illisible, format des nombres Automatique', e);
     }

@@ -162,6 +162,8 @@
       if (slot.seasonal) {
         const line = tiles.find((tile) => tile.type === 'line');
         const monthColumn = line && ctx.time && ctx.byId.has(`${ctx.time.base}.Mois`) ? `${ctx.time.base}.Mois` : null;
+        // Une seule année : la courbe est déjà par mois (advice.findTimeAxis), les mêmes mois en barres ne diraient rien de plus.
+        if (monthColumn && line.dimension === monthColumn) return;
         if (monthColumn) {
           const vars = { measure: line.measure, dimension: monthColumn };
           tiles.push({
