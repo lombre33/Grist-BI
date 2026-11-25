@@ -36,6 +36,8 @@
   // de construire un Set de plusieurs dizaines de milliers de chaînes pour apprendre qu'une colonne
   // est « presque unique ».
   const SCAN_LIMIT = 20000;
+  // Échelles bornées qu'une colonne de « notes » peut avoir : un taux 0-1, un Likert 1-5 ou 1-7, une note sur 10 ou sur 20, un pourcentage.
+  const SCORE_TOPS = [1, 5, 7, 10, 20, 100];
   const DISTINCT_CAP = 1000;
   const KIND_SAMPLE = 200;
   // Au-delà, une colonne texte n'est plus une « catégorie » raisonnable pour un graphique à barres.
@@ -101,6 +103,42 @@
 
   function isEmpty(v) { return v === null || v === undefined || v === ''; }
 
+  // Les lignes à profiler : toutes jusqu'à SCAN_LIMIT, sinon un échantillon RÉPARTI sur toute la table (une ligne tous les
+  // N), jamais les premières : une table triée par date n'a, dans ses 20 000 premières lignes, ni les dernières années ni les
+  // catégories apparues plus tard (mesuré sur 300 000 lignes : 2 canaux vus sur 3, une seule année de dates sur six).
+  function sampleOf(rows) {
+    if (rows.length <= SCAN_LIMIT) return rows;
+    const step = rows.length / SCAN_LIMIT;
+    const out = new Array(SCAN_LIMIT);
+    for (let i = 0; i < SCAN_LIMIT; i++) out[i] = rows[Math.floor(i * step)];
+    return out;
+  }
+
+  // Type Grist RÉEL de chaque colonne de la table de travail, `{ colId: { type: 'Ref:Clients', widgetOptions: '<JSON>' } }`
+  // (lu par js/main-session.js:refreshColumnFormats, la même lecture que le format des nombres, puis posé ici). Vide hors Grist ou
+  // avant cette lecture : tout se déduit alors des seules valeurs, comme avant. Un `info` passé en argument prime sur ce registre
+  // (les essais). Les valeurs seules ne distinguent pas une colonne Référence (un numéro de ligne) d'une colonne de nombres, ni
+  // un code postal (texte) d'une quantité : le type Grist, lui, le dit.
+  let columnInfoRegistry = {};
+  function setColumnInfo(columns) { columnInfoRegistry = (columns && typeof columns === 'object') ? columns : {}; }
+  function columnEntry(id, info) {
+    const source = info || columnInfoRegistry;
+    return (source && Object.prototype.hasOwnProperty.call(source, id) && source[id] && typeof source[id] === 'object') ? source[id] : null;
+  }
+  function gristTypeOf(id, info) {
+    const entry = columnEntry(id, info);
+    return entry && typeof entry.type === 'string' ? entry.type : '';
+  }
+  // Options d'affichage de la colonne (`widgetOptions` est un TEXTE JSON dans Grist), `{}` si illisible.
+  function widgetOptionsOf(id, info) {
+    const entry = columnEntry(id, info);
+    if (!entry || typeof entry.widgetOptions !== 'string' || !entry.widgetOptions) return {};
+    try {
+      const parsed = JSON.parse(entry.widgetOptions);
+      return (parsed && typeof parsed === 'object') ? parsed : {};
+    } catch (e) { return {}; }
+  }
+
   // Nombre représenté par `v` (nombre, ou chaîne numérique que Grist renvoie parfois), sinon null.
   function numericValue(v) {
     if (typeof v === 'number') return Number.isFinite(v) ? v : null;
@@ -114,7 +152,12 @@
   // Colonne qu'on MOYENNE d'ordinaire plutôt qu'on ne l'additionne (note, taux, pourcentage, âge…).
   // Simple indice tiré du nom, en français ou en anglais : la somme reste le choix par défaut, et la
   // personne garde la main sur l'agrégat dans le formulaire.
-  const AVERAGE_NAME_RE = /(^|[^a-zà-ÿ])(notes?|score|taux|rate|ratio|pct|percent|percentage|pourcentage|moyenne|average|avg|satisfaction|age|âge)([^a-zà-ÿ]|$)|%/i;
+  // `SCORE_NAME_RE` = les mots d'une grandeur bornée (note, taux, avancement, probabilité…) ; `AVERAGE_NAME_RE` y ajoute ceux qu'on moyenne
+  // sans qu'elle soit bornée (âge, moyenne) : jamais une « échelle » à reporter sur un radar, un âge de 77 ans n'est pas une note sur 100.
+  const SCORE_WORDS = 'notes?|score|taux|rate|ratio|pct|percent|percentage|pourcentage|satisfaction|avancement|progress|progression|completion|probabilite|probabilité|probability|rating';
+  const wordRe = (words) => new RegExp('(^|[^a-zà-ÿ])(' + words + ')([^a-zà-ÿ]|$)|%', 'i');
+  const SCORE_NAME_RE = wordRe(SCORE_WORDS);
+  const AVERAGE_NAME_RE = wordRe(SCORE_WORDS + '|moyenne|average|avg|age|âge');
 
   // Prix unitaire (Prix, PrixUnitaire, unit_price, Tarif, PU…) : un montant PAR unité, qu'on ne somme jamais (la somme des prix de
   // 5 000 lignes n'est rien) et qu'on ne choisit pas comme mesure vedette quand la table a aussi un vrai montant (Montant, Total, CA…).
@@ -142,7 +185,11 @@
   // Pénalité de classement d'un prix unitaire parmi les mesures : assez forte pour passer derrière un montant qui aurait des
   // négatifs (retours, avoirs : -1 point) ou quelques cases vides, pas assez pour passer derrière une colonne ambiguë (petit entier).
   const UNIT_PRICE_RANK_PENALTY = 3;
-  function aggFor(p) { return (AVERAGE_NAME_RE.test(p.id) || isUnitPriceName(p.id)) ? 'avg' : 'sum'; }
+  // Une note, un taux, un pourcentage (par le nom, par le format de la colonne Grist ou parce que plusieurs colonnes partagent la même
+  // échelle bornée, voir markScores) se MOYENNE : la somme des notes de 90 élèves n'est pas une note.
+  function aggFor(p) { return (p.score || p.percent || AVERAGE_NAME_RE.test(p.id) || isUnitPriceName(p.id)) ? 'avg' : 'sum'; }
+  // Un agrégat dont les parts s'additionnent : un anneau, un treemap ou un soleil de moyennes n'est pas « un tout ».
+  function additive(m) { return m.count || m.aggFn === 'sum'; }
 
   function looksLikeIdName(name) {
     return /(^|[^A-Za-z])(id|uuid|ref)([^A-Za-z]|$)/i.test(name) || /[a-z](Id|ID)$/.test(name);
@@ -197,11 +244,12 @@
     return 'text';
   }
 
-  function profileOne(rows, id, scanned) {
+  function profileOne(rows, id, scanned, info) {
     const sample = [];
     const seen = new Set();
     let distinctCapped = false;
     let filled = 0;
+    let listCells = 0;
     let min = Infinity;
     let max = -Infinity;
     let negatives = 0;
@@ -212,6 +260,7 @@
       const v = rows[i][id];
       if (isEmpty(v)) continue;
       filled++;
+      if (Array.isArray(v)) listCells++; // liste de choix, de références, pièces jointes : `['L', …]`
       if (sample.length < KIND_SAMPLE) sample.push(v);
       if (!distinctCapped) {
         seen.add(String(v));
@@ -228,10 +277,20 @@
       totalLen += len;
       if (len > maxLen) maxLen = len;
     }
-    const kind = columnKind(sample);
+    const gristType = gristTypeOf(id, info);
+    let kind = columnKind(sample);
+    // Une colonne Texte ou Choix dont les valeurs ressemblent à des nombres (code postal, « 10 », « 20 ») n'est pas une mesure.
+    if (kind === 'number' && (gristType === 'Text' || gristType === 'Choice')) kind = 'text';
+    const options = widgetOptionsOf(id, info);
     return {
       id,
       kind,
+      gristType,
+      // Colonne de listes (`['L', …]`) : jamais une catégorie, chaque combinaison deviendrait une « valeur » (voir assignRole).
+      listLike: filled > 0 && listCells / filled >= 0.5,
+      // Format d'affichage que la personne a choisi dans Grist : un pourcentage se moyenne, une devise s'additionne.
+      percent: options.numMode === 'percent',
+      money: options.numMode === 'currency',
       role: null,
       // Texte dont les valeurs distinctes sont des mois, jours, trimestres… (voir timeLikeRatio).
       timeLike: kind === 'text' && seen.size >= 3 && timeLikeRatio(Array.from(seen)) >= 0.7,
@@ -269,6 +328,10 @@
       return;
     }
     if (p.filled === 0 || p.distinct <= 1) { p.role = 'constant'; return; }
+    // Colonne Référence : un NUMÉRO DE LIGNE d'une autre table, que ni additionner ni moyenner n'a de sens (« somme de Client »),
+    // et dont les valeurs sont illisibles sur un axe. Colonne de listes : une « valeur » est une combinaison (`L,cadeau,bio`).
+    if (/^Ref(List)?:/.test(p.gristType)) { p.role = 'reference'; return; }
+    if (p.gristType === 'ChoiceList' || p.gristType === 'Attachments' || p.listLike) { p.role = 'list'; return; }
     if (p.kind === 'date') { p.role = 'time'; return; }
     if (p.kind === 'number') {
       if (p.allInteger && p.min >= 1800 && p.max <= 2200 && p.distinct <= 80) {
@@ -295,15 +358,46 @@
     p.role = p.distinct >= 0.9 * p.filled ? 'identifier' : 'highCardinality';
   }
 
-  // Profil de chaque colonne de `columnIds` (par défaut toutes celles de la 1re ligne, sauf `id`).
-  function profileColumns(rows, columnIds) {
+  // Les colonnes qui sont des NOTES (une échelle bornée qu'on moyenne, jamais qu'on additionne ni qu'on prend pour une catégorie) :
+  // des entiers de 0 à 20 sont, selon la table, une note sur 20, le jour du mois, un nombre de personnes… Les valeurs seules ne le
+  // disent pas ; trois indices le disent : le nom (note, taux, avancement…), le format de la colonne dans Grist (pourcentage) et,
+  // surtout, ses SŒURS — plusieurs colonnes qui plafonnent toutes à 20 (Maths, Français, Anglais) sont une famille de notes. Les
+  // tableaux de notes sont le cas d'usage du radar : sans cela, chaque colonne était rangée en « petit entier » (catégorie ET mesure),
+  // additionnée, et le radar jamais proposé. Une échelle de 0-1 ou 0-100 n'est reconnue que par son nom ou son format (une quantité
+  // de 1 à 98 y ressemble) ; 5, 7 et 10 demandent trois sœurs (une quantité de 1 à 5 est fréquente), 20 en demande deux.
+  function scaleTopOf(p) {
+    if (p.role !== 'measure' || p.kind !== 'number' || p.min < 0 || p.filled < 10 || p.distinct < 4) return 0;
+    return SCORE_TOPS.find((top) => p.max <= top && p.max > top / 2) || 0;
+  }
+
+  function markScores(profiles) {
+    const tops = new Map(profiles.map((p) => [p, scaleTopOf(p)]));
+    const family = (top) => profiles.filter((q) => tops.get(q) === top).length;
+    profiles.forEach((p) => {
+      const top = tops.get(p);
+      if (!top) return;
+      const named = SCORE_NAME_RE.test(p.id) || p.percent;
+      const siblings = family(top);
+      const proven = named || (top === 20 ? siblings >= 2 : (top !== 1 && top !== 100 && siblings >= 3));
+      if (!proven) return;
+      p.score = true;
+      p.scaleTop = top;
+      p.lowCardinality = false;
+      p.ordinal = false;
+    });
+  }
+
+  // Profil de chaque colonne de `columnIds` (par défaut toutes celles de la 1re ligne, sauf `id`). `info` (facultatif) = le type
+  // Grist de chaque colonne (voir setColumnInfo) ; sans lui, le registre posé par js/main-session.js.
+  function profileColumns(rows, columnIds, info) {
     rows = Array.isArray(rows) ? rows : [];
     const ids = (columnIds || (rows.length ? Object.keys(rows[0]) : []))
       .filter((c) => TECHNICAL_COLUMNS.indexOf(c) === -1);
-    const scanned = Math.min(rows.length, SCAN_LIMIT);
-    const profiles = ids.map((id) => profileOne(rows, id, scanned));
+    const sample = sampleOf(rows);
+    const profiles = ids.map((id) => profileOne(sample, id, sample.length, info));
     const byId = new Map(profiles.map((p) => [p.id, p]));
     profiles.forEach((p) => assignRole(p, byId));
+    markScores(profiles);
     return profiles;
   }
 
@@ -339,6 +433,12 @@
         const drill = [`${p.id}.Trimestre`, `${p.id}.Mois`].filter((c) => byId.has(c)).concat([p.id]);
         return { dimension: annee.id, drillDimensions: drill, base: p.id, granularity: 'year', numericKeys: true };
       }
+      // Une seule année : les 12 mois forment bien une chronologie (avec plusieurs années, `.Mois` mélangerait les années) ; un clic
+      // détaille par jour. Une courbe de plus de 300 jours additionnés au jour se lit moins bien que 12 points.
+      const mois = byId.get(`${p.id}.Mois`);
+      if (annee && annee.distinct === 1 && mois && mois.distinct >= 3) {
+        return { dimension: mois.id, drillDimensions: [p.id], base: p.id, granularity: 'month' };
+      }
       if (p.distinct >= 3) return { dimension: p.id, base: p.id, granularity: 'date' };
     }
     const year = profiles.find((p) => p.role === 'category' && p.yearLike && p.distinct >= 3);
@@ -349,8 +449,8 @@
     return named ? { dimension: named.id, base: named.id, granularity: 'label', unchecked: true } : null;
   }
 
-  function analyzeColumns(rows, columnIds) {
-    const profiles = profileColumns(rows, columnIds);
+  function analyzeColumns(rows, columnIds, info) {
+    const profiles = profileColumns(rows, columnIds, info);
     const byId = new Map(profiles.map((p) => [p.id, p]));
     const order = new Map(profiles.map((p, i) => [p.id, i]));
     const byOrder = (a, b) => order.get(a.id) - order.get(b.id);
@@ -423,7 +523,22 @@
 
   function nonNegative(m) { return m.count || (m.profile && m.profile.negatives === 0); }
 
-  function candidate(base) { return Object.assign({ dims: [], measures: [] }, base); }
+  // L'intention d'une tuile : ce que la personne cherche à savoir. Sert d'étiquette sur la carte de suggestion et à varier les propositions.
+  const INTENT_BY_TYPE = {
+    kpi: 'overview', line: 'trend', bar: 'compare', pie: 'share', treemap: 'share', scatter: 'relation', pivot: 'cross', radar: 'profile'
+  };
+  // Littéraux (et non construits par concaténation) pour que le test de couverture i18n les retrouve dans ce fichier.
+  const INTENT_KEYS = {
+    overview: 'advice.intent.overview',
+    trend: 'advice.intent.trend',
+    compare: 'advice.intent.compare',
+    share: 'advice.intent.share',
+    relation: 'advice.intent.relation',
+    cross: 'advice.intent.cross',
+    profile: 'advice.intent.profile'
+  };
+
+  function candidate(base) { return Object.assign({ dims: [], measures: [], intent: INTENT_BY_TYPE[base.type] || 'compare' }, base); }
 
   function buildCandidates(rows, ctx, opts) {
     const out = [];
@@ -464,7 +579,7 @@
     if (ctx.time) {
       measureOpts.forEach((m, i) => {
         const ts = title(m, ctx.time.dimension);
-        const sortable = !ctx.time.unchecked && sortableByLabel(rows.slice(0, SCAN_LIMIT).map((r) => r[ctx.time.dimension]));
+        const sortable = !ctx.time.unchecked && sortableByLabel(sampleOf(rows).map((r) => r[ctx.time.dimension]));
         const ascending = !sortable || appearsAscending(rows, ctx.time.dimension);
         out.push(candidate({
           type: 'line',
@@ -487,7 +602,7 @@
 
     // 3. Comparaison de catégories (barres triées, horizontales si nombreuses ou à libellés longs).
     dimsCat.forEach((d) => {
-      measureOpts.forEach((m, i) => {
+      measureOpts.filter((m) => m.column !== d.id).forEach((m, i) => {
         const ts = title(m, d.id);
         // Axe qui a déjà son ordre (nombre, mois, trimestre) : on ne le retrie pas par valeur.
         const ordinal = d.kind === 'number' || d.timeLike;
@@ -513,7 +628,7 @@
 
     // 4. Part d'un tout : anneau, seulement quand peu de parts et aucune valeur négative.
     dimsCat.filter((d) => d.kind === 'text' && d.distinct >= 2 && d.distinct <= 6).forEach((d) => {
-      measureOpts.filter(nonNegative).forEach((m, i) => {
+      measureOpts.filter((m) => nonNegative(m) && additive(m)).forEach((m, i) => {
         const ts = title(m, d.id);
         out.push(candidate({
           type: 'pie',
@@ -532,7 +647,7 @@
 
     // 5. Treemap : beaucoup de catégories positives, que des barres rendraient trop denses.
     ctx.categories.filter((d) => d.kind === 'text' && d.distinct >= 9 && d.distinct <= MAX_CATEGORIES).slice(0, 2).forEach((d) => {
-      measureOpts.filter(nonNegative).slice(0, 1).forEach((m) => {
+      measureOpts.filter((m) => nonNegative(m) && additive(m)).slice(0, 1).forEach((m) => {
         const ts = title(m, d.id);
         out.push(candidate({
           type: 'treemap',
@@ -561,7 +676,7 @@
         score: 5.5,
         dims: [pointDimension.id],
         measures: [x.id, y.id],
-        tileData: { type: 'scatter', dimension: pointDimension.id, measure: x.id, measureY: y.id, aggFn: 'sum',
+        tileData: { type: 'scatter', dimension: pointDimension.id, measure: x.id, measureY: y.id, aggFn: (x.score || y.score) ? 'avg' : 'sum', // un seul agrégat pour X et Y : dès qu'une note est en jeu, des moyennes par point
           title: resolveTitle(opts, 'advice.title.scatter', { measure: x.id, measureY: y.id, dimension: pointDimension.id }, `${y.id} / ${x.id}`) },
         titleKey: 'advice.title.scatter',
         titleVars: { measure: x.id, measureY: y.id, dimension: pointDimension.id },
@@ -614,6 +729,13 @@
   // d'amplitudes comparables (une note sur 20 et un chiffre d'affaires en millions ne se superposent
   // pas), au plus 8 pour rester lisibles.
   function radarAxisColumns(ctx) {
+    // Une famille de notes (au moins 3 colonnes de la même échelle : Maths, Français, Anglais sur 20) est LE cas d'usage du radar ;
+    // on prend la plus nombreuse, dans l'ordre des colonnes de la table.
+    const families = new Map();
+    ctx.profiles.filter((p) => p.score && p.scaleTop > 1).forEach((p) => families.set(p.scaleTop, (families.get(p.scaleTop) || []).concat(p)));
+    let family = [];
+    families.forEach((list) => { if (list.length > family.length) family = list; });
+    if (family.length >= 3) return family.slice(0, RADAR_MAX_AXES).map((p) => p.id);
     const scored = ctx.measures.filter((p) => !p.lowCardinality && p.min >= 0 && p.max <= 100 && p.max > 0);
     if (scored.length < 3) return [];
     const top = Math.max.apply(null, scored.map((p) => p.max));
@@ -650,7 +772,7 @@
   // `opts.t` (facultatif) résout le titre persisté de la tuile dans la langue courante.
   function suggestTiles(rows, columnIds, opts) {
     if (!Array.isArray(rows) || !rows.length) return [];
-    const ctx = analyzeColumns(rows, columnIds);
+    const ctx = analyzeColumns(rows, columnIds, opts && opts.columnInfo);
     if (!ctx.profiles.length) return [];
     const limit = (opts && opts.limit) || 3;
     return pickDiverse(buildCandidates(rows, ctx, opts), limit).map((c) => ({
@@ -659,6 +781,8 @@
       measure: c.tileData.measure,
       aggFn: c.tileData.aggFn,
       tileData: c.tileData,
+      intent: c.intent,
+      intentKey: INTENT_KEYS[c.intent],
       score: Math.round(c.score * 100) / 100,
       titleKey: c.titleKey,
       titleVars: c.titleVars,
@@ -702,7 +826,7 @@
         const time = ctx.time;
         out.dimension = time ? time.dimension : dimensionFallback;
         if (time && time.drillDimensions) out.drillDimensions = time.drillDimensions;
-        if (time && !time.unchecked && sortableByLabel(rows.slice(0, SCAN_LIMIT).map((r) => r[time.dimension]))
+        if (time && !time.unchecked && sortableByLabel(sampleOf(rows).map((r) => r[time.dimension]))
           && !appearsAscending(rows, time.dimension)) out.sortMode = 'label';
         break;
       }
@@ -744,7 +868,7 @@
         let [startCol, endCol] = dates;
         let earlier = 0;
         let later = 0;
-        for (const r of rows.slice(0, SCAN_LIMIT)) {
+        for (const r of sampleOf(rows)) {
           const startValue = r[startCol.id];
           const endValue = r[endCol.id];
           if (isEmpty(startValue) || isEmpty(endValue)) continue;
@@ -813,7 +937,7 @@
         const real = ctx.measures.filter((p) => !p.ordinal);
         out.measure = (real[0] || measure || {}).id || m.column;
         out.measureY = (real[1] || real[0] || measure || {}).id || m.column;
-        out.aggFn = measure ? 'sum' : 'count';
+        out.aggFn = measure ? (((real[0] && real[0].score) || (real[1] && real[1].score)) ? 'avg' : 'sum') : 'count';
         const point = ctx.profiles.find((p) => (p.role === 'category' && !p.yearLike && p.distinct >= 5) || p.role === 'highCardinality');
         out.dimension = (point && point.id) || dimensionFallback;
         break;
@@ -1226,7 +1350,7 @@
   }
 
   return {
-    TILE_TYPES, USE_KEYS, previewFor,
+    TILE_TYPES, USE_KEYS, INTENT_KEYS, previewFor, setColumnInfo,
     profileColumns, analyzeColumns, columnKind,
     suggestTiles, defaultsForType, adviceForTile, adviceForType,
     appearsAscending, isUnitPriceName

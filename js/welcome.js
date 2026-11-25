@@ -189,6 +189,10 @@
 
   // --- Glue DOM (navigateur uniquement) -----------------------------------------------------------
 
+  // Les suggestions montrées d'emblée (« Ajouter ces N » ne porte que sur elles) ; les suivantes se déplient à la demande.
+  const FIRST_SUGGESTIONS = 3;
+  const MAX_SUGGESTIONS = 9;
+
   let cfg = null;
   let shown = { rows: null, lang: null, suggestions: [] };
 
@@ -204,7 +208,13 @@
     const byId = (id) => document.getElementById(id);
     byId('welcome-import').addEventListener('click', () => cfg.importPowerBi());
     byId('welcome-add-all').addEventListener('click', () => {
-      shown.suggestions.forEach((s, i) => cfg.addTile(s.tileData, i));
+      shown.suggestions.slice(0, FIRST_SUGGESTIONS).forEach((s, i) => cfg.addTile(s.tileData, i));
+    });
+    byId('welcome-more').addEventListener('click', () => {
+      const cards = byId('welcome-cards');
+      const expanded = !cards.classList.contains('is-expanded');
+      cards.classList.toggle('is-expanded', expanded);
+      setMoreLabel(expanded);
     });
     byId('welcome-cards').addEventListener('click', (evt) => {
       const btn = evt.target.closest('button[data-suggestion]');
@@ -212,11 +222,20 @@
     });
   }
 
+  // Le libellé du bouton « Voir d'autres suggestions » / « Moins de suggestions » suit l'état ; `aria-expanded` le dit aux lecteurs d'écran.
+  function setMoreLabel(expanded) {
+    const more = document.getElementById('welcome-more');
+    more.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    more.textContent = G.i18n.t(expanded ? 'welcome.less' : 'welcome.more');
+  }
+
   function cardHtml(s, i, rows, lang) {
     const t = G.i18n.t;
     const title = t(s.titleKey, s.titleVars);
-    return `<li class="welcome-card">
+    const intent = s.intentKey ? `<span class="welcome-card-intent">${escapeHtml(t(s.intentKey))}</span>` : '';
+    return `<li class="welcome-card${i >= FIRST_SUGGESTIONS ? ' welcome-card-extra' : ''}">
       <div class="welcome-preview">${previewSvg(G.advice.previewFor(s.tileData, rows), { lang })}</div>
+      ${intent}
       <h3 class="welcome-card-title">${escapeHtml(title)}</h3>
       <p class="welcome-card-reason">${escapeHtml(t(s.reasonKey, s.reasonVars))}</p>
       <button type="button" class="btn-primary" data-suggestion="${i}" aria-label="${escapeHtml(t('welcome.addAria', { title }))}">${escapeHtml(t('welcome.add'))}</button>
@@ -242,12 +261,17 @@
       return;
     }
     if (shown.rows === state.rows && shown.lang === lang) return;
-    const suggestions = G.advice.suggestTiles(state.rows, undefined, { t: G.i18n.t });
+    const suggestions = G.advice.suggestTiles(state.rows, undefined, { t: G.i18n.t, limit: MAX_SUGGESTIONS });
     shown = { rows: state.rows, lang, suggestions };
-    G.safeHtml.setHtml(document.getElementById('welcome-cards'), suggestions.map((s, i) => cardHtml(s, i, state.rows, lang)).join(''));
+    const cards = document.getElementById('welcome-cards');
+    cards.classList.remove('is-expanded');
+    G.safeHtml.setHtml(cards, suggestions.map((s, i) => cardHtml(s, i, state.rows, lang)).join(''));
+    const first = Math.min(suggestions.length, FIRST_SUGGESTIONS);
     const addAll = document.getElementById('welcome-add-all');
-    addAll.hidden = suggestions.length < 2;
-    addAll.textContent = G.i18n.t('welcome.addAll', { n: suggestions.length });
+    addAll.hidden = first < 2;
+    addAll.textContent = G.i18n.t('welcome.addAll', { n: first });
+    document.getElementById('welcome-more').hidden = suggestions.length <= FIRST_SUGGESTIONS;
+    setMoreLabel(false);
     document.getElementById('welcome-suggestions-body').hidden = suggestions.length === 0;
   }
 

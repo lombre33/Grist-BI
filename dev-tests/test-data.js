@@ -3976,11 +3976,13 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
       const rows = data.deriveDateHierarchyColumns(dates, 'Jour');
       const line = advice.suggestTiles(rows, undefined, { limit: 6 }).find((x) => x.type === 'line');
       assert.ok(line, 'courbe proposée');
-      assert.strictEqual(line.tileData.dimension, 'Jour');
+      // Une seule année : la courbe est par MOIS (12 points au plus, un clic détaille par jour), plus au jour.
+      assert.strictEqual(line.tileData.dimension, 'Jour.Mois');
+      assert.deepStrictEqual(line.tileData.drillDimensions, ['Jour']);
       assert.strictEqual(line.tileData.sortMode, 'label');
-      assert.deepStrictEqual(data.sortGroups(data.groupByAggregate(rows, 'Jour', 'Montant', 'sum'), 'label').map((g) => g.dimension),
-        ['2024-01-01', '2024-02-01', '2024-03-01', '2024-04-01', '2024-05-01']);
-      console.log('OK advice.suggestTiles — dates dans le désordre : courbe triée par libellé');
+      assert.deepStrictEqual(data.sortGroups(data.groupByAggregate(rows, 'Jour.Mois', 'Montant', 'sum'), 'label').map((g) => g.dimension),
+        ['01', '02', '03', '04', '05']);
+      console.log('OK advice.suggestTiles — dates dans le désordre : courbe par mois triée par libellé');
     }
 
     // defaultsForType : jamais « Région / Région / Somme » ; une vraie colonne par rôle.
