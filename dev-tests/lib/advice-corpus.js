@@ -1,5 +1,5 @@
 /*
- * Jeux de données de RÉFÉRENCE pour juger les suggestions de tuiles (js/advice.js) : dix tables réalistes, déterministes (un
+ * Jeux de données de RÉFÉRENCE pour juger les suggestions de tuiles (js/advice.js) : des tables réalistes (dix d'abord, quatre de plus au niveau 2b), déterministes (un
  * générateur pseudo-aléatoire à graine fixe, jamais `Math.random`), chacune avec le type Grist que ses colonnes auraient (`info`, la
  * forme que lit `advice.setColumnInfo`) quand il change quelque chose. Ce sont les tables sur lesquelles l'analyse du 25/11/2026 a
  * mesuré les défauts de l'outil (Référence additionnée, notes sur 20 additionnées, liste de choix en « combinaisons », échantillon de
@@ -103,6 +103,42 @@ function build() {
         Montant: { type: 'Numeric', widgetOptions: '{"numMode":"currency","currency":"EUR"}' }
       }
     });
+  }
+  // --- Niveau 2b (types spécialisés) : des tables qui ONT quelque chose à montrer, pour que chaque type ait sa table « positive » ---
+  { // Ventes : quelques gros clients font presque tout (Pareto), des montants à longue queue (histogramme), une région aux montants plus hauts (boîtes).
+    const r = rng(22); const pick = (a) => a[Math.floor(r() * a.length)];
+    const clients = Array.from({ length: 40 }, (_, i) => 'Client ' + String(i + 1).padStart(2, '0'));
+    const weights = clients.map((_, i) => 1 / Math.pow(i + 1, 1.3)); // loi de Zipf : les premiers clients dominent
+    const wTotal = weights.reduce((a, b) => a + b, 0);
+    const pickClient = () => { let x = r() * wTotal; for (let i = 0; i < clients.length; i++) { x -= weights[i]; if (x <= 0) return clients[i]; } return clients[0]; };
+    add('ventes', withHierarchy(Array.from({ length: 900 }, (_, i) => {
+      const region = pick(['Nord', 'Sud', 'Est', 'Ouest']);
+      const base = Math.exp(4.2 + r() * 1.6 + (region === 'Nord' ? 0.7 : 0)); // log-normale : quelques très gros montants
+      return { id: i + 1, Date: iso(2025, 1 + Math.floor(r() * 12), 1 + Math.floor(r() * 28)), Client: pickClient(), Region: region, Montant: Math.round(base) };
+    }), 'Date'), { info: { Montant: { type: 'Numeric' } } });
+  }
+  { // Résultat : des postes de recettes (positifs) et de dépenses (négatifs) qui se compensent (cascade).
+    const r = rng(23);
+    const postes = [['Ventes', 1], ['Subventions', 1], ['Achats', -1], ['Salaires', -1], ['Loyer', -1], ['Impôts', -1]];
+    add('resultat', Array.from({ length: 240 }, (_, i) => {
+      const [poste, sign] = postes[i % postes.length];
+      const weight = { Ventes: 9000, Subventions: 2500, Achats: 5200, Salaires: 4200, Loyer: 1200, Impôts: 800 }[poste];
+      return { id: i + 1, Poste: poste, Mois: 1 + Math.floor(i / postes.length) % 12, Montant: sign * Math.round(weight * (0.6 + r() * 0.8)) };
+    }));
+  }
+  { // Parcours : des étapes de plus en plus petites (entonnoir), un canal.
+    const r = rng(24); const pick = (a) => a[Math.floor(r() * a.length)];
+    const stages = [['Visite', 400], ['Inscription', 220], ['Essai', 120], ['Achat', 45]];
+    const rows = [];
+    stages.forEach(([stage, count]) => { for (let k = 0; k < count; k++) rows.push({ id: rows.length + 1, Etape: stage, Canal: pick(['Web', 'Mail', 'Salon']), Visiteur: 'V' + (rows.length + 1) }); });
+    add('parcours', rows);
+  }
+  { // Produits : dix produits dont les marges suivent les ventes (barres + courbe), une année.
+    const r = rng(25); const names = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', 'P8', 'P9', 'P10'];
+    add('produits', Array.from({ length: 300 }, (_, i) => {
+      const k = i % names.length; const ventes = Math.round((k + 1) * 800 * (0.8 + r() * 0.4));
+      return { id: i + 1, Produit: names[k], Ventes: ventes, Marge: Math.round(ventes * (0.28 + r() * 0.04)) };
+    }));
   }
   return sets;
 }

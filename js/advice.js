@@ -23,12 +23,12 @@
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
-    module.exports = factory(require('./data.js'), require('./advice-insights.js'));
+    module.exports = factory(require('./data.js'), require('./advice-insights.js'), require('./advice-types.js'));
   } else {
     root.GristBI = root.GristBI || {};
-    root.GristBI.advice = factory(root.GristBI.data, root.GristBI.adviceInsights);
+    root.GristBI.advice = factory(root.GristBI.data, root.GristBI.adviceInsights, root.GristBI.adviceTypes);
   }
-})(typeof self !== 'undefined' ? self : this, function (data, insights) {
+})(typeof self !== 'undefined' ? self : this, function (data, insights, types) {
   'use strict';
 
   // Lignes lues au plus pour profiler une colonne, et plafond du nombre de valeurs distinctes
@@ -516,7 +516,10 @@
   }
 
   function measureOptions(ctx) {
-    const options = ctx.measures.slice(0, 2).map((p) => ({ column: p.id, aggFn: aggFor(p), count: false, profile: p }));
+    // Un numéro de mois, de semaine ou de jour (petit entier dense répété sur de nombreuses lignes) n'est pas une quantité : « Mois par
+    // Poste » ou « Mois pèse 17 % du total » n'ont aucun sens. Il ne sert de mesure que s'il n'y a rien d'autre à mesurer.
+    const real = ctx.measures.filter((p) => !p.ordinal);
+    const options = (real.length ? real : ctx.measures).slice(0, 2).map((p) => ({ column: p.id, aggFn: aggFor(p), count: false, profile: p }));
     if (!options.length && ctx.countColumn) options.push({ column: ctx.countColumn, aggFn: 'count', count: true, profile: null });
     return options;
   }
@@ -524,9 +527,9 @@
   function nonNegative(m) { return m.count || (m.profile && m.profile.negatives === 0); }
 
   // L'intention d'une tuile : ce que la personne cherche à savoir. Sert d'étiquette sur la carte de suggestion et à varier les propositions.
-  const INTENT_BY_TYPE = {
+  const INTENT_BY_TYPE = Object.assign({
     kpi: 'overview', line: 'trend', bar: 'compare', pie: 'share', treemap: 'share', scatter: 'relation', pivot: 'cross', radar: 'profile'
-  };
+  }, types.INTENT_BY_TYPE);
   // Littéraux (et non construits par concaténation) pour que le test de couverture i18n les retrouve dans ce fichier.
   const INTENT_KEYS = {
     overview: 'advice.intent.overview',
@@ -535,7 +538,11 @@
     share: 'advice.intent.share',
     relation: 'advice.intent.relation',
     cross: 'advice.intent.cross',
-    profile: 'advice.intent.profile'
+    profile: 'advice.intent.profile',
+    concentrate: 'advice.intent.concentrate',
+    distribution: 'advice.intent.distribution',
+    change: 'advice.intent.change',
+    stages: 'advice.intent.stages'
   };
 
   function candidate(base) { return Object.assign({ dims: [], measures: [], intent: INTENT_BY_TYPE[base.type] || 'compare' }, base); }
@@ -722,7 +729,8 @@
       }));
     }
 
-    return out;
+    // 9. Les types spécialisés (Pareto, barres + courbe, histogramme, boîtes, cascade, entonnoir) : js/advice-types.js.
+    return out.concat(types.candidates(rows, ctx, opts, typeCore));
   }
 
   // Colonnes numériques qui ressemblent à des « compétences » : au moins 3, toutes entre 0 et 100,
@@ -789,6 +797,11 @@
   }
 
   const fmt = (x, ctx, digits) => insights.formatNumber(x, ctx.lang, digits);
+
+  // Ce que js/advice-types.js reçoit de ce fichier (il ne l'importe pas : pas d'import circulaire) : les fonctions communes aux candidats.
+  const typeCore = {
+    candidate, resolveTitle, groupsFor, aggFor, fmt, sampleOf, appearsAscending
+  };
 
   // Une explication « Nord pèse 42 % du total de Montant » : la part d'un groupe quand les valeurs s'additionnent.
   function shareReason(c, share, ctx, withTop3) {
@@ -859,7 +872,9 @@
             insight = shareReason(c, share, ctx, c.type !== 'bar');
           } else if (spread && spread.ratio !== null && spread.ratio >= SPREAD_MIN_RATIO) {
             insight = { key: c.countMeasure ? 'advice.insight.spreadCount' : 'advice.insight.spread', vars: { measure, high: spread.maxName, low: spread.minName, ratio: fmt(spread.ratio, ctx, 1) } };
-          } else if (c.type === 'bar') {
+          } else if (c.type === 'bar' && spread && spread.ratio !== null) {
+            // « Proches » seulement quand le rapport existe (la plus petite valeur est positive) : des groupes de signes mêlés (un poste de
+            // recettes et un poste de dépenses) ne sont jamais « proches », ils n'ont simplement pas de rapport.
             insight = { key: 'advice.insight.flat', vars: { dimension: td.dimension, n: groups.length } };
           }
         }
@@ -873,7 +888,7 @@
         } else {
           facts = { r: corr.r, n: corr.n };
           note = insights.interest.relation(corr);
-          const vars = { measure, measureY: td.measureY, r: fmt(corr.r, ctx, 2) };
+          const vars = { measure, measureY: td.measureY, r: insights.formatCorrelation(corr.r, ctx.lang) };
           insight = { key: corr.r >= 0.5 ? 'advice.insight.scatterUp' : (corr.r <= -0.5 ? 'advice.insight.scatterDown' : 'advice.insight.scatterWeak'), vars };
         }
       } else if (c.type === 'pivot') {
@@ -886,6 +901,9 @@
           if (share) insight = { key: c.countMeasure ? 'advice.insight.pivotTopCount' : 'advice.insight.pivotTop', vars: { cell: share.topName, pct: insights.percentOf(share.topShare), measure } };
           else if (spread.ratio !== null && spread.ratio >= SPREAD_MIN_RATIO) insight = { key: c.countMeasure ? 'advice.insight.spreadCount' : 'advice.insight.spread', vars: { measure, high: spread.maxName, low: spread.minName, ratio: fmt(spread.ratio, ctx, 1) } };
         }
+      } else if (types.HANDLED.indexOf(c.type) !== -1) {
+        const typed = types.annotate(c, ctx, typeCore);
+        if (typed) { facts = typed.facts; note = typed.note; insight = typed.insight; }
       } else if (c.type === 'radar') {
         const axes = td.radarAxisMode === 'columns' ? (td.radarAxes || []) : [];
         const means = axes.map((col) => ({ dimension: col, value: data.aggregateSingle(ctx.insightRows, col, 'avg') }));
@@ -901,7 +919,8 @@
 
       // Un prix unitaire n'est jamais le chiffre vedette (il se moyenne, il ne s'additionne pas) : il passe derrière tout vrai montant, quoi
       // que disent les données (bug réel n°47 : la barre « prix par produit » varie beaucoup, ce n'est pas pour autant le premier réflexe).
-      if (measure && isUnitPriceName(measure)) c.score -= UNIT_PRICE_RANK_PENALTY;
+      // (Un histogramme ou des boîtes de prix, eux, n'agrègent rien : voir la répartition des prix est un usage normal.)
+      if (measure && aggFn && isUnitPriceName(measure)) c.score -= UNIT_PRICE_RANK_PENALTY;
       if (facts) c.facts = facts;
       if (note !== null) {
         c.interest = Math.round(note * 1000) / 1000;
@@ -1529,7 +1548,8 @@
       case 'heatmap':
         return { kind: 'grid' };
       default:
-        return null;
+        // Pareto / barres + courbe, histogramme, boîtes, cascade : js/advice-types.js.
+        return types.previewFor(tileData, rows, typeCore);
     }
   }
 
