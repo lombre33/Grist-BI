@@ -20,6 +20,7 @@
     sparklineCheckbox, stackPercentCheckbox, stackedCheckbox, startColumnSelect, stopEditTile, store, submitTileBtn,
     targetColumnSelect, targetInput, tileAdviceEl, tileCompleteEl, tileCompleteListEl, tileCompleteLiveEl,
     tileJoinEl, tileJoinListEl, tileJoinDoneEl,
+    tilePagesEl, tilePagesListEl, tilePagesLiveEl,
     columnPickEl, columnProfileEl, columnUsedEl, columnEmptyEl, columnListEl, columnLiveEl, tilePanel, tilePanelCloseBtn, tilePanelTitle, tilePreviewEl,
     tilePreviewEmptyEl, tileTextInput, tileTitleInput, tileTypeSelect, trendDimensionSelect, typeGridEl,
     typeLineNameEl, updateFormFieldsForType, updateNumberFormatUI, valueLabelsCheckbox, warnPctInput, welcomeAddBtn,
@@ -189,6 +190,7 @@
     store.addTile(Object.assign({ id }, item.tileData));
     flashTile(id);
     tileCompleteLiveEl.textContent = t('tilePanel.complete.added', { title: t(item.titleKey, item.titleVars) });
+    renderPages();
     renderCompletion(() => { (tileCompleteListEl.querySelector('button[data-complete]') || typeGridEl.querySelector('.type-card') || tilePanelCloseBtn).focus(); });
   });
 
@@ -276,8 +278,78 @@
       joinDone = { table: item.table, axes: item.reasonVars.axes };
       // Les lignes ont changé (colonnes de l'autre table) : la phrase de confirmation prend la place des cartes, les suggestions se recalculent.
       renderJoin();
+      renderPages();
       renderCompletion(() => { (tileCompleteListEl.querySelector('button[data-complete]') || typeGridEl.querySelector('.type-card') || tilePanelCloseBtn).focus({ preventScroll: true }); });
     });
+  });
+
+  // « Ajouter une page entière » (js/advice-pages.js) : les modèles de rapport (vue d'ensemble, évolution, répartition) proposés comme PAGES quand ils
+  // apportent au moins trois visualisations que les tuiles posées (toutes pages) ne montrent pas encore. Un clic crée la page (`store.addPage`, qui y
+  // navigue) et y pose ces visualisations ; la proposition disparaît d'elle-même (ses visualisations sont désormais des tuiles posées). Même discipline
+  // que `renderCompletion` : calcul différé après le dessin, jamais écrit s'il est périmé (`pagesToken`), liste retirée avant le recalcul, focus rendu
+  // APRÈS le dessin, annonce dans une zone de statut. Rien tant que le tableau de bord n'a aucune tuile (l'écran d'accueil s'en charge).
+  let pagesToken = 0;
+  let pagesItems = [];
+  let pagesShown = null; // { rows, lang, tiles, names } : ce que les cartes affichées ont lu (rien ne se refait si rien de cela n'a changé)
+
+  const pageNamesOf = (state) => state.pages.map((page) => page.name).join('\u0001');
+
+  function hidePages() {
+    pagesToken++;
+    pagesItems = [];
+    pagesShown = null;
+    tilePagesListEl.textContent = '';
+    tilePagesEl.hidden = true;
+  }
+
+  function paintPages(items) {
+    pagesItems = items;
+    tilePagesListEl.textContent = '';
+    items.forEach((p, i) => {
+      const title = t(p.titleKey, p.titleVars);
+      const li = document.createElement('li');
+      li.className = 'complete-card page-card';
+      const types = p.tiles.map((tile) => `<span class="page-card-type">${icon('type-' + tile.type)}</span>`).join('');
+      GristBI.safeHtml.setHtml(li, `<div class="complete-body"><h4 class="complete-card-title">${escapeHtml(title)}</h4>`
+        + `<div class="page-card-types" aria-hidden="true">${types}</div>`
+        + `<p class="complete-card-reason">${escapeHtml(t(p.reasonKey, p.reasonVars))}</p>`
+        + `<button type="button" class="btn-primary" data-page="${i}" aria-label="${escapeHtml(t('tilePanel.pages.addAria', { page: p.pageName, n: p.tiles.length }))}">${escapeHtml(t('tilePanel.pages.add'))}</button></div>`);
+      tilePagesListEl.appendChild(li);
+    });
+    tilePagesEl.hidden = !items.length;
+  }
+
+  // `afterPaint` (facultatif) : appelé une fois les cartes dessinées (ou retirées).
+  function renderPages(afterPaint) {
+    const token = ++pagesToken;
+    const done = () => { if (afterPaint) afterPaint(); };
+    const state = store.getState();
+    const tiles = tilesOfAllPages(state);
+    if (!GristBI.advicePages || S.editingTileId || !state.rows.length || !tiles.length) { hidePages(); done(); return; }
+    const lang = GristBI.i18n.getLang();
+    const names = pageNamesOf(state);
+    if (pagesShown && pagesShown.rows === state.rows && pagesShown.lang === lang && pagesShown.names === names && sameRefs(pagesShown.tiles, tiles)) { paintPages(pagesItems); done(); return; }
+    // Des cartes calculées pour d'autres tuiles ou d'autres pages se retirent d'abord : elles proposeraient, un instant, ce qui vient d'être posé.
+    tilePagesEl.hidden = true;
+    tilePagesListEl.textContent = '';
+    setTimeout(() => {
+      if (token !== pagesToken || tilePanel.hidden) return; // fermé, rouvert ou déjà recalculé entre-temps
+      const result = GristBI.advicePages.propose(state.rows, tiles, state.pages, { t, lang });
+      pagesShown = { rows: state.rows, lang, tiles, names };
+      paintPages(result.proposals);
+      done();
+    }, 0);
+  }
+
+  tilePagesListEl.addEventListener('click', (evt) => {
+    const btn = evt.target.closest('button[data-page]');
+    const item = btn && pagesItems[Number(btn.dataset.page)];
+    if (!item) return;
+    store.addPage(item.pageName);
+    item.tiles.forEach((tile, i) => store.addTile(Object.assign({ id: genTileId(i) }, tile)));
+    tilePagesLiveEl.textContent = t('tilePanel.pages.added', { page: item.pageName, n: item.tiles.length });
+    renderCompletion();
+    renderPages(() => { (tilePagesListEl.querySelector('button[data-page]') || tileCompleteListEl.querySelector('button[data-complete]') || typeGridEl.querySelector('.type-card') || tilePanelCloseBtn).focus({ preventScroll: true }); });
   });
 
   // « Que faire avec cette colonne ? » (js/advice-column.js) : la personne choisit une colonne dans le champ à autocomplétion, on lui dit ce qu'elle est
@@ -353,6 +425,9 @@
     const id = genTileId(0);
     store.addTile(Object.assign({ id }, item.tileData));
     flashTile(id);
+    // La tuile posée n'est plus à compléter : « Pour compléter » et les pages proposées se recalculent aussi.
+    renderCompletion();
+    renderPages();
     renderColumnHelper(() => {
       // La tuile posée n'est plus proposée : le focus reste dans la liste (jamais perdu avec le bouton qui disparaît), puis sur le champ.
       (columnListEl.querySelector('button[data-column-add]') || columnPickEl).focus({ preventScroll: true });
@@ -510,6 +585,7 @@
     renderTypeCards();
     renderCompletion();
     renderJoin();
+    renderPages();
     columnPickEl.value = '';
     hideColumnResults();
     updatePanelTexts();
@@ -527,6 +603,7 @@
     tilePanel.hidden = true;
     hideCompletion();
     hideJoin();
+    hidePages();
     hideColumnResults();
     columnPickEl.value = '';
     workspaceEl.classList.remove('panel-open');
@@ -586,6 +663,7 @@
     renderTypeCards();
     renderCompletion();
     renderJoin();
+    renderPages();
     if (columnPickEl.value) renderColumnHelper();
     if (!configureStepEl.hidden) {
       renderPreview();

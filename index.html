@@ -589,6 +589,14 @@
         <ul id="tile-complete-list" class="tile-complete-list"></ul>
         <p id="tile-complete-live" class="sr-only" role="status" aria-live="polite"></p>
       </section>
+      <!-- « Ajouter une page entière » : les modèles de rapport proposés comme pages quand ils apportent au moins trois visualisations que les tuiles
+           posées ne montrent pas encore (js/advice-pages.js, rempli par js/main-panel.js:renderPages ; masqué tant qu'il n'y a ni tuile ni proposition). -->
+      <section id="tile-pages" class="tile-complete tile-pages" aria-labelledby="tile-pages-title" hidden>
+        <h3 id="tile-pages-title" class="tile-complete-title" data-i18n="tilePanel.pages.title">Ajouter une page entière</h3>
+        <p class="tile-complete-lead" data-i18n="tilePanel.pages.lead">Un ensemble de visualisations qui se complètent, sur une nouvelle page.</p>
+        <ul id="tile-pages-list" class="tile-complete-list"></ul>
+        <p id="tile-pages-live" class="sr-only" role="status" aria-live="polite"></p>
+      </section>
       <!-- « Que faire avec cette colonne ? » : on choisit une colonne, on voit ce qu'elle est et jusqu'à trois tuiles qui la lisent (js/advice-column.js,
            rempli par js/main-panel.js:renderColumnHelper). Replié au départ : c'est une entrée de plus, pas un passage obligé. -->
       <details id="tile-column" class="tile-column">
@@ -1026,6 +1034,7 @@
   <script src="js/advice-join.js"></script>
   <script src="js/welcome.js"></script>
   <script src="js/models.js"></script>
+  <script src="js/advice-pages.js"></script>
   <script src="js/combobox.js"></script>
   <script src="js/state.js"></script>
   <script src="js/charts-core.js"></script>
