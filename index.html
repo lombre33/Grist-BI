@@ -573,6 +573,14 @@
     </header>
 
     <section id="tile-panel-choose" class="tile-panel-step" data-step="choose">
+      <!-- « Pour compléter ce tableau de bord » : les suggestions que les tuiles posées ne couvrent pas encore (js/advice-complete.js, rempli par
+           js/main-panel.js:renderCompletion ; masqué tant qu'il n'y a ni tuile ni suggestion). -->
+      <section id="tile-complete" class="tile-complete" aria-labelledby="tile-complete-title" hidden>
+        <h3 id="tile-complete-title" class="tile-complete-title" data-i18n="tilePanel.complete.title">Pour compléter ce tableau de bord</h3>
+        <p class="tile-complete-lead" data-i18n="tilePanel.complete.lead">Ce que vos données permettent et que vos tuiles ne montrent pas encore.</p>
+        <ul id="tile-complete-list" class="tile-complete-list"></ul>
+        <p id="tile-complete-live" class="sr-only" role="status" aria-live="polite"></p>
+      </section>
       <p class="tile-panel-lead" data-i18n="tilePanel.choose.lead">Quelle question voulez-vous poser à vos données ?</p>
       <div id="tile-type-grid" class="type-grid"></div>
     </section>
@@ -986,6 +994,7 @@
   <script src="js/advice-types-grid.js"></script>
   <script src="js/advice-types.js"></script>
   <script src="js/advice.js"></script>
+  <script src="js/advice-complete.js"></script>
   <script src="js/welcome.js"></script>
   <script src="js/models.js"></script>
   <script src="js/combobox.js"></script>

@@ -1581,7 +1581,7 @@
   }
 
   return {
-    TILE_TYPES, USE_KEYS, INTENT_KEYS, previewFor, setColumnInfo,
+    TILE_TYPES, USE_KEYS, INTENT_KEYS, INTENT_BY_TYPE, previewFor, setColumnInfo,
     profileColumns, analyzeColumns, columnKind,
     suggestTiles, defaultsForType, adviceForTile, adviceForType,
     appearsAscending, isUnitPriceName
