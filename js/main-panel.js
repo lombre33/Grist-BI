@@ -18,7 +18,8 @@
     refLineSelect, refValueInput, resetDrillLevels, resetRadarAxes, seriesSelect, setColumnsPicker, setDrillLevels,
     setNumberFormatForm, setRadarAxes, showFormErrors, showPctCheckbox, smallMultiplesCheckbox, sortSelect,
     sparklineCheckbox, stackPercentCheckbox, stackedCheckbox, startColumnSelect, stopEditTile, store, submitTileBtn,
-    targetColumnSelect, targetInput, tileAdviceEl, tileCompleteEl, tileCompleteListEl, tileCompleteLiveEl, tilePanel, tilePanelCloseBtn, tilePanelTitle, tilePreviewEl,
+    targetColumnSelect, targetInput, tileAdviceEl, tileCompleteEl, tileCompleteListEl, tileCompleteLiveEl,
+    columnPickEl, columnProfileEl, columnUsedEl, columnEmptyEl, columnListEl, columnLiveEl, tilePanel, tilePanelCloseBtn, tilePanelTitle, tilePreviewEl,
     tilePreviewEmptyEl, tileTextInput, tileTitleInput, tileTypeSelect, trendDimensionSelect, typeGridEl,
     typeLineNameEl, updateFormFieldsForType, updateNumberFormatUI, valueLabelsCheckbox, warnPctInput, welcomeAddBtn,
     wordCloudSplitCheckbox, workspaceEl, workspaceMainEl
@@ -27,8 +28,8 @@
   const buildTileElement = (...args) => parts.buildTileElement(...args);
   const setMode = (...args) => parts.setMode(...args);
   Object.assign(parts, {
-    closeTilePanel, flashTile, openTilePanel, refreshTilePanelTexts, schedulePreview, updateAdvancedVisibility,
-    updatePanelTexts
+    closeTilePanel, flashTile, hideColumnResults, openTilePanel, refreshTilePanelTexts, renderColumnHelper, schedulePreview,
+    updateAdvancedVisibility, updatePanelTexts
   });
 
   // =============================================================================================
@@ -92,6 +93,9 @@
   let completion = { rows: null, lang: null, tiles: null, items: [] };
   let completionToken = 0;
 
+  // Les tuiles de TOUTES les pages du rapport (« ce tableau de bord » est le rapport, pas la page courante).
+  const tilesOfAllPages = (state) => state.pages.reduce((all, page) => all.concat(page.tiles || []), []);
+
   const sameRefs = (a, b) => Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((x, i) => x === b[i]);
 
   function hideCompletion() {
@@ -132,6 +136,12 @@
     tileCompleteEl.hidden = !showList || !items.length;
     markRecommended(items);
     if (!showList) return;
+    fillCards(tileCompleteListEl, items, rows, lang, 'data-complete');
+  }
+
+  // Les cartes d'une liste de propositions (celles de « Pour compléter » et de « Que faire avec cette colonne ? » sont les mêmes) : aperçu,
+  // titre, manque dit, raison chiffrée, bouton « Ajouter » portant son rang dans l'attribut `attr`.
+  function fillCards(listEl, items, rows, lang, attr) {
     items.forEach((s, i) => {
       const title = t(s.titleKey, s.titleVars);
       const li = document.createElement('li');
@@ -140,8 +150,8 @@
         + `<div class="complete-body"><h4 class="complete-card-title">${escapeHtml(title)}</h4>`
         + (s.gapKey ? `<p class="complete-card-gap">${escapeHtml(t(s.gapKey, s.gapVars))}</p>` : '')
         + `<p class="complete-card-reason">${escapeHtml(t(s.reasonKey, s.reasonVars))}</p>`
-        + `<button type="button" class="btn-primary" data-complete="${i}" aria-label="${escapeHtml(t('welcome.addAria', { title }))}">${escapeHtml(t('welcome.add'))}</button></div>`);
-      tileCompleteListEl.appendChild(li);
+        + `<button type="button" class="btn-primary" ${attr}="${i}" aria-label="${escapeHtml(t('welcome.addAria', { title }))}">${escapeHtml(t('welcome.add'))}</button></div>`);
+      listEl.appendChild(li);
     });
   }
 
@@ -150,7 +160,7 @@
     const token = ++completionToken;
     const done = () => { if (afterPaint) afterPaint(); };
     const state = store.getState();
-    const tiles = state.pages.reduce((all, page) => all.concat(page.tiles || []), []);
+    const tiles = tilesOfAllPages(state);
     if (!GristBI.adviceComplete || S.editingTileId || !state.rows.length) { hideCompletion(); done(); return; }
     const lang = GristBI.i18n.getLang();
     if (completion.rows === state.rows && completion.lang === lang && sameRefs(completion.tiles, tiles)) { paintCompletion(completion.items, state.rows, lang, tiles.length > 0); done(); return; }
@@ -178,6 +188,85 @@
     flashTile(id);
     tileCompleteLiveEl.textContent = t('tilePanel.complete.added', { title: t(item.titleKey, item.titleVars) });
     renderCompletion(() => { (tileCompleteListEl.querySelector('button[data-complete]') || typeGridEl.querySelector('.type-card') || tilePanelCloseBtn).focus(); });
+  });
+
+  // « Que faire avec cette colonne ? » (js/advice-column.js) : la personne choisit une colonne dans le champ à autocomplétion, on lui dit ce qu'elle est
+  // (une phrase), combien de tuiles la lisent déjà, et on lui montre jusqu'à trois tuiles qui la lisent — les MÊMES cartes que « Pour compléter ».
+  // Même discipline que `renderCompletion` : calcul différé après le dessin (un jeton écarte un résultat périmé), liste retirée avant le recalcul,
+  // focus rendu APRÈS le dessin, annonce dans une zone de statut. Rien tant qu'aucune colonne n'est choisie.
+  let columnToken = 0;
+  let columnItems = [];
+  // Ce que les résultats affichés ont lu (colonne, lignes, langue, tuiles posées) : tant que rien de cela n'a changé, un événement `change` du
+  // champ ne refait RIEN. Il en arrive un second à la perte du focus (le navigateur le déclenche à son tour après celui que le combobox émet
+  // lui-même) : refaire la liste à ce moment retirait le bouton « Ajouter » entre le bouton de la souris enfoncé et relâché, et le clic se perdait
+  // (trouvé par un vrai clic Playwright, pas par la lecture).
+  let columnShown = null;
+  S.columnHelperRows = null; // les lignes pour lesquelles les résultats affichés ont été calculés (voir refreshColumnSelects)
+
+  function columnResultsAreFresh() {
+    const state = store.getState();
+    return !!columnShown && columnShown.column === columnPickEl.value && columnShown.rows === state.rows
+      && columnShown.lang === GristBI.i18n.getLang() && sameRefs(columnShown.tiles, tilesOfAllPages(state));
+  }
+
+  function hideColumnResults() {
+    columnToken++;
+    columnItems = [];
+    columnShown = null;
+    S.columnHelperRows = null;
+    columnProfileEl.textContent = '';
+    columnUsedEl.textContent = '';
+    columnEmptyEl.textContent = '';
+    columnEmptyEl.hidden = true;
+    columnListEl.textContent = '';
+    columnLiveEl.textContent = '';
+  }
+
+  function renderColumnHelper(afterPaint) {
+    const token = ++columnToken;
+    const done = () => { if (afterPaint) afterPaint(); };
+    const column = columnPickEl.value;
+    const state = store.getState();
+    if (!GristBI.adviceColumn || S.editingTileId || !column || !state.rows.length) { hideColumnResults(); done(); return; }
+    // Les résultats d'avant se retirent d'abord : ils parleraient de la colonne précédente ou de tuiles qui ont changé.
+    columnItems = [];
+    columnShown = null;
+    columnUsedEl.textContent = '';
+    columnEmptyEl.hidden = true;
+    columnListEl.textContent = '';
+    columnProfileEl.textContent = t('tilePanel.column.working');
+    setTimeout(() => {
+      if (token !== columnToken || tilePanel.hidden) return; // fermé, rouvert, autre colonne ou déjà recalculé entre-temps
+      const lang = GristBI.i18n.getLang();
+      const tiles = tilesOfAllPages(state);
+      const result = GristBI.adviceColumn.describe(state.rows, tiles, column, { t, lang, limit: 3 });
+      if (!result.ok) { hideColumnResults(); done(); return; }
+      S.columnHelperRows = state.rows;
+      columnShown = { column, rows: state.rows, lang, tiles };
+      columnItems = result.items;
+      columnProfileEl.textContent = t(result.roleKey, result.roleVars);
+      columnUsedEl.textContent = result.usedBy ? t(GristBI.adviceColumn.USED_KEY, { n: result.usedBy }) : '';
+      columnListEl.textContent = '';
+      fillCards(columnListEl, result.items, state.rows, lang, 'data-column-add');
+      columnEmptyEl.hidden = !result.emptyKey;
+      columnEmptyEl.textContent = result.emptyKey ? t(result.emptyKey) : '';
+      columnLiveEl.textContent = result.items.length ? t('tilePanel.column.found', { n: result.items.length, column }) : t(result.emptyKey);
+      done();
+    }, 0);
+  }
+
+  columnPickEl.addEventListener('change', () => { if (!columnResultsAreFresh()) renderColumnHelper(); });
+  columnListEl.addEventListener('click', (evt) => {
+    const btn = evt.target.closest('button[data-column-add]');
+    const item = btn && columnItems[Number(btn.dataset.columnAdd)];
+    if (!item) return;
+    const id = genTileId(0);
+    store.addTile(Object.assign({ id }, item.tileData));
+    flashTile(id);
+    renderColumnHelper(() => {
+      // La tuile posée n'est plus proposée : le focus reste dans la liste (jamais perdu avec le bouton qui disparaît), puis sur le champ.
+      (columnListEl.querySelector('button[data-column-add]') || columnPickEl).focus({ preventScroll: true });
+    });
   });
 
   // Remet le formulaire à blanc (les valeurs du dernier ajout ne doivent pas fuiter dans le suivant).
@@ -330,6 +419,8 @@
     clearFormErrors();
     renderTypeCards();
     renderCompletion();
+    columnPickEl.value = '';
+    hideColumnResults();
     updatePanelTexts();
     if (opts.type && !opts.editing) chooseType(opts.type);
     else setPanelStep(opts.step || 'choose');
@@ -344,6 +435,8 @@
     if (S.editingTileId) stopEditTile();
     tilePanel.hidden = true;
     hideCompletion();
+    hideColumnResults();
+    columnPickEl.value = '';
     workspaceEl.classList.remove('panel-open');
     addTileOpenBtn.setAttribute('aria-expanded', 'false');
     clearTimeout(previewTimer);
@@ -400,6 +493,7 @@
     if (tilePanel.hidden) return;
     renderTypeCards();
     renderCompletion();
+    if (columnPickEl.value) renderColumnHelper();
     if (!configureStepEl.hidden) {
       renderPreview();
       if (S.submitAttempted) showFormErrors(readTileForm().errors, false);

@@ -508,6 +508,24 @@
         <ul id="tile-complete-list" class="tile-complete-list"></ul>
         <p id="tile-complete-live" class="sr-only" role="status" aria-live="polite"></p>
       </section>
+      
+      <details id="tile-column" class="tile-column">
+        <summary class="tile-column-summary" data-i18n="tilePanel.column.title">Que faire avec cette colonne ?</summary>
+        <div class="tile-column-body">
+          <div class="field">
+            <label for="tile-column-pick" data-i18n="tilePanel.column.label">Colonne</label>
+            <div class="combobox">
+              <input type="text" id="tile-column-pick" class="combobox-input" data-i18n-placeholder="tilePanel.column.placeholder" placeholder="Choisir une colonne" />
+              <ul class="combobox-list" hidden></ul>
+            </div>
+          </div>
+          <p id="tile-column-profile" class="tile-column-profile"></p>
+          <p id="tile-column-used" class="tile-column-used"></p>
+          <p id="tile-column-empty" class="tile-column-empty" hidden></p>
+          <ul id="tile-column-list" class="tile-complete-list"></ul>
+          <p id="tile-column-live" class="sr-only" role="status" aria-live="polite"></p>
+        </div>
+      </details>
       <p class="tile-panel-lead" data-i18n="tilePanel.choose.lead">Quelle question voulez-vous poser à vos données ?</p>
       <div id="tile-type-grid" class="type-grid"></div>
     </section>
@@ -922,6 +940,7 @@
   <script src="../js/advice-types.js"></script>
   <script src="../js/advice.js"></script>
   <script src="../js/advice-complete.js"></script>
+  <script src="../js/advice-column.js"></script>
   <script src="../js/welcome.js"></script>
   <script src="../js/models.js"></script>
   <script src="../js/combobox.js"></script>

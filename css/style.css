@@ -1472,6 +1472,17 @@ td.pivot-cell:not(.pivot-cell-empty):not(.pivot-total-cell):hover { background: 
 .complete-body .btn-primary { margin-top: 4px; }
 @media (max-width: 480px) { .complete-card { grid-template-columns: minmax(0, 1fr); } .complete-preview { height: 56px; } }
 
+/* « Que faire avec cette colonne ? » : un bloc replié, mêmes cartes que « Pour compléter ». */
+.tile-column { margin: 0 0 18px; padding-bottom: 12px; border-bottom: var(--bw, 1px) solid var(--border); }
+.tile-column > summary { padding: 4px 0; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text); list-style-position: inside; }
+.tile-column > summary:hover { color: var(--accent-ink); }
+.tile-column-body { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.tile-column-body .field { margin: 0; }
+.tile-column-profile { margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--text); }
+.tile-column-used, .tile-column-empty { margin: 0; font-size: 12px; line-height: 1.45; color: var(--text-secondary); }
+.tile-column-used:empty { display: none; }
+.tile-column-profile:empty { display: none; }
+
 /* Étape « Choisir » : une carte par type de visualisation. */
 .type-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .type-card {

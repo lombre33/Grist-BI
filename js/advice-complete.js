@@ -12,6 +12,10 @@
  * La sélection est GLOUTONNE : chaque tuile retenue change l'état (son intention est servie, ses colonnes lues, sa question posée) avant le
  * choix de la suivante, donc trois cartes ne servent jamais trois fois la même intention ni ne répètent un type.
  *
+ * Le MÊME classement sert « Que faire avec cette colonne ? » (js/advice-column.js) : `opts.column` restreint les propositions à celles qui lisent
+ * cette colonne (le catalogue la passe en tête de son rôle, voir js/advice.js:suggestAround), toujours sans doublon avec le tableau de bord,
+ * toujours avec le manque que la tuile comblerait ; le bonus de colonne écartée n'y a plus de sens (toutes lisent la même).
+ *
  * AUCUN TEXTE EN DUR : clés i18n littérales (`advice.gap.*`, `advice.complete.newColumn`) + variables, traduites par l'appelant. Un
  * tableau de bord sans aucune tuile n'est pas l'affaire de ce fichier (c'est l'écran d'accueil, js/welcome.js) : il rend alors les
  * meilleures suggestions, sans manque ni colonne écartée.
@@ -60,6 +64,7 @@
   const SAME_TYPE_PENALTY = 2;    // un type déjà retenu dans cette liste
   const DULL_INTEREST = 0.2;      // en dessous : les données n'ont « rien à montrer » avec cette tuile, elle ne complète rien
   const MIN_SCORE = 4;            // un reste de liste (note d'avant bonus et pénalités) sous ce seuil n'est pas proposé : mieux vaut moins de cartes
+  const MIN_SCORE_COLUMN = 2;     // « Que faire avec cette colonne ? » : la personne a posé la question, une réponse modeste vaut mieux que le silence (seuil plus bas, tuiles ternes gardées)
   const CANDIDATE_LIMIT = 80;
   const DEFAULT_LIMIT = 3;
 
@@ -152,6 +157,14 @@
       .map((p) => p.id);
   }
 
+  // Une tuile « lit-elle » cette colonne ? `Date.Mois` se lit sur `Date`. Une colonne qu'on se contente de COMPTER (le décompte des lignes
+  // n'en lit aucune valeur : le nom n'est qu'un repère) ne compte pas, sauf si elle sert aussi d'axe.
+  function readsColumn(tile, column) {
+    if (!isObject(tile) || !text(column)) return false;
+    const counting = tile.aggFn === 'count' && text(tile.measure) && tile.measure !== tile.dimension;
+    return columnsOfTile(tile).some((c) => !(counting && c === tile.measure) && (c === column || baseOf(c) === column));
+  }
+
   // Complète `tiles` (les tuiles déjà posées, toutes pages) avec ce que `rows` permettent encore. Rend
   // `{ items, missing, unused, covered }` : `items` = les suggestions retenues (celles de js/advice.js:suggestTiles, plus `gapIntent`/`gapKey`
   // quand elles comblent une intention, `newColumns` les colonnes qu'elles font lire pour la 1re fois, `completeScore`) ; `missing` = les
@@ -165,7 +178,10 @@
     const existing = (Array.isArray(tiles) ? tiles : []).filter((t) => isObject(t) && text(t.type) && t.type !== 'text');
     const ctx = advice.analyzeColumns(rows, undefined, o.columnInfo);
     if (!ctx.profiles.length) return empty;
-    const suggestions = advice.suggestTiles(rows, undefined, { t: o.t, lang: o.lang, columnInfo: o.columnInfo, limit: CANDIDATE_LIMIT });
+    const focus = text(o.column);
+    const suggestions = focus
+      ? ((advice.suggestAround(rows, undefined, focus, { t: o.t, lang: o.lang, columnInfo: o.columnInfo }) || { suggestions: [] }).suggestions.filter((s) => readsColumn(s.tileData, focus)))
+      : advice.suggestTiles(rows, undefined, { t: o.t, lang: o.lang, columnInfo: o.columnInfo, limit: CANDIDATE_LIMIT });
 
     const asked = new Set();
     const served = new Map(); // intention -> nombre de tuiles qui la servent
@@ -177,17 +193,18 @@
     } };
     existing.forEach((t) => state.add(t));
 
-    const fresh = suggestions.filter((s) => !(typeof s.interest === 'number' && s.interest < DULL_INTEREST));
+    // Pour une colonne CHOISIE, une tuile terne reste une réponse (le classement la met derrière) ; sans question posée, elle ne complète rien.
+    const fresh = focus ? suggestions : suggestions.filter((s) => !(typeof s.interest === 'number' && s.interest < DULL_INTEREST));
     const open = fresh.filter((s) => !isAsked(s.tileData, asked));
     const covered = fresh.length - open.length;
     const meaningful = meaningfulColumns(ctx);
-    const unused = existing.length ? meaningful.filter((c) => !read.has(c)) : [];
+    const unused = existing.length && !focus ? meaningful.filter((c) => !read.has(c)) : [];
     const missing = existing.length
       ? Array.from(new Set([].concat(...open.map((s) => intentsOfSuggestion(s, ctx))))).filter((i) => !served.has(i))
       : [];
 
     const newColumnsOf = (s) => {
-      if (!existing.length) return [];
+      if (!existing.length || focus) return [];
       const out = [];
       columnsOfTile(s.tileData).forEach((c) => {
         const base = baseOf(c);
@@ -215,7 +232,7 @@
         if (typesChosen.has(s.type)) score -= SAME_TYPE_PENALTY;
         if (score > bestScore) { bestScore = score; best = i; bestInfo = { gap, newColumns }; }
       });
-      if (best < 0 || bestScore < MIN_SCORE) break;
+      if (best < 0 || bestScore < (focus ? MIN_SCORE_COLUMN : MIN_SCORE)) break;
       const s = left.splice(best, 1)[0];
       const item = Object.assign({}, s, {
         completeScore: Math.round(bestScore * 100) / 100,
@@ -230,5 +247,5 @@
     return { items, missing, unused, covered };
   }
 
-  return { complete, questionKeys, intentsOfTile, columnsOfTile, meaningfulColumns, intentsOfSuggestion, GAP_KEYS, NEW_COLUMN_KEY, GAP_BONUS, NEW_COLUMN_BONUS, DULL_INTEREST, MIN_SCORE };
+  return { complete, questionKeys, intentsOfTile, columnsOfTile, readsColumn, meaningfulColumns, intentsOfSuggestion, GAP_KEYS, NEW_COLUMN_KEY, GAP_BONUS, NEW_COLUMN_BONUS, DULL_INTEREST, MIN_SCORE, MIN_SCORE_COLUMN };
 });

@@ -983,21 +983,21 @@
     return chosen;
   }
 
-  // Tuiles à proposer pour un tableau sans aucune tuile : `opts.limit` (3 par défaut), classées par
-  // pertinence. Chaque élément porte `tileData` (à passer à `store.addTile` avec un `id`), un
-  // `score` et les clés d'affichage de la carte : `titleKey/titleVars` et `reasonKey/reasonVars`.
-  // `opts.t` (facultatif) résout le titre persisté de la tuile dans la langue courante.
-  function suggestTiles(rows, columnIds, opts) {
-    if (!Array.isArray(rows) || !rows.length) return [];
+  // Ce que le classement lit : profil des colonnes, échantillon réparti, langue. Partagé par `suggestTiles` et `suggestAround`. Rend `null` sans ligne
+  // ni colonne exploitable.
+  function prepareContext(rows, columnIds, opts) {
+    if (!Array.isArray(rows) || !rows.length) return null;
     const ctx = analyzeColumns(rows, columnIds, opts && opts.columnInfo);
-    if (!ctx.profiles.length) return [];
-    const limit = (opts && opts.limit) || 3;
+    if (!ctx.profiles.length) return null;
     // Les chiffres (parts, tendance, corrélation…) se calculent sur l'échantillon réparti : ce sont des rapports, jamais des totaux.
     ctx.insightRows = sampleOf(rows);
     ctx.allRows = rows; // les calculs qui ne se tirent pas au sort (jours d'un calendrier) lisent toutes les lignes
     ctx.lang = (opts && opts.lang) === 'en' ? 'en' : 'fr';
-    const candidates = buildCandidates(rows, ctx, opts).map((c) => annotate(c, ctx));
-    return pickDiverse(candidates, limit).map((c) => ({
+    return ctx;
+  }
+
+  function toSuggestion(c) {
+    return {
       type: c.type,
       dimension: c.tileData.dimension,
       measure: c.tileData.measure,
@@ -1016,7 +1016,48 @@
       reasonVars: c.insight ? c.insight.vars : c.reasonVars,
       baseReasonKey: c.reasonKey,
       baseReasonVars: c.reasonVars
-    }));
+    };
+  }
+
+  // Tuiles à proposer pour un tableau sans aucune tuile : `opts.limit` (3 par défaut), classées par
+  // pertinence. Chaque élément porte `tileData` (à passer à `store.addTile` avec un `id`), un
+  // `score` et les clés d'affichage de la carte : `titleKey/titleVars` et `reasonKey/reasonVars`.
+  // `opts.t` (facultatif) résout le titre persisté de la tuile dans la langue courante.
+  function suggestTiles(rows, columnIds, opts) {
+    const ctx = prepareContext(rows, columnIds, opts);
+    if (!ctx) return [];
+    const limit = (opts && opts.limit) || 3;
+    const candidates = buildCandidates(rows, ctx, opts).map((c) => annotate(c, ctx));
+    return pickDiverse(candidates, limit).map(toSuggestion);
+  }
+
+  // « Que faire avec cette colonne ? » (js/advice-column.js) : le MÊME catalogue de tuiles, mais la colonne choisie passe en tête de son rôle —
+  // première mesure, première catégorie, axe du temps — au lieu d'attendre qu'elle soit la mieux classée (le catalogue ne regarde que les deux
+  // premières mesures et les trois premières catégories : une troisième colonne n'y paraissait jamais). Rend `{ profile, suggestions }` (TOUS les
+  // candidats annotés, sans choix : c'est l'appelant qui écarte ceux qui ne lisent pas la colonne, les doublons, et qui choisit) ou `null`
+  // (aucune ligne, colonne inconnue). Une colonne qui n'a aucun rôle graphique (identifiant, référence, liste, texte libre, constante) rend un profil
+  // et la liste que le catalogue en tire telle quelle, souvent vide.
+  function focusContext(ctx, p) {
+    const first = (list) => [p].concat(list.filter((q) => q !== p));
+    const focus = Object.assign({}, ctx);
+    if (p.role === 'measure') {
+      focus.measures = first(ctx.measures);
+      if (ctx.categories.indexOf(p) !== -1) focus.categories = first(ctx.categories);
+    } else if (p.role === 'category' && !p.yearLike) {
+      focus.categories = first(ctx.categories);
+    } else if (p.role === 'time' || (p.role === 'category' && p.yearLike)) {
+      focus.time = findTimeAxis([p], ctx.byId);
+    }
+    return focus;
+  }
+
+  function suggestAround(rows, columnIds, column, opts) {
+    const ctx = prepareContext(rows, columnIds, opts);
+    const profile = ctx && ctx.byId.get(column);
+    if (!profile) return null;
+    const focus = focusContext(ctx, profile);
+    const candidates = buildCandidates(rows, focus, opts).map((c) => annotate(c, focus));
+    return { profile, suggestions: candidates.map(toSuggestion) };
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -1583,7 +1624,7 @@
   return {
     TILE_TYPES, USE_KEYS, INTENT_KEYS, INTENT_BY_TYPE, previewFor, setColumnInfo,
     profileColumns, analyzeColumns, columnKind,
-    suggestTiles, defaultsForType, adviceForTile, adviceForType,
-    appearsAscending, isUnitPriceName
+    suggestTiles, suggestAround, defaultsForType, adviceForTile, adviceForType,
+    appearsAscending, isUnitPriceName, aggFor, HIERARCHY_RE
   };
 });
