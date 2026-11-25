@@ -124,7 +124,8 @@ const withDate = (rows) => ({ rows, info: DATE_INFO });
   // Planning : le projet (40 tâches, Debut et Fin, un responsable pour la couleur).
   const gantt = of(suggest(table('projet')), 'gantt');
   assert.strictEqual(gantt.length, 1, 'un planning sur le projet');
-  assert.deepStrictEqual([gantt[0].tileData.dimension, gantt[0].tileData.startColumn, gantt[0].tileData.endColumn, gantt[0].tileData.seriesColumn], ['Tache', 'Debut', 'Fin', 'Responsable']);
+  // La couleur d'un planning : le STATUT (le nom « Statut » passe devant « Responsable », js/advice-names.js), ce qu'on lit d'abord sur un planning.
+  assert.deepStrictEqual([gantt[0].tileData.dimension, gantt[0].tileData.startColumn, gantt[0].tileData.endColumn, gantt[0].tileData.seriesColumn], ['Tache', 'Debut', 'Fin', 'Statut']);
   assert.strictEqual(gantt[0].intent, 'schedule');
   assert.strictEqual(gantt[0].titleKey, 'tileTitle.gantt');
   // Jamais : 800 tickets (trop de tâches), des dates de naissance et d'embauche, une table sans deux dates.
@@ -544,11 +545,11 @@ const withDate = (rows) => ({ rows, info: DATE_INFO });
   });
   const indexHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const harness = fs.readFileSync(path.join(__dirname, 'harness.html'), 'utf8');
-  const order = (html, prefix) => ['advice-insights.js', 'advice-types-time.js', 'advice-types-grid.js', 'advice-types.js', 'advice.js'].map((n) => html.indexOf(`<script src="${prefix}js/${n}"></script>`));
+  const order = (html, prefix) => ['advice-names.js', 'advice-insights.js', 'advice-types-time.js', 'advice-types-grid.js', 'advice-types.js', 'advice.js'].map((n) => html.indexOf(`<script src="${prefix}js/${n}"></script>`));
   [[indexHtml, ''], [harness, '../']].forEach(([html, prefix]) => {
     const at = order(html, prefix);
-    assert.ok(at.every((x) => x > 0), `les cinq scripts sont chargés (${prefix || 'index'}) : ${at}`);
-    assert.deepStrictEqual(at.slice().sort((x, y) => x - y), at, 'ordre de chargement : insights, temps, grille, types, advice');
+    assert.ok(at.every((x) => x > 0), `les six scripts sont chargés (${prefix || 'index'}) : ${at}`);
+    assert.deepStrictEqual(at.slice().sort((x, y) => x - y), at, 'ordre de chargement : noms, insights, temps, grille, types, advice');
   });
   console.log(`OK robustesse — cellules vides, dates illisibles, 300 000 lignes en ${elapsed} ms, générateurs isolés, déterministe, fichiers purs sans texte en dur`);
 }

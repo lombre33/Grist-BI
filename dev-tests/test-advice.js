@@ -87,19 +87,27 @@ const find = (list, id) => list.find((p) => p.id === id);
   assert.strictEqual(top[0].tileData.measure, 'Montant', 'la vraie mesure vient en premier');
   // Sans le type Grist, les valeurs seules ne disent rien : c'est l'état d'avant, et celui d'un widget hors Grist.
   const blind = advice.profileColumns(orders.rows, undefined, {});
-  assert.strictEqual(find(blind, 'Client').role, 'measure', 'sans type Grist, une Référence ressemble à des nombres');
+  // Le NOM d'une entité (« Client ») dit déjà qu'une colonne de numéros n'est pas une mesure (js/advice-names.js) ; sans nom ni type, rien ne le dit.
+  assert.strictEqual(find(blind, 'Client').role, 'highCardinality', 'sans type Grist, le nom « Client » dit encore que ce n\'est pas une mesure');
+  const nameless = orders.rows.map((r) => { const o = Object.assign({}, r); o.Col7 = o.Client; delete o.Client; return o; });
+  assert.strictEqual(find(advice.profileColumns(nameless, undefined, {}), 'Col7').role, 'measure', 'sans type Grist ni nom, une Référence ressemble à des nombres');
   // Une liste se reconnaît aussi à ses VALEURS (`['L', …]`), même sans le type.
   assert.strictEqual(find(blind, 'Options').role, 'list', 'liste reconnue par ses valeurs seules');
 
   // Le registre posé par js/main-session.js sert quand aucun `info` n'est passé, et `setColumnInfo({})` le vide.
-  advice.setColumnInfo(orders.info);
-  assert.strictEqual(find(advice.profileColumns(orders.rows), 'Client').role, 'reference', 'registre posé');
-  assert.strictEqual(find(advice.profileColumns(orders.rows, undefined, {}), 'Client').role, 'measure', 'un info explicite prime sur le registre');
+  // (Sur la colonne sans nom parlant : le nom « Client » dit déjà de lui-même que ce n'est pas une mesure.)
+  const info7 = { Col7: orders.info.Client };
+  advice.setColumnInfo(info7);
+  assert.strictEqual(find(advice.profileColumns(nameless), 'Col7').role, 'reference', 'registre posé');
+  assert.strictEqual(find(advice.profileColumns(nameless, undefined, {}), 'Col7').role, 'measure', 'un info explicite prime sur le registre');
   advice.setColumnInfo({});
-  assert.strictEqual(find(advice.profileColumns(orders.rows), 'Client').role, 'measure', 'registre vidé');
+  assert.strictEqual(find(advice.profileColumns(nameless), 'Col7').role, 'measure', 'registre vidé');
   advice.setColumnInfo(null);
   advice.setColumnInfo('pas un objet');
-  assert.strictEqual(find(advice.profileColumns(orders.rows), 'Client').role, 'measure', 'registre hostile ignoré');
+  assert.strictEqual(find(advice.profileColumns(nameless), 'Col7').role, 'measure', 'registre hostile ignoré');
+  advice.setColumnInfo(orders.info);
+  assert.strictEqual(find(advice.profileColumns(orders.rows), 'Client').role, 'reference', 'le type Grist garde la main sur le nom');
+  advice.setColumnInfo({});
 
   // Texte ou Choix dont les valeurs ressemblent à des nombres (code postal) : jamais une mesure.
   const zips = Array.from({ length: 40 }, (_, i) => ({ id: i + 1, Ville: ['A', 'B', 'C'][i % 3], Code_postal: String(75000 + (i % 7) * 100), Montant: 10 + i }));

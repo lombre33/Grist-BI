@@ -23,12 +23,12 @@
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
-    module.exports = factory(require('./data.js'), require('./advice-insights.js'), require('./advice-types.js'));
+    module.exports = factory(require('./data.js'), require('./advice-insights.js'), require('./advice-types.js'), require('./advice-names.js'));
   } else {
     root.GristBI = root.GristBI || {};
-    root.GristBI.advice = factory(root.GristBI.data, root.GristBI.adviceInsights, root.GristBI.adviceTypes);
+    root.GristBI.advice = factory(root.GristBI.data, root.GristBI.adviceInsights, root.GristBI.adviceTypes, root.GristBI.adviceNames);
   }
-})(typeof self !== 'undefined' ? self : this, function (data, insights, types) {
+})(typeof self !== 'undefined' ? self : this, function (data, insights, types, names) {
   'use strict';
 
   // Lignes lues au plus pour profiler une colonne, et plafond du nombre de valeurs distinctes
@@ -180,14 +180,21 @@
     const words = nameWords(name);
     if (words.some((w) => AMOUNT_WORDS.has(w))) return false;
     if (words.some((w) => PRICE_WORDS.has(w))) return true;
-    return words.some((w) => UNIT_WORDS.has(w)) && words.some((w) => COST_WORDS.has(w));
+    if (words.some((w) => UNIT_WORDS.has(w)) && words.some((w) => COST_WORDS.has(w))) return true;
+    // Le dictionnaire de noms (js/advice-names.js) lit aussi les fautes et les mots collés : « Prx unitaire », « PrixUnitare », « tarif ».
+    return names.kindOf(name) === 'unitPrice';
   }
+  // Ce que le nom ajoute au classement : un montant (« Montant », « CA », « Salaire ») passe devant une quantité, elle-même devant une grandeur sans nom
+  // d'argent ; un statut ou une entité (« Statut », « Région », « Produit ») passe devant un axe sans nom, et un nom propre devant plus rien.
+  const MEASURE_NAME_BONUS = { amount: 1.5, rate: 1.5, quantity: 0.5 };
+  const CATEGORY_NAME_BONUS = { status: 0.4, category: 0.3, categoryMod: 0.3, level: 0.2, label: -0.8, text: -1, contact: -1 };
   // Pénalité de classement d'un prix unitaire parmi les mesures : assez forte pour passer derrière un montant qui aurait des
   // négatifs (retours, avoirs : -1 point) ou quelques cases vides, pas assez pour passer derrière une colonne ambiguë (petit entier).
   const UNIT_PRICE_RANK_PENALTY = 3;
   // Une note, un taux, un pourcentage (par le nom, par le format de la colonne Grist ou parce que plusieurs colonnes partagent la même
   // échelle bornée, voir markScores) se MOYENNE : la somme des notes de 90 élèves n'est pas une note.
-  function aggFor(p) { return (p.score || p.percent || AVERAGE_NAME_RE.test(p.id) || isUnitPriceName(p.id)) ? 'avg' : 'sum'; }
+  // Un nom qui dit « taux », « note », « âge », « délai » (fautes comprises) se moyenne : `sem` est ce que le dictionnaire de noms y a lu.
+  function aggFor(p) { return (p.score || p.percent || AVERAGE_NAME_RE.test(p.id) || isUnitPriceName(p.id) || p.sem === 'rate' || p.sem === 'avgMeasure') ? 'avg' : 'sum'; }
   // Un agrégat dont les parts s'additionnent : un anneau, un treemap ou un soleil de moyennes n'est pas « un tout ».
   function additive(m) { return m.count || m.aggFn === 'sum'; }
 
@@ -282,9 +289,15 @@
     // Une colonne Texte ou Choix dont les valeurs ressemblent à des nombres (code postal, « 10 », « 20 ») n'est pas une mesure.
     if (kind === 'number' && (gristType === 'Text' || gristType === 'Choice')) kind = 'text';
     const options = widgetOptionsOf(id, info);
+    const named = names.classify(id);
     return {
       id,
       kind,
+      // Ce que dit le NOM de la colonne (js/advice-names.js) : une sorte (`amount`, `quantity`, `status`, `contact`… ou ''), ses étiquettes
+      // (`target`, `month`…) et le nombre de mots que le dictionnaire ne connaît pas. Un indice : jamais plus fort que les valeurs.
+      sem: named.kind,
+      semTags: named.tags,
+      semExtra: named.extra,
       gristType,
       // Colonne de listes (`['L', …]`) : jamais une catégorie, chaque combinaison deviendrait une « valeur » (voir assignRole).
       listLike: filled > 0 && listCells / filled >= 0.5,
@@ -310,6 +323,39 @@
       ordinal: false
     };
   }
+
+  // Ce que le NOM d'une colonne de nombres décide, quand il est sans équivoque (js/advice-names.js : montant, quantité, téléphone, code postal, semaine,
+  // statut… avec leurs fautes). Rend vrai quand le rôle est posé. Le nom ne fait jamais d'une colonne ce que ses valeurs interdisent : une « Semaine » de 1 à
+  // 200 reste une mesure (ce n'est pas une semaine), un « Jours de congé » (un mot inconnu de plus) aussi.
+  const PERIOD_BOUNDS = { month: [1, 12], week: [1, 53], day: [1, 31], quarter: [1, 4], semester: [1, 2] };
+  function numericRoleByName(p) {
+    const sem = p.sem;
+    if (!sem) return false;
+    // Un identifiant, un téléphone, un code postal, une date en numéro de série : jamais additionnés ni moyennés (le téléphone d'un client n'est pas une mesure).
+    if (sem === 'contact' || sem === 'id' || sem === 'code' || sem === 'date') {
+      if (p.distinct >= 0.5 * p.filled) p.role = 'identifier';
+      else p.role = p.distinct <= MAX_CATEGORIES ? 'category' : 'highCardinality';
+      return true;
+    }
+    // Un numéro de mois, de semaine, de jour, de trimestre : un repère du temps, proposé en axe, jamais en mesure (« Semaine » sommée donne 1 378).
+    if (sem === 'period') {
+      const tag = Object.keys(PERIOD_BOUNDS).find((t) => p.semTags.indexOf(t) !== -1);
+      const bounds = tag && PERIOD_BOUNDS[tag];
+      if (!bounds || p.semExtra !== 0 || !p.allInteger || p.min < bounds[0] || p.max > bounds[1]) return false;
+      p.role = 'measure';
+      p.lowCardinality = true;
+      p.ordinal = true;
+      return true;
+    }
+    // Un statut, un niveau, une priorité, un type, une entité (client, produit, région…) codés en nombres : des catégories.
+    if (p.allInteger && p.distinct >= 2 && (sem === 'status' || sem === 'level' || sem === 'categoryMod' || sem === 'category')) {
+      p.role = p.distinct <= MAX_CATEGORIES ? 'category' : 'highCardinality';
+      return true;
+    }
+    return false;
+  }
+  // Les noms qui disent une vraie MESURE : un petit entier qui porte l'un d'eux (« Quantité » de 1 à 5) n'est pas une catégorie ambiguë.
+  const MEASURE_NAME_KINDS = new Set(['amount', 'unitPrice', 'quantity', 'avgMeasure']);
 
   // Rôle de chaque colonne dans un graphique :
   //  - 'time'      : colonne date ;
@@ -339,6 +385,7 @@
         p.yearLike = true;
         return;
       }
+      if (numericRoleByName(p)) return;
       const sequential = p.allInteger && p.distinct === p.filled && p.filled >= 8
         && (p.max - p.min + 1) <= 1.5 * p.filled;
       const namedId = looksLikeIdName(p.id) && p.allInteger && p.distinct >= 0.9 * p.filled;
@@ -350,9 +397,15 @@
       if (p.allInteger && p.filled >= 10 && (p.distinct <= 7 || dense)) p.lowCardinality = true;
       // Numéro de jour/semaine/heure (nombreuses valeurs, mais denses) : encore moins une mesure.
       p.ordinal = p.lowCardinality && p.distinct > 7;
+      if (MEASURE_NAME_KINDS.has(p.sem)) { p.lowCardinality = false; p.ordinal = false; }
       p.role = 'measure';
       return;
     }
+    // Par le nom : un courriel, une adresse, un téléphone en texte ; une description ou un commentaire ; un numéro de référence : jamais un axe, même dans un
+    // petit tableau où chaque valeur reviendrait « peu de fois ».
+    if (p.sem === 'contact' && p.distinct >= 0.5 * p.filled) { p.role = 'identifier'; return; }
+    if (p.sem === 'text' && (p.avgLen > 20 || p.distinct > 12)) { p.role = 'freeText'; return; }
+    if (p.sem === 'id' && p.distinct >= 0.5 * p.filled) { p.role = 'identifier'; return; }
     if (p.distinct <= MAX_CATEGORIES) { p.role = 'category'; return; }
     if (p.avgLen > 40) { p.role = 'freeText'; return; }
     p.role = p.distinct >= 0.9 * p.filled ? 'identifier' : 'highCardinality';
@@ -376,7 +429,7 @@
     profiles.forEach((p) => {
       const top = tops.get(p);
       if (!top) return;
-      const named = SCORE_NAME_RE.test(p.id) || p.percent;
+      const named = SCORE_NAME_RE.test(p.id) || p.percent || p.sem === 'rate';
       const siblings = family(top);
       const proven = named || (top === 20 ? siblings >= 2 : (top !== 1 && top !== 100 && siblings >= 3));
       if (!proven) return;
@@ -443,6 +496,10 @@
     }
     const year = profiles.find((p) => p.role === 'category' && p.yearLike && p.distinct >= 3);
     if (year) return { dimension: year.id, base: year.id, granularity: 'year', numericKeys: true };
+    // Un numéro de semaine, de mois, de trimestre ou de jour (« Semaine » de 1 à 52, reconnu par son NOM : js/advice-names.js) : un repère du temps déjà
+    // rangé dans l'ordre, jamais une mesure.
+    const period = profiles.find((p) => p.role === 'measure' && p.ordinal && p.sem === 'period' && p.distinct >= 3);
+    if (period) return { dimension: period.id, base: period.id, granularity: 'label' };
     // Dernier recours : une colonne texte de mois/jours/trimestres. Son ordre d'apparition est pris
     // tel quel (`unchecked`) — on ne sait pas la trier par libellé (« Avril » < « Janvier »).
     const named = profiles.find((p) => p.role === 'category' && p.timeLike && p.distinct >= 3);
@@ -460,14 +517,14 @@
     // à droite des axes, mais la première colonne numérique reste le meilleur pari).
     const measures = profiles
       .filter((p) => p.role === 'measure')
-      .map((p) => ({ p, score: (p.lowCardinality ? (p.ordinal ? -2 : 0) : 10) + (p.negatives === 0 ? 1 : 0) - p.emptyRatio * 5 - (isUnitPriceName(p.id) ? UNIT_PRICE_RANK_PENALTY : 0) }))
+      .map((p) => ({ p, score: (p.lowCardinality ? (p.ordinal ? -2 : 0) : 10) + (p.negatives === 0 ? 1 : 0) - p.emptyRatio * 5 - (isUnitPriceName(p.id) ? UNIT_PRICE_RANK_PENALTY : 0) + (MEASURE_NAME_BONUS[p.sem] || 0) }))
       .sort((a, b) => (b.score - a.score) || byOrder(a.p, b.p))
       .map((x) => x.p);
 
     // Axes catégoriels : texte d'abord, puis petits entiers ; par proximité avec 5 catégories.
     const categories = profiles
       .filter((p) => (p.role === 'category' && !p.yearLike) || (p.role === 'measure' && p.lowCardinality && p.distinct >= 2))
-      .map((p) => ({ p, score: cardinalityFit(p.distinct) - (p.kind === 'number' ? 1 : 0) }))
+      .map((p) => ({ p, score: cardinalityFit(p.distinct) - (p.kind === 'number' ? 1 : 0) + (CATEGORY_NAME_BONUS[p.sem] || 0) }))
       .filter((x) => x.score > -Infinity)
       .sort((a, b) => (b.score - a.score) || byOrder(a.p, b.p))
       .map((x) => x.p);
@@ -945,6 +1002,7 @@
       // que disent les données (bug réel n°47 : la barre « prix par produit » varie beaucoup, ce n'est pas pour autant le premier réflexe).
       // (Un histogramme ou des boîtes de prix, eux, n'agrègent rien : voir la répartition des prix est un usage normal.)
       if (measure && aggFn && isUnitPriceName(measure)) c.score -= UNIT_PRICE_RANK_PENALTY;
+      c.score += nameBonus(c, ctx);
       if (facts) c.facts = facts;
       if (note !== null) {
         c.interest = Math.round(note * 1000) / 1000;
@@ -953,6 +1011,19 @@
       if (insight) c.insight = insight;
     } catch (e) { /* un chiffre qui échoue ne retire jamais une suggestion : elle garde son a priori */ }
     return c;
+  }
+
+  // Le coup de pouce que le NOM des colonnes donne à une suggestion : une mesure qui s'appelle « Montant », « CA » ou « Salaire » (même avec une faute) passe un peu
+  // devant une mesure sans nom d'argent, un axe qui s'appelle « Statut » ou « Région » devant un axe sans nom. Petit (les données, elles, disent le fait) : de
+  // quoi départager deux suggestions voisines, jamais de quoi en faire passer une qui n'a rien à montrer.
+  const NAME_BONUS_MEASURE = { amount: 0.3, rate: 0.3, quantity: 0.1 };
+  const NAME_BONUS_AXIS = 0.15;
+  function nameBonus(c, ctx) {
+    let bonus = 0;
+    const m = c.tileData && c.tileData.measure ? ctx.byId.get(c.tileData.measure) : null;
+    if (m && !c.countMeasure) bonus += NAME_BONUS_MEASURE[m.sem] || 0;
+    const axis = (c.dims || []).map((d) => ctx.byId.get(d)).find((p) => p && (p.sem === 'status' || p.sem === 'category' || p.sem === 'categoryMod'));
+    return bonus + (axis ? NAME_BONUS_AXIS : 0);
   }
 
   // Choisit `limit` suggestions variées : à score proche, un type, une dimension ou une mesure déjà

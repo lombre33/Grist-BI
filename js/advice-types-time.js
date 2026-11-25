@@ -12,13 +12,16 @@
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
-    module.exports = factory(require('./data.js'), require('./advice-insights.js'));
+    module.exports = factory(require('./data.js'), require('./advice-insights.js'), require('./advice-names.js'));
   } else {
     root.GristBI = root.GristBI || {};
-    root.GristBI.adviceTypesTime = factory(root.GristBI.data, root.GristBI.adviceInsights);
+    root.GristBI.adviceTypesTime = factory(root.GristBI.data, root.GristBI.adviceInsights, root.GristBI.adviceNames);
   }
-})(typeof self !== 'undefined' ? self : this, function (data, insights) {
+})(typeof self !== 'undefined' ? self : this, function (data, insights, names) {
   'use strict';
+
+  // Le DICTIONNAIRE des noms (js/advice-names.js) complète l'expression régulière : il reconnaît aussi les fautes de frappe et les noms collés.
+  const nameHas = (name, tag) => !!(names && names.hasTag && names.hasTag(String(name), tag));
 
   // `calendar` suit le rythme d'une activité, `gantt` est un planning : deux intentions de plus (js/advice.js:INTENT_KEYS).
   const INTENT_BY_TYPE = { calendar: 'rhythm', gantt: 'schedule' };
@@ -42,6 +45,8 @@
   // début ou de fin. C'est un indice de NOM, jamais seul : les valeurs doivent aussi donner des tâches (début avant la fin).
   const START_NAME_RE = /(^|[^a-zà-ÿ])(d[eé]but|debut|start|begin|d[eé]part|ouverture|opened|cr[eé][eé]e?|created|from)([^a-zà-ÿ]|$)/i;
   const END_NAME_RE = /(^|[^a-zà-ÿ])(fin|end|[eé]ch[eé]ance|due|deadline|livraison|delivery|cl[oô]tur[eé]?e?|closed|fermeture|termin[eé]e?|finish|to)([^a-zà-ÿ]|$)/i;
+  const isStartName = (name) => START_NAME_RE.test(name) || nameHas(name, 'start');
+  const isEndName = (name) => END_NAME_RE.test(name) || nameHas(name, 'end');
   // Miniatures : semaines d'un calendrier, barres d'un planning.
   const PREVIEW_WEEKS = 12;
   const PREVIEW_TASKS = 6;
@@ -143,7 +148,7 @@
   function ganttView(rows, ctx, core) {
     if (ctx.profiles.filter((p) => p.role === 'time').length < 2 || rows.length > GANTT_MAX_ROWS_SCANNED) return null;
     const d = core.defaultsFor('gantt', rows, ctx);
-    if (!d || !d.startColumn || !d.endColumn || !(START_NAME_RE.test(d.startColumn) || END_NAME_RE.test(d.endColumn))) return null;
+    if (!d || !d.startColumn || !d.endColumn || !(isStartName(d.startColumn) || isEndName(d.endColumn))) return null;
     const result = data.ganttTasks(rows, d.dimension, d.startColumn, d.endColumn, d.seriesColumn, Infinity);
     const seen = result.total + result.ignored;
     if (result.total < GANTT_MIN_TASKS || result.total > GANTT_MAX_TASKS || (seen > 0 && result.ignored / seen > GANTT_MAX_IGNORED_SHARE)) return null;

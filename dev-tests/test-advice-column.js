@@ -181,9 +181,10 @@ const clean = (s) => typeof s === 'string' && s.length > 0 && !/[{}]|NaN|undefin
   const rh = table('rh');
   prep(rh);
   const allRh = advice.suggestTiles(rh.rows, undefined, { limit: 200, lang: 'fr', columnInfo: rh.info || {} });
-  assert.ok(!allRh.some((s) => reads(s.tileData, 'Sexe')), 'sans la colonne en tête, la 4e catégorie n\'est jamais lue');
-  const sexe = describe(rh, [], 'Sexe');
-  assert.ok(sexe.items.length >= 1 && sexe.items.every((s) => reads(s.tileData, 'Sexe')), 'la 4e catégorie a sa proposition');
+  // (Les noms « Service », « Poste » et « Sexe » passent devant la case à cocher « Temps_plein » : c'est elle, la 4e catégorie.)
+  assert.ok(!allRh.some((s) => reads(s.tileData, 'Temps_plein')), 'sans la colonne en tête, la 4e catégorie n\'est jamais lue');
+  const plein = describe(rh, [], 'Temps_plein');
+  assert.ok(plein.items.length >= 1 && plein.items.every((s) => reads(s.tileData, 'Temps_plein')), 'la 4e catégorie a sa proposition');
 
   // (b) Une colonne de dates : la courbe dans le temps, par année, mois ou jour selon l'étendue ; le manque est dit puis comblé.
   const ventes = table('ventes');
@@ -199,9 +200,11 @@ const clean = (s) => typeof s === 'string' && s.length > 0 && !/[{}]|NaN|undefin
   // (c) Une tuile terne reste une réponse quand la personne a posé la question (les données n'ont pas grand-chose à dire de Service).
   const service = describe(rh, [], 'Service');
   assert.ok(service.items.length >= 1, 'une colonne choisie a toujours une réponse quand une tuile la lit');
-  assert.ok(service.items.every((s) => typeof s.interest !== 'number' || s.interest < complete.DULL_INTEREST), 'ici les données sont ternes (c\'est ce que le cas fabrique)');
+  // (Depuis que le nom « Ancienneté » la fait lire comme une vraie mesure, la table `rh` a aussi un fait à dire sur Service : les boîtes.
+  // Le cas reste celui d'une réponse terne GARDÉE : au moins une des réponses l'est, et elle est là parce que la question est posée.)
+  assert.ok(service.items.some((s) => typeof s.interest === 'number' && s.interest < complete.DULL_INTEREST), 'au moins une réponse est terne et reste proposée');
   const generic = complete.complete(rh.rows, [], { lang: 'fr', limit: 3 });
-  assert.ok(!generic.items.some((s) => reads(s.tileData, 'Service')), 'sans question posée, une tuile terne n\'est pas proposée');
+  assert.ok(!generic.items.some((s) => reads(s.tileData, 'Service') && s.interest < complete.DULL_INTEREST), 'sans question posée, une tuile terne n\'est pas proposée');
 
   // (d) Rien d'utile à tracer : identifiant, texte libre, liste, référence, constante — une raison, jamais un silence.
   [[rh, 'Matricule'], [table('enquete'), 'Commentaire'], [table('contacts'), 'Tags'], [table('commandes'), 'Client'], [table('commandes'), 'Options']].forEach(([t, col]) => {

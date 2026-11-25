@@ -1,5 +1,5 @@
 /*
- * L'ÉTALON des suggestions de tuiles (niveau 3d-3, 25/11/2026) : pour chacune des 18 tables du corpus (dev-tests/lib/advice-corpus.js), ce qu'une
+ * L'ÉTALON des suggestions de tuiles (niveau 3d-3, 25/11/2026) : pour chacune des 19 tables du corpus (dev-tests/lib/advice-corpus.js), ce qu'une
  * personne qui connaît ses données voudrait voir proposé (`want`) et ce qui serait une absurdité (`never`). Écrit À LA MAIN, d'après ce que chaque table
  * a été fabriquée pour montrer (voir le commentaire de chaque table du corpus) et d'après les défauts mesurés par l'analyse du 25/11/2026
  * (etudes/suggestions-tuiles-analyse-2026-11-25.md) : ce n'est PAS la sortie actuelle de l'outil recopiée. Une attente que l'outil ne remplit pas
@@ -183,6 +183,20 @@ const GOLD = {
     ],
     never: []
   },
+  boutique: {
+    want: [
+      { id: 'chiffre clé du montant', type: 'kpi', measure: 'Montant_HT', aggFn: 'sum', weight: 2 },
+      { id: 'montant par ville ou canal', type: CHARTS_OF_SHARES, dimension: ['Ville', 'Canal'], measure: 'Montant_HT' },
+      { id: 'évolution du montant par semaine', type: 'line', dimension: 'Semaine', measure: 'Montant_HT' },
+      { id: 'quantité vendue', type: 'kpi', measure: 'Quantite', aggFn: 'sum' },
+      { id: 'prix unitaire (moyenne ou répartition)', type: ['kpi', 'bar', 'histogram', 'box'], measure: 'Prix_unitaire' }
+    ],
+    never: [
+      { id: 'téléphone ou code postal lus comme mesure, téléphone lu comme axe', any: [{ measure: ['Telephone', 'Code_postal'] }, { type: AXIS_CHARTS, dimension: 'Telephone' }] },
+      { id: 'numéro de semaine additionné', measure: 'Semaine' },
+      { id: 'prix unitaire additionné', measure: 'Prix_unitaire', aggFn: 'sum' }
+    ]
+  },
   support: {
     want: [
       { id: 'carte de chaleur type × équipe', type: 'heatmap', dimension: ['Type', 'Equipe'], columnDimension: ['Type', 'Equipe'], weight: 2 },
@@ -199,15 +213,16 @@ const GLOBAL_NEVER = [
   { id: 'numéro de ligne lu comme mesure', measure: 'id' }
 ];
 
-// La BASE mesurée le 25/11/2026 (niveaux 1 à 3d-2 en place) : la note de chaque table et sa couverture après compléments. Le corpus et l'outil sont
+// La BASE mesurée le 25/11/2026 (niveaux 1 à 3d-2 en place, relevée une première fois avec le dictionnaire des noms de colonnes : rh, tickets, resultat, et la table
+// `boutique` qui n'existe que pour lui) : la note de chaque table et sa couverture après compléments. Le corpus et l'outil sont
 // déterministes, donc ces nombres se reproduisent à l'identique ; un essai échoue si une table descend de plus d'un point (ou de 5 points de couverture)
 // sous sa base. Quand une amélioration FAIT monter une table, relever sa base ici (l'essai le dit) : le score ne doit jamais redescendre en silence.
 const BASELINE = {
-  rh: { score: 91.8, coverage: 0.75 }, notes: { score: 93.4, coverage: 1 }, tickets: { score: 74.7, coverage: 0.75 }, compta: { score: 92.5, coverage: 1 },
+  rh: { score: 95.9, coverage: 1 }, notes: { score: 93.4, coverage: 1 }, tickets: { score: 78.8, coverage: 0.75 }, compta: { score: 92.5, coverage: 1 },
   projet: { score: 96.7, coverage: 1 }, enquete: { score: 86.8, coverage: 0.8 }, crm: { score: 96.7, coverage: 1 }, large: { score: 96.7, coverage: 1 },
-  contacts: { score: 96.7, coverage: 1 }, commandes: { score: 92.5, coverage: 1 }, ventes: { score: 90.1, coverage: 0.8 }, resultat: { score: 75.8, coverage: 1 },
+  contacts: { score: 96.7, coverage: 1 }, commandes: { score: 92.5, coverage: 1 }, ventes: { score: 90.1, coverage: 0.8 }, resultat: { score: 85.1, coverage: 1 },
   parcours: { score: 92.5, coverage: 0.75 }, produits: { score: 88.4, coverage: 1 }, activite: { score: 93.4, coverage: 0.8 }, objectifs: { score: 100, coverage: 1 },
-  organisation: { score: 88.4, coverage: 1 }, support: { score: 96.7, coverage: 1 }
+  organisation: { score: 88.4, coverage: 1 }, support: { score: 96.7, coverage: 1 }, boutique: { score: 84.8, coverage: 0.83 }
 };
 const SCORE_TOLERANCE = 1;       // points de note qu'une table peut perdre avant l'échec
 const COVERAGE_TOLERANCE = 0.05; // part de couverture qu'une table peut perdre avant l'échec
