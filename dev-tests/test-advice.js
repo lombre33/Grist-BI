@@ -502,3 +502,44 @@ const find = (list, id) => list.find((p) => p.id === id);
   i18n.setLang('fr');
   console.log(`OK combien par état — tickets : nombre par statut au rang ${rank + 1}, chiffre clé du nombre ; ${FLOWS.length} flux du corpus comptent, les ${tables.length - FLOWS.length - 3} autres tables à mesures non ; sans état ou sans clé : rien ; mesures inchangées`);
 }
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+// 10. Une enquête : la NOTE passe avant l'âge des répondants (lot D du suivi, 25/11/2026)
+// ---------------------------------------------------------------------------------------------------------------------------------
+{
+  const SURVEY_COLUMNS = ['Q1', 'Q2', 'Q3'];
+  const enquete = table('enquete');
+  const ids = Object.keys(enquete.rows[0]).filter((k) => k !== 'id');
+  const measuresOf = (rows, info) => advice.analyzeColumns(rows, Object.keys(rows[0]).filter((k) => k !== 'id'), info || {}).measures.map((p) => p.id);
+
+  // (a) Les trois colonnes de questions partagent une échelle de 1 à 5 : ce sont des NOTES (reconnues par leurs sœurs, sans nom qui le dise),
+  // et ce qu'une enquête veut mesurer. Avant ce lot l'âge des répondants (une grandeur sans nom d'argent) passait devant : « âge moyen » en
+  // chiffre clé, « âge moyen par ville », la note moyenne seulement au rang 6.
+  const first = measuresOf(enquete.rows, enquete.info);
+  assert.ok(SURVEY_COLUMNS.indexOf(first[0]) !== -1, `la première mesure est une question (${first.join(', ')})`);
+  const top = suggest(enquete, 9);
+  const kpiRank = top.findIndex((s) => s.type === 'kpi' && SURVEY_COLUMNS.indexOf(s.tileData.measure) !== -1 && s.tileData.aggFn === 'avg');
+  const barRank = top.findIndex((s) => s.type === 'bar' && ['Ville', 'Recommande'].indexOf(s.tileData.dimension) !== -1 && SURVEY_COLUMNS.indexOf(s.tileData.measure) !== -1 && s.tileData.aggFn === 'avg');
+  assert.ok(kpiRank >= 0 && kpiRank < 3, `la note moyenne d'une question dans les trois premières (rang ${kpiRank + 1})`);
+  assert.ok(barRank >= 0 && barRank < 4, `la note moyenne par ville ou par recommandation dans les quatre premières (rang ${barRank + 1})`);
+  assert.ok(top.every((s, i) => i >= 3 || !(s.tileData.measure === 'Age' && ['kpi', 'bar'].indexOf(s.type) !== -1)), 'aucun « âge moyen » dans les trois premières');
+  // L'âge n'est pas perdu : sa répartition reste proposée (un histogramme, des boîtes), et la moyenne d'une note n'est JAMAIS une somme.
+  assert.ok(top.some((s) => ['histogram', 'box'].indexOf(s.type) !== -1 && s.tileData.measure === 'Age'), 'la répartition des âges reste proposée');
+  suggest(enquete, 60).forEach((s) => { if (SURVEY_COLUMNS.indexOf(s.tileData.measure) !== -1 && ['kpi', 'bar', 'pie', 'treemap'].indexOf(s.type) !== -1) assert.strictEqual(s.tileData.aggFn, 'avg', `${s.type} ${s.tileData.measure} : une note se moyenne`); });
+
+  // (b) Une note reconnue par son FORMAT (pourcentage de Grist) passe aussi devant une grandeur sans nom, quel que soit l'ordre des colonnes.
+  const rows = Array.from({ length: 80 }, (_, i) => ({ id: i + 1, Anciennete: 1 + (i * 7) % 29, Reussite: ((i * 13) % 100) / 100, Equipe: ['A', 'B', 'C', 'D'][i % 4] }));
+  const percentInfo = { Reussite: { type: 'Numeric', widgetOptions: '{"numMode":"percent"}' } };
+  assert.strictEqual(measuresOf(rows, percentInfo)[0], 'Reussite', 'un pourcentage (format de la colonne) passe devant la grandeur qui la précède');
+
+  // (c) Rien ne change sans note reconnue : une seule colonne de 1 à 5 sans nom ni sœur reste un petit entier ambigu, derrière une vraie grandeur.
+  const lone = Array.from({ length: 80 }, (_, i) => ({ id: i + 1, Anciennete: 1 + (i * 7) % 29, Q1: 1 + (i % 5), Equipe: ['A', 'B', 'C', 'D'][i % 4] }));
+  assert.strictEqual(measuresOf(lone)[0], 'Anciennete', 'une colonne de 1 à 5 seule n\'est pas une note prouvée : la grandeur garde sa place');
+
+  // (d) Un montant garde sa place devant des notes qui le suivent dans la table : la note n'a que le poids d'un taux nommé (égalité avec un montant,
+  // départagée par l'ordre des colonnes), jamais plus.
+  const paid = Array.from({ length: 90 }, (_, i) => ({ id: i + 1, Montant: 100 + (i * 37) % 900, Q1: 1 + (i % 5), Q2: 1 + ((i + 1) % 5), Q3: 1 + ((i + 2) % 5), Equipe: ['A', 'B', 'C'][i % 3] }));
+  const paidInfo = { Montant: { type: 'Numeric', widgetOptions: '{"numMode":"currency","currency":"EUR"}' } };
+  assert.strictEqual(measuresOf(paid, paidInfo)[0], 'Montant', 'un montant qui précède les notes reste la première mesure');
+  console.log(`OK enquête — la première mesure est une question (${first[0]}), note moyenne au rang ${kpiRank + 1} (chiffre clé) et ${barRank + 1} (par ville ou recommandation), l'âge reste proposé en répartition ; pourcentage devant une grandeur sans nom ; une colonne seule reste ambiguë`);
+}
