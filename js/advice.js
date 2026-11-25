@@ -23,12 +23,12 @@
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
-    module.exports = factory(require('./data.js'));
+    module.exports = factory(require('./data.js'), require('./advice-insights.js'));
   } else {
     root.GristBI = root.GristBI || {};
-    root.GristBI.advice = factory(root.GristBI.data);
+    root.GristBI.advice = factory(root.GristBI.data, root.GristBI.adviceInsights);
   }
-})(typeof self !== 'undefined' ? self : this, function (data) {
+})(typeof self !== 'undefined' ? self : this, function (data, insights) {
   'use strict';
 
   // Lignes lues au plus pour profiler une colonne, et plafond du nombre de valeurs distinctes
@@ -743,9 +743,179 @@
     return comparable.length >= 3 ? comparable.slice(0, RADAR_MAX_AXES).map((p) => p.id) : [];
   }
 
+  // ---------------------------------------------------------------------------------------------
+  // Intérêt tiré des DONNÉES, et explication chiffrée (niveau 2)
+  // ---------------------------------------------------------------------------------------------
+
+  // Le score fixe de chaque type est un a priori (une courbe vaut mieux qu'un tableau croisé) ; ce que montrent les données le
+  // corrige : `score = a priori + SCORE_SPAN x (intérêt - SCORE_NEUTRAL)`, soit de -1,6 (graphique qui ne montre rien : barres
+  // toutes égales, nuage sans lien) à +2,4 (très net). Un candidat dont on ne sait rien calculer garde son a priori.
+  const SCORE_SPAN = 4;
+  const SCORE_NEUTRAL = 0.4;
+  // En dessous de cet intérêt, le graphique n'a « rien à montrer » (sa propre explication le dit) : il passe derrière tout ce qui a
+  // un fait à raconter, même à fort a priori, et ne revient qu'à défaut d'autre chose.
+  const DULL_INTEREST = 0.2;
+  const DULL_PENALTY = 1.5;
+  // Rapport entre le plus grand et le plus petit groupe à partir duquel on le dit (« 1,3 fois plus élevé ») ; en dessous, les groupes sont « proches ».
+  const SPREAD_MIN_RATIO = 1.25;
+
+  // Les groupes `dimension` x `mesure` (agrégat `aggFn`) sur les lignes qui servent aux chiffres (l'échantillon réparti, voir
+  // sampleOf), calculés UNE fois par suggestTiles : une table de 300 000 lignes ne se regroupe pas trente fois.
+  function groupsFor(ctx, dimension, measure, aggFn, sortMode) {
+    if (!ctx.groupCache) ctx.groupCache = new Map();
+    const key = [dimension, measure, aggFn, sortMode || ''].join('\u0001');
+    if (!ctx.groupCache.has(key)) {
+      const groups = data.groupByAggregate(ctx.insightRows, dimension, measure, aggFn);
+      ctx.groupCache.set(key, sortMode ? data.sortGroups(groups, sortMode) : groups);
+    }
+    return ctx.groupCache.get(key);
+  }
+
+  // Valeur par CASE d'un tableau croisé (`[{ dimension: 'a × b', value }]`) : même agrégat que la tuile, une passe.
+  function cellGroups(ctx, first, second, measure, aggFn) {
+    const cells = new Map();
+    for (const row of ctx.insightRows) {
+      const a = row[first];
+      const b = row[second];
+      if (isEmpty(a) || isEmpty(b)) continue;
+      const key = `${a} × ${b}`;
+      if (!cells.has(key)) cells.set(key, []);
+      cells.get(key).push(row[measure]);
+    }
+    return Array.from(cells.entries()).map(([key, values]) => ({
+      dimension: key,
+      value: data.aggregateSingle(values.map((v) => ({ v })), 'v', aggFn)
+    }));
+  }
+
+  const fmt = (x, ctx, digits) => insights.formatNumber(x, ctx.lang, digits);
+
+  // Une explication « Nord pèse 42 % du total de Montant » : la part d'un groupe quand les valeurs s'additionnent.
+  function shareReason(c, share, ctx, withTop3) {
+    const count = !!c.countMeasure;
+    const top3 = withTop3 && share.n >= 4 && share.top3Share < 0.995;
+    if (top3) {
+      return {
+        key: count ? 'advice.insight.pieTopThreeCount' : 'advice.insight.pieTopThree',
+        vars: { top: share.topName, pct: insights.percentOf(share.topShare), pct3: insights.percentOf(share.top3Share), measure: c.measures[0] }
+      };
+    }
+    return {
+      key: count ? 'advice.insight.topShareCount' : 'advice.insight.topShare',
+      vars: { top: share.topName, pct: insights.percentOf(share.topShare), measure: c.measures[0] }
+    };
+  }
+
+  // Remplit `c.facts` (les NOMBRES derrière l'explication, pour les essais et pour qui voudra les montrer autrement),
+  // `c.interest` (0 à 1), `c.insight` (clé + variables de l'explication chiffrée) et ajuste `c.score`. Ne jette JAMAIS : un
+  // calcul qui échoue laisse la suggestion avec son a priori et sa raison générique.
+  function annotate(c, ctx) {
+    try {
+      const td = c.tileData;
+      const aggFn = td.aggFn;
+      const measure = td.measure;
+      c.countMeasure = aggFn === 'count';
+      const isAdditive = aggFn === 'sum' || aggFn === 'count';
+      let facts = null;
+      let note = null;
+      let insight = null;
+
+      if (c.type === 'kpi') {
+        const trend = td.trendDimension ? data.computeTrend(ctx.insightRows, td.trendDimension, measure, aggFn) : null;
+        if (trend) {
+          facts = { deltaPct: trend.deltaPct, latestKey: trend.latestKey, previousKey: trend.previousKey };
+          // Le chiffre clé est la base d'un tableau de bord : une évolution nulle ne le dégrade pas (note neutre au plus bas), une forte l'élève.
+          note = SCORE_NEUTRAL + (1 - SCORE_NEUTRAL) * Math.min(1, Math.abs(trend.deltaPct) / 30);
+          const pct = Math.round(Math.abs(trend.deltaPct));
+          insight = {
+            key: pct === 0 ? 'advice.insight.kpiFlat' : (trend.deltaPct > 0 ? 'advice.insight.kpiUp' : 'advice.insight.kpiDown'),
+            vars: { measure, pct, latest: trend.latestKey, previous: trend.previousKey }
+          };
+        }
+      } else if (c.type === 'line') {
+        const groups = groupsFor(ctx, td.dimension, measure, aggFn, td.sortMode === 'label' ? 'label' : undefined);
+        const trend = insights.trendStats(groups.map((g) => g.value));
+        if (trend) {
+          facts = { changePct: trend.changePct, direction: trend.direction, r2: trend.r2, n: trend.n, from: String(groups[0].dimension), to: String(groups[groups.length - 1].dimension) };
+          note = insights.interest.trend(trend);
+          if (trend.changePct !== null) {
+            const pct = Math.round(Math.abs(trend.changePct));
+            insight = {
+              key: pct < 5 || trend.direction === 'flat' ? 'advice.insight.lineFlat' : (trend.direction === 'up' ? 'advice.insight.lineUp' : 'advice.insight.lineDown'),
+              vars: { measure, pct, from: facts.from, to: facts.to }
+            };
+          }
+        }
+      } else if (c.type === 'bar' || c.type === 'pie' || c.type === 'treemap') {
+        const groups = groupsFor(ctx, td.dimension, measure, aggFn);
+        const share = isAdditive ? insights.shareStats(groups) : null;
+        const spread = insights.spreadStats(groups);
+        if (share || spread) {
+          facts = {};
+          if (share) Object.assign(facts, { topName: share.topName, topShare: share.topShare, top3Share: share.top3Share, n: share.n });
+          if (spread) Object.assign(facts, { ratio: spread.ratio, cv: spread.cv, maxName: spread.maxName, minName: spread.minName });
+          note = c.type === 'bar' ? insights.interest.compare(share, spread) : insights.interest.share(share);
+          if (share && (c.type !== 'bar' || share.topShare >= Math.max(0.25, 1.5 * share.equalShare))) {
+            insight = shareReason(c, share, ctx, c.type !== 'bar');
+          } else if (spread && spread.ratio !== null && spread.ratio >= SPREAD_MIN_RATIO) {
+            insight = { key: c.countMeasure ? 'advice.insight.spreadCount' : 'advice.insight.spread', vars: { measure, high: spread.maxName, low: spread.minName, ratio: fmt(spread.ratio, ctx, 1) } };
+          } else if (c.type === 'bar') {
+            insight = { key: 'advice.insight.flat', vars: { dimension: td.dimension, n: groups.length } };
+          }
+        }
+      } else if (c.type === 'scatter') {
+        const xs = groupsFor(ctx, td.dimension, measure, aggFn);
+        const ys = new Map(groupsFor(ctx, td.dimension, td.measureY, aggFn).map((g) => [String(g.dimension), g.value]));
+        const pairs = xs.filter((g) => ys.has(String(g.dimension)));
+        const corr = insights.correlationStats(pairs.map((g) => g.value), pairs.map((g) => ys.get(String(g.dimension))));
+        if (!corr) {
+          note = 0.2; // trop peu de points pour établir un lien : l'a priori d'un nuage de points ne tient plus
+        } else {
+          facts = { r: corr.r, n: corr.n };
+          note = insights.interest.relation(corr);
+          const vars = { measure, measureY: td.measureY, r: fmt(corr.r, ctx, 2) };
+          insight = { key: corr.r >= 0.5 ? 'advice.insight.scatterUp' : (corr.r <= -0.5 ? 'advice.insight.scatterDown' : 'advice.insight.scatterWeak'), vars };
+        }
+      } else if (c.type === 'pivot') {
+        const cells = cellGroups(ctx, td.dimension, td.columnDimension, measure, aggFn);
+        const share = isAdditive ? insights.shareStats(cells) : null;
+        const spread = insights.spreadStats(cells);
+        if (share || spread) {
+          facts = share ? { topCell: share.topName, topShare: share.topShare, cells: share.n } : { cells: spread.n, ratio: spread.ratio };
+          note = share ? insights.interest.share(share) : insights.interest.compare(null, spread);
+          if (share) insight = { key: c.countMeasure ? 'advice.insight.pivotTopCount' : 'advice.insight.pivotTop', vars: { cell: share.topName, pct: insights.percentOf(share.topShare), measure } };
+          else if (spread.ratio !== null && spread.ratio >= SPREAD_MIN_RATIO) insight = { key: c.countMeasure ? 'advice.insight.spreadCount' : 'advice.insight.spread', vars: { measure, high: spread.maxName, low: spread.minName, ratio: fmt(spread.ratio, ctx, 1) } };
+        }
+      } else if (c.type === 'radar') {
+        const axes = td.radarAxisMode === 'columns' ? (td.radarAxes || []) : [];
+        const means = axes.map((col) => ({ dimension: col, value: data.aggregateSingle(ctx.insightRows, col, 'avg') }));
+        const spread = insights.spreadStats(means);
+        if (spread) {
+          facts = { high: spread.maxName, low: spread.minName, ratio: spread.ratio, cv: spread.cv };
+          note = insights.interest.profile(spread);
+          insight = (spread.ratio !== null && spread.ratio < 1.15)
+            ? { key: 'advice.insight.radarEven', vars: { n: spread.n } }
+            : { key: 'advice.insight.radarProfile', vars: { high: spread.maxName, low: spread.minName, highValue: fmt(spread.maxValue, ctx, 1), lowValue: fmt(spread.minValue, ctx, 1) } };
+        }
+      }
+
+      // Un prix unitaire n'est jamais le chiffre vedette (il se moyenne, il ne s'additionne pas) : il passe derrière tout vrai montant, quoi
+      // que disent les données (bug réel n°47 : la barre « prix par produit » varie beaucoup, ce n'est pas pour autant le premier réflexe).
+      if (measure && isUnitPriceName(measure)) c.score -= UNIT_PRICE_RANK_PENALTY;
+      if (facts) c.facts = facts;
+      if (note !== null) {
+        c.interest = Math.round(note * 1000) / 1000;
+        c.score += SCORE_SPAN * (note - SCORE_NEUTRAL) - (note < DULL_INTEREST ? DULL_PENALTY : 0);
+      }
+      if (insight) c.insight = insight;
+    } catch (e) { /* un chiffre qui échoue ne retire jamais une suggestion : elle garde son a priori */ }
+    return c;
+  }
+
   // Choisit `limit` suggestions variées : à score proche, un type, une dimension ou une mesure déjà
   // retenus pèsent contre un nouveau candidat — trois « barres par région » ne montrent rien de plus
-  // qu'une seule.
+  // qu'une seule. Une même INTENTION (comparer, répartir, suivre dans le temps…) pèse un peu aussi : la
+  // personne veut voir trois choses différentes, pas trois réponses à la même question.
   function pickDiverse(candidates, limit) {
     const chosen = [];
     const pool = candidates.slice();
@@ -756,7 +926,11 @@
         let s = c.score;
         chosen.forEach((k) => {
           if (k.type === c.type) s -= 3;
+          if (k.intent === c.intent) s -= 0.75;
           if (c.dims.some((d) => k.dims.indexOf(d) !== -1)) s -= 1.5;
+          // Les MÊMES colonnes dites autrement (une barre et un anneau de « Salaire par Service », avec la même phrase) : la 2e n'apprend rien.
+          if (c.dims.length && c.dims.length === k.dims.length && c.dims.every((d) => k.dims.indexOf(d) !== -1)
+            && c.measures.length === k.measures.length && c.measures.every((m) => k.measures.indexOf(m) !== -1)) s -= 2.5;
           if (c.measures.some((m) => k.measures.indexOf(m) !== -1)) s -= 0.25;
         });
         if (s > bestScore) { bestScore = s; best = i; }
@@ -775,7 +949,11 @@
     const ctx = analyzeColumns(rows, columnIds, opts && opts.columnInfo);
     if (!ctx.profiles.length) return [];
     const limit = (opts && opts.limit) || 3;
-    return pickDiverse(buildCandidates(rows, ctx, opts), limit).map((c) => ({
+    // Les chiffres (parts, tendance, corrélation…) se calculent sur l'échantillon réparti : ce sont des rapports, jamais des totaux.
+    ctx.insightRows = sampleOf(rows);
+    ctx.lang = (opts && opts.lang) === 'en' ? 'en' : 'fr';
+    const candidates = buildCandidates(rows, ctx, opts).map((c) => annotate(c, ctx));
+    return pickDiverse(candidates, limit).map((c) => ({
       type: c.type,
       dimension: c.tileData.dimension,
       measure: c.tileData.measure,
@@ -784,10 +962,16 @@
       intent: c.intent,
       intentKey: INTENT_KEYS[c.intent],
       score: Math.round(c.score * 100) / 100,
+      interest: c.interest,
+      facts: c.facts,
+      // L'explication chiffrée quand les données en donnent une, sinon la raison générique du type.
+      insightKey: c.insight ? c.insight.key : undefined,
       titleKey: c.titleKey,
       titleVars: c.titleVars,
-      reasonKey: c.reasonKey,
-      reasonVars: c.reasonVars
+      reasonKey: c.insight ? c.insight.key : c.reasonKey,
+      reasonVars: c.insight ? c.insight.vars : c.reasonVars,
+      baseReasonKey: c.reasonKey,
+      baseReasonVars: c.reasonVars
     }));
   }
 

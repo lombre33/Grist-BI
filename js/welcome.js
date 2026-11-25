@@ -261,7 +261,7 @@
       return;
     }
     if (shown.rows === state.rows && shown.lang === lang) return;
-    const suggestions = G.advice.suggestTiles(state.rows, undefined, { t: G.i18n.t, limit: MAX_SUGGESTIONS });
+    const suggestions = G.advice.suggestTiles(state.rows, undefined, { t: G.i18n.t, lang, limit: MAX_SUGGESTIONS });
     shown = { rows: state.rows, lang, suggestions };
     const cards = document.getElementById('welcome-cards');
     cards.classList.remove('is-expanded');

@@ -25,6 +25,7 @@ const { read } = require('./lib/helpers.js');
 
 const tables = corpus.build();
 const byName = (name) => tables.find((t) => t.name === name);
+const table = byName;
 const suggest = (table, limit) => advice.suggestTiles(table.rows, undefined, { limit: limit || 12, columnInfo: table.info || {} });
 const profiles = (table) => advice.profileColumns(table.rows, undefined, table.info || {});
 const find = (list, id) => list.find((p) => p.id === id);
@@ -261,4 +262,163 @@ const find = (list, id) => list.find((p) => p.id === id);
   assert.ok(/\.welcome-cards\.is-expanded \.welcome-card-extra/.test(read('css', 'style.css')), 'les cartes en plus se déplient par classe');
   assert.ok(/advice\.setColumnInfo\(info\.columns\)/.test(read('js', 'main-session.js')), 'les types Grist sont posés pour les suggestions');
   console.log(`OK intentions — ${nine.length} suggestions sans doublon, chacune avec son étiquette fr/en ; l'accueil en montre trois et déplie les autres`);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+// 7. Des chiffres tirés des DONNÉES : score, explication, justesse (niveau 2)
+// ---------------------------------------------------------------------------------------------------------------------------------
+{
+  const i18n = require('../js/i18n.js');
+  const numberOf = (v) => (v === null || v === undefined || v === '' ? null : (Number.isFinite(Number(v)) ? Number(v) : null));
+  // Recalculs INDÉPENDANTS de js/advice-insights.js : une boucle et un Map, rien d'autre.
+  const groupTotals = (rows, dimension, measure, aggFn) => {
+    const map = new Map();
+    rows.forEach((r) => {
+      const key = String(r[dimension]);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(r[measure]);
+    });
+    return Array.from(map.entries()).map(([name, values]) => {
+      const nums = values.map(numberOf).filter((v) => v !== null);
+      const total = nums.reduce((a, b) => a + b, 0);
+      return { name, value: aggFn === 'count' ? values.length : (aggFn === 'avg' ? total / nums.length : total) };
+    });
+  };
+  const topShareOf = (groups) => {
+    const total = groups.reduce((a, g) => a + g.value, 0);
+    const top = groups.slice().sort((a, b) => b.value - a.value)[0];
+    return { name: top.name, share: top.value / total };
+  };
+  const pearson = (xs, ys) => {
+    const n = xs.length;
+    const mx = xs.reduce((a, b) => a + b, 0) / n;
+    const my = ys.reduce((a, b) => a + b, 0) / n;
+    let sxy = 0; let sxx = 0; let syy = 0;
+    for (let i = 0; i < n; i++) { sxy += (xs[i] - mx) * (ys[i] - my); sxx += (xs[i] - mx) ** 2; syy += (ys[i] - my) ** 2; }
+    return sxy / Math.sqrt(sxx * syy);
+  };
+  const resolve = (s, lang) => { i18n.setLang(lang); return i18n.t(s.reasonKey, s.reasonVars); };
+
+  // (a) Sur tout le corpus : chaque chiffre annoncé est celui qu'on retrouve en recalculant, chaque phrase se résout dans les deux
+  //     langues sans variable orpheline, et aucun nombre n'est NaN ni infini.
+  let facts = 0;
+  tables.forEach((table) => {
+    const rows = table.rows;
+    suggest(table, 12).forEach((s) => {
+      const label = `${table.name} / ${s.type} ${s.tileData.dimension || ''} ${s.tileData.measure || ''}`;
+      ['fr', 'en'].forEach((lang) => {
+        const text = resolve(s, lang);
+        assert.ok(text && !/[{}]/.test(text) && !/undefined|NaN|null/.test(text), `${label} (${lang}) : phrase mal résolue « ${text} »`);
+      });
+      if (!s.facts) return;
+      facts++;
+      Object.keys(s.facts).forEach((k) => { if (typeof s.facts[k] === 'number') assert.ok(Number.isFinite(s.facts[k]), `${label} : ${k} n'est pas un nombre fini`); });
+      const t = s.tileData;
+      if ((s.type === 'bar' || s.type === 'pie' || s.type === 'treemap') && s.facts.topShare !== undefined) {
+        const top = topShareOf(groupTotals(rows, t.dimension, t.measure, t.aggFn));
+        assert.strictEqual(s.facts.topName, top.name, `${label} : plus gros groupe`);
+        assert.ok(Math.abs(s.facts.topShare - top.share) < 1e-9, `${label} : part ${s.facts.topShare} au lieu de ${top.share}`);
+        if (/topShare|pieTopThree/.test(s.reasonKey)) assert.strictEqual(s.reasonVars.pct, Math.round(top.share * 100), `${label} : pourcentage de la phrase`);
+      }
+      if (s.type === 'kpi' && s.facts.deltaPct !== undefined) {
+        const trend = data.computeTrend(rows, t.trendDimension, t.measure, t.aggFn);
+        assert.ok(Math.abs(s.facts.deltaPct - trend.deltaPct) < 1e-9, `${label} : tendance`);
+        assert.strictEqual(s.reasonVars.pct, Math.round(Math.abs(trend.deltaPct)), `${label} : pourcentage de la phrase`);
+      }
+      if (s.type === 'scatter' && s.facts.r !== undefined) {
+        const xs = groupTotals(rows, t.dimension, t.measure, t.aggFn);
+        const ys = new Map(groupTotals(rows, t.dimension, t.measureY, t.aggFn).map((g) => [g.name, g.value]));
+        const pairs = xs.filter((g) => ys.has(g.name));
+        const r = pearson(pairs.map((g) => g.value), pairs.map((g) => ys.get(g.name)));
+        assert.ok(Math.abs(s.facts.r - r) < 1e-9, `${label} : corrélation ${s.facts.r} au lieu de ${r}`);
+      }
+    });
+  });
+  assert.ok(facts >= 40, `des chiffres sur la plupart des suggestions du corpus (${facts})`);
+
+  // (b) Un groupe dominant se dit avec SON pourcentage et passe devant des groupes égaux.
+  const rowsOf = (spec) => { const out = []; spec.forEach(([region, canal, n, amount]) => { for (let i = 0; i < n; i++) out.push({ Region: region, Canal: canal, Montant: amount + (i % 7) }); }); return out; };
+  // Region : 70 % des lignes au Nord ; Canal : parts égales. Même mesure, même volume.
+  const unbalanced = rowsOf([['Nord', 'Web', 35, 100], ['Nord', 'Mag', 35, 100], ['Sud', 'Web', 10, 100], ['Est', 'Mag', 10, 100], ['Ouest', 'Web', 5, 100], ['Ouest', 'Mag', 5, 100]]);
+  const resultB = advice.suggestTiles(unbalanced, undefined, { limit: 12, lang: 'fr' });
+  const regionBar = resultB.find((s) => s.type === 'bar' && s.tileData.dimension === 'Region');
+  const canalBar = resultB.find((s) => s.type === 'bar' && s.tileData.dimension === 'Canal');
+  assert.ok(regionBar && canalBar, 'barres par Region et par Canal');
+  assert.strictEqual(regionBar.insightKey, 'advice.insight.topShare');
+  assert.strictEqual(regionBar.reasonVars.top, 'Nord');
+  assert.ok(regionBar.reasonVars.pct >= 69 && regionBar.reasonVars.pct <= 71, `70 lignes sur 100 au Nord : ${regionBar.reasonVars.pct} %`);
+  assert.strictEqual(regionBar.reasonVars.pct, Math.round(regionBar.facts.topShare * 100));
+  assert.ok(regionBar.interest > 0.7, `groupe dominant : intérêt ${regionBar.interest}`);
+  assert.ok(canalBar.interest < 0.2, `canaux égaux (50/50) : intérêt ${canalBar.interest}`);
+  assert.strictEqual(canalBar.insightKey, 'advice.insight.flat', 'des groupes égaux le disent');
+  assert.ok(regionBar.score > canalBar.score + 2, `le groupe dominant passe nettement devant (${regionBar.score} contre ${canalBar.score})`);
+  assert.ok(resultB.indexOf(regionBar) < resultB.indexOf(canalBar), 'et se classe avant');
+
+  // (c) Une tendance nette est dite avec son pourcentage ; une série plate est dite stable.
+  const byYear = (values) => { const out = []; values.forEach((v, i) => { for (let k = 0; k < 5; k++) out.push({ Annee: 2020 + i, Produit: 'P' + (k % 3), Montant: v / 5 }); }); return out; };
+  const growing = advice.suggestTiles(byYear([100, 150, 220, 300]), undefined, { limit: 12 }).find((s) => s.type === 'line');
+  assert.ok(growing, 'une courbe par année');
+  assert.strictEqual(growing.insightKey, 'advice.insight.lineUp');
+  assert.strictEqual(growing.reasonVars.pct, 200, 'de 100 à 300 : +200 %');
+  assert.strictEqual(growing.reasonVars.from, '2020');
+  assert.strictEqual(growing.reasonVars.to, '2023');
+  assert.ok(growing.interest > 0.9, `tendance nette : ${growing.interest}`);
+  const steady = advice.suggestTiles(byYear([100, 101, 99, 100]), undefined, { limit: 12 }).find((s) => s.type === 'line');
+  assert.strictEqual(steady.insightKey, 'advice.insight.lineFlat');
+  assert.ok(steady.interest < 0.1, `série plate : ${steady.interest}`);
+  assert.ok(growing.score > steady.score + 2, 'la courbe qui montre quelque chose passe devant la plate');
+  const falling = advice.suggestTiles(byYear([300, 200, 120, 100]), undefined, { limit: 12 }).find((s) => s.type === 'line');
+  assert.strictEqual(falling.insightKey, 'advice.insight.lineDown');
+  assert.strictEqual(falling.reasonVars.pct, 67);
+
+  // (d) Un lien net entre deux mesures est dit et monte ; un nuage sans lien baisse.
+  const products = (qtyOf) => Array.from({ length: 14 }, (_, i) => ({ Produit: 'P' + i, Prix: 10 + i * 7, Quantite: qtyOf(i), Famille: 'F' + (i % 2) }));
+  const linked = advice.suggestTiles(products((i) => 5 + (10 + i * 7) * 2), undefined, { limit: 12 }).find((s) => s.type === 'scatter');
+  assert.ok(linked, 'un nuage de points sur 14 produits');
+  assert.strictEqual(linked.insightKey, 'advice.insight.scatterUp');
+  assert.ok(linked.facts.r > 0.999 && linked.interest > 0.99, `lien parfait : r = ${linked.facts.r}`);
+  const noise = [3, 91, 12, 77, 45, 8, 60, 22, 99, 31, 54, 17, 83, 40];
+  const unlinked = advice.suggestTiles(products((i) => noise[i]), undefined, { limit: 12 }).find((s) => s.type === 'scatter');
+  assert.ok(unlinked.interest < 0.45, `peu de lien : r = ${unlinked.facts.r}`);
+  assert.ok(linked.score > unlinked.score + 1.5, 'le nuage qui montre un lien passe devant');
+  const inverse = advice.suggestTiles(products((i) => 500 - (10 + i * 7) * 3), undefined, { limit: 12 }).find((s) => s.type === 'scatter');
+  assert.strictEqual(inverse.insightKey, 'advice.insight.scatterDown');
+
+  // (e) Le séparateur décimal suit la langue ; la phrase aussi.
+  const ratioRows = [['A', 100], ['B', 230], ['C', 200]].reduce((acc, [region, amount]) => acc.concat(Array.from({ length: 10 }, () => ({ Region: region, Canal: 'x', Montant: amount }))), []);
+  const fr = advice.suggestTiles(ratioRows, undefined, { limit: 12, lang: 'fr' }).find((s) => s.insightKey === 'advice.insight.spread');
+  const en = advice.suggestTiles(ratioRows, undefined, { limit: 12, lang: 'en' }).find((s) => s.insightKey === 'advice.insight.spread');
+  assert.strictEqual(fr.reasonVars.ratio, '2,3');
+  assert.strictEqual(en.reasonVars.ratio, '2.3');
+  assert.ok(/fois plus élevé/.test(resolve(fr, 'fr')) && /times higher/.test(resolve(en, 'en')));
+
+  // (f) Une table de comptage dit « lignes », jamais le nom d'une colonne qu'on ne somme pas.
+  const counts = advice.suggestTiles(table('contacts').rows, undefined, { limit: 12, columnInfo: table('contacts').info });
+  const countBar = counts.find((s) => s.type === 'bar' && s.tileData.aggFn === 'count' && s.facts && s.facts.ratio >= 1.25);
+  assert.ok(countBar, 'des barres de comptage avec un écart');
+  assert.strictEqual(countBar.insightKey, 'advice.insight.spreadCount');
+  assert.ok(!/Nom\b/.test(resolve(countBar, 'fr')), 'la phrase ne cite pas la colonne qui sert à compter');
+
+  // (g) Sur 300 000 lignes les parts sont celles de l'échantillon réparti : à moins de 2 points de la vérité, et vite.
+  const big = corpus.sortedBigTable();
+  const started = Date.now();
+  const bigResult = advice.suggestTiles(big, undefined, { limit: 12 });
+  const elapsed = Date.now() - started;
+  const canal = bigResult.find((s) => (s.type === 'bar' || s.type === 'pie') && s.tileData.dimension === 'Canal' && s.facts && s.facts.topShare !== undefined);
+  assert.ok(canal, 'une part par Canal sur 300 000 lignes');
+  const exact = topShareOf(groupTotals(big, 'Canal', canal.tileData.measure, canal.tileData.aggFn));
+  assert.strictEqual(canal.facts.topName, exact.name);
+  assert.ok(Math.abs(canal.facts.topShare - exact.share) < 0.02, `part sur échantillon ${canal.facts.topShare} contre ${exact.share}`);
+  assert.ok(elapsed < 2500, `300 000 lignes en ${elapsed} ms (moins de 2,5 s)`);
+
+  // (h) Des cellules vides sont ignorées (jamais comptées pour 0) et un échec de calcul ne retire jamais une suggestion.
+  const holes = unbalanced.map((r, i) => (i % 4 === 0 ? Object.assign({}, r, { Montant: null }) : r));
+  const holeResult = advice.suggestTiles(holes, undefined, { limit: 12 });
+  holeResult.forEach((s) => { if (s.facts) Object.keys(s.facts).forEach((k) => { if (typeof s.facts[k] === 'number') assert.ok(Number.isFinite(s.facts[k])); }); });
+  assert.ok(holeResult.length >= 3, 'des cellules vides ne vident pas les suggestions');
+  const allNull = unbalanced.map((r) => Object.assign({}, r, { Montant: null }));
+  assert.ok(advice.suggestTiles(allNull, undefined, { limit: 12 }).length >= 1, 'une mesure entièrement vide ne fait rien planter');
+
+  i18n.setLang('fr');
+  console.log(`OK chiffres — ${facts} suggestions du corpus recalculées à la main (parts, tendances, corrélations), phrases résolues fr/en ; dominant, tendance, lien : dits et classés ; décimale suivant la langue ; 300 000 lignes en ${elapsed} ms`);
 }
