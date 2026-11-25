@@ -11,14 +11,14 @@
   const {
     addTileForm, addTileOpenBtn, advancedDetailsEl, aggSelect, aggSizeSelect, aggYSelect, areaCheckbox,
     availableColumns, binsInput, chooseStepEl, clearFormErrors, columnDimensionSelect, comboModeSelect,
-    configureStepEl, dateColumnSelect, dimensionSelect, donutCheckbox, drillCrossFilterCheckbox, endColumnSelect,
+    configureStepEl, dateColumnSelect, dimensionSelect, genTileId, donutCheckbox, drillCrossFilterCheckbox, endColumnSelect,
     gaugeMaxInput, gaugeMinInput, goodPctInput, horizontalCheckbox, icon, lineShapeSelect, measureModeSelect,
     measureSelect, measureSizeSelect, measureYSelect, paletteSelect, panelBackBtn, pivotHeatCheckbox,
     radarCompareAverageCheckbox, radarEntityColumnSelect, radarEntityValueSelect, radarModeSelect, readTileForm,
     refLineSelect, refValueInput, resetDrillLevels, resetRadarAxes, seriesSelect, setColumnsPicker, setDrillLevels,
     setNumberFormatForm, setRadarAxes, showFormErrors, showPctCheckbox, smallMultiplesCheckbox, sortSelect,
     sparklineCheckbox, stackPercentCheckbox, stackedCheckbox, startColumnSelect, stopEditTile, store, submitTileBtn,
-    targetColumnSelect, targetInput, tileAdviceEl, tilePanel, tilePanelCloseBtn, tilePanelTitle, tilePreviewEl,
+    targetColumnSelect, targetInput, tileAdviceEl, tileCompleteEl, tileCompleteListEl, tileCompleteLiveEl, tilePanel, tilePanelCloseBtn, tilePanelTitle, tilePreviewEl,
     tilePreviewEmptyEl, tileTextInput, tileTitleInput, tileTypeSelect, trendDimensionSelect, typeGridEl,
     typeLineNameEl, updateFormFieldsForType, updateNumberFormatUI, valueLabelsCheckbox, warnPctInput, welcomeAddBtn,
     wordCloudSplitCheckbox, workspaceEl, workspaceMainEl
@@ -84,6 +84,71 @@
       typeGridEl.appendChild(card);
     });
   }
+
+  // « Pour compléter ce tableau de bord » (niveau 3 des suggestions, js/advice-complete.js) : au-dessus des cartes de type, jusqu'à trois tuiles
+  // que les données permettent et que les tuiles posées (toutes pages) ne montrent pas encore, chacune avec ce qu'elle comble. Calculé APRÈS
+  // l'ouverture du panneau (une table de plusieurs dizaines de milliers de lignes se profile en quelques centaines de millisecondes : le panneau
+  // ne doit pas attendre), et seulement quand les lignes, la langue ou les tuiles ont changé depuis la dernière fois.
+  let completion = { rows: null, lang: null, tiles: null, items: [] };
+  let completionToken = 0;
+
+  const sameRefs = (a, b) => Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((x, i) => x === b[i]);
+
+  function hideCompletion() {
+    completionToken++;
+    tileCompleteEl.hidden = true;
+    tileCompleteListEl.textContent = '';
+  }
+
+  function paintCompletion(items, rows, lang) {
+    tileCompleteListEl.textContent = '';
+    tileCompleteEl.hidden = !items.length;
+    items.forEach((s, i) => {
+      const title = t(s.titleKey, s.titleVars);
+      const li = document.createElement('li');
+      li.className = 'complete-card';
+      GristBI.safeHtml.setHtml(li, `<div class="complete-preview">${GristBI.welcome.previewSvg(GristBI.advice.previewFor(s.tileData, rows), { lang })}</div>`
+        + `<div class="complete-body"><h4 class="complete-card-title">${escapeHtml(title)}</h4>`
+        + (s.gapKey ? `<p class="complete-card-gap">${escapeHtml(t(s.gapKey, s.gapVars))}</p>` : '')
+        + `<p class="complete-card-reason">${escapeHtml(t(s.reasonKey, s.reasonVars))}</p>`
+        + `<button type="button" class="btn-primary" data-complete="${i}" aria-label="${escapeHtml(t('welcome.addAria', { title }))}">${escapeHtml(t('welcome.add'))}</button></div>`);
+      tileCompleteListEl.appendChild(li);
+    });
+  }
+
+  // `afterPaint` (facultatif) : appelé une fois la liste dessinée (ou masquée) — le focus d'un clic sur « Ajouter » ne peut aller qu'à une carte qui existe.
+  function renderCompletion(afterPaint) {
+    const token = ++completionToken;
+    const done = () => { if (afterPaint) afterPaint(); };
+    const state = store.getState();
+    const tiles = state.pages.reduce((all, page) => all.concat(page.tiles || []), []);
+    if (!GristBI.adviceComplete || S.editingTileId || !tiles.length || !state.rows.length) { hideCompletion(); done(); return; }
+    const lang = GristBI.i18n.getLang();
+    if (completion.rows === state.rows && completion.lang === lang && sameRefs(completion.tiles, tiles)) { paintCompletion(completion.items, state.rows, lang); done(); return; }
+    // Une liste calculée pour d'autres tuiles se retire d'abord : elle proposerait, un instant, ce qui vient d'être posé.
+    tileCompleteEl.hidden = true;
+    tileCompleteListEl.textContent = '';
+    setTimeout(() => {
+      if (token !== completionToken || tilePanel.hidden) return; // fermé, rouvert ou déjà recalculé entre-temps
+      const result = GristBI.adviceComplete.complete(state.rows, tiles, { t, lang, limit: 3 });
+      completion = { rows: state.rows, lang, tiles, items: result.items };
+      paintCompletion(result.items, state.rows, lang);
+      done();
+    }, 0);
+  }
+
+  // Ajouter une suggestion : la tuile est posée comme l'écran d'accueil le fait, la liste se recalcule (la tuile posée n'y est plus, une autre
+  // intention passe devant) et le focus reste dans la liste, jamais perdu avec le bouton qui disparaît.
+  tileCompleteListEl.addEventListener('click', (evt) => {
+    const btn = evt.target.closest('button[data-complete]');
+    const item = btn && completion.items[Number(btn.dataset.complete)];
+    if (!item) return;
+    const id = genTileId(0);
+    store.addTile(Object.assign({ id }, item.tileData));
+    flashTile(id);
+    tileCompleteLiveEl.textContent = t('tilePanel.complete.added', { title: t(item.titleKey, item.titleVars) });
+    renderCompletion(() => { (tileCompleteListEl.querySelector('button[data-complete]') || typeGridEl.querySelector('.type-card') || tilePanelCloseBtn).focus(); });
+  });
 
   // Remet le formulaire à blanc (les valeurs du dernier ajout ne doivent pas fuiter dans le suivant).
   function resetTileForm() {
@@ -234,6 +299,7 @@
     S.submitAttempted = false;
     clearFormErrors();
     renderTypeCards();
+    renderCompletion();
     updatePanelTexts();
     if (opts.type && !opts.editing) chooseType(opts.type);
     else setPanelStep(opts.step || 'choose');
@@ -247,6 +313,7 @@
     if (tilePanel.hidden) { if (S.editingTileId) stopEditTile(); return; }
     if (S.editingTileId) stopEditTile();
     tilePanel.hidden = true;
+    hideCompletion();
     workspaceEl.classList.remove('panel-open');
     addTileOpenBtn.setAttribute('aria-expanded', 'false');
     clearTimeout(previewTimer);
@@ -302,6 +369,7 @@
     updatePanelTexts();
     if (tilePanel.hidden) return;
     renderTypeCards();
+    renderCompletion();
     if (!configureStepEl.hidden) {
       renderPreview();
       if (S.submitAttempted) showFormErrors(readTileForm().errors, false);

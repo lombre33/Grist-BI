@@ -1450,6 +1450,28 @@ td.pivot-cell:not(.pivot-cell-empty):not(.pivot-total-cell):hover { background: 
 .tile-panel-step { padding: 14px 16px 16px; }
 .tile-panel-lead { margin: 0 0 12px; color: var(--text-secondary); font-size: 13px; }
 
+/* « Pour compléter ce tableau de bord » : jusqu'à trois suggestions au-dessus des types, une miniature à gauche, ce qu'elles comblent à droite. */
+.tile-complete { margin: 0 0 18px; padding-bottom: 16px; border-bottom: var(--bw, 1px) solid var(--border); }
+.tile-complete-title { margin: 0 0 2px; font-size: 13px; font-weight: 600; color: var(--text); }
+.tile-complete-lead { margin: 0 0 10px; font-size: 12px; line-height: 1.45; color: var(--text-secondary); }
+.tile-complete-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.complete-card {
+  display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 10px; align-items: start;
+  padding: 10px; border: var(--bw, 1px) solid var(--border); border-radius: var(--radius-sm); background: var(--surface);
+}
+.complete-preview {
+  height: 64px; display: flex; align-items: center; justify-content: center;
+  background: var(--surface-sunken); border-radius: var(--radius-sm); color: var(--text);
+}
+.complete-preview svg { width: 100%; height: 100%; }
+.complete-body { display: flex; flex-direction: column; gap: 3px; align-items: flex-start; min-width: 0; }
+.complete-card-title { margin: 0; font-size: 12.5px; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+/* Ce que la tuile comble : la phrase qui compte, la raison chiffrée vient dessous. */
+.complete-card-gap { margin: 0; font-size: 11.5px; line-height: 1.4; font-weight: 600; color: var(--accent-ink); }
+.complete-card-reason { margin: 0; font-size: 11.5px; line-height: 1.4; color: var(--text-muted); }
+.complete-body .btn-primary { margin-top: 4px; }
+@media (max-width: 480px) { .complete-card { grid-template-columns: minmax(0, 1fr); } .complete-preview { height: 56px; } }
+
 /* Étape « Choisir » : une carte par type de visualisation. */
 .type-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .type-card {

@@ -424,6 +424,9 @@
   const configureStepEl = document.getElementById('tile-panel-configure');
 
   const typeGridEl = document.getElementById('tile-type-grid');
+  const tileCompleteEl = document.getElementById('tile-complete');
+  const tileCompleteListEl = document.getElementById('tile-complete-list');
+  const tileCompleteLiveEl = document.getElementById('tile-complete-live');
 
   const typeLineNameEl = document.getElementById('tile-type-line-name');
 
@@ -678,7 +681,7 @@
     showPctField, smallMultiplesCheckbox, smallMultiplesField, sortField, sortSelect, sparklineCheckbox,
     sparklineField, stackField, stackPercentCheckbox, stackPercentField, stackedCheckbox, startColumnField,
     startColumnSelect, store, styleOptionsEl, submitTileBtn, suggestDateHierarchyBtn, tableSelectInput,
-    targetColumnField, targetColumnSelect, targetField, targetInput, thresholdsField, tileAdviceEl, tileColumnsField,
+    targetColumnField, targetColumnSelect, targetField, targetInput, thresholdsField, tileAdviceEl, tileColumnsField, tileCompleteEl, tileCompleteListEl, tileCompleteLiveEl,
     tileColumnsList, tilePanel, tilePanelCloseBtn, tilePanelTitle, tilePreviewEl, tilePreviewEmptyEl, tileTextField,
     tileTextInput, tileTitleInput, tileTypeSelect, tilesContainer, trendDimensionSelect, trendField, typeGridEl,
     typeLineNameEl, updateBookmarkBtn, valueLabelsCheckbox, valueLabelsField, viewChipEl, viewChipLeaveBtn,
