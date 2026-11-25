@@ -212,6 +212,7 @@ Voici ce qu'il vaut mieux savoir avant de l'adopter.
 
 - Il **lit** la table de travail que vous choisissez (la première du document au démarrage), les métadonnées de ses colonnes (type, format) et, à la demande, les pièces jointes d'une colonne.
 - Il **écrit** dans trois tables internes, jamais dans vos données : `BI_Dashboard_Config` (le tableau de bord), `BI_Dashboard_Comments` (les commentaires) et `BI_Dashboard_UserProbe` (une ligne éphémère pour connaître l'adresse de la personne qui commente).
+- **Mise à jour des noms de colonnes.** Les documents créés par une version antérieure ont des colonnes aux noms français dans `BI_Dashboard_Config` (`Nom`, `TypeRapport`, `DateModif`, `ModifiePar`). Le widget lit les deux jeux de noms, ancien et nouveau. Quand vous ouvrez un tel document **en tant que propriétaire**, une fenêtre propose de les renommer en anglais (`Name`, `ReportType`, `ModifiedAt`, `ModifiedBy`) : quelques secondes, **vos données ne changent pas**, aucune table n'est ajoutée ni renommée. Les autres personnes du document ne voient pas cette fenêtre et continuent sur les noms d'avant.
 - Il ne modifie vos tables que sur un **geste explicite, après une fenêtre de confirmation** : la création d'une table à l'import d'un CSV exporté de Power BI, et l'ajout d'une colonne de mots-clés puis l'écriture de ses cellules vides.
 - **(Bêta)** Il **lit** `_grist_Pages` et `_grist_Views_section` et **range** les pages de ses trois tables internes : Grist ajoute une page par table au bout de la liste de gauche, le widget les met en sous-pages de la page qui le porte, repliées par défaut (Grist 1.7.0 et suivants), une seule fois par page (une page que vous déplacez ensuite n'est plus touchée). Rien n'est supprimé ni renommé ; si Grist ou l'hôte refuse, un avertissement dans la console et les pages restent où Grist les a mises.
 - Il n'utilise jamais `RemoveTable`, `RemoveColumn` ni `BulkRemoveRecord`.
@@ -225,9 +226,10 @@ Voici ce qu'il vaut mieux savoir avant de l'adopter.
 | La page du widget, ses scripts, ECharts 6.1.0 | le site qui héberge le widget | au démarrage |
 | DuckDB-WASM 1.32.0 (et ses dépendances Apache Arrow, FlatBuffers, tslib) | copies dans `js/vendor/`, même site | au premier gros calcul (plus de 5 000 lignes) |
 | ExcelJS 4.4.0 | copie dans `js/vendor/`, même site | au premier export Excel : l'export étant grisé dans l'alpha, elle n'est pas chargée pour l'instant |
-| Kit des apps Grist Factory (`kit/`) : fenêtres de confirmation, ambiance | même site | au démarrage, puis à la première fenêtre de confirmation |
+| Kit des apps Grist Factory (`kit/`) : fenêtres de confirmation, ambiance, mise à jour des noms de colonnes | même site | au démarrage, puis à la première fenêtre de confirmation ; la mise à jour des noms seulement si un document aux noms d'avant doit être renommé |
 | PptxGenJS 4.0.1 | `cdn.jsdelivr.net`, version figée, empreinte d'intégrité (SRI, sha384) | au premier export PowerPoint |
 | Extensions de l'hôte Grist Factory Suite (`d3-cloud`, `pdf.js`) | l'adresse et l'empreinte que l'hôte donne | seulement si le widget est lancé dans cet hôte et que l'extension est ajoutée : jamais en version autonome |
+| Preuve que vous êtes propriétaire du document | l'API du document, à l'adresse que Grist donne, avec un jeton d'écriture : une seule requête de lecture dont la réponse (accordée ou refusée) est la seule chose retenue ; jamais dans l'hôte Grist Factory Suite | une fois, seulement quand un document aux noms de colonnes d'avant doit être renommé |
 | Pièces jointes d'une publication | l'API du document, à l'adresse que Grist donne avec un jeton en lecture seule (refusée si elle n'est pas en https) | à chaque PDF d'un lot de mots-clés, avec l'extension seulement |
 
 Chaque dossier de `js/vendor/` contient la licence de la bibliothèque qu'il embarque.
@@ -298,6 +300,7 @@ https://grist-factory.github.io/grist-widget-grist-BI/
 
 - Few real-world trials so far: expect rough edges with wide tables, Reference columns, date-times and very large tables.
 - Full document access is required (Grist has no intermediate level for a widget that saves its own configuration). The widget creates three internal tables (`BI_Dashboard_Config`, `BI_Dashboard_Comments`, `BI_Dashboard_UserProbe`) and never creates or edits your data tables without an explicit confirmation.
+- Documents created by an earlier version have French column names in `BI_Dashboard_Config`. The widget reads both the old and the new names; when the document **owner** opens such a document, a window offers to rename those four columns to English (a few seconds, your data does not change, no table is added or renamed). Other people continue on the old names without seeing the window.
 - The widget keeps two preferences in your browser's `localStorage` (the interface language and the name you give your comments; the Grist Factory kit it embeds may keep display choices there too), never the content of your document, and writes no cookie, `sessionStorage` or IndexedDB. Inside Grist Factory Suite, those choices are kept by the suite instead.
 - PDF and PowerPoint exports are **images** of the tiles, not editable charts; the PowerPoint export needs an internet connection to load its library. The Excel export is not open in the alpha.
 - The first heavy calculation downloads the SQL engine (about 34 MB).

@@ -333,8 +333,8 @@
         retValues.push({ colRef: nextRowId++, colId });
       } else if (kind === 'RenameColumn') {
         // `RenameColumn [table, ancien, nouveau]` (consigne GFS 030, fenêtre commune de mise à jour des noms) : comme le moteur de Grist, un nom
-        // d'arrivée DÉJÀ PRIS (sans tenir compte des capitales) n'est pas refusé, il reçoit « 2 » (faits vérifiés de GFS, 158) ; `__gristStubOwner`
-        // et `__gristStubRefuseRenames` (essais) simulent un refus. Le libellé suit l'identifiant tant qu'il en était la copie (colonne liée).
+        // d'arrivée DÉJÀ PRIS (sans tenir compte des capitales) n'est pas refusé, il reçoit « 2 » (faits vérifiés de GFS, 158) ; `__gristStubRefuseRenames`
+        // (essais) simule le refus du courtier. Le libellé suit l'identifiant tant qu'il en était la copie (colonne liée).
         const t = tables[tableId];
         const oldId = action[2];
         let newId = action[3];

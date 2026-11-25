@@ -17,8 +17,8 @@
   const S = parts.S;
   const { t } = GristBI.i18n;
   const {
-    connectToFirstTable, layoutHintEl, layoutOptionsEl, openBlankReport, openModelById, openReportById,
-    refreshBlendPicker, refreshColumnSelects, refreshTilePanelTexts, render, setConnectionState, store,
+    connectToFirstTable, layoutHintEl, layoutOptionsEl, offerMergeConfigNames, openBlankReport, openModelById, openReportById,
+    refreshBlendPicker, refreshColumnSelects, refreshTilePanelTexts, render, runNamesUpdate, setConnectionState, store,
     styleOptionsEl, updateFormFieldsForType
   } = parts;
   Object.assign(parts, {
@@ -85,6 +85,12 @@
       await linkedGfs.ready;
       opening = linkedGfs.opening();
     }
+
+    // Consigne GFS 030 : la fenêtre commune de mise à jour des noms (kit 0.29.1) passe AVANT toute lecture de BI_Dashboard_Config. Un document aux noms d'avant, propriétaire
+    // prouvé : la fenêtre. Tout autre cas (autre personne, lecture seule, rien à faire, kit absent) : on continue tout de suite, le widget lit les deux jeux de noms.
+    // Puis, si le document porte LES DEUX jeux, « Réunir » avec confirmation.
+    await runNamesUpdate(linkedGfs);
+    await offerMergeConfigNames(linkedGfs);
 
     if (opening && opening.fichier) {
       try {

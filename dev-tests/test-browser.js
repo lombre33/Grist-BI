@@ -300,6 +300,119 @@ async function relayScenario(browser, origin, { app, hosted, expectRelay }) {
   return { problems, messages };
 }
 
+/**
+ * La fenêtre commune de mise à jour des noms (consigne GFS 030) dans la vraie page, sous sa vraie politique, avec le vrai kit : un document aux
+ * noms d'AVANT (`Nom`, `TypeRapport`, `DateModif`, `ModifiePar`) et un rapport enregistré. `mode` :
+ *  - `owner`  : Grist répond 200 à `GET /webhooks` (la preuve du propriétaire) -> la fenêtre s'ouvre, on la joue (Mettre à jour, Continuer) ; ensuite les
+ *               noms sont anglais, le rapport s'ouvre, une modification s'écrit sous les noms anglais ;
+ *  - `guest`  : 403 -> aucune fenêtre, le document n'est pas touché, le rapport s'ouvre sur les anciens noms, une modification s'écrit sous les anciens noms
+ *               et AUCUNE colonne anglaise n'apparaît ;
+ *  - `hosted` : hébergé par un faux GFS (`?gfs=0`) qui ne dit pas le rôle -> aucune fenêtre, et AUCUN appel à `/webhooks` (jamais de jeton d'écriture dans GFS).
+ * `framed` : dans un `<iframe sandbox="allow-scripts allow-downloads">`.
+ */
+async function namesScenario(browser, origin, { mode, framed }) {
+  const problems = [];
+  const verified = [];
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  await context.addInitScript((table) => {
+    const report = { pages: [{ id: 'p1', name: 'Page', tiles: [{ id: 't1', type: 'bar', title: 'Montant par région', dimension: 'Region', measure: 'Montant', aggFn: 'sum' }] }], currentPageId: 'p1' };
+    const config = ['TableId', 'ConfigJSON', 'Nom', 'TypeRapport', 'DateModif', 'ModifiePar'];
+    const meta = { id: [1, 2], tableId: ['Ventes', 'BI_Dashboard_Config'] };
+    const columns = { id: [], parentId: [], colId: [], type: [], widgetOptions: [] };
+    const add = (parent, ids) => ids.forEach((colId) => { columns.id.push(columns.id.length + 1); columns.parentId.push(parent); columns.colId.push(colId); columns.type.push('Text'); columns.widgetOptions.push(''); });
+    add(1, ['Region', 'Produit', 'Mois', 'Quantite', 'Montant']);
+    add(2, config);
+    window.__gristStubPreseed = {
+      Ventes: table,
+      BI_Dashboard_Config: { id: [1], TableId: ['Ventes'], ConfigJSON: [JSON.stringify(report)], Nom: ['Rapport d\'avant'], TypeRapport: ['rapport'], DateModif: [1700000000], ModifiePar: ['ancien@exemple.fr'] },
+      _grist_Tables: meta, _grist_Tables_column: columns
+    };
+  }, salesTable());
+  await context.addInitScript(() => {
+    document.addEventListener('securitypolicyviolation', (e) => { console.error('[CSP] ' + e.violatedDirective + ' bloqué : ' + (e.blockedURI || e.sample || '')); });
+  });
+  let probes = 0;
+  await context.route((u) => u.hostname !== '127.0.0.1', (route) => {
+    const u = new URL(route.request().url());
+    if (u.hostname === 'docs.getgrist.com' && u.pathname === '/grist-plugin-api.js') route.fulfill({ status: 200, contentType: 'text/javascript', body: gristApiBody() });
+    else { problems.push('requête vers un autre site : ' + u.origin + u.pathname); route.abort(); }
+  });
+  // La preuve du moteur de partage : 200 pour un propriétaire, 403 pour tout autre.
+  await context.route('**/_stub/api/docs/stub/webhooks**', (route) => {
+    probes++;
+    route.fulfill({ status: mode === 'owner' ? 200 : 403, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: mode === 'owner' ? '{"webhooks":[]}' : '{"error":"No owner access"}' });
+  });
+  const page = await context.newPage();
+  const expected403 = (text) => mode !== 'owner' && /webhooks|403/.test(text); // le navigateur journalise lui-même un 403 comme une erreur de console
+  page.on('console', (m) => { if (m.type() === 'error' && !expected403(m.text())) problems.push('console : ' + m.text().slice(0, 240)); });
+  page.on('pageerror', (e) => problems.push('exception de page : ' + String(e.message || e).slice(0, 240)));
+  page.on('requestfailed', (r) => {
+    if (new URL(r.url()).hostname !== '127.0.0.1') return;
+    const text = (r.failure() && r.failure().errorText) || 'cause inconnue';
+    if (text !== 'net::ERR_ABORTED') problems.push('requête échouée : ' + r.url().replace(origin, '') + ' (' + text + ')');
+  });
+  page.on('response', (r) => { if (r.status() >= 400 && !(r.url().includes('/webhooks') && r.status() === 403)) problems.push('réponse ' + r.status() + ' : ' + r.url().replace(origin, '')); });
+  try {
+    const url = mode === 'hosted' ? '/__host.html?app=%2Findex.html&gfs=0' : framed ? '/__frame.html' : '/index.html';
+    await page.goto(origin + url, { waitUntil: 'load' });
+    const frame = framed || mode === 'hosted' ? await (await page.waitForSelector('#app')).contentFrame() : page.mainFrame();
+    const columnsNow = () => frame.evaluate(async () => Array.from(Object.keys(await grist.docApi.fetchTable('BI_Dashboard_Config'))).filter((k) => k !== 'id' && k !== 'manualSort'));
+    const FRENCH = ['TableId', 'ConfigJSON', 'Nom', 'TypeRapport', 'DateModif', 'ModifiePar'];
+    const ENGLISH = ['TableId', 'ConfigJSON', 'Name', 'ReportType', 'ModifiedAt', 'ModifiedBy'];
+    const sameList = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    await frame.waitForFunction(() => typeof window.GristBI === 'object' && GristBI.api && typeof window.grist === 'object', null, { timeout: 25000 });
+
+    if (mode === 'owner') {
+      const modal = await frame.waitForSelector('#nu-modal', { state: 'visible', timeout: 25000 }).catch(() => null);
+      if (!modal) { problems.push('propriétaire prouvé : la fenêtre de mise à jour des noms ne s\'est pas ouverte'); return { problems, verified }; }
+      const text = await modal.innerText();
+      if (!/quelques secondes/.test(text) || !/Mettre à jour/.test(text)) problems.push('la fenêtre ne dit pas « quelques secondes » / « Mettre à jour » : ' + text.slice(0, 200));
+      const rowsBefore = await frame.evaluate(() => GristBI.store.getState().rows.length);
+      if (rowsBefore) problems.push('le tableau de bord a lu une table avant la fin de la fenêtre (bloquante)');
+      if (!sameList(await columnsNow(), FRENCH)) problems.push('les colonnes ont changé AVANT le clic : ' + JSON.stringify(await columnsNow()));
+      await frame.click('#nu-modal button:has-text("Mettre à jour")');
+      await frame.waitForSelector('#nu-modal :text("Terminé")', { timeout: 15000 });
+      await frame.click('#nu-modal button:has-text("Continuer")');
+      await frame.waitForSelector('#nu-modal', { state: 'detached', timeout: 5000 }).catch(() => problems.push('la fenêtre ne se ferme pas après « Continuer »'));
+      verified.push('fenêtre ouverte (propriétaire prouvé par 200), quatre colonnes renommées en un lot, « Terminé », fermée');
+    } else {
+      await frame.waitForTimeout(mode === 'hosted' ? 6500 : 1500); // hébergé : le faux GFS ne répond pas au contexte, le lien attend ses 5 secondes
+    }
+
+    await frame.waitForFunction(() => GristBI.store && GristBI.store.getState().rows.length > 0, null, { timeout: 30000 });
+    if (await frame.$('#nu-modal')) problems.push(mode + ' : une fenêtre de mise à jour est ouverte alors qu\'elle ne devait pas l\'être');
+    await frame.waitForFunction(() => GristBI.store.getState().tiles.some((t) => t.id === 't1'), null, { timeout: 15000 }).catch(() => problems.push('le rapport enregistré ne s\'est pas ouvert (tuile t1 absente)'));
+    await frame.evaluate(async () => { await GristBI.charts.whenSettled(); });
+    verified.push('rapport enregistré ouvert');
+
+    // Une modification s'écrit sous les noms que le document a, sans jamais recréer l'autre jeu.
+    await frame.evaluate(() => GristBI.store.updateTile('t1', { title: 'Montant par région (modifié)' }));
+    // L'enregistrement est différé (600 ms) : on relit la table jusqu'à ce que la modification y soit, ou on le dit.
+    let saved = false;
+    for (let i = 0; i < 40 && !saved; i++) {
+      await frame.waitForTimeout(250);
+      saved = await frame.evaluate(async () => (await grist.docApi.fetchTable('BI_Dashboard_Config')).ConfigJSON[0].includes('(modifié)'));
+    }
+    if (!saved) problems.push('la modification n\'a pas été enregistrée');
+    const after = await columnsNow();
+    const expectedColumns = mode === 'owner' ? ENGLISH : FRENCH;
+    if (!sameList(after, expectedColumns)) problems.push(mode + ' : colonnes ' + JSON.stringify(after) + ', attendu ' + JSON.stringify(expectedColumns));
+    const row = await frame.evaluate(async () => { const t = await grist.docApi.fetchTable('BI_Dashboard_Config'); return { rows: t.id.length, name: t.Name ? t.Name[0] : t.Nom[0], type: t.ReportType ? t.ReportType[0] : t.TypeRapport[0], at: t.ModifiedAt ? t.ModifiedAt[0] : t.DateModif[0] }; });
+    if (row.rows !== 1) problems.push(mode + ' : ' + row.rows + ' lignes de configuration, attendu 1 (aucune ligne perdue ni dupliquée)');
+    if (row.name !== 'Rapport d\'avant' || row.type !== 'rapport') problems.push(mode + ' : nom ou type du rapport changé : ' + JSON.stringify(row));
+    if (!(row.at > 1700000000)) problems.push(mode + ' : la date de modification n\'a pas été écrite : ' + row.at);
+    verified.push(mode === 'owner' ? 'une modification s\'écrit sous Name/ModifiedAt, nom et type du rapport intacts' : 'une modification s\'écrit sous les anciens noms, aucune colonne anglaise');
+    if (mode === 'hosted' && probes) problems.push('hébergé : ' + probes + ' appel(s) à /webhooks — dans GFS, jamais de jeton d\'écriture');
+    if (mode === 'owner' && probes !== 1) problems.push('propriétaire : ' + probes + ' appel(s) à /webhooks, attendu 1');
+    if (mode === 'guest' && probes !== 1) problems.push('autre personne : ' + probes + ' appel(s) à /webhooks, attendu 1');
+  } catch (e) {
+    problems.push('essai interrompu : ' + String((e && e.message) || e).slice(0, 240));
+  } finally {
+    await context.close();
+  }
+  return { problems, verified };
+}
+
 (async () => {
   const server = await startServer();
   const origin = 'http://127.0.0.1:' + server.address().port;
@@ -351,6 +464,12 @@ async function relayScenario(browser, origin, { app, hosted, expectRelay }) {
     const noRelayRun = await relayScenario(browser, origin, { app: '/__norelay.html', hosted: true, expectRelay: false });
     if (noRelayRun.messages.some((m) => m.nom === 'securite')) noRelayRun.problems.push('sans la ligne du relais, un message `securite` est parti : ' + relayText(noRelayRun).slice(0, 300));
     report('contrôle négatif : sans la ligne du relais, hébergée, GFS ne reçoit rien', Object.assign(noRelayRun, { verified: ['aucun « relais actif », aucun « bloqué »'] }), { violations: 'bloquées sans rien dire' });
+
+    // Consigne GFS 030 : la fenêtre commune de mise à jour des noms (vrai kit), propriétaire / autre personne / hébergé par un faux GFS.
+    report('mise à jour des noms, propriétaire (page directe)', await namesScenario(browser, origin, { mode: 'owner', framed: false }), { violations: '1 preuve /webhooks' });
+    report('mise à jour des noms, propriétaire (cadre isolé)', await namesScenario(browser, origin, { mode: 'owner', framed: true }), { violations: '1 preuve /webhooks' });
+    report('mise à jour des noms, autre personne (403, cadre isolé) : aucune fenêtre', await namesScenario(browser, origin, { mode: 'guest', framed: true }), { violations: '1 preuve /webhooks refusée' });
+    report('mise à jour des noms, hébergé par un faux GFS qui ne dit pas le rôle : aucune fenêtre, aucun jeton', await namesScenario(browser, origin, { mode: 'hosted', framed: true }), { violations: '0 appel /webhooks' });
 
     // La vérification sait-elle échouer ? Sans 'unsafe-eval', l'API de Grist ne s'exécute pas : elle DOIT le dire.
     const strict = await scenario(browser, origin, { name: 'strict', url: '/__strict.html', framed: false });

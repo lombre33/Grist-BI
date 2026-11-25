@@ -15,8 +15,8 @@
     store, tableSelectInput, withDateHierarchies
   } = parts;
   Object.assign(parts, {
-    connectToFirstTable, flushPendingSave, openBlankReport, openModelById, openReportById, refreshBlendPicker,
-    refreshTablePicker, reloadWorkingTable, scheduleSave, switchTable
+    connectToFirstTable, flushPendingSave, offerMergeConfigNames, openBlankReport, openModelById, openReportById, refreshBlendPicker,
+    refreshTablePicker, reloadWorkingTable, runNamesUpdate, scheduleSave, switchTable
   });
 
   // Rapport actuellement ouvert, au sens de la consigne GFS 007 point 2/3 : une LIGNE précise de
@@ -31,6 +31,7 @@
   let saveTimer = null;
 
   let pendingSave = null;
+  let reloadAsked = false; // le message « Rechargez la page » (noms changés dans un autre onglet) ne s'affiche qu'une fois par ouverture
 
   // Lignes BRUTES (non jointes) de la table de travail PRINCIPALE, tenues à jour par switchTable —
   // c'est TOUJOURS depuis celles-ci que la jointure de data blending est recalculée (voir
@@ -107,6 +108,12 @@
       if (p.reportId === 'new' && currentReportId === 'new') currentReportId = rowId;
     }).catch((e) => {
       console.error('[GristBI] échec de sauvegarde de la config', e);
+      // Consigne GFS 030, point 4f : un nom a changé dans un autre onglet pendant que celui-ci restait ouvert. `saveConfig` a déjà relu les noms et recommencé UNE fois
+      // (`writeConfig`) : si l'erreur est encore là, on ne réécrit rien de plus et on dit de recharger — jamais une écriture muette qui recréerait les anciennes colonnes.
+      if (GristBI.api.isNameError(e)) {
+        if (!reloadAsked) { reloadAsked = true; showError(t('configNames.reload')); } // une seule fois : chaque frappe replanifie une sauvegarde
+        return;
+      }
       // Consigne GFS 012 : une fois « Partager » activé sur BI_Dashboard_Config, Grist refuse
       // cette écriture pour qui n'a accès à cette ligne qu'en lecture — jamais corrigé par un
       // réessai (le droit ne change pas tout seul), donc on se contente de le dire une fois
@@ -114,6 +121,64 @@
       // catch toutes les 600ms tant que la personne modifie le rapport).
       if (GristBI.data.isAccessRuleRefusal(e)) sharedReadOnlyWarning.hidden = false;
     });
+  }
+
+  // La fenêtre commune de mise à jour des noms du kit (consigne GFS 030, points 4b/4c/4d) : au démarrage, AVANT de lire BI_Dashboard_Config. Rien à renommer (document déjà
+  // en anglais, ou neuf) : on ne charge même pas le kit. Sinon `NamesUpdate.run` décide : propriétaire prouvé -> la fenêtre (bloquante, un seul lot), tous les autres cas -> le widget
+  // continue sur les noms que le document a (`js/config-names.js` les lit tous), sans rien montrer ni rien renommer. Jamais lancée une seconde fois dans la session, jamais
+  // bloquante pour le tableau de bord : tout échec (kit absent, schéma illisible…) est attrapé et le widget démarre quand même, sur les noms du document.
+  // La preuve du propriétaire : dans GFS, `contexte.role.proprietaire` si le lien l'expose (le kit 0.29.1 ne garde pas encore `role` : alors `null`, donc « non », aucune fenêtre dans GFS) ;
+  // seul, la preuve du moteur de partage (`GET /webhooks`, `GristBI.api.documentOwnerProof`).
+  let namesUpdateRan = false;
+  async function runNamesUpdate(link) {
+    if (namesUpdateRan) return { state: 'none' };
+    namesUpdateRan = true;
+    try {
+      const schema = await GristBI.api.readDocumentSchema();
+      if (!GristBI.configNames.renamePlan(schema).length) return { state: 'none' };
+      const [{ NamesUpdate }, { I18n }] = await Promise.all([GristBI.loader.module('kit-names-update'), GristBI.loader.module('kit-i18n')]);
+      I18n.setLanguage(GristBI.i18n.getLang());
+      const hosted = Boolean(link && link.hosted);
+      const context = () => (hosted && link.context && link.context()) || null;
+      const port = GristBI.api.namesPort({
+        hosted,
+        hostedOwner: () => {
+          const role = context() && context().role;
+          return role && typeof role.proprietaire === 'boolean' ? role.proprietaire : null;
+        },
+        readOnly: () => Boolean(context() && context().lectureSeule)
+      });
+      return await NamesUpdate.run({ port, plan: GristBI.configNames.renamePlan, appName: 'Grist-BI' });
+    } catch (e) {
+      console.warn('[GristBI] mise à jour des noms indisponible — le widget continue sur les noms du document', e);
+      return { state: 'skipped' };
+    } finally {
+      GristBI.api.afterNamesUpdate();
+    }
+  }
+
+  // « Réunir » (point 4c) : un document qui porte les DEUX jeux de noms n'est jamais renommé ; s'il reste des valeurs sous l'ancien nom que le nouveau n'a pas, on le dit et on ne
+  // copie QU'APRÈS la confirmation de la personne. Une seule demande par ouverture, jamais en lecture seule (rien ne s'écrirait), jamais si le widget ne trouve rien à copier.
+  async function offerMergeConfigNames(link) {
+    try {
+      const context = link && link.hosted && link.context ? link.context() : null;
+      if (context && context.lectureSeule) return false;
+      const status = await GristBI.api.configNamesStatus();
+      if (!status.both.length || !status.cells) return false;
+      const ok = await GristBI.dialogs.confirm({
+        title: t('namesMerge.title'),
+        message: t('namesMerge.message', { cells: status.cells }),
+        confirmLabel: t('namesMerge.confirm')
+      });
+      if (!ok) return false;
+      await GristBI.api.mergeConfigNames();
+      showNotice(t('namesMerge.done'));
+      return true;
+    } catch (e) {
+      console.error('[GristBI] « Réunir » les deux jeux de noms a échoué — les rapports restent lisibles sous leurs noms', e);
+      showError(t('namesMerge.failed'));
+      return false;
+    }
   }
 
   // Écrit IMMÉDIATEMENT une sauvegarde encore en attente (debounce de scheduleSave), au lieu
