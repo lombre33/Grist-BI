@@ -82,6 +82,9 @@
   // saveConfig plus bas) : seule la toute première sauvegarde d'un rapport donné, par session, paie
   // cette lecture supplémentaire.
   const _namedReportRowIds = new Set();
+  // Nom de chaque ligne de BI_Dashboard_Config déjà lue ou écrite cette session (id de ligne -> nom, '' = pas encore nommée) : de quoi AFFICHER le nom du rapport ouvert sans
+  // relire la table. Jamais une source de vérité : un renommage fait ailleurs (l'explorateur de GFS) ne s'y voit qu'à la prochaine lecture (`readReportName`).
+  const _reportNames = new Map();
 
   // Ne s'appuie plus sur `grist.onRecords()`/la table liée au widget dans la page (voir
   // HYPOTHESES.md) : le dashboard se connecte directement, au démarrage, à la 1re table du document
@@ -374,6 +377,7 @@
       for (let i = 0; i < ids.length; i++) {
         if (configTable.TableId[i] === tableId) {
           _configRowIdByTable[tableId] = ids[i];
+          _reportNames.set(ids[i], CN.cell(configTable, _configCols, 'name', i));
           try { return normalizeConfig(JSON.parse(configTable.ConfigJSON[i] || '[]')); }
           catch (e) { return singlePageConfig([], [], null); }
         }
@@ -400,7 +404,9 @@
   // `style` (style global des tuiles, js/styles.js) n'est écrit que s'il n'est pas le Standard : une configuration sans choix de
   // style reste octet pour octet celle d'avant ce réglage. Même règle pour `styleOptions` (options valables pour tous les styles) :
   // le champ n'existe que si au moins une option est cochée, et ne contient que celles-là.
-  async function saveConfig(tableId, pages, currentPageId, bookmarks, blend, reportId, authorLabel, style, styleOptions) {
+  // `reportName` (nommer un rapport depuis le widget) : le nom choisi par la personne pour un rapport PAS ENCORE nommé (rapport neuf ou ligne d'avant la consigne GFS 007), à la place
+  // du nom par défaut ; refusé (`NAME_TAKEN`) s'il est déjà pris, jamais corrigé en silence. Sans effet sur un rapport déjà nommé : le renommer est `renameReport`.
+  async function saveConfig(tableId, pages, currentPageId, bookmarks, blend, reportId, authorLabel, style, styleOptions, reportName) {
     if (!tableId) return;
     await ensureConfigTableExists();
     const styleValue = normalizeStyleValue(style);
@@ -416,6 +422,7 @@
     let rowId = null;
     if (typeof reportId === 'number') rowId = reportId; // GfsLink.opening()/onOpen : cible CETTE ligne
     else if (reportId !== 'new') rowId = _configRowIdByTable[tableId]; // comportement historique
+    const requestedName = normalizeReportName(reportName);
     if (rowId && _namedReportRowIds.has(rowId)) {
       // Déjà confirmé nommé plus tôt cette session (voir plus bas) : inutile de relire Name/
       // ReportType à chaque sauvegarde — seul un renommage externe (F2 dans GFS) pourrait différer,
@@ -456,7 +463,12 @@
     const naming = {};
     if (!existingName) {
       const existingNames = new Set(CN.values(savedTable, _configCols, 'name'));
-      naming.name = idx !== -1 ? uniqueDefaultName(tableId, existingNames) : nextNewReportName(existingNames);
+      if (requestedName) {
+        if (nameTaken(existingNames, requestedName)) throw reportNameError('NAME_TAKEN');
+        naming.name = requestedName;
+      } else {
+        naming.name = idx !== -1 ? uniqueDefaultName(tableId, existingNames) : nextNewReportName(existingNames);
+      }
       naming.reportType = CONFIG_REPORT_TYPE;
     }
 
@@ -470,6 +482,7 @@
     }
     _configRowIdByTable[tableId] = rowId;
     _namedReportRowIds.add(rowId);
+    _reportNames.set(rowId, naming.name || existingName);
     return rowId;
   }
 
@@ -488,12 +501,96 @@
     if (reportType && reportType !== CONFIG_REPORT_TYPE) return null;
     const name = CN.cell(reportTable, _configCols, 'name', idx);
     if (name) _namedReportRowIds.add(numericId);
+    _reportNames.set(numericId, name);
     let config;
     try { config = normalizeConfig(JSON.parse(reportTable.ConfigJSON[idx] || '[]')); }
     catch (e) { config = singlePageConfig([], [], null); }
     const tableId = reportTable.TableId[idx];
     _configRowIdByTable[tableId] = numericId;
     return { id: numericId, tableId, name, config };
+  }
+
+  // ---- Nommer et renommer un rapport depuis le widget ----------------------------------------------------------------------------------------------------------------
+  // Le nom d'un rapport est la colonne `Name` (ou `Nom`, selon le document : `js/config-names.js`) de SA ligne de BI_Dashboard_Config, la même que l'explorateur de GFS lit et
+  // renomme (F2). Le widget l'écrit lui aussi, jamais ailleurs : mêmes règles que GFS (un nom reste unique dans toute la table, tous `TableId` confondus, consigne 007), et une
+  // ligne d'un type que ce widget ne connaît pas n'est jamais touchée.
+  const REPORT_NAME_MAX = 100;
+
+  // Le nom tel qu'on l'écrit : sans caractère de contrôle, espaces repliés et rognés, au plus REPORT_NAME_MAX signes (comptés en caractères, jamais au milieu d'un emoji). '' = pas un nom.
+  function normalizeReportName(raw) {
+    if (typeof raw !== 'string') return '';
+    const clean = raw.replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim();
+    return Array.from(clean).slice(0, REPORT_NAME_MAX).join('').trim();
+  }
+
+  // Un nom est « pris » sans tenir compte de la casse (« Ventes » et « ventes » se confondraient dans une liste de fichiers) ; `names` : tout ce qui se parcourt (Set, tableau).
+  function nameTaken(names, name) {
+    const wanted = name.toLowerCase();
+    for (const other of names) if (typeof other === 'string' && other.trim().toLowerCase() === wanted) return true;
+    return false;
+  }
+
+  // Les refus portent un `code` stable que l'interface traduit : NAME_EMPTY, NAME_TAKEN, NOT_FOUND (la ligne n'existe plus), FOREIGN_TYPE (une ligne d'un autre `ReportType`).
+  function reportNameError(code) {
+    const error = new Error(`[GristBI] nom de rapport refusé : ${code}`);
+    error.code = code;
+    return error;
+  }
+
+  // La ligne du rapport affiché : un id de ligne (rapport ouvert par GFS), sinon, hors GFS, la ligne déjà connue de cette table ; `null` = rapport pas encore enregistré
+  // (jeton `'new'`, ou table sans ligne) : son nom ne peut s'écrire qu'avec sa première sauvegarde (`saveConfig(…, reportName)`).
+  function reportRowIdFor(tableId, reportId) {
+    if (typeof reportId === 'number') return reportId;
+    if (reportId === 'new') return null;
+    return _configRowIdByTable[tableId] || null;
+  }
+
+  // Le nom connu d'une ligne, sans appel à Grist ('' tant qu'elle n'a pas de nom ou n'a pas été lue).
+  function reportNameOf(rowId) {
+    return (rowId && _reportNames.get(Number(rowId))) || '';
+  }
+
+  // Relit le nom d'une ligne dans Grist (il a pu être changé dans l'explorateur de GFS pendant que le widget restait ouvert) et remet le nom connu à jour.
+  async function readReportName(rowId) {
+    await ensureConfigTableExists();
+    const table = await refreshConfigNames();
+    const index = ((table && table.id) || []).indexOf(Number(rowId));
+    if (index === -1) return '';
+    const name = CN.cell(table, _configCols, 'name', index);
+    _reportNames.set(Number(rowId), name);
+    return name;
+  }
+
+  // Le nom par défaut que recevrait un rapport neuf aujourd'hui (« Rapport BI 3 ») : proposé dans la fenêtre pour nommer un rapport pas encore enregistré.
+  async function suggestReportName() {
+    await ensureConfigTableExists();
+    const table = await refreshConfigNames();
+    return nextNewReportName(new Set(CN.values(table, _configCols, 'name')));
+  }
+
+  // Renomme le rapport de la ligne `rowId` : relit la table (le nom peut avoir changé ailleurs), refuse un nom vide ou déjà pris par une AUTRE ligne, puis n'écrit que le nom, la date
+  // de modification et, s'il est connu, l'auteur (ce que fait aussi une sauvegarde) ; `ConfigJSON` n'est jamais touché. Une ligne sans `ReportType` (d'avant la consigne 007) reçoit
+  // `rapport` avec son nom, comme à sa première sauvegarde. Rend le nom écrit.
+  async function renameReport(rowId, rawName, authorLabel) {
+    const name = normalizeReportName(rawName);
+    if (!name) throw reportNameError('NAME_EMPTY');
+    await ensureConfigTableExists();
+    const table = await refreshConfigNames();
+    const ids = (table && table.id) || [];
+    const index = ids.indexOf(Number(rowId));
+    if (index === -1) throw reportNameError('NOT_FOUND');
+    const type = CN.cell(table, _configCols, 'reportType', index);
+    if (type && type !== CONFIG_REPORT_TYPE) throw reportNameError('FOREIGN_TYPE');
+    if (CN.cell(table, _configCols, 'name', index) === name) { _reportNames.set(Number(rowId), name); _namedReportRowIds.add(Number(rowId)); return name; }
+    const others = ids.map((_, i) => (i === index ? '' : CN.cell(table, _configCols, 'name', i)));
+    if (nameTaken(others, name)) throw reportNameError('NAME_TAKEN');
+    const logical = { name, modifiedAt: Math.floor(Date.now() / 1000) };
+    if (!type) logical.reportType = CONFIG_REPORT_TYPE;
+    if (authorLabel) logical.modifiedBy = authorLabel;
+    await writeConfig((cols) => [['UpdateRecord', CONFIG_TABLE, Number(rowId), CN.fieldsFor(cols, logical)]]);
+    _reportNames.set(Number(rowId), name);
+    _namedReportRowIds.add(Number(rowId));
+    return name;
   }
 
   // Dashboard vierge, prêt pour `store.setPages`/`setBookmarks`/`setBlend` — utilisé pour "Nouveau"
@@ -1151,6 +1248,7 @@
   GristBI.api = {
     configNamesStatus, mergeConfigNames, refreshConfigNames, isNameError: CN.isNameError, namesPort, afterNamesUpdate, readDocumentSchema, documentOwnerProof,
     init, loadConfig, saveConfig, loadConfigById, blankConfig,
+    renameReport, readReportName, suggestReportName, reportRowIdFor, reportNameOf, normalizeReportName, REPORT_NAME_MAX,
     listAvailableTables, loadTable, loadOrCreateComments, addComment, refColumnsForTable,
     getCurrentUserEmail, createTableFromRows, readColumnFormats, organizeInternalPages,
     checkAttachmentAccess, getAttachmentBytes, fetchRawTable, addTextColumn, writeColumnValues, safeAttachmentBase

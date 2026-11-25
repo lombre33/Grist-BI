@@ -137,6 +137,7 @@ En mode édition, chaque tuile porte ses boutons : flèches pour la déplacer, c
 
 - **Vues** : une vue mémorise l'état des filtres croisés, des filtres avancés et du drill-down sous un nom. Le menu **Vues** permet de la réappliquer, de la mettre à jour ou de la supprimer.
 - **Pages** : en mode édition, le bouton **+** de la barre ajoute une page, un double-clic sur un onglet la renomme. Chaque page a ses propres tuiles ; les filtres, eux, restent communs à toutes les pages.
+- **Nom du rapport** : la barre montre le nom du tableau de bord (« Rapport sans titre » tant qu'il n'en a pas). En mode édition, un clic sur ce nom ouvre une fenêtre pour le **nommer** ou le **renommer** ; deux rapports d'un même document ne peuvent pas porter le même nom. En mode lecture le nom reste visible, sans pouvoir être changé.
 
 ### 6. Mettre en forme : style et disposition
 
