@@ -50,6 +50,12 @@
     <header class="appbar" id="appbar">
       <h1 class="sr-only" data-i18n="topbar.title">Dashboard BI</h1>
 
+      <button id="report-name" type="button" class="report-name" hidden>
+        <svg class="icon icon-doc" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M4 2.5h5.5L12 5v8.5H4v-11ZM9.5 2.5V5H12"/></svg>
+        <span id="report-name-text" class="report-name-text"></span>
+        <svg class="icon icon-pencil report-name-edit edit-only" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M11.5 2.5l2 2L5 13l-2.8.8L3 11l8.5-8.5Z"/></svg>
+      </button>
+
       <button id="data-pill" type="button" class="pill" data-popover="data-popover" aria-haspopup="dialog" aria-expanded="false">
         <svg class="icon icon-db" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M2.5 3.5h11v9h-11zM2.5 7h11M6.5 3.5v9"/></svg>
         <span id="data-pill-name" class="pill-name">…</span>

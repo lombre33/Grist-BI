@@ -154,6 +154,35 @@ body[data-mode="edit"] .read-only { display: none !important; }
 .appbar-spacer { flex: 1 1 8px; }
 .appbar-sep { width: 1px; height: 20px; background: var(--border-strong); margin: 0 2px; }
 
+/* Nom du rapport (js/main-session.js:renameCurrentReport) : un bouton sans cadre en tête de la barre. En Lecture il n'est que le nom (bouton inactif, texte normal) ; en Édition un
+   crayon apparaît et le clic ouvre la fenêtre pour le renommer. Comme les autres éléments de la barre il ne rétrécit pas (largeur bornée par `max-width`, nom tronqué par des points de
+   suspension) : quand la barre est trop pleine, ce sont les onglets qui rognent, et js/main-render.js:fitPageTabs allège alors les libellés des boutons. */
+.report-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  max-width: 220px;
+  padding: 0 8px;
+  border: var(--bw, 1px) solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s var(--ease), border-color 0.12s var(--ease);
+}
+.report-name[hidden] { display: none; }
+.report-name .icon { color: var(--text-muted); }
+.report-name:hover:not(:disabled) { background: var(--surface-sunken); border-color: var(--border-strong); }
+.report-name:disabled { opacity: 1; color: var(--text); cursor: default; }
+.report-name-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.report-name-untitled .report-name-text { color: var(--text-secondary); font-style: italic; font-weight: 500; }
+/* Posé par js/main-render.js:fitPageTabs quand la barre déborde même sans les libellés des boutons : il ne reste que l'icône du rapport (le nom est dans l'infobulle et le nom accessible). */
+.appbar.bar-report-compact .report-name-text, .appbar.bar-report-compact .report-name-edit { display: none; }
+
 /* Pastille « Données » : la table connectée et son volume, point d'entrée du menu Données. */
 .pill {
   display: inline-flex;
@@ -481,9 +510,11 @@ body[data-mode="edit"] .bar-btn-mode .icon-mode-done { display: inline-block; }
 .appbar > .page-tabs { min-width: 150px; }
 @media (max-width: 1100px) {
   .badge-alpha, .appbar > .pill .row-count { display: none; }
+  .report-name { max-width: 160px; }
 }
 /* ≤ 900 px : les libellés des boutons disparaissent (leur nom reste dans `aria-label`/`title`). */
 @media (max-width: 900px) {
+  .report-name { max-width: 120px; }
   .bar-label, .bar-view-name { display: none; }
   .bar-btn { padding: 0 8px; }
   .bar-btn-mode .bar-label { display: inline; }

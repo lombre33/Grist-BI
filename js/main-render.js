@@ -16,7 +16,7 @@
     exportPdfBtn, exportPptxBtn, exportToggleBtn, filterBadgesEl, filterCountEl, filterToggleBtn, flashTile,
     focusGridEl, focusLabelEl, focusResetBtn, focusZoneEl, genTileId, icon, modeToggleBtn, modeToggleLabelEl,
     openCommentsModal, openDetailModal, pageTabsEl, renderCommentsModal, renderDetailModal, renderTimeEl,
-    retryConnectBtn, rowCountEl, saveBookmarkBtn, showError, showNotice, startEditTile, store, tilesContainer,
+    reportNameBtn, reportNameTextEl, retryConnectBtn, rowCountEl, saveBookmarkBtn, showError, showNotice, startEditTile, store, tilesContainer,
     updateBookmarkBtn, viewChipEl, viewChipLeaveBtn, viewChipModifiedEl, viewChipNameEl, viewChipUpdateBtn,
     viewsActiveDotEl, viewsActiveNameEl, viewsEmptyEl, viewsListEl, viewsToggleBtn, welcomeAddBtn, welcomeEl,
     workspaceMainEl
@@ -26,7 +26,7 @@
   const refreshStyleOptions = (...args) => parts.refreshStyleOptions(...args);
   const scheduleSave = (...args) => parts.scheduleSave(...args);
   Object.assign(parts, {
-    autoMode, buildTileElement, render, renderConnectionStatus, setConnectionState, setMode
+    autoMode, buildTileElement, fitPageTabs, render, renderConnectionStatus, renderReportName, setConnectionState, setMode
   });
  // { tableId, reportId, authorLabel, pages, currentPageId, bookmarks, blend, dashStyle, dashStyleOptions } en attente d'écriture, voir flushPendingSave()
   let lastRenderedPages = null;
@@ -110,6 +110,25 @@
     modeToggleLabelEl.textContent = label;
     // Écran très étroit : le libellé visible disparaît (css), le nom accessible reste.
     modeToggleBtn.setAttribute('aria-label', label);
+    renderReportName(); // le bouton du nom du rapport n'est actif qu'en Édition
+  }
+
+  // Le nom du rapport affiché dans la barre (`S.reportName`, tenu par js/main-session.js:refreshReportName) : '' = pas encore enregistré, donc pas encore nommé. Visible dès qu'une
+  // table est connectée, en Lecture comme en Édition ; actif (donc renommable) seulement en Édition. Le nom accessible dit les deux : le nom, et l'action possible.
+  function renderReportName() {
+    const connected = Boolean(S.currentTableId) && S.dashboardReady;
+    reportNameBtn.hidden = !connected;
+    if (!connected) return;
+    const name = S.reportName || '';
+    const editing = S.mode === 'edit';
+    reportNameTextEl.textContent = name || t('report.name.untitled');
+    reportNameBtn.classList.toggle('report-name-untitled', !name);
+    reportNameBtn.disabled = !editing;
+    // L'infobulle porte aussi le nom complet : le texte du bouton peut être tronqué, voire absent quand la barre est étroite (`bar-report-compact`).
+    reportNameBtn.title = name ? (editing ? `${name} — ${t('report.rename.hint')}` : name) : (editing ? t('report.name.hint') : t('report.name.untitled'));
+    reportNameBtn.setAttribute('aria-label', name
+      ? t(editing ? 'report.rename.aria' : 'report.name.aria', { name })
+      : (editing ? t('report.name.ariaUntitled') : t('report.name.untitled')));
   }
 
   function setMode(next) {
@@ -163,6 +182,7 @@
   function renderConnectionStatus(state) {
     const connected = Boolean(S.currentTableId) && S.dashboardReady;
     dataPillNameEl.textContent = S.currentTableId ? S.currentTableId : connectionShortMessage();
+    renderReportName();
     rowCountEl.textContent = connected ? t('status.rowCount', { n: state.rows.length }) : '';
     emptyStateHintEl.hidden = !connected;
     emptyStateReadHintEl.hidden = !connected;
@@ -379,14 +399,25 @@
   // d'où le fondu qui restait faux), le changement de mode ou de langue, la taille de la fenêtre, et un ResizeObserver en filet de sécurité.
   const appbarEl = document.getElementById('appbar');
 
-  const tabsClipped = () => pageTabsEl.scrollWidth > pageTabsEl.clientWidth + 1;
+  // La barre « rogne » quand un onglet est coupé OU quand elle déborde de la fenêtre (le nom du rapport, en tête, la remplit : les onglets gardent au moins 150 px, ils ne se coupent donc
+  // pas toujours avant que les boutons de droite sortent de l'écran).
+  const barOverflows = () => Boolean(appbarEl) && appbarEl.scrollWidth > appbarEl.clientWidth + 1;
+  const tabsClipped = () => pageTabsEl.scrollWidth > pageTabsEl.clientWidth + 1 || barOverflows();
 
   function fitPageTabs() {
     if (appbarEl) {
-      GristBI.appbar.fitTabsLevel(tabsClipped, (level) => {
+      const setLevel = (level) => {
         appbarEl.classList.toggle('bar-names-hidden', level === 1);
         appbarEl.classList.toggle('bar-labels-hidden', level === 2);
-      }, !viewsActiveNameEl.hidden);
+      };
+      // Du plus facile à perdre au plus précieux : le nom de la vue suivie, les libellés des boutons (paliers de `fitTabsLevel`), puis, en dernier recours, le TEXTE du nom du rapport
+      // (il reste l'icône, le nom complet est dans l'infobulle et dans le nom accessible).
+      appbarEl.classList.remove('bar-report-compact');
+      GristBI.appbar.fitTabsLevel(tabsClipped, setLevel, !viewsActiveNameEl.hidden);
+      if (barOverflows()) {
+        setLevel(2);
+        appbarEl.classList.add('bar-report-compact');
+      }
     }
     updateTabsOverflow();
     revealActiveTab();

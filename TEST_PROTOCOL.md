@@ -1166,6 +1166,14 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 - [ ] Chargement de PptxGenJS depuis jsDelivr et téléchargement depuis un vrai GFS ⬜ **[NON TESTABLE ICI]**
 - **Piège de test** : servir la vraie bibliothèque par `context.route()` AVEC `access-control-allow-origin: *` (sinon l'empreinte SRI refuse la réponse) ; dans un cadre isolé, un serveur d'essai sans CORS fait échouer les tuiles DAX (à l'écran comme dans l'export).
 
+### `js/grist-api.js:renameReport` + puce du nom de la barre — nommer et renommer un rapport (25/11/2026 ; Node `dev-tests/test-report-name.js` ; Chromium `dev-tests/test-browser.js` et un parcours à la main : harnais en HTTP, vraies fenêtres du kit, page directe ET `<iframe sandbox="allow-scripts allow-downloads">`)
+- ✅ Nom : normalisation (non-texte, signes de contrôle, espaces, 100 signes au plus, caractères hors plan de base) ; nom vide / pris par une autre ligne (casse ignorée) / ligne disparue / type étranger refusés ; son propre nom permis, même nom = aucune écriture.
+- ✅ Rapport neuf nommé sur trois états de document (noms anglais, d'avant, mêlés) : la ligne naît avec le nom ; renommer n'écrit que le nom, la date, l'auteur (jamais `ConfigJSON`) ; ligne ancienne sans nom ni type.
+- ✅ Renommage fait ailleurs : relu à l'ouverture de la fenêtre et avant d'écrire, jamais écrasé par la sauvegarde du contenu ; colonne renommée dans un autre onglet rattrapée une fois.
+- 🌐 Clic réel sur la puce, fenêtre du kit, nom écrit dans la table (relue), rapport neuf nommé sans toucher l'autre ; Lecture : puce visible, désactivée.
+- 🌐 Barre à 1 300, 1 000, 800 et 420 px, Lecture et Édition : aucune barre qui déborde, onglets non rognés (captures).
+- ⬜ Un vrai Grist, le vrai GFS (ce que l'explorateur montre après un renommage).
+
 ### CSS — classe de bug à systématiquement re-vérifier
 
 - [x] `.field[hidden]` masque réellement l'élément (pas seulement `display:flex` de `.field` qui gagne à spécificité égale) [BUG RÉEL, trouvé 2 fois sur des champs différents] ✅ (règle en place)

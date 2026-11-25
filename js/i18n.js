@@ -703,6 +703,23 @@
     // langue de la personne" plutôt qu'un texte figé.
     'gfs.newReportName': { fr: 'Rapport BI {n}', en: 'BI report {n}' },
 
+    // --- Nom du rapport (js/main-session.js:renameCurrentReport) : le bouton de la barre, la fenêtre pour nommer ou renommer, les refus. Le nom est la colonne Name de la ligne du
+    // rapport dans BI_Dashboard_Config, celle que l'explorateur de GFS renomme aussi.
+    'report.name.untitled': { fr: 'Rapport sans titre', en: 'Untitled report' },
+    'report.name.aria': { fr: 'Rapport : {name}', en: 'Report: {name}' },
+    'report.rename.aria': { fr: 'Rapport : {name}. Renommer', en: 'Report: {name}. Rename' },
+    'report.name.ariaUntitled': { fr: 'Rapport sans titre. Nommer', en: 'Untitled report. Name it' },
+    'report.rename.hint': { fr: 'Renommer le rapport', en: 'Rename the report' },
+    'report.name.hint': { fr: 'Donner un nom au rapport', en: 'Give the report a name' },
+    'report.rename.title': { fr: 'Renommer le rapport', en: 'Rename report' },
+    'report.name.title': { fr: 'Nommer le rapport', en: 'Name the report' },
+    'report.rename.label': { fr: 'Nom du rapport :', en: 'Report name:' },
+    'report.rename.confirm': { fr: 'Renommer', en: 'Rename' },
+    'report.name.confirm': { fr: 'Nommer', en: 'Name it' },
+    'report.rename.empty': { fr: 'Le nom du rapport ne peut pas être vide.', en: 'The report name cannot be empty.' },
+    'report.rename.taken': { fr: 'Un autre rapport de ce document porte déjà ce nom. Choisissez-en un autre.', en: 'Another report in this document already has this name. Choose a different one.' },
+    'report.rename.failed': { fr: 'Impossible de renommer le rapport pour l\'instant. Rien n\'a été changé.', en: 'Could not rename the report right now. Nothing was changed.' },
+
     // --- Noms de BI_Dashboard_Config (consigne GFS 030, js/main-session.js) : « Réunir » les deux jeux de noms d'un document, et l'écriture refusée
     // parce qu'un nom a changé dans un autre onglet. (La fenêtre de mise à jour des noms elle-même est celle du kit : ses textes sont les siens.)
     'namesMerge.title': { fr: 'Réunir les deux jeux de noms ?', en: 'Merge the two sets of names?' },

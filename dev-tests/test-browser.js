@@ -246,6 +246,41 @@ async function scenario(browser, origin, { name, url, framed }) {
     if (notes.length === notesBefore) problems.push('contrôle de l\'annulation : une réponse annulée par la page n\'a pas été relevée comme telle');
     else verified.push('réponse annulée tolérée');
     await frame.waitForTimeout(200);
+
+    // 5. Nommer et renommer le rapport depuis la barre (25/11/2026) : la vraie interface, ses fenêtres du kit, sous la politique et dans le cadre isolé.
+    // Le rapport déjà enregistré (les tuiles de l'étape 2 l'ont enregistré sous « Rapport BI N ») est RENOMMÉ ; un rapport neuf (« Nouveau » dans GFS) est NOMMÉ,
+    // ce qui l'enregistre avec ce nom ; le premier garde son nom. Les noms sont lus dans la table elle-même, pas seulement à l'écran.
+    await frame.evaluate(() => GristBI.mainParts.setMode('edit'));
+    const askName = async (confirmLabel, text) => {
+      const dialog = frame.locator('dialog, [role="dialog"]').last();
+      await dialog.waitFor({ timeout: 8000 });
+      await dialog.locator('input').first().fill(text);
+      await dialog.getByRole('button', { name: confirmLabel }).click();
+    };
+    const chipIs = (expected) => frame.waitForFunction((x) => document.getElementById('report-name-text').textContent === x, expected, { timeout: 8000 }).then(() => true, () => false);
+    const configNames = () => frame.evaluate(async () => {
+      const table = await grist.docApi.fetchTable('BI_Dashboard_Config');
+      return (table.id || []).map((_, i) => table.Name[i]);
+    });
+    const named = await frame.waitForFunction(() => /^Rapport BI \d+$/.test(document.getElementById('report-name-text').textContent), null, { timeout: 8000 }).then(() => true, () => false);
+    if (!named) problems.push('nom du rapport : le rapport enregistré n\'affiche pas son nom par défaut dans la barre');
+    else {
+      await frame.click('#report-name');
+      await askName('Renommer', 'Chiffres 2026');
+      if (!(await chipIs('Chiffres 2026'))) problems.push('nom du rapport : la barre ne montre pas le nom après « Renommer »');
+      else if (!(await configNames()).includes('Chiffres 2026')) problems.push('nom du rapport : le nouveau nom n\'est pas écrit dans BI_Dashboard_Config');
+      else verified.push('renommer le rapport (fenêtre du kit, nom écrit dans la table)');
+      await frame.evaluate(() => GristBI.mainParts.openBlankReport());
+      if (!(await chipIs('Rapport sans titre'))) problems.push('nom du rapport : un rapport neuf devrait s\'appeler « Rapport sans titre » tant qu\'il n\'est pas enregistré');
+      else {
+        const rowsBefore = (await configNames()).length;
+        await frame.click('#report-name');
+        await askName('Nommer', 'Bilan neuf');
+        const names = (await chipIs('Bilan neuf')) ? await configNames() : [];
+        if (names.length !== rowsBefore + 1 || !names.includes('Bilan neuf') || !names.includes('Chiffres 2026')) problems.push('nom du rapport : nommer un rapport neuf doit créer SA ligne sans toucher l\'autre (lignes : ' + JSON.stringify(names) + ')');
+        else verified.push('nommer un rapport neuf (sa ligne naît avec ce nom, l\'autre rapport est intact)');
+      }
+    }
   } catch (e) {
     problems.push('essai interrompu : ' + String((e && e.message) || e).slice(0, 240));
   } finally {

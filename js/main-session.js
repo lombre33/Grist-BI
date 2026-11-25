@@ -11,12 +11,12 @@
   const {
     autoMode, availableColumns, blendJoinColumns, blendPrimaryColumnInput, blendSecondaryColumnInput,
     blendSecondaryTableInput, closeTilePanel, currentReportAuthorLabel, fillCombobox, genTileId, refreshColumnSelects,
-    render, renderConnectionStatus, retryConnectBtn, setConnectionState, sharedReadOnlyWarning, showError, showNotice,
+    fitPageTabs, render, renderConnectionStatus, renderReportName, reportNameBtn, retryConnectBtn, setConnectionState, sharedReadOnlyWarning, showError, showNotice,
     store, tableSelectInput, withDateHierarchies
   } = parts;
   Object.assign(parts, {
     connectToFirstTable, flushPendingSave, offerMergeConfigNames, openBlankReport, openModelById, openReportById, refreshBlendPicker,
-    refreshTablePicker, reloadWorkingTable, runNamesUpdate, scheduleSave, switchTable
+    refreshReportName, refreshTablePicker, reloadWorkingTable, renameCurrentReport, runNamesUpdate, scheduleSave, switchTable
   });
 
   // Rapport actuellement ouvert, au sens de la consigne GFS 007 point 2/3 : une LIGNE précise de
@@ -106,6 +106,8 @@
   function runPendingSave(p) {
     return GristBI.api.saveConfig(p.tableId, p.pages, p.currentPageId, p.bookmarks, p.blend, p.reportId, p.authorLabel, p.dashStyle, p.dashStyleOptions).then((rowId) => {
       if (p.reportId === 'new' && currentReportId === 'new') currentReportId = rowId;
+      // Une première sauvegarde donne son nom au rapport (« Rapport BI 3 ») : la barre le montre dès qu'il existe.
+      if (p.tableId === S.currentTableId) refreshReportName();
     }).catch((e) => {
       console.error('[GristBI] échec de sauvegarde de la config', e);
       // Consigne GFS 030, point 4f : un nom a changé dans un autre onglet pendant que celui-ci restait ouvert. `saveConfig` a déjà relu les noms et recommencé UNE fois
@@ -311,11 +313,81 @@
         S.suppressNextSave = false;
       }
       S.dashboardReady = true;
+      refreshReportName();
       autoMode();
       refreshBlendPicker();
     }
     await applyBlend(currentBlend);
   }
+
+  // Le nom du rapport affiché (`S.reportName`, montré par renderReportName dans la barre) : celui de SA ligne de BI_Dashboard_Config, lu dans le nom que `js/grist-api.js` a déjà
+  // vu passer (chargement, sauvegarde, renommage) ; '' tant que le rapport n'est pas enregistré. Un renommage fait dans l'explorateur de GFS pendant que le widget reste ouvert ne se voit
+  // qu'à la prochaine ouverture du rapport ou de la fenêtre « Renommer » : le widget ne relit pas la table à chaque image.
+  function refreshReportName() {
+    const rowId = GristBI.api.reportRowIdFor(S.currentTableId, currentReportId);
+    S.reportName = rowId ? GristBI.api.reportNameOf(rowId) : '';
+    renderReportName();
+    fitPageTabs(); // un autre nom, une autre largeur de barre
+  }
+
+  // Nommer (rapport pas encore enregistré) ou renommer (rapport déjà enregistré) le rapport affiché, depuis le bouton de la barre, en mode Édition seulement. Le nom proposé est le nom
+  // actuel, relu dans Grist (l'explorateur de GFS a pu le changer), ou, pour un rapport neuf, le nom par défaut qu'il recevrait (« Rapport BI 3 »). Un nom vide ou déjà pris par un autre rapport
+  // est refusé en le disant, puis la même fenêtre revient avec ce que la personne a tapé : jamais un nom corrigé en silence. Nommer un rapport neuf l'ENREGISTRE (c'est un geste de la
+  // personne, comme toute modification : sa ligne naît avec son nom et son contenu actuel) ; renommer un rapport enregistré n'écrit que son nom (`GristBI.api.renameReport`).
+  let renamingReport = false;
+  async function renameCurrentReport() {
+    if (S.mode !== 'edit' || !S.currentTableId || !S.dashboardReady || renamingReport) return;
+    renamingReport = true;
+    try {
+      await flushPendingSave(); // un rapport neuf s'enregistre peut-être d'abord : son id devient celui de sa ligne
+      const api = GristBI.api;
+      const tableId = S.currentTableId;
+      const target = currentReportId;
+      const rowId = api.reportRowIdFor(tableId, target);
+      let proposal = '';
+      try {
+        proposal = rowId ? await api.readReportName(rowId) : await api.suggestReportName();
+        if (rowId) refreshReportName(); // la barre montre aussi le nom relu (renommé dans l'explorateur de GFS pendant que le widget restait ouvert)
+      } catch (e) {
+        console.warn('[GristBI] nom du rapport illisible pour l\'instant, la fenêtre part du nom connu', e);
+        proposal = rowId ? api.reportNameOf(rowId) : '';
+      }
+      for (;;) {
+        const answer = await GristBI.dialogs.prompt({
+          title: t(rowId ? 'report.rename.title' : 'report.name.title'), label: t('report.rename.label'),
+          value: proposal, confirmLabel: t(rowId ? 'report.rename.confirm' : 'report.name.confirm')
+        });
+        if (answer == null) return; // annulé
+        if (S.currentTableId !== tableId || currentReportId !== target) return; // un autre rapport s'est ouvert pendant la fenêtre : rien n'est renommé
+        const name = api.normalizeReportName(answer);
+        if (!name) { await GristBI.dialogs.notice({ message: t('report.rename.empty') }); proposal = ''; continue; }
+        try {
+          if (rowId) {
+            await api.renameReport(rowId, name, currentReportAuthorLabel());
+          } else {
+            const st = store.getState();
+            const savedId = await api.saveConfig(tableId, st.pages, st.currentPageId, st.bookmarks, st.blend, currentReportId, currentReportAuthorLabel(), st.dashStyle, st.dashStyleOptions, name);
+            if (currentReportId === 'new') currentReportId = savedId;
+          }
+          refreshReportName();
+          return;
+        } catch (e) {
+          if (e && e.code === 'NAME_TAKEN') { await GristBI.dialogs.notice({ message: t('report.rename.taken') }); proposal = name; continue; }
+          console.error('[GristBI] échec du renommage du rapport', e);
+          if (api.isNameError(e)) showError(t('configNames.reload'));
+          else {
+            if (GristBI.data.isAccessRuleRefusal(e)) sharedReadOnlyWarning.hidden = false;
+            showError(t('report.rename.failed'));
+          }
+          return;
+        }
+      }
+    } finally {
+      renamingReport = false;
+    }
+  }
+
+  reportNameBtn.addEventListener('click', renameCurrentReport);
 
   // Ouvre le rapport `reportId` (une ligne de BI_Dashboard_Config, voir GristBI.api.loadConfigById)
   // - ce que GFS demande via GfsLink.opening()/onOpen (consigne 007, point 3 ; `reportId` y est

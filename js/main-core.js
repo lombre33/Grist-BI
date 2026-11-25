@@ -451,6 +451,10 @@
 
   const dataPillNameEl = document.getElementById('data-pill-name');
 
+  const reportNameBtn = document.getElementById('report-name');
+
+  const reportNameTextEl = document.getElementById('report-name-text');
+
   const chipsRowEl = document.getElementById('chips-row');
 
   const filterToggleBtn = document.getElementById('filter-toggle');
@@ -673,7 +677,7 @@
     pbixImportStatusEl, pivotHeatCheckbox, pivotHeatField, radarAxesContainer, radarAxesField,
     radarCompareAverageCheckbox, radarCompareAverageField, radarEntityColumnField, radarEntityColumnSelect,
     radarEntityValueField, radarEntityValueSelect, radarModeField, radarModeSelect, refLineField, refLineSelect,
-    refValueField, refValueInput, renderTimeEl, retryConnectBtn, rowCountEl, saveBookmarkBtn, seriesField,
+    refValueField, refValueInput, renderTimeEl, reportNameBtn, reportNameTextEl, retryConnectBtn, rowCountEl, saveBookmarkBtn, seriesField,
     seriesLabel, seriesSelect, settingsBtn, settingsCloseBtn, settingsModal, sharedReadOnlyWarning, showPctCheckbox,
     showPctField, smallMultiplesCheckbox, smallMultiplesField, sortField, sortSelect, sparklineCheckbox,
     sparklineField, stackField, stackPercentCheckbox, stackPercentField, stackedCheckbox, startColumnField,
