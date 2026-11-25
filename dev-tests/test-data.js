@@ -2766,8 +2766,11 @@ const SAMPLE_TIME_SERIES = [
   // quel que soit l'ordre des colonnes, le prix passe après le montant
   assert.deepStrictEqual(measureOrder(['Region', 'Produit', 'PrixUnitaire', 'Montant']), ['Montant', 'PrixUnitaire']);
   assert.deepStrictEqual(measureOrder(['Region', 'Produit', 'Montant', 'PrixUnitaire']), ['Montant', 'PrixUnitaire']);
-  assert.deepStrictEqual(measureOrder(['Region', 'Produit', 'PrixUnitaire', 'Quantite', 'Montant']), ['Quantite', 'Montant', 'PrixUnitaire']);
-  assert.deepStrictEqual(measureOrder(['Region', 'Produit', 'Quantite', 'PrixUnitaire', 'Montant']), ['Quantite', 'Montant', 'PrixUnitaire']);
+  // (depuis le dictionnaire des noms de colonnes, 25/11/2026 : un « Montant » passe devant une « Quantité », quel que soit l'ordre des colonnes)
+  assert.deepStrictEqual(measureOrder(['Region', 'Produit', 'PrixUnitaire', 'Quantite', 'Montant']), ['Montant', 'Quantite', 'PrixUnitaire']);
+  assert.deepStrictEqual(measureOrder(['Region', 'Produit', 'Quantite', 'PrixUnitaire', 'Montant']), ['Montant', 'Quantite', 'PrixUnitaire']);
+  // des noms qui ne disent rien : l'ordre des colonnes départage, comme avant
+  assert.deepStrictEqual(measureOrder(['Region', 'Produit', 'PrixUnitaire', 'Qa', 'Mb'], { Qa: (i) => 10 + (i * 7) % 23, Mb: (i) => (10 + (i * 7) % 23) * (9.5 + (i % 5) * 3.25) }), ['Qa', 'Mb', 'PrixUnitaire']);
   // un montant avec des retours (négatifs) et des cases vides passe encore avant le prix
   assert.deepStrictEqual(measureOrder(['Region', 'Produit', 'PrixUnitaire', 'Montant'], { Montant: (i) => (i % 7 === 0 ? -50 : 100 + i) }), ['Montant', 'PrixUnitaire']);
   assert.deepStrictEqual(measureOrder(['Region', 'Produit', 'PrixUnitaire', 'Montant'], { Montant: (i) => (i % 10 === 0 ? '' : 100.5 + i * 1.7) }), ['Montant', 'PrixUnitaire']);
@@ -2777,7 +2780,7 @@ const SAMPLE_TIME_SERIES = [
   // les suggestions de l'accueil et le préremplissage du formulaire suivent : le montant, additionné
   for (const order of [['Region', 'Produit', 'PrixUnitaire', 'Montant'], ['Region', 'Produit', 'Quantite', 'PrixUnitaire', 'Montant']]) {
     const rows = table(order);
-    const first = order.indexOf('Quantite') === -1 ? 'Montant' : 'Quantite';
+    const first = 'Montant'; // même avec une « Quantité » avant lui : le nom d'un montant le met en tête (dictionnaire des noms de colonnes)
     const sugg = advice.suggestTiles(rows, order);
     assert.ok(sugg.length >= 3);
     sugg.forEach((x) => assert.notStrictEqual(x.tileData.measure, 'PrixUnitaire', x.type + ' : jamais le prix unitaire en vedette'));

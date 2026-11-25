@@ -13,13 +13,16 @@
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
-    module.exports = factory(require('./data.js'), require('./advice-insights.js'));
+    module.exports = factory(require('./data.js'), require('./advice-insights.js'), require('./advice-names.js'));
   } else {
     root.GristBI = root.GristBI || {};
-    root.GristBI.adviceTypesGrid = factory(root.GristBI.data, root.GristBI.adviceInsights);
+    root.GristBI.adviceTypesGrid = factory(root.GristBI.data, root.GristBI.adviceInsights, root.GristBI.adviceNames);
   }
-})(typeof self !== 'undefined' ? self : this, function (data, insights) {
+})(typeof self !== 'undefined' ? self : this, function (data, insights, names) {
   'use strict';
+
+  // Le DICTIONNAIRE des noms (js/advice-names.js) complète l'expression régulière : il reconnaît aussi les fautes de frappe et les noms collés.
+  const nameHas = (name, tag) => !!(names && names.hasTag && names.hasTag(String(name), tag));
 
   // La carte de chaleur garde l'intention « croisement » du tableau croisé ; le soleil dit comment un total est construit ; l'objectif
   // (progression, chiffre clé avec cible) répond à « où en est-on ? ».
@@ -46,6 +49,7 @@
   // dépasse son budget y paraîtrait « atteint », une progression dit « plus c'est haut, mieux c'est ». Indice de NOM, jamais seul : l'atteinte
   // globale (somme des valeurs / somme des cibles) doit rester plausible (de 20 % à 500 %), sinon ce n'est pas la cible de cette mesure.
   const TARGET_NAME_RE = /(^|[^a-zà-ÿ])(objectifs?|cibles?|targets?|goals?|quotas?|attendus?|expected)([^a-zà-ÿ]|$)/i;
+  const isTargetName = (name) => TARGET_NAME_RE.test(name) || nameHas(name, 'target');
   const TARGET_MIN_FILLED = 30;
   const TARGET_MIN_REACH = 0.2;
   const TARGET_MAX_REACH = 5;
@@ -270,10 +274,10 @@
   function targetPair(ctx, core) {
     if (ctx.targetPairCache !== undefined) return ctx.targetPairCache;
     ctx.targetPairCache = null;
-    const target = ctx.measures.find((p) => isNumberColumn(p) && TARGET_NAME_RE.test(p.id) && p.negatives === 0 && p.filled >= TARGET_MIN_FILLED);
+    const target = ctx.measures.find((p) => isNumberColumn(p) && isTargetName(p.id) && p.negatives === 0 && p.filled >= TARGET_MIN_FILLED);
     if (!target) return null;
     let best = null;
-    ctx.measures.filter((p) => isNumberColumn(p) && p.id !== target.id && !TARGET_NAME_RE.test(p.id) && p.negatives === 0).forEach((actual) => {
+    ctx.measures.filter((p) => isNumberColumn(p) && p.id !== target.id && !isTargetName(p.id) && p.negatives === 0).forEach((actual) => {
       const aggFn = core.aggFor(actual);
       const value = data.aggregateSingle(ctx.insightRows, actual.id, aggFn);
       const goal = data.aggregateSingle(ctx.insightRows, target.id, aggFn);

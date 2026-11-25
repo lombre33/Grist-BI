@@ -1,12 +1,12 @@
 /*
- * « Ajouter une page entière » (js/advice-pages.js, niveau 3d-2 des suggestions, 25/11/2026), jugé sur les 18 tables du corpus
+ * « Ajouter une page entière » (js/advice-pages.js, niveau 3d-2 des suggestions, 25/11/2026), jugé sur les 19 tables du corpus
  * (dev-tests/lib/advice-corpus.js) et sur des tableaux fabriqués pour UN défaut :
  *
  *   node dev-tests/test-advice-pages.js
  *
  * Huit sortes d'essais :
  *  1. ÉLIGIBILITÉ : un tableau de bord vide ou une note seule n'ont rien à compléter, « évolution » seulement avec une date, jamais sans ligne ;
- *  2. JUSTESSE : sur 18 tables x 3 tableaux de bord de départ, aucune visualisation proposée ne pose une question déjà posée (ni avec le tableau de
+ *  2. JUSTESSE : sur 19 tables x 3 tableaux de bord de départ, aucune visualisation proposée ne pose une question déjà posée (ni avec le tableau de
  *     bord, ni avec une autre de la même page — recalculé par une boucle indépendante de `questionKeys`), au moins trois, des visualisations du
  *     modèle dans son ordre, deux propositions au plus, la plus fournie d'abord ;
  *  3. PORTES : trois visualisations nouvelles passent, deux non ; la moitié du modèle (un modèle de huit tuiles en exige quatre) ; le nom d'une page
@@ -134,7 +134,7 @@ let totalChecks = 0;
     });
   });
   assert.ok(totalProposals >= 25, 'le corpus produit de vraies propositions : ' + totalProposals);
-  console.log(`OK justesse — 18 tables x 3 tableaux de bord de départ, ${totalProposals} propositions, ${totalChecks} visualisations vérifiées : aucune question déjà posée, ni deux fois la même, dans l'ordre du modèle`);
+  console.log(`OK justesse — 19 tables x 3 tableaux de bord de départ, ${totalProposals} propositions, ${totalChecks} visualisations vérifiées : aucune question déjà posée, ni deux fois la même, dans l'ordre du modèle`);
 }
 
 // ---------------------------------------------------------------------------------------------------------------------

@@ -20,13 +20,16 @@
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
-    module.exports = factory(require('./data.js'), require('./advice-insights.js'), require('./advice-types-time.js'), require('./advice-types-grid.js'));
+    module.exports = factory(require('./data.js'), require('./advice-insights.js'), require('./advice-types-time.js'), require('./advice-types-grid.js'), require('./advice-names.js'));
   } else {
     root.GristBI = root.GristBI || {};
-    root.GristBI.adviceTypes = factory(root.GristBI.data, root.GristBI.adviceInsights, root.GristBI.adviceTypesTime, root.GristBI.adviceTypesGrid);
+    root.GristBI.adviceTypes = factory(root.GristBI.data, root.GristBI.adviceInsights, root.GristBI.adviceTypesTime, root.GristBI.adviceTypesGrid, root.GristBI.adviceNames);
   }
-})(typeof self !== 'undefined' ? self : this, function (data, insights, time, grid) {
+})(typeof self !== 'undefined' ? self : this, function (data, insights, time, grid, names) {
   'use strict';
+
+  // Le DICTIONNAIRE des noms (js/advice-names.js) complète l'expression régulière : il reconnaît aussi les fautes de frappe et les noms collés.
+  const nameHas = (name, tag) => !!(names && names.hasTag && names.hasTag(String(name), tag));
 
   // Intention de chaque type (voir js/advice.js:INTENT_BY_TYPE) : le Pareto déclare la sienne (`concentrate`) au cas par cas, c'est un
   // `combo` comme le graphique à deux mesures.
@@ -162,10 +165,13 @@
   }
 
   // Histogramme : comment se répartissent les valeurs d'une colonne numérique (une vraie mesure, pas un rang ni une note de 1 à 5).
+  const SECOND_MEASURE_STEP = 0.8; // le même pas que js/advice.js (7 - i x 0,8 pour le chiffre clé, 9 - i x 0,8 pour la courbe)
   function histogramCandidates(rows, ctx, opts, core) {
-    return realMeasures(ctx).filter(spreadable).slice(0, 2).map((p) => core.candidate({
+    return realMeasures(ctx).filter(spreadable).slice(0, 2).map((p, i) => core.candidate({
       type: 'histogram',
-      score: 5.5, // un regard de plus sur une colonne, jamais avant le chiffre clé : il doit avoir un fait à dire pour passer devant
+      // Un regard de plus sur une colonne, jamais avant le chiffre clé : il doit avoir un fait à dire pour passer devant. La 2e mesure passe derrière la 1re
+      // (comme le chiffre clé, les barres et la courbe) : la répartition du salaire avant celle de l'ancienneté.
+      score: 5.5 - i * SECOND_MEASURE_STEP,
       measures: [p.id],
       tileData: { type: 'histogram', dimension: '', measure: p.id, title: core.resolveTitle(opts, 'tileTitle.histogram', { measure: p.id }, p.id) },
       titleKey: 'tileTitle.histogram',
@@ -237,7 +243,7 @@
   // ses étapes ont des tailles différentes à ranger (voir STAGE_NAME_RE).
   function funnelCandidates(rows, ctx, opts, core) {
     if (!ctx.countColumn) return [];
-    const stage = ctx.profiles.find((p) => textGroup(p) && p.role === 'category' && !p.timeLike && STAGE_NAME_RE.test(p.id)
+    const stage = ctx.profiles.find((p) => textGroup(p) && p.role === 'category' && !p.timeLike && (STAGE_NAME_RE.test(p.id) || nameHas(p.id, 'stage'))
       && p.distinct >= FUNNEL_MIN_STAGES && p.distinct <= FUNNEL_MAX_STAGES);
     if (!stage || !insights.funnelStats(core.groupsFor(ctx, stage.id, ctx.countColumn, 'count'))) return [];
     const vars = { dimension: stage.id };

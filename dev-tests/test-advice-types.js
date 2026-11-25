@@ -82,9 +82,11 @@ const resolve = (s, lang) => { i18n.setLang(lang); const text = i18n.t(s.reasonK
 
   const resultat = suggest(table('resultat'));
   const w = of(resultat, 'waterfall');
-  assert.strictEqual(w.length, 1, 'une cascade des postes de recettes et de dépenses');
-  assert.deepStrictEqual([w[0].tileData.dimension, w[0].tileData.measure, w[0].tileData.aggFn], ['Poste', 'Montant', 'sum']);
-  assert.strictEqual(w[0].intent, 'change');
+  // La cascade des postes, et — depuis que le nom « Mois » (1 à 12) le fait lire comme un repère du temps — celle des mois, qui ne remplace pas la première.
+  assert.deepStrictEqual(w.map((x) => x.tileData.dimension).sort(), ['Mois', 'Poste'], 'une cascade des postes de recettes et de dépenses, puis celle des mois');
+  const poste = w.find((x) => x.tileData.dimension === 'Poste');
+  assert.deepStrictEqual([poste.tileData.dimension, poste.tileData.measure, poste.tileData.aggFn], ['Poste', 'Montant', 'sum']);
+  assert.strictEqual(poste.intent, 'change');
   // Jamais de cascade sans baisse : les montants de la compta changent de signe LIGNE par ligne, mais chaque catégorie, additionnée, est positive.
   tables.filter((t) => t.name !== 'resultat').forEach((t) => assert.strictEqual(of(suggest(t), 'waterfall').length, 0, `${t.name} : aucune cascade`));
 
@@ -113,7 +115,10 @@ const resolve = (s, lang) => { i18n.setLang(lang); const text = i18n.t(s.reasonK
   assert.ok(hist('tickets').includes('Duree_h') && !hist('tickets').includes('Satisfaction'), 'une durée, pas une satisfaction de 1 à 5');
 
   // Boîtes : seulement quand les groupes se distinguent ou ont des valeurs hors norme ; jamais des groupes de moins de 5 lignes.
-  ['rh', 'tickets', 'compta', 'crm', 'commandes'].forEach((name) => assert.strictEqual(of(suggest(table(name)), 'box').length, 0, `${name} : des groupes qui se ressemblent, pas de boîtes`));
+  // (La mesure que chaque table a été fabriquée pour montrer : une autre colonne, comme l'ancienneté de `rh` que son nom fait désormais lire comme une vraie
+  // mesure, peut avoir par hasard des médianes un peu écartées.)
+  const MAIN_MEASURE = { rh: 'Salaire', tickets: 'Duree_h', compta: 'Montant', crm: 'Montant', commandes: 'Montant' };
+  Object.keys(MAIN_MEASURE).forEach((name) => assert.strictEqual(of(suggest(table(name)), 'box').filter((s) => s.tileData.measure === MAIN_MEASURE[name]).length, 0, `${name} : des groupes qui se ressemblent, pas de boîtes`));
   const boxEnquete = of(suggest(table('enquete')), 'box');
   assert.ok(boxEnquete.some((s) => s.tileData.dimension === 'Ville' && s.tileData.measure === 'Age'), 'des âges qui diffèrent d\'une ville à l\'autre');
   const few = Array.from({ length: 30 }, (_, i) => ({ Groupe: 'G' + (i % 10), Valeur: (i % 10) * 100 + (i % 3) })); // 3 lignes par groupe
@@ -167,7 +172,7 @@ const resolve = (s, lang) => { i18n.setLang(lang); const text = i18n.t(s.reasonK
 
   // Cascade (resultat, Poste x Montant) : hausses, baisses, solde.
   const resultat = table('resultat');
-  const w = of(suggest(resultat), 'waterfall')[0];
+  const w = of(suggest(resultat), 'waterfall').find((x) => x.tileData.dimension === 'Poste');
   const sums = groupsOf(resultat.rows, 'Poste', 'Montant', 'sum');
   const gain = sums.filter((g) => g.value > 0).reduce((a, g) => a + g.value, 0);
   const loss = -sums.filter((g) => g.value < 0).reduce((a, g) => a + g.value, 0);
@@ -411,7 +416,7 @@ const resolve = (s, lang) => { i18n.setLang(lang); const text = i18n.t(s.reasonK
   assert.ok(source.split('\n').length < 600, 'moins de 600 lignes');
   const index = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const at = (name) => index.indexOf(`<script src="js/${name}"></script>`);
-  assert.ok(at('advice-insights.js') > 0 && at('advice-insights.js') < at('advice-types.js') && at('advice-types.js') < at('advice.js'), 'ordre de chargement : insights, types, advice');
+  assert.ok(at('advice-names.js') > 0 && at('advice-names.js') < at('advice-types.js') && at('advice-insights.js') > 0 && at('advice-insights.js') < at('advice-types.js') && at('advice-types.js') < at('advice.js'), 'ordre de chargement : noms et insights, types, advice');
   const harness = fs.readFileSync(path.join(__dirname, 'harness.html'), 'utf8');
   assert.ok(harness.includes('../js/advice-types.js'), 'le harnais charge aussi le module');
   console.log(`OK robustesse — cellules vides, mesure vide, 300 000 lignes en ${elapsed} ms, générateur isolé, déterministe, fichier pur sans texte en dur`);

@@ -184,6 +184,17 @@ function build() {
       return { id: i + 1, Ticket: 'S-' + (i + 1), Equipe: equipe, Type: (equipe === 'Delta' && r() < 0.5) ? 'Incident' : pick(['Bug', 'Question', 'Demande', 'Incident', 'Autre']) };
     }));
   }
+  { // Boutique : des colonnes que seul leur NOM distingue (niveau « noms de colonnes », 25/11/2026) — une semaine numérotée de 1 à 52, un code postal et un
+    // téléphone ÉCRITS EN NOMBRES, une quantité de 1 à 5, un prix unitaire, un statut codé 1 à 4 : sans leur nom, rien n'empêche de les additionner.
+    const r = rng(31); const pick = (a) => a[Math.floor(r() * a.length)];
+    add('boutique', Array.from({ length: 480 }, (_, i) => {
+      const quantite = 1 + Math.floor(r() * 5);
+      const prix = Math.round((5 + r() * 195) * 100) / 100;
+      return { id: i + 1, Semaine: 1 + (i % 52), Ville: pick(['Lyon', 'Lille', 'Nantes', 'Brest', 'Dijon']), Code_postal: pick([69001, 59000, 44000, 29200, 21000]),
+        Telephone: 600000000 + Math.floor(r() * 99999999), Client: 'Client ' + (1 + Math.floor(r() * 90)), Canal: pick(['Web', 'Magasin', 'Téléphone']),
+        Quantite: quantite, Prix_unitaire: prix, Montant_HT: Math.round(quantite * prix * 100) / 100, Statut: 1 + Math.floor(r() * 4) };
+    }));
+  }
   return sets;
 }
 
