@@ -1475,6 +1475,7 @@ td.pivot-cell:not(.pivot-cell-empty):not(.pivot-total-cell):hover { background: 
 /* Étape « Choisir » : une carte par type de visualisation. */
 .type-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .type-card {
+  position: relative;
   display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
   padding: 10px 12px; min-height: 76px;
   border: var(--bw, 1px) solid var(--border-strong);
@@ -1485,6 +1486,14 @@ td.pivot-cell:not(.pivot-cell-empty):not(.pivot-total-cell):hover { background: 
   transition: background 0.12s var(--ease), border-color 0.12s var(--ease);
 }
 .type-card:hover { background: var(--surface-sunken); border-color: var(--text-muted); }
+/* « Recommandé » : une pastille en haut à droite de la carte, jamais la seule information (l'infobulle dit pourquoi, le nom du type reste là). */
+.type-card-recommended { border-color: var(--accent); }
+.type-card-badge {
+  position: absolute; top: 8px; right: 8px;
+  padding: 1px 8px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent-ink);
+  font-size: 11px; font-weight: 600; line-height: 1.5;
+}
 .type-card .icon { width: 18px; height: 18px; color: var(--accent-ink); }
 .type-card-name { font-size: 13px; font-weight: 600; }
 .type-card-advice { font-size: 11.5px; line-height: 1.35; color: var(--text-secondary); }

@@ -246,6 +246,47 @@ async function scenario(browser, origin, { name, url, framed }) {
     if (notes.length === notesBefore) problems.push('contrôle de l\'annulation : une réponse annulée par la page n\'a pas été relevée comme telle');
     else verified.push('réponse annulée tolérée');
     await frame.waitForTimeout(200);
+
+    // 5. Le panneau « Ajouter une visualisation » (niveau 3 des suggestions) dans la vraie page, sous sa politique, avec de vrais clics : la liste
+    // « Pour compléter ce tableau de bord » apparaît après le calcul différé, les types qu'elle utilise portent le badge « Recommandé » (jamais une
+    // carte grisée), « Ajouter » pose UNE tuile, la liste se recalcule et le focus reste dans le panneau, l'annonce est écrite.
+    await frame.evaluate(() => {
+      if (document.body.dataset.mode !== 'edit') document.getElementById('mode-toggle').click();
+      GristBI.openTilePanel({ step: 'choose' });
+    });
+    const listed = await frame.waitForSelector('#tile-complete-list button[data-complete]', { state: 'visible', timeout: 8000 }).then(() => true, () => false);
+    if (!listed) problems.push('« Pour compléter » : aucune carte affichée après l\'ouverture du panneau');
+    else {
+      const before = await frame.evaluate(() => ({
+        tiles: GristBI.store.getState().tiles.length,
+        cards: document.querySelectorAll('#tile-complete-list .complete-card').length,
+        badges: Array.from(document.querySelectorAll('.type-card-badge')).map((b) => ({ type: b.parentElement.dataset.type, text: b.textContent, disabled: b.parentElement.getAttribute('aria-disabled') === 'true', title: b.parentElement.title })),
+        offList: Array.from(document.querySelectorAll('.type-card-recommended')).filter((c) => !c.querySelector('.type-card-badge')).length,
+      }));
+      if (before.cards < 1 || before.cards > 3) problems.push('« Pour compléter » : ' + before.cards + ' cartes (1 à 3 attendues)');
+      if (!before.badges.length) problems.push('badge « Recommandé » : aucun type recommandé alors que la liste propose des tuiles');
+      if (before.badges.some((b) => !b.text || b.disabled || !b.title)) problems.push('badge « Recommandé » : texte, raison en infobulle ou carte grisée : ' + JSON.stringify(before.badges));
+      if (before.offList) problems.push('badge « Recommandé » : une carte porte la classe sans la pastille');
+      await frame.click('#tile-complete-list button[data-complete="0"]');
+      await frame.waitForFunction((n) => GristBI.store.getState().tiles.length === n + 1, before.tiles, { timeout: 5000 }).catch(() => {});
+      await frame.waitForTimeout(600);
+      const after = await frame.evaluate(() => {
+        const active = document.activeElement;
+        return {
+          tiles: GristBI.store.getState().tiles.length,
+          live: document.getElementById('tile-complete-live').textContent,
+          focusInPanel: !!(active && active.closest && active.closest('#tile-panel')),
+          focusTag: active ? active.tagName : '',
+        };
+      });
+      if (after.tiles !== before.tiles + 1) problems.push('« Ajouter » : ' + before.tiles + ' -> ' + after.tiles + ' tuiles (une seule attendue)');
+      if (!after.live) problems.push('« Ajouter » : aucune annonce écrite');
+      if (!after.focusInPanel || after.focusTag === 'BODY') problems.push('« Ajouter » : le focus a quitté le panneau (' + after.focusTag + ')');
+      await frame.evaluate(() => GristBI.closeTilePanel(false));
+      const closed = await frame.evaluate(() => ({ hidden: document.getElementById('tile-complete').hidden, badges: document.querySelectorAll('.type-card-badge').length }));
+      if (!closed.hidden || closed.badges) problems.push('panneau fermé : la liste ou des badges restent (' + JSON.stringify(closed) + ')');
+      if (!problems.some((p) => /Pour compléter|Recommandé|Ajouter|panneau fermé/.test(p))) verified.push('panneau « Compléter » : liste, ' + before.badges.length + ' badges, un ajout, focus, fermeture');
+    }
   } catch (e) {
     problems.push('essai interrompu : ' + String((e && e.message) || e).slice(0, 240));
   } finally {
