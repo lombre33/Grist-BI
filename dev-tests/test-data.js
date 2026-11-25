@@ -3882,9 +3882,11 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
         { id: 3, Region: 'Sud', Produit: 'Stylo', Montant: 30 }, { id: 4, Region: 'Sud', Produit: 'Cahier', Montant: 70 },
         { id: 5, Region: 'Est', Produit: 'Stylo', Montant: 90 }, { id: 6, Region: 'Est', Produit: 'Cahier', Montant: 20 }
       ];
+      // Niveau 2a (score tiré des données) : les trois régions pèsent 150/100/110, l'anneau par Région ne montre presque rien ; la barre par
+      // Produit (220 contre 140) passe devant. L'anneau reste proposé, plus loin (voir la ligne suivante).
       const types = advice.suggestTiles(t1).map((x) => x.type);
-      assert.deepStrictEqual(types, ['bar', 'kpi', 'pie']);
-      const pie = advice.suggestTiles(t1).find((x) => x.type === 'pie');
+      assert.deepStrictEqual(types, ['bar', 'kpi', 'bar']);
+      const pie = advice.suggestTiles(t1, undefined, { limit: 10 }).find((x) => x.type === 'pie');
       assert.strictEqual(pie.tileData.donut, true);
       assert.strictEqual(pie.tileData.showPct, true);
       // Montants négatifs : plus d'anneau (un camembert ne peut pas les représenter).
@@ -4188,7 +4190,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     // Aucun texte en dur + clés i18n complètes fr/en : toute clé citée par advice.js existe, toute
     // clé `advice.*` du dictionnaire est utilisée, et chaque phrase se résout sans `{variable}` orpheline.
     {
-      const source = fs.readFileSync(path.join(__dirname, '..', 'js', 'advice.js'), 'utf8');
+      const source = ['advice.js', 'advice-insights.js'].map((f) => fs.readFileSync(path.join(__dirname, '..', 'js', f), 'utf8')).join('\n');
       const used = new Set((source.match(/'advice\.[A-Za-z]+\.[A-Za-z]+'/g) || []).map((k) => k.slice(1, -1)));
       const defined = Object.keys(i18n.STRINGS).filter((k) => k.startsWith('advice.'));
       used.forEach((k) => assert.ok(i18n.STRINGS[k], 'clé i18n manquante : ' + k));

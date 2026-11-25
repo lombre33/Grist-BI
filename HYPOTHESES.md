@@ -3907,6 +3907,14 @@ Demande d'Antoine : rendre l'outil de suggestions « beaucoup beaucoup plus inte
 - **Seuils = conventions, pas mesures** : trois colonnes sœurs pour 5, 7 et 10, deux pour 20 ; 20 000 lignes lues ; trois suggestions d'emblée, neuf au plus.
 - **Limite connue** : une liste de choix est écartée, pas éclatée (compter chaque choix demanderait un changement du moteur de tuiles, qui groupe par la valeur entière de la cellule).
 
+## Suggestions de tuiles : un score tiré des données et des explications chiffrées (niveau 2a, 25/11/2026)
+
+Deuxième lot de l'intelligence des suggestions (décision d'Antoine : les trois niveaux). Chaque candidat reçoit des CHIFFRES tirés de l'échantillon réparti (`js/advice-insights.js`, `annotate` dans `js/advice.js`) : part du plus gros groupe, écart entre groupes, tendance (premier tiers contre dernier tiers), corrélation, profil des axes d'un radar, évolution du chiffre clé. Le score fixe de chaque type devient un a priori corrigé par ce que les données montrent (`score = a priori + 4 x (intérêt - 0,4)`, moins 1,5 sous un intérêt de 0,2), et la phrase d'explication cite un fait (« Nord pèse 42 % du total de Montant », « Montant augmente de 18 % entre 2024 et 2025 », « corrélation de 0,81 »).
+- **Testé** : `dev-tests/test-advice-insights.js` (statistiques sur des valeurs calculées à la main) et le bloc 7 de `dev-tests/test-advice.js` (77 suggestions du corpus recalculées par une boucle indépendante, phrases fr/en, classement d'un groupe dominant / d'une tendance nette / d'un lien net devant leur contraire, 300 000 lignes en moins de 2,5 s) ; six mutations vues. Accueil vérifié dans Chromium contre le faux Grist.
+- **Honnêteté des chiffres** : jamais un total (l'échantillon le fausserait), seulement des parts, rapports, variations et corrélations ; une valeur vide est ignorée, jamais comptée pour 0 ; un graphique dont l'explication dit « peu de différences à voir ici » est classé derrière ceux qui ont un fait à raconter, mais reste proposé à défaut d'autre chose.
+- **Seuils = conventions, pas mesures** : 30 % de variation pour une tendance « nette », 1,25 de rapport pour dire « x fois plus élevé », 0,2 pour « rien à montrer », 6 paires pour une corrélation, 1,5 point de pénalité. Les étiquettes `true`/`false` d'une colonne booléenne restent celles du graphique (« true pèse 83 % ») : l'explication dit ce que la tuile affiche.
+- **Limites connues** : les chiffres d'un KPI de tendance comparent la dernière clé numérique à la précédente (une dernière année partielle donne une baisse trompeuse : c'est aussi ce qu'affiche la tuile) ; la saisonnalité n'est pas détectée (lot suivant).
+
 ## Délibérément hors scope pour ce POC (pas juste "oublié")
 
 - **Mesures façon DAX / time intelligence AU-DELÀ du sous-ensemble ciblé** (voir l'entrée dédiée
