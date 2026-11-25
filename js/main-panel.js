@@ -19,6 +19,7 @@
     setNumberFormatForm, setRadarAxes, showFormErrors, showPctCheckbox, smallMultiplesCheckbox, sortSelect,
     sparklineCheckbox, stackPercentCheckbox, stackedCheckbox, startColumnSelect, stopEditTile, store, submitTileBtn,
     targetColumnSelect, targetInput, tileAdviceEl, tileCompleteEl, tileCompleteListEl, tileCompleteLiveEl,
+    tileJoinEl, tileJoinListEl, tileJoinDoneEl,
     columnPickEl, columnProfileEl, columnUsedEl, columnEmptyEl, columnListEl, columnLiveEl, tilePanel, tilePanelCloseBtn, tilePanelTitle, tilePreviewEl,
     tilePreviewEmptyEl, tileTextInput, tileTitleInput, tileTypeSelect, trendDimensionSelect, typeGridEl,
     typeLineNameEl, updateFormFieldsForType, updateNumberFormatUI, valueLabelsCheckbox, warnPctInput, welcomeAddBtn,
@@ -27,6 +28,7 @@
   // Définies dans un fichier chargé plus tard : liaison tardive, résolue à l'appel.
   const buildTileElement = (...args) => parts.buildTileElement(...args);
   const setMode = (...args) => parts.setMode(...args);
+  const linkTable = (...args) => parts.linkTable(...args);
   Object.assign(parts, {
     closeTilePanel, flashTile, hideColumnResults, openTilePanel, refreshTilePanelTexts, renderColumnHelper, schedulePreview,
     updateAdvancedVisibility, updatePanelTexts
@@ -188,6 +190,94 @@
     flashTile(id);
     tileCompleteLiveEl.textContent = t('tilePanel.complete.added', { title: t(item.titleKey, item.titleVars) });
     renderCompletion(() => { (tileCompleteListEl.querySelector('button[data-complete]') || typeGridEl.querySelector('.type-card') || tilePanelCloseBtn).focus(); });
+  });
+
+  // « Analyser par nom plutôt que par numéro » (js/advice-join.js) : une colonne Référence de Grist ne contient que des numéros de ligne d'une autre
+  // table ; si la relier apporte des axes (une ville, un segment, un nom), le panneau le propose, avec la phrase de ce qu'elle apporte. Un clic pose
+  // la jointure (`linkTable`, la même que « Joindre une autre table » du menu Données), puis les suggestions se recalculent sur les lignes jointes.
+  // Il faut LIRE l'autre table (une lecture par table, au plus quatre) : rien n'est écrit tant que la lecture n'est pas revenue, et un résultat
+  // périmé (panneau fermé, lignes changées, autre calcul) n'écrit rien (`joinToken`). Une jointure déjà posée = aucune proposition.
+  let joinToken = 0;
+  let joinItems = [];
+  let joinShown = null; // { rows, lang } : ce que les cartes affichées ont lu (un `change` ou un recalcul identique ne refait rien)
+  let joinDone = null;  // { table, axes } : la jointure posée depuis ce panneau, redite tant que le panneau reste ouvert
+
+  function paintJoinDone() {
+    const state = store.getState();
+    // La phrase ne vaut que tant que CETTE jointure est en place (retirée par le menu Données, elle disparaît).
+    const still = !!joinDone && !!state.blend && state.blend.secondaryTableId === joinDone.table;
+    tileJoinDoneEl.textContent = still ? t('tilePanel.join.done', { table: joinDone.table, axes: joinDone.axes }) : '';
+    tileJoinDoneEl.hidden = !still;
+    return still;
+  }
+
+  function paintJoin(items) {
+    joinItems = items;
+    tileJoinListEl.textContent = '';
+    items.forEach((p, i) => {
+      const title = t(p.titleKey, p.titleVars);
+      const li = document.createElement('li');
+      li.className = 'complete-card join-card';
+      GristBI.safeHtml.setHtml(li, `<div class="complete-body"><h4 class="complete-card-title">${escapeHtml(title)}</h4>`
+        + `<p class="complete-card-reason">${escapeHtml(t(p.reasonKey, p.reasonVars))}</p>`
+        + `<button type="button" class="btn-primary" data-join="${i}" aria-label="${escapeHtml(t('tilePanel.join.addAria', { table: p.table, column: p.column }))}">${escapeHtml(t('tilePanel.join.add', { table: p.table }))}</button></div>`);
+      tileJoinListEl.appendChild(li);
+    });
+    const showDone = paintJoinDone();
+    tileJoinEl.hidden = !items.length && !showDone;
+  }
+
+  function hideJoin() {
+    joinToken++;
+    joinItems = [];
+    joinShown = null;
+    joinDone = null;
+    tileJoinListEl.textContent = '';
+    tileJoinDoneEl.textContent = '';
+    tileJoinDoneEl.hidden = true;
+    tileJoinEl.hidden = true;
+  }
+
+  // `afterPaint` (facultatif) : appelé une fois les cartes dessinées (ou retirées).
+  function renderJoin(afterPaint) {
+    const token = ++joinToken;
+    const done = () => { if (afterPaint) afterPaint(); };
+    const state = store.getState();
+    if (!GristBI.adviceJoin || S.editingTileId || !state.rows.length) { hideJoin(); done(); return; }
+    // Une jointure en place : plus rien à proposer (le store n'en porte qu'une), seule la phrase de confirmation reste, si c'est la nôtre.
+    if (state.blend) { joinItems = []; joinShown = null; tileJoinListEl.textContent = ''; const showDone = paintJoinDone(); tileJoinEl.hidden = !showDone; done(); return; }
+    const lang = GristBI.i18n.getLang();
+    const opts = { currentTable: S.currentTableId, blend: state.blend };
+    const cands = GristBI.adviceJoin.candidates(state.rows, opts);
+    if (!cands.length) { joinItems = []; joinShown = null; tileJoinListEl.textContent = ''; tileJoinEl.hidden = true; done(); return; }
+    if (joinShown && joinShown.rows === state.rows && joinShown.lang === lang) { paintJoin(joinItems); done(); return; }
+    // Des cartes d'avant (autres lignes, autre langue) se retirent d'abord : elles proposeraient, un instant, ce qui n'est plus vrai.
+    tileJoinEl.hidden = true;
+    tileJoinListEl.textContent = '';
+    const tables = GristBI.adviceJoin.tablesToLoad(cands);
+    Promise.all(tables.map((table) => GristBI.api.loadTable(table).then((res) => [table, res && res.rows], () => [table, null]))).then((pairs) => {
+      if (token !== joinToken || tilePanel.hidden || store.getState().rows !== state.rows) return; // fermé, rouvert, lignes changées ou déjà recalculé
+      const secondary = {};
+      pairs.forEach(([table, rows]) => { if (Array.isArray(rows)) secondary[table] = rows; });
+      const result = GristBI.adviceJoin.propose(state.rows, secondary, opts);
+      joinShown = { rows: state.rows, lang };
+      paintJoin(result.proposals);
+      done();
+    });
+  }
+
+  tileJoinListEl.addEventListener('click', (evt) => {
+    const btn = evt.target.closest('button[data-join]');
+    const item = btn && joinItems[Number(btn.dataset.join)];
+    if (!item) return;
+    btn.disabled = true;
+    linkTable(item.join).then((joined) => {
+      if (!joined) { renderJoin(); return; }
+      joinDone = { table: item.table, axes: item.reasonVars.axes };
+      // Les lignes ont changé (colonnes de l'autre table) : la phrase de confirmation prend la place des cartes, les suggestions se recalculent.
+      renderJoin();
+      renderCompletion(() => { (tileCompleteListEl.querySelector('button[data-complete]') || typeGridEl.querySelector('.type-card') || tilePanelCloseBtn).focus({ preventScroll: true }); });
+    });
   });
 
   // « Que faire avec cette colonne ? » (js/advice-column.js) : la personne choisit une colonne dans le champ à autocomplétion, on lui dit ce qu'elle est
@@ -419,6 +509,7 @@
     clearFormErrors();
     renderTypeCards();
     renderCompletion();
+    renderJoin();
     columnPickEl.value = '';
     hideColumnResults();
     updatePanelTexts();
@@ -435,6 +526,7 @@
     if (S.editingTileId) stopEditTile();
     tilePanel.hidden = true;
     hideCompletion();
+    hideJoin();
     hideColumnResults();
     columnPickEl.value = '';
     workspaceEl.classList.remove('panel-open');
@@ -493,6 +585,7 @@
     if (tilePanel.hidden) return;
     renderTypeCards();
     renderCompletion();
+    renderJoin();
     if (columnPickEl.value) renderColumnHelper();
     if (!configureStepEl.hidden) {
       renderPreview();

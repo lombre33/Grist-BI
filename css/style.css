@@ -1472,6 +1472,11 @@ td.pivot-cell:not(.pivot-cell-empty):not(.pivot-total-cell):hover { background: 
 .complete-body .btn-primary { margin-top: 4px; }
 @media (max-width: 480px) { .complete-card { grid-template-columns: minmax(0, 1fr); } .complete-preview { height: 56px; } }
 
+/* « Analyser par nom plutôt que par numéro » : mêmes cartes, sans miniature ; la phrase de confirmation prend la place des cartes une fois la table reliée. */
+.join-card { grid-template-columns: minmax(0, 1fr); }
+.tile-join-done { margin: 0; font-size: 12px; line-height: 1.45; color: var(--good-ink, var(--text-secondary)); }
+.tile-join-done[hidden] { display: none; }
+
 /* « Que faire avec cette colonne ? » : un bloc replié, mêmes cartes que « Pour compléter ». */
 .tile-column { margin: 0 0 18px; padding-bottom: 12px; border-bottom: var(--bw, 1px) solid var(--border); }
 .tile-column > summary { padding: 4px 0; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text); list-style-position: inside; }

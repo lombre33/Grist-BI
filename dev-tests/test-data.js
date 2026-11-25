@@ -4190,7 +4190,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     // Aucun texte en dur + clés i18n complètes fr/en : toute clé citée par advice.js existe, toute
     // clé `advice.*` du dictionnaire est utilisée, et chaque phrase se résout sans `{variable}` orpheline.
     {
-      const source = ['advice.js', 'advice-insights.js', 'advice-types.js', 'advice-types-time.js', 'advice-types-grid.js', 'advice-complete.js', 'advice-column.js'].map((f) => fs.readFileSync(path.join(__dirname, '..', 'js', f), 'utf8')).join('\n');
+      const source = ['advice.js', 'advice-insights.js', 'advice-types.js', 'advice-types-time.js', 'advice-types-grid.js', 'advice-complete.js', 'advice-column.js', 'advice-join.js'].map((f) => fs.readFileSync(path.join(__dirname, '..', 'js', f), 'utf8')).join('\n');
       const used = new Set((source.match(/'advice(?:\.[A-Za-z]+){2,3}'/g) || []).map((k) => k.slice(1, -1)));
       const defined = Object.keys(i18n.STRINGS).filter((k) => k.startsWith('advice.'));
       used.forEach((k) => assert.ok(i18n.STRINGS[k], 'clé i18n manquante : ' + k));

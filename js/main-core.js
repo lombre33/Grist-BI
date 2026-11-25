@@ -427,6 +427,10 @@
   const tileCompleteEl = document.getElementById('tile-complete');
   const tileCompleteListEl = document.getElementById('tile-complete-list');
   const tileCompleteLiveEl = document.getElementById('tile-complete-live');
+  // « Analyser par nom plutôt que par numéro » (étape « Choisir » du panneau, js/advice-join.js).
+  const tileJoinEl = document.getElementById('tile-join');
+  const tileJoinListEl = document.getElementById('tile-join-list');
+  const tileJoinDoneEl = document.getElementById('tile-join-done');
   // « Que faire avec cette colonne ? » (étape « Choisir » du panneau, js/advice-column.js).
   const tileColumnEl = document.getElementById('tile-column');
   const columnPickEl = document.getElementById('tile-column-pick');
@@ -691,6 +695,7 @@
     startColumnSelect, store, styleOptionsEl, submitTileBtn, suggestDateHierarchyBtn, tableSelectInput,
     targetColumnField, targetColumnSelect, targetField, targetInput, thresholdsField, tileAdviceEl, tileColumnsField, tileCompleteEl, tileCompleteListEl, tileCompleteLiveEl,
     tileColumnEl, columnPickEl, columnProfileEl, columnUsedEl, columnEmptyEl, columnListEl, columnLiveEl,
+    tileJoinEl, tileJoinListEl, tileJoinDoneEl,
     tileColumnsList, tilePanel, tilePanelCloseBtn, tilePanelTitle, tilePreviewEl, tilePreviewEmptyEl, tileTextField,
     tileTextInput, tileTitleInput, tileTypeSelect, tilesContainer, trendDimensionSelect, trendField, typeGridEl,
     typeLineNameEl, updateBookmarkBtn, valueLabelsCheckbox, valueLabelsField, viewChipEl, viewChipLeaveBtn,
