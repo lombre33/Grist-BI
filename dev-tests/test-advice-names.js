@@ -327,7 +327,8 @@ const EXACT = {
   const suggestions = (rows) => advice.suggestTiles(rows, undefined, { limit: 40, columnInfo: boutique.info || {} });
   const tiles = suggestions(boutique.rows).map((s) => s.tileData);
   tiles.forEach((t) => {
-    assert.ok(!['Telephone', 'Code_postal', 'Semaine'].includes(t.measure), `jamais « ${t.measure} » en mesure`);
+    // (Un dénombrement n'a pas de mesure : sa colonne n'est qu'un nom, celle d'une clé par ligne.)
+    assert.ok(t.aggFn === 'count' || !['Telephone', 'Code_postal', 'Semaine'].includes(t.measure), `jamais « ${t.measure} » en mesure`);
     assert.ok(!(t.measure === 'Prix_unitaire' && t.aggFn === 'sum'), 'un prix unitaire n\'est jamais additionné');
     if (['bar', 'pie', 'treemap', 'line', 'funnel', 'waterfall'].includes(t.type)) assert.notStrictEqual(t.dimension, 'Telephone', 'jamais un téléphone en axe');
   });
@@ -347,7 +348,7 @@ const EXACT = {
   assert.deepStrictEqual(shape(rename(boutique.rows, TYPOS), reverse(TYPOS)), base, 'la même table avec des fautes de frappe : les mêmes suggestions');
   const ENGLISH = { Semaine: 'Week', Ville: 'City', Code_postal: 'Zip', Telephone: 'Phone', Client: 'Customer', Canal: 'Channel', Quantite: 'Quantity', Prix_unitaire: 'Unit_price', Montant_HT: 'Amount_excl_tax', Statut: 'Status' };
   assert.deepStrictEqual(shape(rename(boutique.rows, ENGLISH), reverse(ENGLISH)), base, 'la même table en anglais : les mêmes suggestions');
-  const UPPER = {}; Object.keys(boutique.rows[0]).forEach((k) => { UPPER[k] = k.toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); });
+  const UPPER = {}; Object.keys(boutique.rows[0]).forEach((k) => { UPPER[k] = k === 'id' ? k : k.toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); });
   assert.deepStrictEqual(shape(rename(boutique.rows, UPPER), reverse(UPPER)), base, 'la même table en majuscules : les mêmes suggestions');
   console.log(`OK suggestions — table « boutique » : rôles par le nom (semaine = repère du temps, téléphone = identifiant, code postal = catégorie, quantité 1 à 5 = vraie mesure), ${tiles.length} suggestions sans absurdité, la même table avec des fautes, en anglais et en majuscules donne les mêmes`);
 

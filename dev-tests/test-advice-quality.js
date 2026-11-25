@@ -1,5 +1,5 @@
 /*
- * Le SCORE DE QUALITÉ des suggestions de tuiles (niveau 3d-3, 25/11/2026), rejoué sur les 19 tables du corpus :
+ * Le SCORE DE QUALITÉ des suggestions de tuiles (niveau 3d-3, 25/11/2026), rejoué sur les 20 tables du corpus :
  *
  *   node dev-tests/test-advice-quality.js
  *   ADVICE_QUALITY_JS=/chemin/vers/un/autre/js node dev-tests/test-advice-quality.js   (score une autre version du code, sans rien vérifier)

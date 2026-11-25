@@ -572,14 +572,30 @@
     return (opts && typeof opts.t === 'function') ? opts.t(key, vars) : fallback;
   }
 
-  function measureOptions(ctx) {
+  // Un FLUX de choses qui ont un état (tickets, tâches, candidatures, opportunités) : une clé par ligne ET un axe qui s'appelle statut, priorité,
+  // étape (le dictionnaire de `js/advice-names.js` classe étape, phase et stade parmi les statuts)… La première question est « combien par état ? », avant même la moyenne d'une note : le dénombrement entre alors parmi les mesures
+  // (`withCount`, réservé à la construction des suggestions : les types spécialisés gardent leur propre choix de mesure). Sans cet axe-là, compter
+  // les lignes ne dit rien de plus que les mesures déjà proposées.
+  const STATE_KINDS = new Set(['status', 'level']);
+  function isStateAxis(p) { return STATE_KINDS.has(p.sem); }
+  function entityRows(ctx) {
+    return ctx.profiles.some((p) => p.role === 'identifier') && ctx.categories.some(isStateAxis);
+  }
+
+  function measureOptions(ctx, withCount) {
     // Un numéro de mois, de semaine ou de jour (petit entier dense répété sur de nombreuses lignes) n'est pas une quantité : « Mois par
     // Poste » ou « Mois pèse 17 % du total » n'ont aucun sens. Il ne sert de mesure que s'il n'y a rien d'autre à mesurer.
     const real = ctx.measures.filter((p) => !p.ordinal);
     const options = (real.length ? real : ctx.measures).slice(0, 2).map((p) => ({ column: p.id, aggFn: aggFor(p), count: false, profile: p }));
-    if (!options.length && ctx.countColumn) options.push({ column: ctx.countColumn, aggFn: 'count', count: true, profile: null });
+    if (ctx.countColumn && (!options.length || (withCount && entityRows(ctx)))) {
+      // Dernière de la liste, mais comptée comme la DEUXIÈME pour le score de ses tuiles (`slot`) : elle ne fait pas reculer les vraies mesures.
+      options.push({ column: ctx.countColumn, aggFn: 'count', count: true, profile: null, extra: options.length > 0 });
+    }
     return options;
   }
+
+  // Rang d'une option de mesure pour la pénalité de score (0,8 par rang) : un dénombrement ajouté après les mesures vaut au plus la deuxième.
+  function slot(m, i) { return m.extra ? Math.min(i, 1) : i; }
 
   function nonNegative(m) { return m.count || (m.profile && m.profile.negatives === 0); }
 
@@ -610,7 +626,7 @@
 
   function buildCandidates(rows, ctx, opts) {
     const out = [];
-    const measureOpts = measureOptions(ctx);
+    const measureOpts = measureOptions(ctx, true);
     if (!measureOpts.length) return out;
     const dimsCat = ctx.categories.slice(0, 3);
     const title = (m, dimension) => (m.count
@@ -628,7 +644,7 @@
           : { key: 'advice.title.total', vars: { measure: m.column }, fallback: m.column });
       out.push(candidate({
         type: 'kpi',
-        score: 7 + (trendDimension ? 1 : 0) - i * 0.8,
+        score: 7 + (trendDimension ? 1 : 0) - slot(m, i) * 0.8,
         measures: [m.column],
         tileData: Object.assign(
           { type: 'kpi', dimension: '', measure: m.column, aggFn: m.aggFn,
@@ -651,7 +667,7 @@
         const ascending = !sortable || appearsAscending(rows, ctx.time.dimension);
         out.push(candidate({
           type: 'line',
-          score: 9 - i * 0.8,
+          score: 9 - slot(m, i) * 0.8,
           dims: [ctx.time.dimension],
           measures: [m.column],
           tileData: Object.assign(
@@ -677,7 +693,7 @@
         const horizontal = d.distinct >= 9 || (d.distinct >= 4 && d.maxLen > LONG_LABEL);
         out.push(candidate({
           type: 'bar',
-          score: 8 + cardinalityFit(d.distinct) - i * 0.8 - (ordinal ? 1 : 0),
+          score: 8 + cardinalityFit(d.distinct) - slot(m, i) * 0.8 - (ordinal ? 1 : 0),
           dims: [d.id],
           measures: [m.column],
           tileData: Object.assign(
@@ -700,7 +716,7 @@
         const ts = title(m, d.id);
         out.push(candidate({
           type: 'pie',
-          score: 6.5 - i * 0.8,
+          score: 6.5 - slot(m, i) * 0.8,
           dims: [d.id],
           measures: [m.column],
           tileData: { type: 'pie', dimension: d.id, measure: m.column, aggFn: m.aggFn,
@@ -1018,12 +1034,15 @@
   // quoi départager deux suggestions voisines, jamais de quoi en faire passer une qui n'a rien à montrer.
   const NAME_BONUS_MEASURE = { amount: 0.3, rate: 0.3, quantity: 0.1 };
   const NAME_BONUS_AXIS = 0.15;
+  const NAME_BONUS_COUNT_BY_STATE = 0.8;
   function nameBonus(c, ctx) {
     let bonus = 0;
     const m = c.tileData && c.tileData.measure ? ctx.byId.get(c.tileData.measure) : null;
     if (m && !c.countMeasure) bonus += NAME_BONUS_MEASURE[m.sem] || 0;
     const axis = (c.dims || []).map((d) => ctx.byId.get(d)).find((p) => p && (p.sem === 'status' || p.sem === 'category' || p.sem === 'categoryMod'));
-    return bonus + (axis ? NAME_BONUS_AXIS : 0);
+    // « Combien par statut / par priorité » : la question de base d'un flux de choses qui ont un état (voir `entityRows`).
+    const stateAxis = c.countMeasure && (c.dims || []).map((d) => ctx.byId.get(d)).some((p) => p && isStateAxis(p));
+    return bonus + (axis ? NAME_BONUS_AXIS : 0) + (stateAxis ? NAME_BONUS_COUNT_BY_STATE : 0);
   }
 
   // Choisit `limit` suggestions variées : à score proche, un type, une dimension ou une mesure déjà

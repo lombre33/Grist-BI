@@ -431,3 +431,74 @@ const find = (list, id) => list.find((p) => p.id === id);
   i18n.setLang('fr');
   console.log(`OK chiffres — ${facts} suggestions du corpus recalculées à la main (parts, tendances, corrélations), phrases résolues fr/en ; dominant, tendance, lien : dits et classés ; décimale suivant la langue ; 300 000 lignes en ${elapsed} ms`);
 }
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+// 9. « Combien par état ? » : un flux de choses qui ont un état (tickets, tâches, candidatures, opportunités) — lot du 25/11/2026
+// ---------------------------------------------------------------------------------------------------------------------------------
+{
+  const i18n = require('../js/i18n.js');
+  const countTiles = (tbl, limit) => suggest(tbl, limit || 60).map((s) => s.tileData).filter((t) => t.aggFn === 'count');
+  const hasMeasure = (tbl) => advice.analyzeColumns(tbl.rows, Object.keys(tbl.rows[0]).filter((k) => k !== 'id'), tbl.info || {}).measures.length > 0;
+
+  // (a) Des tickets (une clé par ligne, un statut, une priorité) ET des mesures (satisfaction, durée) : « combien par statut » est dans les
+  // trois premières suggestions, juste après ou avant la moyenne de la satisfaction — avant ce lot, elle n'était jamais proposée.
+  const tickets = table('tickets');
+  const top = suggest(tickets, 9);
+  const rank = top.findIndex((s) => s.type === 'bar' && s.tileData.aggFn === 'count' && s.tileData.dimension === 'Statut');
+  assert.ok(rank >= 0 && rank < 3, `nombre de tickets par statut dans les trois premières (rang ${rank + 1})`);
+  assert.ok(top.some((s) => s.type === 'kpi' && s.tileData.measure === 'Satisfaction' && s.tileData.aggFn === 'avg'), 'la moyenne de la satisfaction reste proposée');
+  assert.ok(top.some((s) => s.type === 'kpi' && s.tileData.aggFn === 'count'), 'le nombre de tickets (chiffre clé) est proposé');
+  // La colonne qui sert à compter est la clé par ligne : jamais une mesure, jamais additionnée ni moyennée.
+  countTiles(tickets).forEach((t) => assert.strictEqual(t.measure, 'Ticket', `un dénombrement compte la clé par ligne (« ${t.measure} »)`));
+  suggest(tickets, 60).forEach((s) => assert.ok(!(s.tileData.measure === 'Ticket' && s.tileData.aggFn !== 'count'), 'la clé par ligne n\'est ni additionnée ni moyennée'));
+  // « Par statut » passe devant « par assigné » : un statut est la question de base, un nom de personne non.
+  const order = suggest(tickets, 60).filter((s) => s.tileData.aggFn === 'count' && s.type === 'bar').map((s) => s.tileData.dimension);
+  assert.ok(order.indexOf('Statut') !== -1 && order.indexOf('Statut') < order.indexOf('Assigne'), `par statut avant par assigné (${order.join(', ')})`);
+
+  // (b) Les tables du corpus : un dénombrement s'ajoute aux mesures SEULEMENT pour un flux (clé par ligne + axe d'état) ; recalculé ici
+  // sur les noms de colonnes, indépendamment du module. Les tables sans mesure comptent déjà leurs lignes (contacts, parcours, support).
+  const FLOWS = ['tickets', 'projet', 'crm', 'boutique', 'candidatures'];
+  tables.forEach((tbl) => {
+    const counted = countTiles(tbl).length > 0;
+    if (!hasMeasure(tbl)) assert.ok(counted, `${tbl.name} : sans mesure, on compte les lignes`);
+    else if (FLOWS.indexOf(tbl.name) !== -1) assert.ok(counted, `${tbl.name} : un flux de choses à état, on compte aussi`);
+    else assert.ok(!counted, `${tbl.name} : des mesures et pas de flux, aucun dénombrement ajouté`);
+  });
+
+  // (c) Les deux conditions sont nécessaires, chacune retirée à son tour : sans axe d'état (statut, priorité, étape renommés), sans clé par ligne.
+  const rename = (rows, map) => rows.map((row) => { const out = {}; Object.keys(row).forEach((k) => { out[map[k] || k] = row[k]; }); return out; });
+  const noState = Object.assign({}, tickets, { rows: rename(tickets.rows, { Statut: 'Zone', Priorite: 'Groupe' }), info: {} });
+  assert.strictEqual(countTiles(noState).length, 0, 'sans axe qui dise un état : aucun dénombrement');
+  // Une priorité seule est déjà un état (pas besoin d'un statut), une étape ou un stage aussi.
+  const onlyPriority = Object.assign({}, tickets, { rows: rename(tickets.rows, { Statut: 'Zone' }), info: {} });
+  assert.ok(countTiles(onlyPriority).some((t) => t.dimension === 'Priorite'), 'une priorité seule : un état');
+  const noKey = Object.assign({}, tickets, { rows: tickets.rows.map((row) => { const out = Object.assign({}, row); delete out.Ticket; return out; }), info: {} });
+  assert.strictEqual(countTiles(noKey).length, 0, 'sans clé par ligne : aucun dénombrement');
+  // … et le même flux, dit autrement (anglais, étape), est reconnu : « Stage » et « Statut » sont des états.
+  const english = Object.assign({}, tickets, { rows: rename(tickets.rows, { Statut: 'Status', Priorite: 'Priority' }), info: {} });
+  assert.ok(countTiles(english).some((t) => t.type === 'bar' && t.dimension === 'Status'), 'Status : un état');
+  const crm = table('crm');
+  assert.ok(countTiles(crm).some((t) => t.dimension === 'Etape'), 'une étape est un état (entonnoir ou barres)');
+
+  // (d) Le dénombrement ne retouche le score d'aucune vraie mesure : chaque suggestion de mesure a le même score avec ou sans lui (l'ordre
+  // d'affichage change, puisqu'il laisse de la place aux nouvelles, mais aucune n'est rabaissée), et aucune n'a disparu.
+  const keyed = (list) => { const out = new Map(); list.filter((s) => s.tileData.aggFn !== 'count').forEach((s) => out.set(s.type + '|' + s.tileData.dimension + '|' + s.tileData.measure + '|' + s.tileData.aggFn, s.score)); return out; };
+  const withCount = keyed(suggest(tickets, 200));
+  const withoutKey = keyed(suggest(noKey, 200));
+  assert.ok(withoutKey.size >= 10, 'assez de suggestions de mesure pour comparer');
+  withoutKey.forEach((score, key) => {
+    assert.ok(withCount.has(key), `${key} : toujours proposée`);
+    assert.ok(Math.abs(withCount.get(key) - score) < 1e-9, `${key} : même score avec ou sans dénombrement (${withCount.get(key)} contre ${score})`);
+  });
+
+  // (e) Le titre d'un dénombrement le dit en français et en anglais, sans citer la clé par ligne.
+  ['fr', 'en'].forEach((lang) => {
+    i18n.setLang(lang);
+    advice.suggestTiles(tickets.rows, undefined, { limit: 60, columnInfo: tickets.info || {}, t: (key, vars) => i18n.t(key, vars) }).filter((s) => s.tileData.aggFn === 'count').forEach((s) => {
+      const text = s.tileData.title || '';
+      assert.ok(!/\bTicket\b/.test(text) && !/undefined|NaN|\{/.test(text), `titre d'un dénombrement (${lang}) : « ${text} »`);
+    });
+  });
+  i18n.setLang('fr');
+  console.log(`OK combien par état — tickets : nombre par statut au rang ${rank + 1}, chiffre clé du nombre ; ${FLOWS.length} flux du corpus comptent, les ${tables.length - FLOWS.length - 3} autres tables à mesures non ; sans état ou sans clé : rien ; mesures inchangées`);
+}
