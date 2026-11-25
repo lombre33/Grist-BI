@@ -542,7 +542,11 @@
     concentrate: 'advice.intent.concentrate',
     distribution: 'advice.intent.distribution',
     change: 'advice.intent.change',
-    stages: 'advice.intent.stages'
+    stages: 'advice.intent.stages',
+    rhythm: 'advice.intent.rhythm',
+    schedule: 'advice.intent.schedule',
+    structure: 'advice.intent.structure',
+    goal: 'advice.intent.goal'
   };
 
   function candidate(base) { return Object.assign({ dims: [], measures: [], intent: INTENT_BY_TYPE[base.type] || 'compare' }, base); }
@@ -729,8 +733,26 @@
       }));
     }
 
-    // 9. Les types spécialisés (Pareto, barres + courbe, histogramme, boîtes, cascade, entonnoir) : js/advice-types.js.
-    return out.concat(types.candidates(rows, ctx, opts, typeCore));
+    // 9. Les types spécialisés (Pareto, barres + courbe, histogramme, boîtes, cascade, entonnoir, calendrier, planning, carte de chaleur,
+    // soleil, objectif) : js/advice-types.js et les deux fichiers qu'il appelle.
+    return dropSuperseded(out.concat(types.candidates(rows, ctx, opts, typeCore)));
+  }
+
+  // Une suggestion plus précise remplace celle qu'elle englobe : le chiffre clé AVEC son objectif prend la place des chiffres clés nus de la
+  // mesure et de sa cible (le total de l'objectif n'apprend rien de plus) et des graphiques qui ne mettent face à face que ces deux colonnes
+  // (barres + courbe, nuage de points : la progression les dit mieux), la carte de chaleur celle du tableau croisé des mêmes deux colonnes, et le
+  // soleil celle du tableau croisé de deux colonnes emboîtées (région × département : chaque département n'a qu'une case, le tableau n'est
+  // qu'une diagonale vide).
+  function dropSuperseded(list) {
+    const goals = list.filter((c) => c.type === 'kpi' && c.tileData.targetColumn);
+    const crossed = list.filter((c) => c.type === 'heatmap' || c.type === 'sunburst').map((c) => c.dims.slice().sort().join('\u0001'));
+    const onlyGoalColumns = (c) => goals.some((g) => c.measures.length === 2 && c.measures.every((m) => g.measures.indexOf(m) !== -1));
+    return list.filter((c) => {
+      if (c.type === 'kpi' && !c.tileData.targetColumn) return !goals.some((g) => g.measures.indexOf(c.tileData.measure) !== -1);
+      if (c.type === 'pivot') return crossed.indexOf(c.dims.slice().sort().join('\u0001')) === -1;
+      if (c.type === 'scatter' || (c.type === 'combo' && c.tileData.comboMode !== 'pareto')) return !onlyGoalColumns(c);
+      return true;
+    });
   }
 
   // Colonnes numériques qui ressemblent à des « compétences » : au moins 3, toutes entre 0 et 100,
@@ -800,7 +822,9 @@
 
   // Ce que js/advice-types.js reçoit de ce fichier (il ne l'importe pas : pas d'import circulaire) : les fonctions communes aux candidats.
   const typeCore = {
-    candidate, resolveTitle, groupsFor, aggFor, fmt, sampleOf, appearsAscending
+    candidate, resolveTitle, groupsFor, aggFor, fmt, sampleOf, appearsAscending, measureOptions,
+    // Les valeurs par défaut d'un type (les mêmes que le formulaire), pour les colonnes de `ctx` : le planning y lit ses deux colonnes de dates.
+    defaultsFor: (type, rows, ctx) => defaultsForType(type, rows, ctx.profiles.map((p) => p.id))
   };
 
   // Une explication « Nord pèse 42 % du total de Montant » : la part d'un groupe quand les valeurs s'additionnent.
@@ -833,7 +857,7 @@
       let note = null;
       let insight = null;
 
-      if (c.type === 'kpi') {
+      if (c.type === 'kpi' && !types.handles(c)) {
         const trend = td.trendDimension ? data.computeTrend(ctx.insightRows, td.trendDimension, measure, aggFn) : null;
         if (trend) {
           facts = { deltaPct: trend.deltaPct, latestKey: trend.latestKey, previousKey: trend.previousKey };
@@ -901,7 +925,7 @@
           if (share) insight = { key: c.countMeasure ? 'advice.insight.pivotTopCount' : 'advice.insight.pivotTop', vars: { cell: share.topName, pct: insights.percentOf(share.topShare), measure } };
           else if (spread.ratio !== null && spread.ratio >= SPREAD_MIN_RATIO) insight = { key: c.countMeasure ? 'advice.insight.spreadCount' : 'advice.insight.spread', vars: { measure, high: spread.maxName, low: spread.minName, ratio: fmt(spread.ratio, ctx, 1) } };
         }
-      } else if (types.HANDLED.indexOf(c.type) !== -1) {
+      } else if (types.handles(c)) {
         const typed = types.annotate(c, ctx, typeCore);
         if (typed) { facts = typed.facts; note = typed.note; insight = typed.insight; }
       } else if (c.type === 'radar') {
@@ -970,6 +994,7 @@
     const limit = (opts && opts.limit) || 3;
     // Les chiffres (parts, tendance, corrélation…) se calculent sur l'échantillon réparti : ce sont des rapports, jamais des totaux.
     ctx.insightRows = sampleOf(rows);
+    ctx.allRows = rows; // les calculs qui ne se tirent pas au sort (jours d'un calendrier) lisent toutes les lignes
     ctx.lang = (opts && opts.lang) === 'en' ? 'en' : 'fr';
     const candidates = buildCandidates(rows, ctx, opts).map((c) => annotate(c, ctx));
     return pickDiverse(candidates, limit).map((c) => ({
@@ -1545,10 +1570,12 @@
         return span > 0 ? { kind: 'gauge', ratio: Math.max(0, Math.min(1, (value - tileData.gaugeMin) / span)) } : null;
       }
       case 'pivot':
-      case 'heatmap':
         return { kind: 'grid' };
+      case 'heatmap':
+        // Les vraies cases (la plus chaude se voit), sinon la trame d'un tableau.
+        return types.previewFor(tileData, rows, typeCore) || { kind: 'grid' };
       default:
-        // Pareto / barres + courbe, histogramme, boîtes, cascade : js/advice-types.js.
+        // Pareto / barres + courbe, histogramme, boîtes, cascade, calendrier, planning, soleil, objectif : js/advice-types.js.
         return types.previewFor(tileData, rows, typeCore);
     }
   }

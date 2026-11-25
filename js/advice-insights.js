@@ -261,6 +261,178 @@
   }
 
   // ---------------------------------------------------------------------------------------------
+  // Dates, planning, croisements, hiérarchies, objectifs (niveau 2c)
+  // ---------------------------------------------------------------------------------------------
+
+  const MS_PER_DAY = 86400000;
+
+  // Numéro du jour (jours depuis l'époque) d'une date ISO 'AAAA-MM-JJ', ou null. Aucune horloge, aucun fuseau : Date.UTC seulement.
+  function dayNumber(iso) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso));
+    if (!m) return null;
+    const t = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    return Number.isFinite(t) ? Math.round(t / MS_PER_DAY) : null;
+  }
+
+  // Jour de la semaine d'une date ISO (0 = dimanche), ou null. Le 1er janvier 1970 était un jeudi.
+  function weekdayOf(iso) {
+    const n = dayNumber(iso);
+    return n === null ? null : (((n + 4) % 7) + 7) % 7;
+  }
+
+  // Calendrier : le jour de la semaine le plus chargé et le plus calme (moyenne par jour de la semaine, en part de la semaine), et le jour
+  // le plus haut face à un jour ordinaire. `days` = [{ date, value }] (un jour par ligne, comme data.calendarDays), au moins 28 jours,
+  // valeurs jamais négatives (une part négative n'a pas de sens). Avec `additive` (somme, comptage) un jour de la période sans ligne vaut
+  // 0 (rien ne s'est passé) ; sinon (une moyenne) seuls les jours qui ont une valeur comptent. Un jour de la semaine sans AUCUN jour de
+  // valeur (le week-end d'une activité de bureau) est `emptyWorst` : sa moyenne est 0, `ratio` est alors null et `activeRatio` compare
+  // le plus chargé au plus calme des jours qui ont de l'activité. `eta2` (de 0 à 1) = la part de la variation des valeurs journalières que
+  // le jour de la semaine explique (rapport de corrélation) : sur des jours sans lien avec la semaine il vaut environ 6 / (nombre de jours),
+  // soit moins de 0,02 sur une année ; c'est lui qui dit qu'un écart de moyennes n'est pas un hasard (un rapport de 2 entre deux jours peut
+  // sortir de quelques ventes réparties au hasard).
+  function calendarStats(days, options) {
+    const additive = !options || options.additive !== false;
+    const list = (days || []).map((d) => ({ date: d.date, value: finite(d.value), wd: weekdayOf(d.date) })).filter((d) => d.value !== null && d.wd !== null);
+    if (list.length < 28 || list.some((d) => d.value < 0)) return null;
+    const sums = [0, 0, 0, 0, 0, 0, 0];
+    const present = [0, 0, 0, 0, 0, 0, 0];
+    list.forEach((d) => { sums[d.wd] += d.value; present[d.wd]++; });
+    const occurrences = [0, 0, 0, 0, 0, 0, 0];
+    const first = dayNumber(list[0].date);
+    const last = dayNumber(list[list.length - 1].date);
+    for (let n = first; n <= last; n++) occurrences[(((n + 4) % 7) + 7) % 7]++;
+    const means = sums.map((v, i) => { const base = additive ? occurrences[i] : present[i]; return base > 0 ? v / base : 0; });
+    const total = sum(means);
+    if (!(total > 0)) return null;
+    let best = 0;
+    let worst = 0;
+    means.forEach((m, i) => { if (m > means[best]) best = i; if (m < means[worst]) worst = i; });
+    // Rapport de corrélation : la variation entre jours de la semaine face à la variation totale, sur les jours de la période (un jour sans
+    // ligne compte pour 0 quand on additionne, il est absent sinon).
+    const byDay = new Map(list.map((d) => [dayNumber(d.date), d.value]));
+    const series = [];
+    if (additive) { for (let n = first; n <= last; n++) series.push([(((n + 4) % 7) + 7) % 7, byDay.get(n) || 0]); } else { list.forEach((d) => series.push([d.wd, d.value])); }
+    const grand = sum(series.map((e) => e[1])) / series.length;
+    const ssTotal = sum(series.map((e) => (e[1] - grand) * (e[1] - grand)));
+    const counts = [0, 0, 0, 0, 0, 0, 0];
+    const totals = [0, 0, 0, 0, 0, 0, 0];
+    series.forEach((e) => { counts[e[0]]++; totals[e[0]] += e[1]; });
+    const ssBetween = sum(counts.map((c, i) => (c > 0 ? c * Math.pow(totals[i] / c - grand, 2) : 0)));
+    const positive = means.filter((m) => m > 0);
+    const activeLow = Math.min.apply(null, positive);
+    const values = list.map((d) => d.value).sort((a, b) => a - b);
+    const median = quantileSorted(values, 0.5);
+    const peak = list.reduce((a, b) => (b.value > a.value ? b : a));
+    return {
+      n: list.length, bestDay: best, worstDay: worst, bestShare: means[best] / total, worstShare: means[worst] / total,
+      emptyWorst: means[worst] === 0, ratio: means[worst] > 0 ? means[best] / means[worst] : null, activeRatio: means[best] / activeLow,
+      eta2: ssTotal > 0 ? ssBetween / ssTotal : 0,
+      peakDate: peak.date, peakValue: peak.value, peakRatio: median > 0 ? peak.value / median : null, median
+    };
+  }
+
+  // Planning : combien de tâches, sur quelle durée, la plus longue, et combien se déroulent en même temps au plus. `tasks` = [{ label, start, end }]
+  // en dates ISO (data.ganttTasks) ; au moins 3 tâches valides (une fin avant le début n'en est pas une).
+  function ganttStats(tasks) {
+    const list = (tasks || []).map((t) => ({ label: String(t.label), s: dayNumber(t.start), e: dayNumber(t.end) })).filter((t) => t.s !== null && t.e !== null && t.e >= t.s);
+    if (list.length < 3) return null;
+    const durations = list.map((t) => t.e - t.s + 1);
+    const longest = list.reduce((a, b) => ((b.e - b.s) > (a.e - a.s) ? b : a));
+    const events = [];
+    list.forEach((t) => { events.push([t.s, 1]); events.push([t.e + 1, -1]); });
+    events.sort((a, b) => (a[0] - b[0]) || (a[1] - b[1])); // à jour égal, une fin libère la place avant qu'un début la prenne
+    let running = 0;
+    let overlap = 0;
+    events.forEach((e) => { running += e[1]; if (running > overlap) overlap = running; });
+    const min = Math.min.apply(null, list.map((t) => t.s));
+    const max = Math.max.apply(null, list.map((t) => t.e));
+    return {
+      n: list.length, spanDays: max - min + 1, longestName: longest.label, longestDays: longest.e - longest.s + 1,
+      medianDays: quantileSorted(durations.slice().sort((a, b) => a - b), 0.5), overlap
+    };
+  }
+
+  // Croisement : la case dont la valeur dépasse le plus ce que donneraient deux colonnes sans lien (« attendu » = total de la ligne x total
+  // de la colonne / total général). `cells` = [{ row, col, value }], valeurs jamais négatives, au moins 3 lignes et 3 colonnes ; une case
+  // dont l'attendu est sous 2 % du total n'est pas comparée (trop petite pour dire quoi que ce soit). `rowCount` (facultatif) = le nombre de
+  // lignes derrière les cases : il donne `chi2` (khi-deux d'indépendance, calculé sur les parts, donc pour toute mesure qui s'additionne),
+  // `df` (degrés de liberté) et `v` (V de Cramér, de 0 à 1) ; `significant` dit que le khi-deux dépasse 4 écarts-types au-dessus de ce
+  // que des colonnes sans lien donnent en moyenne (`df + 4 x racine(2 df)`) : sans cela, quelques dizaines de lignes tirées au hasard
+  // « montrent » une case chaude.
+  function heatLiftStats(cells, rowCount) {
+    const list = (cells || []).map((c) => ({ row: String(c.row), col: String(c.col), value: finite(c.value) })).filter((c) => c.value !== null);
+    if (list.some((c) => c.value < 0)) return null;
+    const rowSum = new Map();
+    const colSum = new Map();
+    list.forEach((c) => { rowSum.set(c.row, (rowSum.get(c.row) || 0) + c.value); colSum.set(c.col, (colSum.get(c.col) || 0) + c.value); });
+    const total = sum(Array.from(rowSum.values()));
+    if (rowSum.size < 3 || colSum.size < 3 || !(total > 0)) return null;
+    let best = null;
+    list.forEach((c) => {
+      const expected = rowSum.get(c.row) * colSum.get(c.col) / total;
+      if (!(expected / total >= 0.02)) return;
+      const lift = c.value / expected;
+      if (!best || lift > best.lift) best = { row: c.row, col: c.col, lift, share: c.value / total };
+    });
+    if (!best) return null;
+    let phi2 = 0;
+    list.forEach((c) => {
+      const expected = rowSum.get(c.row) * colSum.get(c.col) / (total * total);
+      phi2 += Math.pow(c.value / total - expected, 2) / expected;
+    });
+    // Les cases absentes (aucune ligne) comptent pour 0 : leur écart à l'attendu fait partie du khi-deux.
+    const seen = new Set(list.map((c) => `${c.row}\u0001${c.col}`));
+    rowSum.forEach((rs, row) => colSum.forEach((cs, col) => { if (!seen.has(`${row}\u0001${col}`)) phi2 += rs * cs / (total * total); }));
+    const df = (rowSum.size - 1) * (colSum.size - 1);
+    const n = finite(rowCount);
+    const chi2 = n !== null && n > 0 ? phi2 * n : null;
+    return {
+      rows: rowSum.size, cols: colSum.size, maxLift: best.lift, row: best.row, col: best.col, cellShare: best.share,
+      v: Math.sqrt(phi2 / Math.min(rowSum.size - 1, colSum.size - 1)), chi2, df,
+      significant: chi2 !== null && chi2 >= df + 4 * Math.sqrt(2 * df)
+    };
+  }
+
+  // Hiérarchie : la part du dehors la plus grosse et, dans elle, la plus grosse sous-part. `roots` = [{ name, value, children: [{ name, value }] }]
+  // (data.sunburstTree) ; au moins 2 parts au dehors, des valeurs positives.
+  function hierarchyStats(roots) {
+    const parents = (roots || []).map((r) => ({
+      name: String(r.name), value: finite(r.value),
+      children: (r.children || []).map((c) => ({ name: String(c.name), value: finite(c.value) })).filter((c) => c.value !== null && c.value > 0)
+    })).filter((p) => p.value !== null && p.value > 0);
+    if (parents.length < 2) return null;
+    const total = sum(parents.map((p) => p.value));
+    const top = parents.reduce((a, b) => (b.value > a.value ? b : a));
+    const topChild = top.children.length ? top.children.reduce((a, b) => (b.value > a.value ? b : a)) : null;
+    return {
+      parents: parents.length, parts: sum(parents.map((p) => p.children.length)), topName: top.name, topShare: top.value / total,
+      topChildName: topChild ? topChild.name : null, topChildShare: topChild ? topChild.value / top.value : null
+    };
+  }
+
+  // Objectif : l'atteinte globale (somme des valeurs / somme des objectifs), la catégorie la plus en retard et la plus avancée, en %.
+  // `rows` = [{ name, value, target }] ; un objectif nul, négatif ou absent n'a pas de pourcentage (ligne ignorée) ; au moins 2 lignes.
+  function progressStats(rows) {
+    const list = (rows || []).map((r) => ({ name: String(r.name), value: finite(r.value), target: finite(r.target) })).filter((r) => r.value !== null && r.target !== null && r.target > 0);
+    if (list.length < 2) return null;
+    const withPct = list.map((r) => Object.assign({ pct: r.value / r.target * 100 }, r));
+    const low = withPct.reduce((a, b) => (b.pct < a.pct ? b : a));
+    const high = withPct.reduce((a, b) => (b.pct > a.pct ? b : a));
+    return {
+      n: list.length, overall: sum(list.map((r) => r.value)) / sum(list.map((r) => r.target)),
+      lowName: low.name, lowPct: low.pct, highName: high.name, highPct: high.pct,
+      behind: withPct.filter((r) => r.pct < 90).length, ahead: withPct.filter((r) => r.pct >= 100).length
+    };
+  }
+
+  // Atteinte d'un objectif unique : somme des valeurs / somme des objectifs, ou null (aucun objectif positif).
+  function goalReach(values, targets) {
+    const v = (values || []).map(finite).filter((x) => x !== null);
+    const t = (targets || []).map(finite).filter((x) => x !== null);
+    const target = sum(t);
+    return v.length && t.length && target > 0 ? sum(v) / target : null;
+  }
+
+  // ---------------------------------------------------------------------------------------------
   // Notes d'intérêt (0 à 1)
   // ---------------------------------------------------------------------------------------------
 
@@ -319,6 +491,42 @@
       if (!gap) return 0;
       const fromGap = gap.gapIqr === null ? 0 : clamp01(gap.gapIqr / 2);
       return clamp01(Math.max(fromGap, clamp01(gap.outlierShare * 10), 0.15));
+    },
+    // Calendrier : la part de la variation que le jour de la semaine explique (le quart = plein), un jour sans aucune activité (0,4), un pic
+    // qui vaut plusieurs jours ordinaires (8 fois = demi-note : un pic isolé n'est pas un rythme).
+    calendar(cal) {
+      if (!cal) return 0;
+      const fromWeekday = clamp01(cal.eta2 / 0.25);
+      const fromEmpty = cal.emptyWorst && cal.eta2 >= 0.05 ? 0.4 : 0;
+      const fromPeak = cal.peakRatio === null ? 0 : clamp01((cal.peakRatio - 2) / 6) * 0.5;
+      return clamp01(Math.max(fromWeekday, fromEmpty, fromPeak));
+    },
+    // Planning : plus de tâches menées en parallèle et une tâche qui s'étire loin devant les autres = plus à lire ; trois tâches bout à
+    // bout ne disent presque rien. Jamais sous 0,3 : un planning est le bon outil pour deux colonnes de dates.
+    gantt(gantt) {
+      if (!gantt) return 0;
+      const parallel = clamp01((gantt.overlap - 1) / Math.max(1, gantt.n - 1));
+      const stretch = gantt.medianDays > 0 ? clamp01((gantt.longestDays / gantt.medianDays - 1) / 4) : 0;
+      return clamp01(0.3 + 0.5 * parallel + 0.2 * stretch);
+    },
+    // Croisement : une case qui pèse deux fois ce que le hasard donnerait = 0,5 ; trois fois = plein.
+    heat(heat) {
+      return heat ? clamp01((heat.maxLift - 1) / 2) : 0;
+    },
+    // Hiérarchie : une part du dehors qui domine (un anneau déséquilibré se lit) ; des parts égales font un soleil sans histoire.
+    hierarchy(hier) {
+      if (!hier) return 0;
+      const even = 1 / hier.parents;
+      return clamp01(0.25 + 0.75 * clamp01((hier.topShare - even) / (1 - even)));
+    },
+    // Objectif : un écart entre la catégorie la plus en retard et la plus avancée (100 points d'écart = plein) ; un objectif atteint
+    // partout n'a rien à signaler (0,3 : la progression reste le bon outil pour suivre un objectif).
+    progress(progress) {
+      return progress ? clamp01(0.3 + 0.7 * clamp01((progress.highPct - progress.lowPct) / 100)) : 0;
+    },
+    // Chiffre clé face à son objectif : loin de 100 % (en retard ou en avance) se dit ; pile dessus, un peu moins.
+    goal(reach) {
+      return reach === null ? 0 : clamp01(0.4 + Math.abs(1 - reach));
     }
   };
 
@@ -334,6 +542,23 @@
     const key = (lang === 'en' ? 'en' : 'fr') + ':' + digits;
     if (!formatters[key]) formatters[key] = new Intl.NumberFormat(lang === 'en' ? 'en' : 'fr', { maximumFractionDigits: digits, minimumFractionDigits: 0 });
     return formatters[key].format(n);
+  }
+
+  const nameFormatters = {};
+  // Nom d'un jour de la semaine (0 = dimanche) dans la langue : « mardi », « Tuesday ». Intl seulement, aucune horloge.
+  function weekdayName(index, lang) {
+    const l = lang === 'en' ? 'en' : 'fr';
+    if (!nameFormatters['w' + l]) nameFormatters['w' + l] = new Intl.DateTimeFormat(l, { weekday: 'long', timeZone: 'UTC' });
+    return nameFormatters['w' + l].format(Date.UTC(2024, 0, 7 + (((index % 7) + 7) % 7))); // le 7 janvier 2024 était un dimanche
+  }
+
+  // Un jour ISO écrit en toutes lettres dans la langue (« 9 avril 2025 », « April 9, 2025 »), ou '' si ce n'est pas une date.
+  function formatDay(iso, lang) {
+    const n = dayNumber(iso);
+    if (n === null) return '';
+    const l = lang === 'en' ? 'en' : 'fr';
+    if (!nameFormatters['d' + l]) nameFormatters['d' + l] = new Intl.DateTimeFormat(l, { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+    return nameFormatters['d' + l].format(n * MS_PER_DAY);
   }
 
   // Un coefficient de corrélation à deux décimales, jamais « 1 » pour un lien qui n'est pas parfait (0,997 s'écrit 0,99) : seule une droite
@@ -356,6 +581,7 @@
   return {
     finite, quantileSorted, shareStats, spreadStats, trendStats, correlationStats, outlierStats, skewStats, paretoStats,
     distributionStats, waterfallStats, funnelStats, boxGapStats,
-    interest, formatNumber, formatCorrelation, percentOf
+    dayNumber, weekdayOf, calendarStats, ganttStats, heatLiftStats, hierarchyStats, progressStats, goalReach,
+    interest, formatNumber, formatCorrelation, weekdayName, formatDay, percentOf
   };
 });

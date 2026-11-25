@@ -162,6 +162,81 @@
     }).join('');
   }
 
+  // Calendrier : une colonne par semaine, sept cases (du lundi au dimanche) ; plus la case est foncée, plus la valeur est haute (0 à 1) ; un jour
+  // sans ligne (null) garde la trame neutre.
+  function calendarShapes(weeks) {
+    const n = weeks.length;
+    const cw = (W - 2 * PAD) / n;
+    const ch = (H - 2 * PAD) / 7;
+    return weeks.map((week, w) => week.map((v, d) => {
+      const fill = v === null ? 'var(--border-strong)' : PALETTE[0];
+      const opacity = v === null ? 0.2 : round2(0.12 + 0.88 * v);
+      return `<rect x="${round2(PAD + w * cw + 0.5)}" y="${round2(PAD + d * ch + 0.5)}" width="${round2(cw - 1)}" height="${round2(ch - 1)}" rx="1" fill="${fill}" fill-opacity="${opacity}"/>`;
+    }).join('')).join('');
+  }
+
+  // Planning : une barre par tâche, de `left` à `left + width` (0 à 1 de l'étendue), les tâches l'une sous l'autre.
+  function ganttShapes(bars) {
+    const n = bars.length;
+    const innerW = W - 2 * PAD;
+    const bh = (H - 2 * PAD) / n;
+    return bars.map((b, i) => `<rect x="${round2(PAD + b.left * innerW)}" y="${round2(PAD + i * bh + bh * 0.18)}" width="${round2(Math.max(2, Math.min(b.width, 1 - b.left) * innerW))}" height="${round2(bh * 0.64)}" rx="1.5" fill="${PALETTE[i % 2 ? 1 : 0]}"/>`).join('');
+  }
+
+  // Carte de chaleur : une grille de cases dont l'opacité suit la valeur (0 à 1) ; une intersection sans donnée (null) reste vide.
+  function heatShapes(rowsOfValues) {
+    const rowsN = rowsOfValues.length;
+    const cols = rowsOfValues[0].length;
+    const cw = (W - 2 * PAD) / cols;
+    const rh = (H - 2 * PAD) / rowsN;
+    return rowsOfValues.map((line, r) => line.map((v, c) => {
+      const fill = v === null ? 'var(--border-strong)' : PALETTE[0];
+      const opacity = v === null ? 0.15 : round2(0.1 + 0.9 * v);
+      return `<rect x="${round2(PAD + c * cw + 0.5)}" y="${round2(PAD + r * rh + 0.5)}" width="${round2(cw - 1)}" height="${round2(rh - 1)}" rx="1" fill="${fill}" fill-opacity="${opacity}"/>`;
+    }).join('')).join('');
+  }
+
+  // Un arc d'anneau (de `from` à `to`, en tours de 0 à 1) tracé au rayon `r`, d'épaisseur `width`.
+  function ringArc(cx, cy, r, width, from, to, color, opacity) {
+    const a = from * 2 * Math.PI;
+    const b = Math.min(to, from + 0.9999) * 2 * Math.PI;
+    const [x1, y1] = arcPoint(cx, cy, r, a);
+    const [x2, y2] = arcPoint(cx, cy, r, b);
+    return `<path d="M${x1} ${y1} A${r} ${r} 0 ${b - a > Math.PI ? 1 : 0} 1 ${x2} ${y2}" fill="none" stroke="${color}" stroke-opacity="${opacity}" stroke-width="${width}"/>`;
+  }
+
+  // Soleil : le centre en parts pleines, l'anneau extérieur en sous-parts (même teinte, plus claires), toutes en part du total.
+  function ringsShapes(parents) {
+    const cx = W / 2;
+    const cy = H / 2;
+    let from = 0;
+    return parents.map((p, i) => {
+      const color = PALETTE[i % PALETTE.length];
+      let inner = ringArc(cx, cy, 13, 12, from, from + p.share, color, 1);
+      let start = from;
+      p.children.forEach((c) => {
+        inner += ringArc(cx, cy, 25, 11, start, start + c, color, 0.55);
+        start += c;
+      });
+      from += p.share;
+      return inner;
+    }).join('');
+  }
+
+  // Progression : une piste par catégorie, remplie à la part de l'objectif atteinte, de la couleur d'état (vert, orange, rouge).
+  const LEVEL_COLORS = { good: PALETTE[2], warn: PALETTE[3], bad: PALETTE[7] };
+  function progressShapes(lines) {
+    const n = lines.length;
+    const innerW = W - 2 * PAD;
+    const bh = (H - 2 * PAD) / n;
+    return lines.map((l, i) => {
+      const y = round2(PAD + i * bh + bh * 0.22);
+      const h = round2(bh * 0.56);
+      return `<rect x="${PAD}" y="${y}" width="${innerW}" height="${h}" rx="2" fill="var(--border-strong)" fill-opacity="0.35"/>`
+        + `<rect x="${PAD}" y="${y}" width="${round2(Math.max(2, l.fill * innerW))}" height="${h}" rx="2" fill="${LEVEL_COLORS[l.level] || PALETTE[0]}"/>`;
+    }).join('');
+  }
+
   // Miniature SVG (chaîne) d'un aperçu de js/advice.js:previewFor ; '' quand il n'y en a pas.
   // `opts.lang` : langue du nombre affiché sur une carte KPI.
   function previewSvg(p, opts) {
@@ -212,6 +287,21 @@
         break;
       case 'waterfall':
         body = waterfallShapes(p.steps);
+        break;
+      case 'calendar':
+        body = calendarShapes(p.weeks);
+        break;
+      case 'gantt':
+        body = ganttShapes(p.bars);
+        break;
+      case 'heat':
+        body = heatShapes(p.rows);
+        break;
+      case 'rings':
+        body = ringsShapes(p.parents);
+        break;
+      case 'progress':
+        body = progressShapes(p.rows);
         break;
       case 'value': {
         const text = new Intl.NumberFormat(lang === 'en' ? 'en-US' : 'fr-FR', { notation: 'compact', maximumFractionDigits: 1 }).format(p.value);
