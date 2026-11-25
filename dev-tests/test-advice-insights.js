@@ -301,6 +301,243 @@ const groups = (pairs) => pairs.map(([dimension, value]) => ({ dimension, value 
   console.log('OK notes d\'intérêt — dans [0 ; 1], égales = 0, plus net = plus haut, sens de la corrélation indifférent, jamais NaN');
 }
 
+// --- Niveau 2c : dates, planning, croisements, hiérarchies, objectifs --------------------------------------------------------
+
+// dayNumber / weekdayOf : fins de mois, années bissextiles, jour de la semaine (0 = dimanche).
+{
+  assert.strictEqual(I.dayNumber('1970-01-01'), 0);
+  assert.strictEqual(I.dayNumber('1970-01-02'), 1);
+  assert.strictEqual(I.dayNumber('2000-03-01') - I.dayNumber('2000-02-28'), 2, '2000 est bissextile');
+  assert.strictEqual(I.dayNumber('2100-03-01') - I.dayNumber('2100-02-28'), 1, '2100 ne l\'est pas');
+  assert.strictEqual(I.dayNumber('2024-12-31') + 1, I.dayNumber('2025-01-01'));
+  assert.strictEqual(I.dayNumber('pas une date'), null);
+  assert.strictEqual(I.dayNumber(null), null);
+  assert.strictEqual(I.weekdayOf('1970-01-01'), 4, 'un jeudi');
+  assert.strictEqual(I.weekdayOf('2024-01-07'), 0, 'un dimanche');
+  assert.strictEqual(I.weekdayOf('2025-04-09'), 3, 'un mercredi');
+  assert.strictEqual(I.weekdayOf('1969-12-31'), 3, 'avant l\'époque aussi');
+  assert.strictEqual(I.weekdayOf('x'), null);
+  console.log('OK dayNumber / weekdayOf — époque, bissextile, avant 1970, jour de la semaine, entrée invalide = null');
+}
+
+// calendarStats : calculé à la main sur cinq semaines pleines (du lundi 6 janvier au dimanche 9 février 2025).
+{
+  const span = (from, count, fn) => {
+    const out = [];
+    const start = I.dayNumber(from);
+    for (let i = 0; i < count; i++) {
+      const n = start + i;
+      const d = new Date(n * 86400000).toISOString().slice(0, 10);
+      const v = fn(I.weekdayOf(d), i);
+      if (v !== null) out.push({ date: d, value: v });
+    }
+    return out;
+  };
+  // Le mardi vaut 20, les autres jours 10.
+  const tue = I.calendarStats(span('2025-01-06', 35, (wd) => (wd === 2 ? 20 : 10)), { additive: true });
+  assert.strictEqual(tue.n, 35);
+  assert.strictEqual(tue.bestDay, 2);
+  assert.strictEqual(tue.worstDay, 0, 'à égalité, le premier jour de la liste (dimanche)');
+  close(tue.bestShare, 20 / 80, 1e-12, 'part du mardi : 20 sur 20 + 6 x 10');
+  close(tue.worstShare, 10 / 80, 1e-12);
+  close(tue.ratio, 2, 1e-12);
+  close(tue.activeRatio, 2, 1e-12);
+  assert.strictEqual(tue.emptyWorst, false);
+  close(tue.eta2, 1, 1e-9, 'le jour de la semaine explique tout : chaque jour a une seule valeur');
+  assert.strictEqual(tue.peakDate, '2025-01-07');
+  assert.strictEqual(tue.peakValue, 20);
+  close(tue.peakRatio, 2, 1e-12, 'pic 20 face à la médiane 10');
+  // Activité de bureau pendant huit semaines : rien le week-end (jours ABSENTS de la liste, comptés pour 0 quand on additionne ; il faut
+  // 28 jours AVEC une valeur, donc plus de cinq semaines).
+  const office = I.calendarStats(span('2025-01-06', 56, (wd) => (wd === 0 || wd === 6 ? null : 10)), { additive: true });
+  assert.strictEqual(office.emptyWorst, true);
+  assert.strictEqual(office.ratio, null, 'pas de rapport avec un jour à zéro');
+  assert.strictEqual(office.worstShare, 0);
+  assert.strictEqual(office.bestDay, 1, 'à égalité, le premier jour parmi les plus hauts (lundi)');
+  close(office.bestShare, 0.2, 1e-12);
+  close(office.activeRatio, 1, 1e-12, 'les jours actifs se valent');
+  close(office.eta2, 1, 1e-9, 'semaine contre week-end : tout est expliqué');
+  // Sans additionner (moyenne), les jours absents ne comptent pas : plus de variation à expliquer.
+  close(I.calendarStats(span('2025-01-06', 56, (wd) => (wd === 0 || wd === 6 ? null : 10)), { additive: false }).eta2, 0, 1e-12, 'moyennes : les jours sans ligne sont absents');
+  // Aucune variation : égal partout.
+  const flat = I.calendarStats(span('2025-01-06', 35, () => 10), { additive: true });
+  close(flat.bestShare, 1 / 7, 1e-12);
+  close(flat.activeRatio, 1, 1e-12);
+  assert.strictEqual(flat.eta2, 0);
+  assert.strictEqual(flat.emptyWorst, false);
+  // Au hasard, sans rythme : le jour de la semaine explique très peu (environ 6 / 365), très loin du seuil de 0,05 des suggestions.
+  let seed = 7;
+  const noise = I.calendarStats(span('2025-01-01', 365, () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return 50 + 100 * (seed / 4294967296); }), { additive: true });
+  assert.ok(noise.eta2 < 0.05, `bruit pur : eta2 = ${noise.eta2}`);
+  // Refus : moins de 28 jours, valeur négative, rien d'exploitable.
+  assert.strictEqual(I.calendarStats(span('2025-01-06', 27, () => 10), { additive: true }), null);
+  assert.strictEqual(I.calendarStats(span('2025-01-06', 35, (wd) => (wd === 2 ? -1 : 10)), { additive: true }), null, 'jamais une part négative');
+  assert.strictEqual(I.calendarStats(span('2025-01-06', 35, () => 0), { additive: true }), null, 'total nul');
+  assert.strictEqual(I.calendarStats(null), null);
+  assert.strictEqual(I.calendarStats(span('2025-01-06', 35, () => 10).map((d) => ({ date: d.date, value: 'x' }))), null, 'valeurs illisibles');
+  console.log('OK calendarStats — jour le plus chargé et le plus calme, part de la semaine, jours vides, eta2 (1 si tout est expliqué, bruit pur sous 0,05), refus');
+}
+
+// ganttStats : trois tâches calculées à la main.
+{
+  const tasks = [
+    { label: 'A', start: '2025-01-01', end: '2025-01-10' },
+    { label: 'B', start: '2025-01-05', end: '2025-01-20' },
+    { label: 'C', start: '2025-01-15', end: '2025-01-31' },
+    { label: 'D', start: '2025-02-10', end: '2025-02-01' } // fin avant le début : pas une tâche
+  ];
+  const g = I.ganttStats(tasks);
+  assert.strictEqual(g.n, 3, 'la tâche à fin avant début est écartée');
+  assert.strictEqual(g.spanDays, 31);
+  assert.strictEqual(g.longestName, 'C');
+  assert.strictEqual(g.longestDays, 17);
+  assert.strictEqual(g.medianDays, 16, 'durées 10, 16, 17');
+  assert.strictEqual(g.overlap, 2, 'A et B (5 au 10), B et C (15 au 20), jamais trois à la fois');
+  // Bout à bout : jamais en même temps ; une fin et un début le même jour : ensemble ce jour-là.
+  assert.strictEqual(I.ganttStats([{ label: 'X', start: '2025-01-01', end: '2025-01-05' }, { label: 'Y', start: '2025-01-06', end: '2025-01-10' }, { label: 'Z', start: '2025-01-11', end: '2025-01-15' }]).overlap, 1);
+  assert.strictEqual(I.ganttStats([{ label: 'X', start: '2025-01-01', end: '2025-01-05' }, { label: 'Y', start: '2025-01-05', end: '2025-01-09' }, { label: 'Z', start: '2025-01-10', end: '2025-01-12' }]).overlap, 2);
+  assert.strictEqual(I.ganttStats(tasks.slice(0, 2)), null, 'moins de trois tâches');
+  assert.strictEqual(I.ganttStats([]), null);
+  assert.strictEqual(I.ganttStats(null), null);
+  console.log('OK ganttStats — étendue, plus longue, médiane et chevauchement calculés à la main ; bout à bout = 1 ; moins de 3 tâches = null');
+}
+
+// heatLiftStats : trois lignes, trois colonnes, une diagonale chaude (30 contre 10).
+{
+  const cells = [];
+  ['a', 'b', 'c'].forEach((row, i) => ['x', 'y', 'z'].forEach((col, j) => cells.push({ row, col, value: i === j ? 30 : 10 })));
+  const h = I.heatLiftStats(cells, 150);
+  assert.deepStrictEqual([h.rows, h.cols], [3, 3]);
+  close(h.maxLift, 1.8, 1e-12, 'attendu 50 x 50 / 150 = 16,67 ; 30 / 16,67');
+  assert.deepStrictEqual([h.row, h.col], ['a', 'x'], 'à égalité, la première case');
+  close(h.cellShare, 0.2, 1e-12);
+  close(h.v, 0.4, 1e-12, 'phi2 = 0,32 ; V = racine(0,32 / 2)');
+  close(h.chi2, 48, 1e-9, 'phi2 x 150 lignes');
+  assert.strictEqual(h.df, 4);
+  assert.strictEqual(h.significant, true, '48 > 4 + 4 x racine(8) = 15,3');
+  assert.strictEqual(I.heatLiftStats(cells, 20).significant, false, 'les mêmes parts sur 20 lignes : 6,4, du bruit');
+  assert.strictEqual(I.heatLiftStats(cells).significant, false, 'sans nombre de lignes, jamais « significatif »');
+  assert.strictEqual(I.heatLiftStats(cells).chi2, null);
+  // Des colonnes sans lien : rien ne ressort.
+  const even = [];
+  ['a', 'b', 'c'].forEach((row) => ['x', 'y', 'z'].forEach((col) => even.push({ row, col, value: 10 })));
+  const e = I.heatLiftStats(even, 90);
+  close(e.maxLift, 1, 1e-12);
+  close(e.v, 0, 1e-12);
+  assert.strictEqual(e.significant, false);
+  // Une case absente compte pour 0 : même résultat qu'une case explicitement nulle.
+  const without = cells.filter((c) => !(c.row === 'c' && c.col === 'z'));
+  const zeroed = without.concat([{ row: 'c', col: 'z', value: 0 }]);
+  const wa = I.heatLiftStats(without, 120);
+  const wb = I.heatLiftStats(zeroed, 120);
+  close(wa.v, wb.v, 1e-12, 'V');
+  close(wa.chi2, wb.chi2, 1e-9, 'khi-deux');
+  // Une case dont l'attendu est sous 2 % du total n'est jamais « la plus chaude » (trop petite pour dire quoi que ce soit).
+  const tiny = cells.concat([{ row: 'd', col: 'x', value: 1 }, { row: 'd', col: 'y', value: 1 }, { row: 'd', col: 'z', value: 1 }]);
+  assert.notStrictEqual(I.heatLiftStats(tiny, 200).row, 'd');
+  // Refus : moins de trois lignes ou colonnes, valeur négative, total nul, vide.
+  assert.strictEqual(I.heatLiftStats(cells.filter((c) => c.row !== 'c'), 100), null, 'deux lignes');
+  assert.strictEqual(I.heatLiftStats(cells.filter((c) => c.col !== 'z'), 100), null, 'deux colonnes');
+  assert.strictEqual(I.heatLiftStats(cells.map((c) => (c.row === 'a' && c.col === 'y' ? { row: 'a', col: 'y', value: -1 } : c)), 100), null, 'jamais un négatif');
+  assert.strictEqual(I.heatLiftStats(even.map((c) => ({ row: c.row, col: c.col, value: 0 })), 100), null, 'total nul');
+  assert.strictEqual(I.heatLiftStats([], 10), null);
+  assert.strictEqual(I.heatLiftStats(null), null);
+  console.log('OK heatLiftStats — attendu, lift, V de Cramér et khi-deux calculés à la main ; bruit non significatif ; case absente = 0 ; refus');
+}
+
+// hierarchyStats : Nord (Lille 30, Amiens 20, Rouen 10) contre Sud (Nice 40).
+{
+  const roots = [
+    { name: 'Nord', value: 60, children: [{ name: 'Lille', value: 30 }, { name: 'Amiens', value: 20 }, { name: 'Rouen', value: 10 }] },
+    { name: 'Sud', value: 40, children: [{ name: 'Nice', value: 40 }] }
+  ];
+  const h = I.hierarchyStats(roots);
+  assert.deepStrictEqual([h.parents, h.parts, h.topName, h.topChildName], [2, 4, 'Nord', 'Lille']);
+  close(h.topShare, 0.6, 1e-12);
+  close(h.topChildShare, 0.5, 1e-12, 'Lille pèse 30 sur 60 dans le Nord');
+  assert.strictEqual(I.hierarchyStats(roots.slice(0, 1)), null, 'un seul parent : un camembert, pas une hiérarchie');
+  assert.strictEqual(I.hierarchyStats([roots[0], { name: 'Vide', value: 0, children: [] }]), null, 'une part nulle n\'est pas une part');
+  const noKids = I.hierarchyStats([{ name: 'A', value: 5, children: [] }, { name: 'B', value: 5 }]);
+  assert.strictEqual(noKids.topChildName, null);
+  assert.strictEqual(noKids.topChildShare, null);
+  assert.strictEqual(noKids.parts, 0);
+  assert.strictEqual(I.hierarchyStats(null), null);
+  console.log('OK hierarchyStats — plus grosse part, plus grosse sous-part, comptes ; un seul parent, part nulle, sans enfants');
+}
+
+// progressStats / goalReach : atteintes calculées à la main.
+{
+  const p = I.progressStats([
+    { name: 'a', value: 50, target: 100 }, { name: 'b', value: 95, target: 100 }, { name: 'c', value: 120, target: 100 },
+    { name: 'd', value: 10, target: 0 }, { name: 'e', value: 10, target: null }
+  ]);
+  assert.strictEqual(p.n, 3, 'une cible nulle ou absente n\'a pas de pourcentage');
+  close(p.overall, 265 / 300, 1e-12);
+  assert.deepStrictEqual([p.lowName, p.highName, p.behind, p.ahead], ['a', 'c', 1, 1]);
+  close(p.lowPct, 50, 1e-9);
+  close(p.highPct, 120, 1e-9);
+  assert.strictEqual(I.progressStats([{ name: 'a', value: 1, target: 1 }]), null, 'moins de deux lignes');
+  assert.strictEqual(I.progressStats(null), null);
+  close(I.goalReach([50], [100]), 0.5, 1e-12);
+  close(I.goalReach([30, 20], ['100', 100]), 0.25, 1e-12, 'sommes, texte numérique accepté');
+  assert.strictEqual(I.goalReach([50], [0]), null, 'cible nulle');
+  assert.strictEqual(I.goalReach([50], []), null);
+  assert.strictEqual(I.goalReach([], [100]), null);
+  assert.strictEqual(I.goalReach(null, null), null);
+  console.log('OK progressStats / goalReach — atteinte globale, plus en retard, plus avancée, comptes ; cible nulle ou absente = null');
+}
+
+// Noms de jour et date écrits dans la langue.
+{
+  assert.strictEqual(I.weekdayName(2, 'fr'), 'mardi');
+  assert.strictEqual(I.weekdayName(2, 'en'), 'Tuesday');
+  assert.strictEqual(I.weekdayName(0, 'fr'), 'dimanche');
+  assert.strictEqual(I.weekdayName(7, 'fr'), 'dimanche', 'modulo 7');
+  assert.strictEqual(I.weekdayName(-1, 'en'), 'Saturday');
+  assert.strictEqual(I.formatDay('2025-04-09', 'fr'), '9 avril 2025');
+  assert.strictEqual(I.formatDay('2025-04-09', 'en'), 'April 9, 2025');
+  assert.strictEqual(I.formatDay('n\'importe quoi', 'fr'), '');
+  console.log('OK weekdayName / formatDay — fr et en, modulo 7, entrée invalide = vide');
+}
+
+// Notes d'intérêt du niveau 2c : bornées, monotones.
+{
+  const near = (a, b, label) => close(a, b, 1e-9, label);
+  near(I.interest.calendar(null), 0, 'calendrier absent');
+  near(I.interest.calendar({ eta2: 0, activeRatio: 1, emptyWorst: false, peakRatio: null }), 0);
+  near(I.interest.calendar({ eta2: 0.25, activeRatio: 2, emptyWorst: false, peakRatio: null }), 1, 'le quart de la variation = plein');
+  near(I.interest.calendar({ eta2: 0.125, activeRatio: 2, emptyWorst: false, peakRatio: null }), 0.5);
+  near(I.interest.calendar({ eta2: 0.05, activeRatio: 1, emptyWorst: true, peakRatio: null }), 0.4, 'une semaine à jours vides : 0,4 au moins');
+  near(I.interest.calendar({ eta2: 0.01, activeRatio: 1, emptyWorst: true, peakRatio: null }), 0.04, 'sans rythme assuré, le jour vide ne compte pas');
+  near(I.interest.calendar({ eta2: 0, activeRatio: 1, emptyWorst: false, peakRatio: 8 }), 0.5, 'un pic isolé vaut une demi-note au plus');
+  near(I.interest.gantt({ n: 10, overlap: 1, medianDays: 10, longestDays: 10 }), 0.3, 'jamais sous 0,3');
+  near(I.interest.gantt({ n: 10, overlap: 10, medianDays: 10, longestDays: 10 }), 0.8, 'tout en parallèle');
+  near(I.interest.gantt({ n: 10, overlap: 10, medianDays: 10, longestDays: 50 }), 1, 'et une tâche cinq fois plus longue');
+  near(I.interest.gantt(null), 0);
+  near(I.interest.heat({ maxLift: 1 }), 0);
+  near(I.interest.heat({ maxLift: 2 }), 0.5);
+  near(I.interest.heat({ maxLift: 3 }), 1);
+  near(I.interest.heat({ maxLift: 30 }), 1, 'plafonné');
+  near(I.interest.heat(null), 0);
+  near(I.interest.hierarchy({ parents: 4, topShare: 0.25 }), 0.25, 'parts égales : sans histoire');
+  near(I.interest.hierarchy({ parents: 4, topShare: 0.625 }), 0.625);
+  near(I.interest.hierarchy({ parents: 4, topShare: 1 }), 1);
+  near(I.interest.hierarchy(null), 0);
+  near(I.interest.progress({ lowPct: 100, highPct: 100 }), 0.3, 'objectif atteint partout : 0,3');
+  near(I.interest.progress({ lowPct: 0, highPct: 50 }), 0.65);
+  near(I.interest.progress({ lowPct: 50, highPct: 150 }), 1);
+  near(I.interest.progress(null), 0);
+  near(I.interest.goal(1), 0.4);
+  near(I.interest.goal(0.5), 0.9);
+  near(I.interest.goal(1.5), 0.9, 'en avance se dit autant qu\'en retard');
+  near(I.interest.goal(3), 1);
+  near(I.interest.goal(null), 0);
+  const inUnit = (x) => assert.ok(Number.isFinite(x) && x >= 0 && x <= 1, `note hors de [0 ; 1] : ${x}`);
+  [I.interest.calendar({ eta2: 1e9, activeRatio: 1e9, emptyWorst: true, peakRatio: 1e9 }), I.interest.gantt({ n: 1, overlap: 1e9, medianDays: 1, longestDays: 1e9 }),
+    I.interest.heat({ maxLift: Infinity }), I.interest.hierarchy({ parents: 1, topShare: 1 }), I.interest.progress({ lowPct: -1e9, highPct: 1e9 }), I.interest.goal(1e9)].forEach(inUnit);
+  console.log('OK notes d\'intérêt du niveau 2c — pleines aux bons seuils, bornées, jamais NaN, objectif en avance = en retard');
+}
+
 // Formats : la langue décide du séparateur ; un pourcentage n'est jamais 0 ni 100 à tort.
 {
   assert.strictEqual(I.formatNumber(1.25, 'fr', 2), '1,25');

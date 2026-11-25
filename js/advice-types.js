@@ -2,6 +2,9 @@
  * Suggestions des types de tuile « spécialisés » (niveau 2b de l'intelligence des suggestions, 25/11/2026) : Pareto, barres + courbe,
  * histogramme, boîte à moustaches, cascade et entonnoir. Pur JS, sans DOM ni Grist, testable sous Node (dev-tests/test-advice-types.js).
  *
+ * Niveau 2c (25/11/2026) : js/advice-types-time.js (calendrier, planning) et js/advice-types-grid.js (carte de chaleur, soleil, objectif) ont le
+ * même contrat ; ce fichier les appelle et les expose avec les siens (`candidates`, `annotate`, `previewFor`, `handles`, `INTENT_BY_TYPE`).
+ *
  * Ce fichier est la SUITE de js/advice.js (même rôle que js/data-tiles.js pour js/data.js) : js/advice.js lui passe les fonctions
  * communes dont il se sert (`core` : `candidate`, `groupsFor`, `measureOptions`, `aggFor`… — le module ne les redéfinit pas, il ne dépend
  * donc pas de js/advice.js et n'a aucun import circulaire) et lui demande deux choses :
@@ -17,17 +20,20 @@
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
-    module.exports = factory(require('./data.js'), require('./advice-insights.js'));
+    module.exports = factory(require('./data.js'), require('./advice-insights.js'), require('./advice-types-time.js'), require('./advice-types-grid.js'));
   } else {
     root.GristBI = root.GristBI || {};
-    root.GristBI.adviceTypes = factory(root.GristBI.data, root.GristBI.adviceInsights);
+    root.GristBI.adviceTypes = factory(root.GristBI.data, root.GristBI.adviceInsights, root.GristBI.adviceTypesTime, root.GristBI.adviceTypesGrid);
   }
-})(typeof self !== 'undefined' ? self : this, function (data, insights) {
+})(typeof self !== 'undefined' ? self : this, function (data, insights, time, grid) {
   'use strict';
 
   // Intention de chaque type (voir js/advice.js:INTENT_BY_TYPE) : le Pareto déclare la sienne (`concentrate`) au cas par cas, c'est un
   // `combo` comme le graphique à deux mesures.
-  const INTENT_BY_TYPE = { combo: 'relation', histogram: 'distribution', box: 'distribution', waterfall: 'change', funnel: 'stages' };
+  const INTENT_BY_TYPE = Object.assign(
+    { combo: 'relation', histogram: 'distribution', box: 'distribution', waterfall: 'change', funnel: 'stages' },
+    time.INTENT_BY_TYPE, grid.INTENT_BY_TYPE
+  );
 
   // Pareto : au moins 5 groupes (en dessous, « 20 % des groupes » ne veut rien dire), au plus 60 (au-delà les barres ne se lisent plus) ;
   // jamais proposé quand il faut plus de la moitié des groupes pour atteindre 80 % du total (aucune concentration à montrer).
@@ -249,7 +255,8 @@
     })];
   }
 
-  const BUILDERS = [paretoCandidates, funnelCandidates, waterfallCandidates, histogramCandidates, boxCandidates, comboCandidates];
+  const BUILDERS = [paretoCandidates, funnelCandidates, waterfallCandidates, histogramCandidates, boxCandidates, comboCandidates,
+    time.candidates, grid.candidates];
 
   // Les candidats de ces types ; un générateur qui échoue n'en retire jamais un autre (ni aucune suggestion de js/advice.js).
   function candidates(rows, ctx, opts, core) {
@@ -264,7 +271,13 @@
   // Intérêt et explication chiffrée
   // ---------------------------------------------------------------------------------------------
 
-  const HANDLED = ['combo', 'histogram', 'box', 'waterfall', 'funnel'];
+  const OWN_HANDLED = ['combo', 'histogram', 'box', 'waterfall', 'funnel'];
+  const HANDLED = OWN_HANDLED.concat(time.HANDLED, grid.HANDLED);
+
+  // Cette suggestion est-elle annotée par un module de ce dossier ? Ses types, et un chiffre clé qui porte une colonne cible (objectif).
+  function handles(c) {
+    return !!c && (HANDLED.indexOf(c.type) !== -1 || grid.handles(c));
+  }
 
   function numbersOf(ctx, column) {
     return ctx.insightRows.map((r) => insights.finite(r[column])).filter((v) => v !== null);
@@ -354,7 +367,9 @@
   // `{ facts, note, insight }` d'un candidat de ces types, ou null (autre type, ou des données qui ne permettent aucun chiffre : le
   // candidat garde alors son a priori et sa raison générique).
   function annotate(c, ctx, core) {
-    if (HANDLED.indexOf(c.type) === -1) return null;
+    if (!handles(c)) return null;
+    if (time.HANDLED.indexOf(c.type) !== -1) return time.annotate(c, ctx, core);
+    if (grid.handles(c)) return grid.annotate(c, ctx, core);
     const td = c.tileData;
     switch (c.type) {
       case 'histogram': return annotateHistogram(td, ctx, core);
@@ -433,6 +448,8 @@
         case 'histogram': return previewHistogram(tileData, rows, core);
         case 'box': return previewBoxes(tileData, rows, core);
         case 'waterfall': return previewWaterfall(tileData, rows);
+        case 'calendar': case 'gantt': return time.previewFor(tileData, rows, core);
+        case 'heatmap': case 'sunburst': case 'progress': return grid.previewFor(tileData, rows, core);
         default: return null;
       }
     } catch (e) { return null; }
@@ -441,6 +458,6 @@
   return {
     INTENT_BY_TYPE, HANDLED, STAGE_NAME_RE, PARETO_MIN_GROUPS, PARETO_MAX_GROUPS, PARETO_MAX_SHARE_FOR_80, NUMBER_MIN_DISTINCT, NUMBER_MIN_FILLED,
     COMBO_MIN_GROUPS, COMBO_MAX_GROUPS, COMBO_MIN_ABS_R, FUNNEL_MIN_STAGES, FUNNEL_MAX_STAGES, SKEW_SAYS, OUTLIER_SAYS, BOX_GAP_SAYS,
-    candidates, annotate, previewFor
+    candidates, handles, annotate, previewFor
   };
 });

@@ -1,5 +1,5 @@
 /*
- * Jeux de données de RÉFÉRENCE pour juger les suggestions de tuiles (js/advice.js) : des tables réalistes (dix d'abord, quatre de plus au niveau 2b), déterministes (un
+ * Jeux de données de RÉFÉRENCE pour juger les suggestions de tuiles (js/advice.js) : des tables réalistes (dix d'abord, quatre de plus au niveau 2b, quatre au niveau 2c), déterministes (un
  * générateur pseudo-aléatoire à graine fixe, jamais `Math.random`), chacune avec le type Grist que ses colonnes auraient (`info`, la
  * forme que lit `advice.setColumnInfo`) quand il change quelque chose. Ce sont les tables sur lesquelles l'analyse du 25/11/2026 a
  * mesuré les défauts de l'outil (Référence additionnée, notes sur 20 additionnées, liste de choix en « combinaisons », échantillon de
@@ -138,6 +138,50 @@ function build() {
     add('produits', Array.from({ length: 300 }, (_, i) => {
       const k = i % names.length; const ventes = Math.round((k + 1) * 800 * (0.8 + r() * 0.4));
       return { id: i + 1, Produit: names[k], Ventes: ventes, Marge: Math.round(ventes * (0.28 + r() * 0.04)) };
+    }));
+  }
+  // --- Niveau 2c (temps, croisements, hiérarchie, objectif) : une table positive pour chaque type, et les négatives sont les tables d'avant ---
+  { // Activité : 2025 en entier, une intervention par ligne ; très chargé en semaine (le mardi en tête), presque vide le samedi, rien le dimanche.
+    const r = rng(26); const pick = (a) => a[Math.floor(r() * a.length)];
+    const first = Date.UTC(2025, 0, 1) / 86400000;
+    const rows = [];
+    for (let d = 0; d < 365; d++) {
+      const day = first + d;
+      const weekday = (((day + 4) % 7) + 7) % 7; // 0 = dimanche
+      const count = weekday === 0 ? 0 : (weekday === 6 ? 1 : (weekday === 2 ? 9 : 6));
+      for (let k = 0; k < count; k++) {
+        rows.push({ id: rows.length + 1, Date: new Date(day * 86400000).toISOString().slice(0, 10), Equipe: pick(['Alpha', 'Beta', 'Gamma']),
+          Type: pick(['Pose', 'Dépannage', 'Contrôle']), Duree_h: Math.round((0.5 + r() * 3.5) * 100) / 100 });
+      }
+    }
+    add('activite', withHierarchy(rows, 'Date'), { info: { Date: { type: 'Date' } } });
+  }
+  { // Objectifs : huit commerciaux, douze mois, un réalisé et un objectif mensuel ; trois nettement en retard, trois nettement en avance.
+    const r = rng(27);
+    const people = [['Anne', 0.55], ['Bruno', 0.7], ['Chloé', 0.8], ['David', 0.97], ['Emma', 1.02], ['Farid', 1.12], ['Gaëlle', 1.2], ['Hugo', 1.3]];
+    const months = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+    const rows = [];
+    people.forEach(([name, factor], p) => months.forEach((month, m) => {
+      const objectif = Math.round((20000 + p * 2500) * (0.9 + 0.02 * m) * 100) / 100;
+      rows.push({ id: rows.length + 1, Commercial: name, Mois: month, Realise: Math.round(objectif * factor * (0.92 + r() * 0.16) * 100) / 100, Objectif: objectif });
+    }));
+    add('objectifs', rows);
+  }
+  { // Organisation : quatre régions, trois départements chacune (une vraie hiérarchie) ; le Nord pèse la moitié du budget.
+    const r = rng(28);
+    const tree = { Nord: ['Lille', 'Amiens', 'Rouen'], Sud: ['Nice', 'Toulon', 'Nîmes'], Est: ['Metz', 'Nancy', 'Dijon'], Ouest: ['Brest', 'Nantes', 'Rennes'] };
+    const regions = ['Nord', 'Nord', 'Nord', 'Nord', 'Nord', 'Sud', 'Sud', 'Est', 'Est', 'Ouest', 'Ouest'];
+    add('organisation', Array.from({ length: 600 }, (_, i) => {
+      const region = regions[Math.floor(r() * regions.length)];
+      const departement = tree[region][Math.floor(r() * 3)];
+      return { id: i + 1, Region: region, Departement: departement, Budget: Math.round((100 + r() * 900) * (departement === 'Lille' ? 2 : 1) * 100) / 100 };
+    }));
+  }
+  { // Support : quatre équipes, cinq types de demande, rien d'autre à mesurer que des lignes ; Delta traite deux fois plus d'incidents que la moyenne.
+    const r = rng(29); const pick = (a) => a[Math.floor(r() * a.length)];
+    add('support', Array.from({ length: 600 }, (_, i) => {
+      const equipe = pick(['Alpha', 'Beta', 'Gamma', 'Delta']);
+      return { id: i + 1, Ticket: 'S-' + (i + 1), Equipe: equipe, Type: (equipe === 'Delta' && r() < 0.5) ? 'Incident' : pick(['Bug', 'Question', 'Demande', 'Incident', 'Autre']) };
     }));
   }
   return sets;

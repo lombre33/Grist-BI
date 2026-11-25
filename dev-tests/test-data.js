@@ -4190,7 +4190,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     // Aucun texte en dur + clés i18n complètes fr/en : toute clé citée par advice.js existe, toute
     // clé `advice.*` du dictionnaire est utilisée, et chaque phrase se résout sans `{variable}` orpheline.
     {
-      const source = ['advice.js', 'advice-insights.js', 'advice-types.js'].map((f) => fs.readFileSync(path.join(__dirname, '..', 'js', f), 'utf8')).join('\n');
+      const source = ['advice.js', 'advice-insights.js', 'advice-types.js', 'advice-types-time.js', 'advice-types-grid.js'].map((f) => fs.readFileSync(path.join(__dirname, '..', 'js', f), 'utf8')).join('\n');
       const used = new Set((source.match(/'advice\.[A-Za-z]+\.[A-Za-z]+'/g) || []).map((k) => k.slice(1, -1)));
       const defined = Object.keys(i18n.STRINGS).filter((k) => k.startsWith('advice.'));
       used.forEach((k) => assert.ok(i18n.STRINGS[k], 'clé i18n manquante : ' + k));
@@ -5097,7 +5097,12 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     const tooBig = advice.adviceForTile({ type: 'heatmap', dimension: 'J', columnDimension: 'H', measure: 'M', aggFn: 'sum' }, wide);
     assert.deepStrictEqual([tooBig.key, tooBig.level, tooBig.vars], ['advice.heatmap.tooBig', 'warn', { rows: 30, columns: 3 }]);
     assert.strictEqual(advice.adviceForTile({ type: 'heatmap', dimension: 'H', columnDimension: 'J', measure: 'M', aggFn: 'sum' }, wide).key, 'advice.heatmap.tooBig', 'trop de colonnes aussi');
-    assert.strictEqual(advice.previewFor({ type: 'heatmap', dimension: 'Region', columnDimension: 'Produit', measure: 'Montant', aggFn: 'sum' }, cats).kind, 'grid');
+    // Miniature : les vraies cases (opacité = valeur), sinon la trame d'un tableau quand les colonnes ne donnent aucune case.
+    const heatPreview = advice.previewFor({ type: 'heatmap', dimension: 'Region', columnDimension: 'Produit', measure: 'Montant', aggFn: 'sum' }, cats);
+    assert.strictEqual(heatPreview.kind, 'heat');
+    assert.ok(heatPreview.rows.length >= 2 && heatPreview.rows.every((line) => line.every((v) => v === null || (v >= 0 && v <= 1))), 'cases de 0 à 1');
+    assert.strictEqual(advice.previewFor({ type: 'heatmap', dimension: 'Absente', columnDimension: 'Aussi', measure: 'Montant', aggFn: 'sum' }, cats).kind, 'grid', 'repli sur la trame');
+    assert.strictEqual(advice.previewFor({ type: 'pivot', dimension: 'Region', columnDimension: 'Produit', measure: 'Montant', aggFn: 'sum' }, cats).kind, 'grid', 'le tableau croisé garde sa trame');
 
     // i18n fr/en, titre automatique.
     ['tileForm.type.heatmap', 'tileForm.pivotHeat.label', 'tileForm.palette.heatHint', 'tileTitle.heatmap', 'chart.heatmap.empty', 'advice.use.heatmap', 'advice.heatmap.tooBig']
