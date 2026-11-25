@@ -1,5 +1,5 @@
 /*
- * L'ÉTALON des suggestions de tuiles (niveau 3d-3, 25/11/2026) : pour chacune des 19 tables du corpus (dev-tests/lib/advice-corpus.js), ce qu'une
+ * L'ÉTALON des suggestions de tuiles (niveau 3d-3, 25/11/2026) : pour chacune des 20 tables du corpus (dev-tests/lib/advice-corpus.js), ce qu'une
  * personne qui connaît ses données voudrait voir proposé (`want`) et ce qui serait une absurdité (`never`). Écrit À LA MAIN, d'après ce que chaque table
  * a été fabriquée pour montrer (voir le commentaire de chaque table du corpus) et d'après les défauts mesurés par l'analyse du 25/11/2026
  * (etudes/suggestions-tuiles-analyse-2026-11-25.md) : ce n'est PAS la sortie actuelle de l'outil recopiée. Une attente que l'outil ne remplit pas
@@ -21,6 +21,9 @@ const SURVEY = ['Q1', 'Q2', 'Q3'];
 const CHARTS_OF_SHARES = ['bar', 'pie', 'treemap'];
 // Les types dont `dimension` est un AXE d'agrégation (un groupe = plusieurs lignes). Dans un nuage de points, `dimension` n'est que l'étiquette d'un
 // point par ligne (« par Nom » : un point par personne) : un identifiant y est voulu, jamais une absurdité.
+// Dénombrer les lignes d'une table n'est pas « lire » la colonne qu'on nomme pour le faire (`aggFn: 'count'` ne lit aucune valeur) : les règles
+// d'identifiant ne visent que les tuiles qui additionnent, moyennent ou répartissent ses valeurs.
+const notCount = (aggFn) => aggFn !== 'count';
 const AXIS_CHARTS = ['bar', 'pie', 'treemap', 'line', 'funnel', 'waterfall', 'radar', 'heatmap', 'sunburst', 'combo', 'box'];
 
 const GOLD = {
@@ -31,7 +34,7 @@ const GOLD = {
       { id: 'salaire par service ou poste', type: CHARTS_OF_SHARES, dimension: ['Service', 'Poste'], measure: 'Salaire' },
       { id: 'répartition du salaire', type: ['histogram', 'box'], measure: 'Salaire' }
     ],
-    never: [{ id: 'identifiant lu comme mesure ou comme axe', any: [{ measure: 'Matricule' }, { type: AXIS_CHARTS, dimension: ['Matricule', 'Nom'] }] }]
+    never: [{ id: 'identifiant lu comme mesure ou comme axe', any: [{ measure: 'Matricule', aggFn: notCount }, { type: AXIS_CHARTS, dimension: ['Matricule', 'Nom'] }] }]
   },
   notes: {
     want: [
@@ -192,9 +195,22 @@ const GOLD = {
       { id: 'prix unitaire (moyenne ou répartition)', type: ['kpi', 'bar', 'histogram', 'box'], measure: 'Prix_unitaire' }
     ],
     never: [
-      { id: 'téléphone ou code postal lus comme mesure, téléphone lu comme axe', any: [{ measure: ['Telephone', 'Code_postal'] }, { type: AXIS_CHARTS, dimension: 'Telephone' }] },
+      { id: 'téléphone ou code postal lus comme mesure, téléphone lu comme axe', any: [{ measure: ['Telephone', 'Code_postal'], aggFn: notCount }, { type: AXIS_CHARTS, dimension: 'Telephone' }] },
       { id: 'numéro de semaine additionné', measure: 'Semaine' },
       { id: 'prix unitaire additionné', measure: 'Prix_unitaire', aggFn: 'sum' }
+    ]
+  },
+  candidatures: {
+    want: [
+      { id: 'nombre de candidatures par statut', type: ['bar', 'pie', 'funnel', 'treemap'], aggFn: 'count', dimension: 'Statut', weight: 2 },
+      { id: 'nombre de candidatures', type: 'kpi', aggFn: 'count' },
+      { id: 'évolution des candidatures', type: 'line', aggFn: 'count', dimension: /^Date_candidature\./ },
+      { id: 'nombre de candidatures par source ou par poste', type: ['bar', 'pie', 'treemap'], aggFn: 'count', dimension: ['Source', 'Poste'] },
+      { id: 'note d\'entretien moyenne', type: ['kpi', 'bar', 'box'], measure: 'Note_entretien', aggFn: 'avg' }
+    ],
+    never: [
+      { id: 'note additionnée', measure: 'Note_entretien', aggFn: 'sum' },
+      { id: 'numéro de candidat lu comme axe', type: AXIS_CHARTS, dimension: 'Candidat' }
     ]
   },
   support: {
@@ -218,11 +234,12 @@ const GLOBAL_NEVER = [
 // déterministes, donc ces nombres se reproduisent à l'identique ; un essai échoue si une table descend de plus d'un point (ou de 5 points de couverture)
 // sous sa base. Quand une amélioration FAIT monter une table, relever sa base ici (l'essai le dit) : le score ne doit jamais redescendre en silence.
 const BASELINE = {
-  rh: { score: 95.9, coverage: 1 }, notes: { score: 93.4, coverage: 1 }, tickets: { score: 78.8, coverage: 0.75 }, compta: { score: 92.5, coverage: 1 },
+  rh: { score: 95.9, coverage: 1 }, notes: { score: 93.4, coverage: 1 }, tickets: { score: 92.5, coverage: 1 }, compta: { score: 92.5, coverage: 1 },
   projet: { score: 96.7, coverage: 1 }, enquete: { score: 86.8, coverage: 0.8 }, crm: { score: 96.7, coverage: 1 }, large: { score: 96.7, coverage: 1 },
   contacts: { score: 96.7, coverage: 1 }, commandes: { score: 92.5, coverage: 1 }, ventes: { score: 90.1, coverage: 0.8 }, resultat: { score: 85.1, coverage: 1 },
   parcours: { score: 92.5, coverage: 0.75 }, produits: { score: 88.4, coverage: 1 }, activite: { score: 93.4, coverage: 0.8 }, objectifs: { score: 100, coverage: 1 },
-  organisation: { score: 88.4, coverage: 1 }, support: { score: 96.7, coverage: 1 }, boutique: { score: 84.8, coverage: 0.83 }
+  organisation: { score: 88.4, coverage: 1 }, support: { score: 96.7, coverage: 1 }, boutique: { score: 84.8, coverage: 0.83 },
+  candidatures: { score: 88.4, coverage: 0.67 }
 };
 const SCORE_TOLERANCE = 1;       // points de note qu'une table peut perdre avant l'échec
 const COVERAGE_TOLERANCE = 0.05; // part de couverture qu'une table peut perdre avant l'échec

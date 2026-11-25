@@ -195,6 +195,17 @@ function build() {
         Quantite: quantite, Prix_unitaire: prix, Montant_HT: Math.round(quantite * prix * 100) / 100, Statut: 1 + Math.floor(r() * 4) };
     }));
   }
+  { // Candidatures : un flux de choses qui ont un état (niveau « dénombrer par état », 25/11/2026) — une clé par ligne, un statut, une source
+    // et une note d'entretien ; la plupart des candidatures s'arrêtent tôt, la note moyenne est la même partout.
+    const r = rng(33); const pick = (a) => a[Math.floor(r() * a.length)];
+    const statuts = ['Reçue', 'Reçue', 'Reçue', 'Reçue', 'Reçue', 'Reçue', 'Entretien', 'Entretien', 'Entretien', 'Offre', 'Embauché', 'Refusé', 'Refusé', 'Refusé'];
+    add('candidatures', withHierarchy(Array.from({ length: 420 }, (_, i) => ({
+      id: i + 1, Candidat: 'C-' + (1000 + i), Poste: pick(['Développeur', 'Comptable', 'Commercial', 'Designer']),
+      Source: pick(['LinkedIn', 'Cooptation', 'Site carrières', 'Salon', 'Cabinet']), Statut: pick(statuts),
+      Date_candidature: iso(2025, 1 + Math.floor(r() * 9), 1 + Math.floor(r() * 28)),
+      Note_entretien: 1 + Math.floor(r() * 10)
+    })), 'Date_candidature'), { info: { Date_candidature: { type: 'Date' } } });
+  }
   return sets;
 }
 
