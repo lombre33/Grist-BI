@@ -98,11 +98,40 @@
     completionToken++;
     tileCompleteEl.hidden = true;
     tileCompleteListEl.textContent = '';
+    markRecommended([]);
   }
 
-  function paintCompletion(items, rows, lang) {
+  // Badge « Recommandé » sur les cartes de TYPE que les propositions du moment utilisent (celles de « Pour compléter ce tableau de bord », ou les
+  // meilleures suggestions d'un tableau de bord vide) : une pastille discrète, et la raison en infobulle (le manque dit, sinon la raison chiffrée).
+  // L'ordre des cartes ne change jamais. Un type que la personne ne peut pas choisir (extension absente) n'est jamais recommandé.
+  function markRecommended(items) {
+    typeGridEl.querySelectorAll('.type-card').forEach((card) => {
+      card.classList.remove('type-card-recommended');
+      delete card.dataset.recommended;
+      card.removeAttribute('title');
+      const old = card.querySelector('.type-card-badge');
+      if (old) old.remove();
+    });
+    items.forEach((item) => {
+      const card = typeGridEl.querySelector(`.type-card[data-type="${item.type}"]`);
+      if (!card || card.getAttribute('aria-disabled') === 'true' || card.dataset.recommended) return;
+      const why = item.gapKey ? t(item.gapKey, item.gapVars) : t(item.reasonKey, item.reasonVars);
+      const badge = document.createElement('span');
+      badge.className = 'type-card-badge';
+      badge.textContent = t('tilePanel.recommended');
+      card.appendChild(badge);
+      card.classList.add('type-card-recommended');
+      card.dataset.recommended = 'true';
+      card.title = t('tilePanel.recommended.why', { reason: why });
+    });
+  }
+
+  // `showList` : la section « Pour compléter » n'a de sens que s'il y a déjà des tuiles ; les badges des types, eux, valent aussi pour un tableau de bord vide.
+  function paintCompletion(items, rows, lang, showList) {
     tileCompleteListEl.textContent = '';
-    tileCompleteEl.hidden = !items.length;
+    tileCompleteEl.hidden = !showList || !items.length;
+    markRecommended(items);
+    if (!showList) return;
     items.forEach((s, i) => {
       const title = t(s.titleKey, s.titleVars);
       const li = document.createElement('li');
@@ -122,17 +151,18 @@
     const done = () => { if (afterPaint) afterPaint(); };
     const state = store.getState();
     const tiles = state.pages.reduce((all, page) => all.concat(page.tiles || []), []);
-    if (!GristBI.adviceComplete || S.editingTileId || !tiles.length || !state.rows.length) { hideCompletion(); done(); return; }
+    if (!GristBI.adviceComplete || S.editingTileId || !state.rows.length) { hideCompletion(); done(); return; }
     const lang = GristBI.i18n.getLang();
-    if (completion.rows === state.rows && completion.lang === lang && sameRefs(completion.tiles, tiles)) { paintCompletion(completion.items, state.rows, lang); done(); return; }
+    if (completion.rows === state.rows && completion.lang === lang && sameRefs(completion.tiles, tiles)) { paintCompletion(completion.items, state.rows, lang, tiles.length > 0); done(); return; }
     // Une liste calculée pour d'autres tuiles se retire d'abord : elle proposerait, un instant, ce qui vient d'être posé.
     tileCompleteEl.hidden = true;
     tileCompleteListEl.textContent = '';
+    markRecommended([]);
     setTimeout(() => {
       if (token !== completionToken || tilePanel.hidden) return; // fermé, rouvert ou déjà recalculé entre-temps
       const result = GristBI.adviceComplete.complete(state.rows, tiles, { t, lang, limit: 3 });
       completion = { rows: state.rows, lang, tiles, items: result.items };
-      paintCompletion(result.items, state.rows, lang);
+      paintCompletion(result.items, state.rows, lang, tiles.length > 0);
       done();
     }, 0);
   }

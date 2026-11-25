@@ -556,6 +556,8 @@
     'tilePanel.title.edit': { fr: 'Modifier la visualisation', en: 'Edit the visualization' },
     'tilePanel.close': { fr: 'Fermer', en: 'Close' },
     'tilePanel.choose.lead': { fr: 'Quelle question voulez-vous poser à vos données ?', en: 'What question do you want to ask your data?' },
+    'tilePanel.recommended': { fr: 'Recommandé', en: 'Recommended' },
+    'tilePanel.recommended.why': { fr: 'Recommandé pour vos données : {reason}', en: 'Recommended for your data: {reason}' },
     'tilePanel.complete.title': { fr: 'Pour compléter ce tableau de bord', en: 'To complete this dashboard' },
     'tilePanel.complete.lead': { fr: 'Ce que vos données permettent et que vos tuiles ne montrent pas encore.', en: 'What your data allows and your tiles do not show yet.' },
     'tilePanel.complete.added': { fr: '« {title} » est ajoutée.', en: '“{title}” was added.' },

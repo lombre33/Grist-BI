@@ -356,13 +356,22 @@ console.log(`OK propriétés — ${propertyChecks.tables} tables x 3 tableaux de
   assert.ok(/function renderCompletion\(/.test(main) && /renderTypeCards\(\);\s*renderCompletion\(\);/.test(main), 'rempli à l\'ouverture du panneau et au changement de langue');
   assert.ok((main.match(/renderCompletion\(/g) || []).length >= 4, 'ouverture, changement de langue, ajout d\'une carte, définition');
   assert.ok(/hideCompletion\(\);\s*workspaceEl\.classList\.remove\('panel-open'\)/.test(main), 'masquée et annulée à la fermeture du panneau');
-  assert.ok(/S\.editingTileId \|\| !tiles\.length \|\| !state\.rows\.length/.test(main), 'ni en modification d\'une tuile, ni sans tuile, ni sans ligne');
+  assert.ok(/S\.editingTileId \|\| !state\.rows\.length/.test(main), 'ni en modification d\'une tuile, ni sans ligne');
+  assert.ok(/paintCompletion\([^)]*tiles\.length > 0\)/.test(main) && /tileCompleteEl\.hidden = !showList \|\| !items\.length/.test(main), 'la liste « Pour compléter » seulement avec des tuiles posées (les badges valent aussi sur un tableau de bord vide)');
   assert.ok(/state\.pages\.reduce\(/.test(main), 'toutes les pages comptent');
   assert.ok(/data-complete=/.test(main) && /flashTile\(id\)/.test(main) && /tilePanel\.complete\.added/.test(main), 'ajout, clignotement de la tuile posée, annonce');
   assert.ok(/token !== completionToken \|\| tilePanel\.hidden/.test(main), 'un calcul périmé ou un panneau refermé n\'écrit rien');
+  // Niveau 3b : le badge « Recommandé » des cartes de type.
+  assert.ok(/function markRecommended\(/.test(main) && /markRecommended\(items\)/.test(main), 'les badges sont posés par la peinture de la liste');
+  assert.ok(/function hideCompletion\(\) \{[^}]*markRecommended\(\[\]\)/.test(main), 'fermer le panneau retire les badges');
+  assert.ok(/card\.getAttribute\('aria-disabled'\) === 'true'/.test(main), 'une carte grisée (extension absente) n\'est jamais recommandée');
+  assert.ok(/card\.dataset\.recommended\) return/.test(main), 'un type n\'est marqué qu\'une fois, avec la raison de sa 1re proposition');
+  assert.ok(/gapKey \? t\(item\.gapKey/.test(main), 'la raison en infobulle est le manque dit, sinon la raison chiffrée');
+  ['tilePanel.recommended', 'tilePanel.recommended.why'].forEach((k) => assert.ok(i18n.STRINGS[k] && i18n.STRINGS[k].fr && i18n.STRINGS[k].en, k));
+  assert.ok(/\{reason\}/.test(i18n.STRINGS['tilePanel.recommended.why'].fr) && /\{reason\}/.test(i18n.STRINGS['tilePanel.recommended.why'].en), 'l\'infobulle porte la raison dans les deux langues');
   ['tilePanel.complete.title', 'tilePanel.complete.lead', 'tilePanel.complete.added'].forEach((k) => assert.ok(i18n.STRINGS[k] && i18n.STRINGS[k].fr && i18n.STRINGS[k].en, k));
   const css = fs.readFileSync(path.join(__dirname, '..', 'css', 'style.css'), 'utf8');
-  ['.tile-complete', '.complete-card', '.complete-card-gap', '.complete-preview'].forEach((sel) => assert.ok(css.indexOf(sel) !== -1, `style.css : ${sel}`));
+  ['.tile-complete', '.complete-card', '.complete-card-gap', '.complete-preview', '.type-card-badge', '.type-card-recommended'].forEach((sel) => assert.ok(css.indexOf(sel) !== -1, `style.css : ${sel}`));
   console.log('OK câblage — panneau, quatre éléments, ordre des scripts, appels à l\'ouverture / langue / fermeture / ajout, clés et styles');
 }
 
