@@ -1492,6 +1492,8 @@ décisions d'Antoine (logo/Crédits/GPL accepté, Manrope refusé, bilingue dép
 - [x] `node dev-tests/test-data.js` toujours vert après ce lot (aucune fonction pure touchée) ✅
 - [ ] Rendu dans une vraie iframe Grist ⬜ **[NON TESTABLE ICI]**
 
+59. **Des suggestions de tuiles absurdes sur des tables réalistes** [BUG RÉEL, trouvé en faisant tourner `suggestTiles` sur dix tables de référence, 25/11/2026, demande d'Antoine : « beaucoup plus intelligent »] — (a) une colonne Référence (numéro de ligne) devenait « Somme de Client », courbe « Client par Date », KPI « Client total » ; (b) une liste de choix donnait un anneau de parts `L,cadeau,bio` ; (c) des notes sur 20 étaient additionnées, proposées en axe (« Maths par Français », « Maths par Maths ») et en anneau de sommes, et le radar n'était jamais proposé (colonnes rangées en « petit entier ») ; (d) sur 300 000 lignes triées par date, le profil ne lisait que les 20 000 premières (2 canaux sur 3, une année sur six) ; (e) une année de dates donnait une courbe au jour (300 points). Corrigés dans `js/advice.js` (type Grist réel, notes reconnues par leurs sœurs ou leur nom, échantillon réparti, courbe par mois) ; essai : `dev-tests/test-advice.js` (propriétés « jamais absurde » sur le corpus `dev-tests/lib/advice-corpus.js`, chaque bloc vu échouer sur le code d'avant). **Non vu dans un vrai Grist** : la forme réelle de `type`/`widgetOptions` dans `_grist_Tables_column` (piège n°26).
+
 ## Cas explicitement NON testables depuis ce sandbox (voir `HYPOTHESES.md`)
 
 - Round-trip réseau réel `applyUserActions`/`fetchTable` contre un vrai `grist.docApi` (latence, taille de payload, limites de débit).
