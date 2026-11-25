@@ -16,7 +16,7 @@
   } = parts;
   Object.assign(parts, {
     connectToFirstTable, flushPendingSave, offerMergeConfigNames, openBlankReport, openModelById, openReportById, refreshBlendPicker,
-    refreshTablePicker, reloadWorkingTable, runNamesUpdate, scheduleSave, switchTable
+    linkTable, refreshTablePicker, reloadWorkingTable, runNamesUpdate, scheduleSave, switchTable
   });
 
   // Rapport actuellement ouvert, au sens de la consigne GFS 007 point 2/3 : une LIGNE précise de
@@ -478,6 +478,25 @@
       : null;
     store.setBlend(currentBlend);
     applyBlend(currentBlend);
+  }
+
+  // Pose la jointure PROPOSÉE par le panneau (js/advice-join.js : `{ secondaryTableId, primaryColumn, secondaryColumn: 'id' }`, une colonne Référence
+  // jointe sur le numéro de ligne de l'autre table) : même chemin que les trois champs de « Joindre une autre table » — le store, les champs du menu
+  // Données mis à jour (la personne la voit et peut la retirer là), puis `applyBlend`. Rend `true` quand les colonnes de l'autre table sont bien dans
+  // les lignes ; sinon la jointure est retirée aussitôt (`applyBlend` a déjà dit l'échec) : jamais une jointure annoncée qui n'a pas eu lieu.
+  async function linkTable(join) {
+    currentBlend = { secondaryTableId: join.secondaryTableId, primaryColumn: join.primaryColumn, secondaryColumn: join.secondaryColumn };
+    store.setBlend(currentBlend);
+    refreshBlendPicker();
+    await applyBlend(currentBlend);
+    const first = store.getState().rows[0] || {};
+    const joined = Object.keys(first).some((k) => k.indexOf(join.secondaryTableId + '.') === 0);
+    if (!joined) {
+      currentBlend = null;
+      store.setBlend(null);
+      refreshBlendPicker();
+    }
+    return joined;
   }
 
   // Suggère une paire de clés de jointure à partir des colonnes de référence Grist RÉELLES

@@ -326,7 +326,7 @@ const clean = (s) => typeof s === 'string' && s.length > 0 && !/[{}]|NaN|undefin
   assert.ok(/fillCards\(tileCompleteListEl[^)]*\)/.test(main) && /fillCards\(columnListEl[^)]*\)/.test(main), 'les mêmes cartes que « Pour compléter »');
   assert.ok(/data-column-add/.test(main) && /flashTile\(id\)/.test(main), 'ajout, clignotement de la tuile posée');
   assert.ok(/columnPickEl\.value = '';\s*hideColumnResults\(\);/.test(main), 'ouverture du panneau : champ et résultats vidés');
-  assert.ok(/hideCompletion\(\);\s*hideColumnResults\(\);\s*columnPickEl\.value = '';/.test(main), 'fermeture : résultats retirés et champ vidé');
+  assert.ok(/hideCompletion\(\);\s*(?:hideJoin\(\);\s*)?hideColumnResults\(\);\s*columnPickEl\.value = '';/.test(main), 'fermeture : résultats retirés et champ vidé');
   assert.ok(/if \(columnPickEl\.value\) renderColumnHelper\(\);/.test(main), 'changement de langue : phrases refaites');
   assert.ok(/pickableColumns\(cols\)/.test(main) && /columnHelperRows !== rows/.test(main), 'liste des colonnes remplie, choix périmé vidé au changement de table');
   assert.ok(/GristBI\.combobox\.attach/.test(main) && /targetColumnSelect, columnPickEl\]/.test(main), 'le champ est un combobox strict');

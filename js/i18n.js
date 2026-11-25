@@ -565,6 +565,23 @@
     'tilePanel.column.label': { fr: 'Colonne', en: 'Column' },
     'tilePanel.column.placeholder': { fr: 'Choisir une colonne', en: 'Pick a column' },
     'tilePanel.column.working': { fr: 'Analyse de la colonne…', en: 'Looking at the column…' },
+    // « Analyser par nom plutôt que par numéro » (js/advice-join.js) : relier la table d'une colonne Référence.
+    'advice.join.title': { fr: 'Relier la table « {table} »', en: 'Link the “{table}” table' },
+    'advice.join.reason': {
+      fr: '« {column} » ne contient que des numéros de ligne de {table}. La relier permet d\'analyser par {axes}.',
+      en: '“{column}” only holds row numbers from {table}. Linking it lets you analyse by {axes}.'
+    },
+    'tilePanel.join.title': { fr: 'Analyser par nom plutôt que par numéro', en: 'Analyse by name rather than by number' },
+    'tilePanel.join.lead': {
+      fr: 'Des colonnes de cette table ne contiennent que des numéros de ligne d\'une autre table. La relier donne accès à son contenu.',
+      en: 'Some columns of this table only hold row numbers from another table. Linking that table gives you access to its content.'
+    },
+    'tilePanel.join.add': { fr: 'Relier « {table} »', en: 'Link “{table}”' },
+    'tilePanel.join.addAria': { fr: 'Relier la table « {table} » par la colonne « {column} »', en: 'Link the “{table}” table through the “{column}” column' },
+    'tilePanel.join.done': {
+      fr: '« {table} » est reliée : ses colonnes ({axes}…) sont disponibles. Menu Données › « Joindre une autre table » pour la retirer.',
+      en: '“{table}” is linked: its columns ({axes}…) are now available. Data menu › “Join another table” to remove it.'
+    },
     'tilePanel.column.found': { fr: '{n} {n|proposition|propositions} pour « {column} ».', en: '{n} {n|suggestion|suggestions} for “{column}”.' },
     'tilePanel.back': { fr: 'Changer de type', en: 'Change type' },
     'tilePanel.titleField.label': { fr: 'Titre (facultatif)', en: 'Title (optional)' },

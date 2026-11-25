@@ -573,6 +573,14 @@
     </header>
 
     <section id="tile-panel-choose" class="tile-panel-step" data-step="choose">
+      <!-- « Analyser par nom plutôt que par numéro » : une colonne Référence ne contient que des numéros de ligne d'une autre table ; relier cette table
+           donne accès à son contenu (js/advice-join.js, rempli par js/main-panel.js:renderJoin ; masqué tant qu'il n'y a rien à proposer). -->
+      <section id="tile-join" class="tile-complete tile-join" aria-labelledby="tile-join-title" hidden>
+        <h3 id="tile-join-title" class="tile-complete-title" data-i18n="tilePanel.join.title">Analyser par nom plutôt que par numéro</h3>
+        <p id="tile-join-lead" class="tile-complete-lead" data-i18n="tilePanel.join.lead">Des colonnes de cette table ne contiennent que des numéros de ligne d'une autre table. La relier donne accès à son contenu.</p>
+        <ul id="tile-join-list" class="tile-complete-list"></ul>
+        <p id="tile-join-done" class="tile-join-done" role="status" aria-live="polite"></p>
+      </section>
       <!-- « Pour compléter ce tableau de bord » : les suggestions que les tuiles posées ne couvrent pas encore (js/advice-complete.js, rempli par
            js/main-panel.js:renderCompletion ; masqué tant qu'il n'y a ni tuile ni suggestion). -->
       <section id="tile-complete" class="tile-complete" aria-labelledby="tile-complete-title" hidden>
@@ -1015,6 +1023,7 @@
   <script src="js/advice.js"></script>
   <script src="js/advice-complete.js"></script>
   <script src="js/advice-column.js"></script>
+  <script src="js/advice-join.js"></script>
   <script src="js/welcome.js"></script>
   <script src="js/models.js"></script>
   <script src="js/combobox.js"></script>

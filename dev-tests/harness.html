@@ -502,6 +502,13 @@
 
     <section id="tile-panel-choose" class="tile-panel-step" data-step="choose">
       
+      <section id="tile-join" class="tile-complete tile-join" aria-labelledby="tile-join-title" hidden>
+        <h3 id="tile-join-title" class="tile-complete-title" data-i18n="tilePanel.join.title">Analyser par nom plutôt que par numéro</h3>
+        <p id="tile-join-lead" class="tile-complete-lead" data-i18n="tilePanel.join.lead">Des colonnes de cette table ne contiennent que des numéros de ligne d'une autre table. La relier donne accès à son contenu.</p>
+        <ul id="tile-join-list" class="tile-complete-list"></ul>
+        <p id="tile-join-done" class="tile-join-done" role="status" aria-live="polite"></p>
+      </section>
+      
       <section id="tile-complete" class="tile-complete" aria-labelledby="tile-complete-title" hidden>
         <h3 id="tile-complete-title" class="tile-complete-title" data-i18n="tilePanel.complete.title">Pour compléter ce tableau de bord</h3>
         <p class="tile-complete-lead" data-i18n="tilePanel.complete.lead">Ce que vos données permettent et que vos tuiles ne montrent pas encore.</p>
@@ -941,6 +948,7 @@
   <script src="../js/advice.js"></script>
   <script src="../js/advice-complete.js"></script>
   <script src="../js/advice-column.js"></script>
+  <script src="../js/advice-join.js"></script>
   <script src="../js/welcome.js"></script>
   <script src="../js/models.js"></script>
   <script src="../js/combobox.js"></script>
