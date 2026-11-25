@@ -123,7 +123,7 @@
   // (insensible à la casse : Grist refuse deux identifiants qui ne diffèrent que par elle).
   function freshColumnName(existingIds, base) {
     const taken = new Set((existingIds || []).map((s) => String(s).toLowerCase()));
-    const root = base || 'Mots_cles_auto';
+    const root = base || 'Auto_keywords';
     if (!taken.has(root.toLowerCase())) return root;
     for (let i = 2; i < 1000; i++) {
       const name = `${root}_${i}`;

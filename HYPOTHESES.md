@@ -2429,7 +2429,7 @@ dans une seule instance de widget, avec ses propres tuiles internes.
       moyen d'écouter « un document vient d'être déposé » quand il est fermé (pas de back-end, pas de `onRecords`),
       et il n'écrit rien dans la table de la personne sans l'avoir dit : la fenêtre choisit la source (le PDF joint, ou
       une colonne de texte : titre, résumé), la colonne qui reçoit les mots-clés (existante, ou nouvelle
-      `Mots_cles_auto` créée APRÈS une fenêtre de confirmation qui dit le nombre de lignes et la colonne), une colonne
+      `Auto_keywords` (`Mots_cles_auto` jusqu'au 25/11/2026) créée APRÈS une fenêtre de confirmation qui dit le nombre de lignes et la colonne), une colonne
       facultative de mots saisis à la main (jamais répétés dans l'automatique), le nombre de mots et la langue. Une
       cellule déjà remplie n'est jamais touchée ; relancer le travail ne fait donc que compléter (les nouvelles lignes).
     - **L'algorithme** (`js/keywords.js:extractKeywords`, zéro dépendance, `Intl.Segmenter`) : RAKE ne suffit pas pour
