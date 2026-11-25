@@ -1061,13 +1061,82 @@
     await grist.docApi.applyUserActions(entries.map((e) => ['UpdateRecord', tableId, e.id, { [colId]: e.value }]));
   }
 
+  // ---- La mise à jour des noms (consigne GFS 030) : tout ce que la fenêtre commune du kit demande au widget, le `port` -----------------------------------
+  // Le kit (`kit/js/names-update/`, `NamesUpdate.run({ port, plan, appName })`) ne touche ni au document ni à la page : tout passe par ce `port`. Le calcul du lot
+  // (`CN.renamePlan`) est pur et dans `js/config-names.js` ; ici seulement la parole avec Grist.
+
+  // Les noms du document maintenant : { tables: { '<table>': ['<colonne>', …] } }, lus dans les tables système que ce widget lit déjà (`_grist_Tables`,
+  // `_grist_Tables_column`, voir `realDateColumnIds`). Toutes les tables, pas seulement les miennes : le kit y cherche la colonne `id_sync` de Sync+ (une table que
+  // Sync+ utilise ne change ni de nom ni de colonnes). Le premier contrôle d'existence de la session passe par `tableExistsConfirmed` : même garde contre la course avec
+  // la négociation d'accès de `grist.ready()` que pour la lecture de la table de configuration (une liste vide lue trop tôt ne doit pas faire croire « rien à faire »).
+  async function readDocumentSchema() {
+    await tableExistsConfirmed(CONFIG_TABLE);
+    const [tables, columns] = await Promise.all([grist.docApi.fetchTable('_grist_Tables'), grist.docApi.fetchTable('_grist_Tables_column')]);
+    const byRow = new Map();
+    const out = {};
+    (tables.id || []).forEach((rowId, i) => { const id = tables.tableId[i]; byRow.set(rowId, id); out[id] = []; });
+    (columns.id || []).forEach((_, i) => { const table = byRow.get(columns.parentId[i]); if (table !== undefined) out[table].push(columns.colId[i]); });
+    return { tables: out };
+  }
+
+  // La preuve que cette personne est propriétaire du document (seule une personne qui l'est peut renommer : Grist le refuse aux autres), sans jamais lire un corps de
+  // réponse : `GET /webhooks` de l'API REST, que Grist rend aux propriétaires seuls (200), refuse aux autres (403 « No owner access »), faits vérifiés de GFS (contrats
+  // 5.2 point 8) ; la même preuve que `createRestPort(…).isOwner` du kit. Seule : un jeton d'écriture (`getAccessToken({ readOnly: false })`, jamais gardé, jamais autre
+  // chose qu'un GET sur cette adresse, sans cookie ni référent). **Demandé seulement quand il y a quelque chose à renommer** (le kit n'appelle `isOwner` qu'alors).
+  // `true`/`false` quand Grist a répondu 200/403, `null` pour tout le reste (pas de jeton, pas de réponse, un 404 d'une autre version de Grist) : le kit traite `null` comme
+  // « non » et n'ouvre pas la fenêtre. Dans GFS le jeton d'écriture est refusé à une app qui ne l'a pas déclaré (le mien est en lecture seule) : la preuve vient alors
+  // de GFS (`contexte.role.proprietaire`, donnée par `hostedOwner`) ou n'existe pas (`null`) — jamais un essai de jeton d'écriture dans GFS.
+  async function documentOwnerProof(options) {
+    const hosted = options && options.hosted;
+    if (hosted) {
+      const fromHost = options.hostedOwner ? options.hostedOwner() : null;
+      return fromHost === true || fromHost === false ? fromHost : null;
+    }
+    try {
+      const access = await grist.docApi.getAccessToken({ readOnly: false });
+      if (!access || !access.token || !access.baseUrl) return null;
+      const base = safeAttachmentBase(access.baseUrl, (typeof location !== 'undefined' && location.protocol) || '');
+      const res = await fetch(`${base}/webhooks?auth=${encodeURIComponent(access.token)}`, { credentials: 'omit', referrerPolicy: 'no-referrer' });
+      if (res.status === 200) return true;
+      if (res.status === 403) return false;
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Le `port` du kit. `options` : { hosted (GFS héberge le widget), hostedOwner() -> true | false | null (ce que GFS dit du rôle), readOnly() -> booléen (la page ne
+  // peut pas écrire) }. `apply` envoie UN lot (Grist le passe en entier ou pas du tout) ; `rowCount` ne sait compter que BI_Dashboard_Config (une ligne par rapport :
+  // petite, jamais BI_Dashboard_Comments, qui grossit avec l'usage et se compterait en la lisant toute entière, faits vérifiés de GFS 161).
+  function namesPort(options) {
+    const opts = options || {};
+    return {
+      readSchema: readDocumentSchema,
+      isOwner: () => documentOwnerProof(opts),
+      readOnly: () => Boolean(opts.readOnly && opts.readOnly()),
+      apply: async (actions) => { await grist.docApi.applyUserActions(actions); },
+      rowCount: async (table) => {
+        if (table !== CONFIG_TABLE) throw new Error('rowCount : seule BI_Dashboard_Config se compte');
+        return ((await grist.docApi.fetchTable(CONFIG_TABLE)).id || []).length;
+      }
+    };
+  }
+
+  // Après la fenêtre (renommage fait, déjà fait, refusé…) : les noms mémorisés et le « la table existe » de la session ne valent plus rien, la prochaine lecture les refait.
+  function afterNamesUpdate() {
+    _configCols = null;
+    _configTableExistsPromise = null;
+    _rawTables = null;
+  }
+
   // « Réunir » (consigne GFS 030, point 4c) : un document qui porte les DEUX jeux de noms de BI_Dashboard_Config (par exemple une version d'avant
   // cette consigne, restée ouverte, a recréé `Nom` à côté de `Name` après le renommage d'un autre onglet) n'est jamais renommé — Grist ajouterait
   // « 2 » au nom pris. Le widget le lit déjà réuni (`CN.cell` : le premier nom non vide) ; ceci dit s'il reste des valeurs à copier dans le nouveau
   // nom, et les copie SEULEMENT après la confirmation de la personne (`js/main-session.js:offerMergeConfigNames`), dans un seul lot, jamais sur une
   // cellule déjà remplie, sans supprimer l'ancienne colonne (RemoveColumn n'est jamais utilisé par ce widget).
   async function configNamesStatus() {
-    await ensureConfigTableExists();
+    // Jamais de création de table pour poser une question : un document sans BI_Dashboard_Config n'a rien à réunir.
+    if (!tableExistsIn(await listAllTablesCached(), CONFIG_TABLE)) return { both: [], rows: 0, cells: 0 };
     const table = await refreshConfigNames();
     const actions = CN.mergePlan(table);
     return { both: CN.KEYS.filter((k) => _configCols[k].both), rows: new Set(actions.flatMap((a) => a[2])).size, cells: actions.reduce((n, a) => n + a[2].length, 0) };
@@ -1080,7 +1149,7 @@
   }
 
   GristBI.api = {
-    configNamesStatus, mergeConfigNames, refreshConfigNames, isNameError: CN.isNameError,
+    configNamesStatus, mergeConfigNames, refreshConfigNames, isNameError: CN.isNameError, namesPort, afterNamesUpdate, readDocumentSchema, documentOwnerProof,
     init, loadConfig, saveConfig, loadConfigById, blankConfig,
     listAvailableTables, loadTable, loadOrCreateComments, addComment, refColumnsForTable,
     getCurrentUserEmail, createTableFromRows, readColumnFormats, organizeInternalPages,

@@ -249,7 +249,190 @@ const FR = ['Nom', 'TypeRapport', 'DateModif', 'ModifiePar'];
       assert.ok(a > 0 && b > a, `${html} : js/config-names.js se charge avant js/grist-api.js`);
     }
     assert.ok(!/RenameTable|RemoveColumn|RemoveTable/.test(strip(read('js', 'config-names.js'))), 'config-names.js ne détruit ni ne renomme de table');
+    // Point 4c : aucun renommage hors de la fenêtre commune — le verbe n'est écrit que dans le plan de js/config-names.js, que le kit joue
+    const fs = require('fs');
+    const path = require('path');
+    const jsFiles = fs.readdirSync(path.join(__dirname, '..', 'js')).filter((f) => f.endsWith('.js'));
+    const renamers = jsFiles.filter((f) => /RenameColumn/.test(strip(read('js', f))));
+    assert.deepStrictEqual(renamers, ['config-names.js'], 'RenameColumn n\'est écrit que dans js/config-names.js (le lot est joué par la fenêtre du kit)');
+    // Point 4b : la fenêtre passe AVANT toute lecture de la table de configuration au démarrage
+    const main = strip(read('js', 'main.js'));
+    const boot = main.slice(main.indexOf('async function bootstrap'));
+    const at = (needle) => boot.indexOf(needle);
+    assert.ok(at('await runNamesUpdate(') > 0 && at('await runNamesUpdate(') < at('openReportById(opening') && at('await runNamesUpdate(') < at('openBlankReport()') && at('await runNamesUpdate(') < at('connectToFirstTable()'), 'bootstrap : runNamesUpdate avant d\'ouvrir un rapport ou de se connecter à une table');
+    assert.ok(at('await offerMergeConfigNames(') > at('await runNamesUpdate('), '« Réunir » vient après la fenêtre');
+    const session = strip(read('js', 'main-session.js'));
+    assert.ok(/appName: 'Grist-BI'/.test(session) && /plan: GristBI\.configNames\.renamePlan/.test(session), 'la fenêtre reçoit le plan de js/config-names.js et le nom de l\'app');
+    assert.ok(!/rowCount[^\n]*(Comments|UserProbe)/.test(strip(read('js', 'grist-api.js'))), 'rowCount ne compte jamais BI_Dashboard_Comments');
+    const modules = read('js', 'modules.js');
+    assert.ok(/'kit-names-update': \(\) => import\('\.\.\/kit\/js\/names-update\/index\.js'\)/.test(modules) && /'kit-i18n': \(\) => import\('\.\.\/kit\/js\/i18n\.js'\)/.test(modules), 'js/modules.js nomme la fenêtre et la langue du kit, en chemins littéraux');
+    for (const html of ['index.html', 'dev-tests/harness.html']) {
+      assert.ok(/kit\/css\/names-update\.css/.test(fs.readFileSync(path.join(__dirname, '..', html), 'utf8')), `${html} lie kit/css/names-update.css`);
+    }
     console.log('OK noms — sources : plus aucun nom français dans le code de grist-api.js, config-names.js chargé avant lui (index.html et harnais)');
+  }
+
+  // --- 8. La fenêtre commune du kit (consigne GFS 030) : son noyau (`prepare`/`execute`, sans fenêtre) branché sur le VRAI port de js/grist-api.js -------------
+  // Le faux Grist du harnais tient `_grist_Tables`/`_grist_Tables_column` et applique `RenameColumn` en un seul lot (« 2 » collé à un nom pris, comme Grist). La fenêtre
+  // elle-même (DOM) se joue dans test-browser.js ; ici : qui peut renommer, ce que le lot fait au document, ce que le widget lit et écrit ensuite.
+  {
+    const { prepare, execute } = await import('../kit/js/names-update/run.js');
+    const CONFIG = 'BI_Dashboard_Config';
+    // Un document aux noms d'avant : la table de configuration (une ligne), une table de la personne, les métadonnées que le widget lit.
+    function boot(columns, { fetchStatus, extraTables = {}, flags = {} } = {}) {
+      const tableList = { [CONFIG]: columns, Ventes: ['Region', 'Montant'], ...extraTables };
+      const meta = { tables: { id: [], tableId: [] }, columns: { id: [], parentId: [], colId: [], type: [], widgetOptions: [] } };
+      Object.entries(tableList).forEach(([tableId, cols], t) => {
+        meta.tables.id.push(t + 1); meta.tables.tableId.push(tableId);
+        cols.forEach((colId) => { meta.columns.id.push(meta.columns.id.length + 1); meta.columns.parentId.push(t + 1); meta.columns.colId.push(colId); meta.columns.type.push('Text'); meta.columns.widgetOptions.push(''); });
+      });
+      const config = { id: [1] };
+      columns.forEach((c) => { config[c] = ['id_sync'].includes(c) ? [''] : [c === 'TableId' ? 'Ventes' : c === 'ConfigJSON' ? '{"pages":[{"id":"p1","name":"P","tiles":[]}]}' : /^(Nom|Name)$/.test(c) ? 'Mon rapport' : /^(TypeRapport|ReportType)$/.test(c) ? 'rapport' : '']; });
+      const calls = { fetch: [], tokens: 0, rowCount: [] };
+      const sandbox = {
+        console: { error() {}, log() {}, warn() {} }, setTimeout: (fn) => { fn(); return 0; }, URL, location: { href: 'https://exemple.test/widget/index.html' },
+        fetch: async (url, init) => { calls.fetch.push({ url, init }); if (fetchStatus instanceof Error) throw fetchStatus; return { status: fetchStatus }; }
+      };
+      sandbox.window = sandbox;
+      sandbox.__gristStubPreseed = { ...Object.fromEntries(Object.entries(tableList).map(([tableId, cols]) => [tableId, tableId === CONFIG ? config : { id: [1], ...Object.fromEntries(cols.map((c) => [c, ['x']])) }])), _grist_Tables: meta.tables, _grist_Tables_column: meta.columns };
+      Object.assign(sandbox, flags);
+      vm.runInNewContext(read('dev-tests', 'grist-stub.js'), sandbox);
+      sandbox.GristBI = { data, i18n, state: { DEFAULT_PAGE_ID: 'page_default' }, configNames: CN };
+      vm.runInNewContext(read('js', 'grist-api.js'), sandbox);
+      const originalToken = sandbox.grist.docApi.getAccessToken;
+      sandbox.grist.docApi.getAccessToken = async (options) => { calls.tokens++; calls.lastTokenOptions = options; return originalToken(options); };
+      return { sandbox, api: sandbox.GristBI.api, calls, columnsOf: async () => Array.from(Object.keys(await sandbox.grist.docApi.fetchTable(CONFIG))).filter((k) => k !== 'id' && k !== 'manualSort') };
+    }
+    const OLD = ['TableId', 'ConfigJSON', ...FR];
+    const plan = CN.renamePlan;
+
+    // 8a. propriétaire (Grist répond 200) : le lot passe en une fois, les lignes sont comptées, rien d'autre ne change
+    {
+      const { api, calls, columnsOf, sandbox } = boot(OLD, { fetchStatus: 200 });
+      const port = api.namesPort({});
+      const prepared = await prepare({ port, plan });
+      assert.strictEqual(prepared.state, 'ready', 'document d\'avant + propriétaire prouvé : la fenêtre peut s\'ouvrir');
+      same(prepared.summary, { tables: [], columns: 4, labels: 0 }, 'quatre colonnes, aucune table renommée');
+      const out = await execute({ port, plan });
+      assert.strictEqual(out.state, 'done');
+      assert.deepStrictEqual([out.tables, out.columns, out.rows, out.mismatch.length], [1, 4, 1, 0], 'une table, quatre colonnes, la ligne comptée avant et après (rowCount de BI_Dashboard_Config)');
+      same(await columnsOf(), ['TableId', 'ConfigJSON', ...EN], 'les quatre colonnes ont les noms anglais, dans leur ordre, aucune « 2 »');
+      api.afterNamesUpdate();
+      const loaded = await api.loadConfigById(1);
+      assert.ok(loaded && loaded.config.pages[0].name === 'P', 'le rapport s\'ouvre après le renommage : ses données n\'ont pas bougé');
+      const count = (await sandbox.grist.docApi.fetchTable(CONFIG)).id.length;
+      assert.strictEqual(count, 1, 'aucune ligne perdue ni ajoutée');
+      const tables = await sandbox.grist.docApi.listTables();
+      assert.ok(tables.includes(CONFIG) && !tables.includes('BI_Dashboard_Config2'), 'pas de table de plus');
+      assert.strictEqual(calls.tokens, 1, 'le jeton d\'écriture n\'a été demandé qu\'une fois, pour la preuve');
+      assert.ok(calls.lastTokenOptions && calls.lastTokenOptions.readOnly === false);
+      assert.ok(/\/webhooks\?auth=/.test(calls.fetch[0].url) && calls.fetch[0].init.credentials === 'omit' && calls.fetch[0].init.referrerPolicy === 'no-referrer', 'GET /webhooks, sans cookie ni référent');
+      assert.ok(!calls.fetch[0].init.method || calls.fetch[0].init.method === 'GET', 'jamais autre chose qu\'un GET');
+      assert.strictEqual(calls.fetch.length, 1);
+      // relancé : plus rien à faire, plus aucune preuve demandée
+      assert.strictEqual((await prepare({ port, plan })).state, 'none');
+      assert.strictEqual(calls.tokens, 1, 'rien à renommer : le widget ne demande même pas de jeton');
+      console.log('OK fenêtre — propriétaire prouvé : un seul lot, lignes comptées, noms anglais, rapport lisible, aucune table ni ligne de plus');
+    }
+
+    // 8b. une personne qui n'est pas propriétaire, ou une preuve impossible : AUCUNE fenêtre, le document est intact, le widget continue sur ses noms
+    for (const [label, fetchStatus] of [['403 : pas propriétaire', 403], ['404 : autre version de Grist', 404], ['réseau coupé', new Error('Failed to fetch')]]) {
+      const { api, columnsOf } = boot(OLD, { fetchStatus });
+      const prepared = await prepare({ port: api.namesPort({}), plan });
+      assert.strictEqual(prepared.state, 'wait', label);
+      same(await columnsOf(), OLD, `${label} : aucune colonne renommée`);
+      const loaded = await api.loadConfigById(1);
+      assert.ok(loaded && loaded.config.pages[0].name === 'P', `${label} : le widget continue sur les noms d'avant`);
+    }
+    {
+      // pas de jeton du tout (GFS refuse, ou droits) : même chose
+      const { api } = boot(OLD, { fetchStatus: 200, flags: { __gristStubNoToken: true } });
+      assert.strictEqual((await prepare({ port: api.namesPort({}), plan })).state, 'wait', 'jeton refusé : pas de fenêtre');
+      // lecture seule : jamais, même propriétaire
+      const ro = boot(OLD, { fetchStatus: 200 });
+      assert.strictEqual((await prepare({ port: ro.api.namesPort({ readOnly: () => true }), plan })).state, 'wait', 'lecture seule : pas de fenêtre');
+      assert.strictEqual(ro.calls.tokens, 0, 'lecture seule : même pas de jeton demandé');
+      console.log('OK fenêtre — pas propriétaire (403), preuve impossible (404, réseau, jeton refusé) ou lecture seule : aucune fenêtre, document intact, le widget lit les anciens noms');
+    }
+
+    // 8c. dans GFS : la preuve est celle de GFS (`role.proprietaire`), jamais un jeton d'écriture ; sans elle, « non »
+    {
+      const unknown = boot(OLD, { fetchStatus: 200 });
+      assert.strictEqual((await prepare({ port: unknown.api.namesPort({ hosted: true, hostedOwner: () => null }), plan })).state, 'wait', 'GFS ne dit pas le rôle : pas de fenêtre');
+      assert.strictEqual(unknown.calls.tokens, 0, 'dans GFS, jamais de jeton d\'écriture ni d\'appel /webhooks');
+      assert.strictEqual(unknown.calls.fetch.length, 0);
+      const no = boot(OLD, { fetchStatus: 200 });
+      assert.strictEqual((await prepare({ port: no.api.namesPort({ hosted: true, hostedOwner: () => false }), plan })).state, 'wait');
+      const yes = boot(OLD, { fetchStatus: 200 });
+      assert.strictEqual((await prepare({ port: yes.api.namesPort({ hosted: true, hostedOwner: () => true }), plan })).state, 'ready', 'GFS dit propriétaire : la fenêtre s\'ouvre');
+      assert.strictEqual(yes.calls.tokens, 0);
+      console.log('OK fenêtre — dans GFS : la preuve est celle de GFS, jamais un jeton d\'écriture ; sans elle, pas de fenêtre');
+    }
+
+    // 8d. refus du courtier ou de Grist : rien n'a changé, le widget continue sur les noms d'avant
+    {
+      const { api, columnsOf } = boot(OLD, { fetchStatus: 200, flags: { __gristStubRefuseRenames: true } });
+      const out = await execute({ port: api.namesPort({}), plan });
+      assert.strictEqual(out.state, 'refused', 'renommage refusé');
+      same(await columnsOf(), OLD, 'rien n\'a changé');
+      assert.ok((await api.loadConfigById(1)).config.pages[0].name === 'P', 'le rapport reste lisible sous les anciens noms');
+      console.log('OK fenêtre — renommage refusé : rien ne change, le rapport reste lisible');
+    }
+
+    // 8e. Sync+ : une table qui porte `id_sync` ne change jamais de nom ni de colonnes
+    {
+      const sync = boot([...OLD, 'id_sync'], { fetchStatus: 200 });
+      const prepared = await prepare({ port: sync.api.namesPort({}), plan });
+      assert.strictEqual(prepared.state, 'none', 'BI_Dashboard_Config est une table de Sync+ : rien n\'est renommé');
+      same(prepared.held, [CONFIG], 'le kit dit laquelle est gardée (`held`) : le widget la lit par ses anciens noms');
+      assert.strictEqual(sync.calls.tokens, 0, 'rien à faire : aucune preuve demandée');
+      same(await sync.columnsOf(), [...OLD, 'id_sync'], 'le document n\'a pas bougé');
+      assert.ok((await sync.api.loadConfigById(1)).config.pages[0].name === 'P', 'et le rapport s\'ouvre');
+      // une AUTRE table de Sync+ ne gêne pas : seule la table de configuration est touchée
+      const other = boot(OLD, { fetchStatus: 200, extraTables: { Partage: ['id_sync', 'Valeur'] } });
+      const out = await execute({ port: other.api.namesPort({}), plan });
+      assert.strictEqual(out.state, 'done', 'une table de Sync+ voisine ne bloque rien');
+      same(await other.sandbox.grist.docApi.fetchTable('Partage').then((t) => Array.from(Object.keys(t)).filter((k) => k !== 'id' && k !== 'manualSort')), ['id_sync', 'Valeur'], 'la table de Sync+ n\'a pas bougé');
+      console.log('OK fenêtre — Sync+ : BI_Dashboard_Config gardée si elle porte id_sync (lue par ses anciens noms), une autre table de Sync+ intacte');
+    }
+
+    // 8f. les deux jeux : le lot est vide (jamais un « 2 »), « Réunir » prend le relais ; mêlés : seul l'ancien est renommé
+    {
+      const both = boot([...OLD, ...EN], { fetchStatus: 200 });
+      assert.strictEqual((await prepare({ port: both.api.namesPort({}), plan })).state, 'none', 'les deux jeux : rien à renommer');
+      assert.deepStrictEqual(Array.from((await both.api.configNamesStatus()).both), CN.KEYS, 'et le widget sait qu\'il y a les deux jeux à réunir');
+      const mixed = boot(['TableId', 'ConfigJSON', 'Nom', 'ReportType', 'DateModif', 'ModifiePar'], { fetchStatus: 200 });
+      const out = await execute({ port: mixed.api.namesPort({}), plan });
+      assert.strictEqual(out.state, 'done');
+      same(await mixed.columnsOf(), ['TableId', 'ConfigJSON', 'Name', 'ReportType', 'ModifiedAt', 'ModifiedBy'], 'noms mêlés : Nom, DateModif et ModifiePar sont renommés, ReportType reste');
+      assert.strictEqual(out.columns, 3);
+      console.log('OK fenêtre — les deux jeux : rien à renommer (jamais « 2 »), « Réunir » le dit ; noms mêlés : seul l\'ancien est renommé');
+    }
+
+    // 8g. un document sans table de configuration : rien à renommer, aucune table créée par la fenêtre ni par « Réunir »
+    {
+      const sandbox = { console: { error() {}, log() {}, warn() {} }, setTimeout: (fn) => { fn(); return 0; }, URL, location: { href: 'https://exemple.test/widget/index.html' } };
+      sandbox.window = sandbox;
+      vm.runInNewContext(read('dev-tests', 'grist-stub.js'), sandbox);
+      sandbox.GristBI = { data, i18n, state: { DEFAULT_PAGE_ID: 'page_default' }, configNames: CN };
+      vm.runInNewContext(read('js', 'grist-api.js'), sandbox);
+      const api = sandbox.GristBI.api;
+      const before = await sandbox.grist.docApi.listTables();
+      assert.strictEqual((await prepare({ port: api.namesPort({}), plan })).state, 'none');
+      same(JSON.parse(JSON.stringify(await api.configNamesStatus())), { both: [], rows: 0, cells: 0 }, '« Réunir » ne crée pas la table pour poser sa question');
+      same(Array.from(await sandbox.grist.docApi.listTables()), Array.from(before), 'aucune table créée');
+      console.log('OK fenêtre — document sans configuration : rien à faire, aucune table créée');
+    }
+
+    // 8h. `rowCount` ne sait compter que BI_Dashboard_Config (jamais les commentaires, qui grossissent : faits vérifiés de GFS 161)
+    {
+      const { api } = boot(OLD, { fetchStatus: 200 });
+      const port = api.namesPort({});
+      assert.strictEqual(await port.rowCount(CONFIG), 1);
+      await assert.rejects(() => port.rowCount('BI_Dashboard_Comments'), /seule BI_Dashboard_Config/);
+      await assert.rejects(() => port.rowCount('Ventes'), /seule BI_Dashboard_Config/);
+      console.log('OK fenêtre — rowCount : seulement BI_Dashboard_Config');
+    }
   }
 
   console.log('\nTous les essais des deux jeux de noms de BI_Dashboard_Config sont passés.');

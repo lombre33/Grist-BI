@@ -703,6 +703,18 @@
     // langue de la personne" plutôt qu'un texte figé.
     'gfs.newReportName': { fr: 'Rapport BI {n}', en: 'BI report {n}' },
 
+    // --- Noms de BI_Dashboard_Config (consigne GFS 030, js/main-session.js) : « Réunir » les deux jeux de noms d'un document, et l'écriture refusée
+    // parce qu'un nom a changé dans un autre onglet. (La fenêtre de mise à jour des noms elle-même est celle du kit : ses textes sont les siens.)
+    'namesMerge.title': { fr: 'Réunir les deux jeux de noms ?', en: 'Merge the two sets of names?' },
+    'namesMerge.message': {
+      fr: 'Ce document garde des rapports sous les anciens noms de colonnes ET sous les nouveaux. Aucune ligne n\'est supprimée. Ce qui est rempli sous l\'ancien nom est copié vers le nouveau, seulement là où celui-ci est vide ({cells} {cells|valeur|valeurs}).',
+      en: 'This document keeps reports under the old column names AND the new ones. No row is deleted. What is filled under the old name is copied to the new one, only where it is empty ({cells} {cells|value|values}).'
+    },
+    'namesMerge.confirm': { fr: 'Réunir', en: 'Merge' },
+    'namesMerge.done': { fr: 'Les deux jeux de noms sont réunis.', en: 'The two sets of names are merged.' },
+    'namesMerge.failed': { fr: 'Impossible de réunir les noms pour l\'instant. Les rapports restent lisibles.', en: 'Could not merge the names for now. Reports stay readable.' },
+    'configNames.reload': { fr: 'Les noms des colonnes de ce document ont changé dans un autre onglet. Rechargez la page pour continuer à enregistrer.', en: 'The column names of this document were changed in another tab. Reload the page to keep saving.' },
+
     // --- Conseil de visualisation et suggestions de tuiles (js/advice.js) ---
     // Titres persistés des tuiles suggérées (résolus à la création, voir advice.js:suggestTiles).
     'advice.title.byDimension': { fr: '{measure} par {dimension}', en: '{measure} by {dimension}' },

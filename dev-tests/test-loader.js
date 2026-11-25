@@ -164,15 +164,16 @@ const refusedWith = (fn, pattern, why) => assert.throws(fn, (e) => e.code === 'L
 
     // modules.js : des chemins littéraux, une ligne par module permis, des fichiers qui existent
     const modules = stripComments(read('js/modules.js'));
-    const entries = Array.from(modules.matchAll(/'([a-z-]+)': \(\) => import\('(\.\.?\/[A-Za-z0-9_./-]+\.m?js)'\)/g)).map((m) => [m[1], m[2]]);
-    assert.deepStrictEqual(entries.map((e) => e[0]), ['kit-ambiance', 'kit-gfs-link', 'kit-dialogs', 'duckdb']);
+    const entries = Array.from(modules.matchAll(/'([a-z0-9-]+)': \(\) => import\('(\.\.?\/[A-Za-z0-9_./-]+\.m?js)'\)/g)).map((m) => [m[1], m[2]]);
+    assert.deepStrictEqual(entries.map((e) => e[0]), ['kit-ambiance', 'kit-gfs-link', 'kit-dialogs', 'kit-names-update', 'kit-i18n', 'duckdb']);
     assert.strictEqual((modules.match(/\bimport\(/g) || []).length, entries.length, 'tous les import() de modules.js sont des chemins littéraux');
     for (const [name, rel] of entries) {
       assert.ok(!/(https?:|\/\/)/.test(rel), name + ' : un chemin du dépôt, jamais une adresse');
       if (name === 'duckdb') assert.ok(fs.existsSync(path.join(ROOT, 'js', rel)), name + ' : le fichier existe');
+      if (name.startsWith('kit-') && fs.existsSync(path.join(ROOT, 'kit'))) assert.ok(fs.existsSync(path.join(ROOT, 'js', rel)), name + ' : le fichier du kit existe');
     }
     // ceux qui demandent un module le font par son NOM
-    for (const [file, name] of [['js/dialogs.js', 'kit-dialogs'], ['js/main-core.js', 'kit-ambiance'], ['js/main-core.js', 'kit-gfs-link'], ['js/duckdb-engine.js', 'duckdb']]) {
+    for (const [file, name] of [['js/dialogs.js', 'kit-dialogs'], ['js/main-core.js', 'kit-ambiance'], ['js/main-core.js', 'kit-gfs-link'], ['js/main-session.js', 'kit-names-update'], ['js/main-session.js', 'kit-i18n'], ['js/duckdb-engine.js', 'duckdb']]) {
       assert.ok(new RegExp(`loader\\.module\\('${name}'\\)`).test(read(file)), file + ' demande ' + name + ' par son nom');
     }
     for (const file of ['js/export.js', 'js/pptx-export.js', 'js/pdf-text.js', 'js/extensions.js']) {
