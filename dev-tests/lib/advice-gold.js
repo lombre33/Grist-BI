@@ -235,7 +235,7 @@ const GLOBAL_NEVER = [
 // sous sa base. Quand une amélioration FAIT monter une table, relever sa base ici (l'essai le dit) : le score ne doit jamais redescendre en silence.
 const BASELINE = {
   rh: { score: 95.9, coverage: 1 }, notes: { score: 93.4, coverage: 1 }, tickets: { score: 92.5, coverage: 1 }, compta: { score: 92.5, coverage: 1 },
-  projet: { score: 96.7, coverage: 1 }, enquete: { score: 86.8, coverage: 0.8 }, crm: { score: 96.7, coverage: 1 }, large: { score: 96.7, coverage: 1 },
+  projet: { score: 96.7, coverage: 1 }, enquete: { score: 93.4, coverage: 1 }, crm: { score: 96.7, coverage: 1 }, large: { score: 96.7, coverage: 1 },
   contacts: { score: 96.7, coverage: 1 }, commandes: { score: 92.5, coverage: 1 }, ventes: { score: 90.1, coverage: 0.8 }, resultat: { score: 96.7, coverage: 1 },
   parcours: { score: 92.5, coverage: 0.75 }, produits: { score: 88.4, coverage: 1 }, activite: { score: 93.4, coverage: 0.8 }, objectifs: { score: 100, coverage: 1 },
   organisation: { score: 88.4, coverage: 1 }, support: { score: 96.7, coverage: 1 }, boutique: { score: 84.8, coverage: 0.83 },

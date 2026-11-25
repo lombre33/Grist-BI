@@ -187,6 +187,9 @@
   // Ce que le nom ajoute au classement : un montant (« Montant », « CA », « Salaire ») passe devant une quantité, elle-même devant une grandeur sans nom
   // d'argent ; un statut ou une entité (« Statut », « Région », « Produit ») passe devant un axe sans nom, et un nom propre devant plus rien.
   const MEASURE_NAME_BONUS = { amount: 1.5, rate: 1.5, quantity: 0.5 };
+  // Une note reconnue (par ses sœurs, son format ou son nom) est ce qu'une enquête ou un tableau de notes veut mesurer : elle passe devant une grandeur
+  // sans nom d'argent (l'âge des répondants), à égalité avec un taux nommé.
+  const SCORE_RANK_BONUS = 1.5;
   const CATEGORY_NAME_BONUS = { status: 0.4, category: 0.3, categoryMod: 0.3, level: 0.2, label: -0.8, text: -1, contact: -1 };
   // Pénalité de classement d'un prix unitaire parmi les mesures : assez forte pour passer derrière un montant qui aurait des
   // négatifs (retours, avoirs : -1 point) ou quelques cases vides, pas assez pour passer derrière une colonne ambiguë (petit entier).
@@ -517,7 +520,7 @@
     // à droite des axes, mais la première colonne numérique reste le meilleur pari).
     const measures = profiles
       .filter((p) => p.role === 'measure')
-      .map((p) => ({ p, score: (p.lowCardinality ? (p.ordinal ? -2 : 0) : 10) + (p.negatives === 0 ? 1 : 0) - p.emptyRatio * 5 - (isUnitPriceName(p.id) ? UNIT_PRICE_RANK_PENALTY : 0) + (MEASURE_NAME_BONUS[p.sem] || 0) }))
+      .map((p) => ({ p, score: (p.lowCardinality ? (p.ordinal ? -2 : 0) : 10) + (p.negatives === 0 ? 1 : 0) - p.emptyRatio * 5 - (isUnitPriceName(p.id) ? UNIT_PRICE_RANK_PENALTY : 0) + Math.max(MEASURE_NAME_BONUS[p.sem] || 0, p.score ? SCORE_RANK_BONUS : 0) }))
       .sort((a, b) => (b.score - a.score) || byOrder(a.p, b.p))
       .map((x) => x.p);
 
