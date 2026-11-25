@@ -428,6 +428,63 @@ async function scenario(browser, origin, { name, url, framed }) {
       await frame.evaluate(() => GristBI.closeTilePanel(false));
       if (!problems.some((p) => /Analyser par nom|panneau rouvert|jointure/.test(p))) verified.push('« Analyser par nom » : proposition, un clic réel = jointure (lignes ' + first.rows + ', colonnes Clients.*), champs du menu, focus, enregistrée, rien de reproposé');
     }
+
+    // 8. « Ajouter une page entière » (niveau 3d-2) : à partir d'UNE seule tuile posée (un histogramme de `Quantite`, qui ne répond à aucune question
+    // des modèles), le panneau propose des pages de modèle ; un VRAI clic sur « Ajouter la page » crée la page ET ses visualisations (au moins trois,
+    // sans doublon), la personne arrive sur la nouvelle page, l'annonce est écrite, le focus reste dans le panneau, et la page posée n'est pas reproposée.
+    await frame.evaluate(() => {
+      if (document.body.dataset.mode !== 'edit') document.getElementById('mode-toggle').click();
+      GristBI.closeTilePanel(false);
+      const store = GristBI.store;
+      store.getState().tiles.slice().forEach((tile) => store.removeTile(tile.id));
+      store.addTile({ id: 'seed-hist', type: 'histogram', title: 'Quantités', measure: 'Quantite' });
+      GristBI.openTilePanel({ step: 'choose' });
+    });
+    const pageOffered = await frame.waitForSelector('#tile-pages-list button[data-page]', { state: 'visible', timeout: 8000 }).then(() => true, () => false);
+    if (!pageOffered) problems.push('« Ajouter une page entière » : aucune page proposée à partir d\'une seule tuile posée');
+    else {
+      const first = await frame.evaluate(() => ({
+        pages: GristBI.store.getState().pages.length,
+        names: Array.from(document.querySelectorAll('#tile-pages-list .complete-card-title')).map((el) => el.textContent),
+        cards: document.querySelectorAll('#tile-pages-list .page-card').length,
+        reason: document.querySelector('#tile-pages-list .complete-card-reason').textContent,
+        button: document.querySelector('#tile-pages-list button[data-page]').textContent,
+        glyphs: document.querySelectorAll('#tile-pages-list .page-card')[0].querySelectorAll('.page-card-type').length,
+      }));
+      if (first.cards < 1 || first.cards > 2) problems.push('« Ajouter une page entière » : ' + first.cards + ' cartes (1 ou 2 attendues)');
+      if (first.glyphs < 3) problems.push('« Ajouter une page entière » : ' + first.glyphs + ' pictogrammes de visualisation (3 au moins attendus)');
+      if (!first.reason || /\{|\}|undefined|NaN/.test(first.reason)) problems.push('« Ajouter une page entière » : phrase absente ou mal résolue : « ' + first.reason + ' »');
+      await frame.click('#tile-pages-list button[data-page="0"]');
+      const created = await frame.waitForFunction((n) => GristBI.store.getState().pages.length === n + 1, first.pages, { timeout: 5000 }).then(() => true, () => false);
+      if (!created) problems.push('« Ajouter une page entière » : un clic sur « Ajouter la page » n\'a pas créé la page (un clic perdu ?)');
+      await frame.waitForTimeout(700);
+      const second = await frame.evaluate(() => {
+        const state = GristBI.store.getState();
+        const active = document.activeElement;
+        return {
+          pages: state.pages.length,
+          current: (state.pages.find((p) => p.id === state.currentPageId) || {}).name,
+          tiles: state.tiles.length,
+          types: state.tiles.map((tile) => tile.type),
+          ids: state.tiles.map((tile) => tile.id),
+          live: document.getElementById('tile-pages-live').textContent,
+          names: Array.from(document.querySelectorAll('#tile-pages-list .complete-card-title')).map((el) => el.textContent),
+          focusInPanel: !!(active && active.closest && active.closest('#tile-panel')),
+          focusTag: active ? active.tagName : '',
+        };
+      });
+      if (second.pages !== first.pages + 1) problems.push('« Ajouter une page entière » : ' + first.pages + ' -> ' + second.pages + ' pages (une seule attendue)');
+      if (second.tiles < 3) problems.push('« Ajouter une page entière » : ' + second.tiles + ' visualisations sur la nouvelle page (3 au moins attendues)');
+      if (new Set(second.ids).size !== second.ids.length) problems.push('« Ajouter une page entière » : identifiants de tuile en double : ' + second.ids.join(', '));
+      if (second.types.indexOf('text') !== -1) problems.push('« Ajouter une page entière » : une note s\'est glissée dans la page');
+      if (!second.live || !second.live.includes(second.current || '?')) problems.push('« Ajouter une page entière » : annonce absente ou sans le nom de la page (« ' + second.live + ' » / page « ' + second.current + ' »)');
+      if (!second.focusInPanel || second.focusTag === 'BODY') problems.push('« Ajouter une page entière » : le focus a quitté le panneau (' + second.focusTag + ')');
+      if (second.names.some((name) => name === first.names[0])) problems.push('« Ajouter une page entière » : la page posée est reproposée (« ' + first.names[0] + ' »)');
+      await frame.evaluate(() => GristBI.closeTilePanel(false));
+      const closed = await frame.evaluate(() => ({ hidden: document.getElementById('tile-pages').hidden, cards: document.querySelectorAll('#tile-pages-list .page-card').length }));
+      if (!closed.hidden || closed.cards) problems.push('panneau fermé : les cartes de pages restent (' + JSON.stringify(closed) + ')');
+      if (!problems.some((p) => /page entière|panneau fermé/.test(p))) verified.push('« Ajouter une page entière » : ' + first.cards + ' propositions, un clic réel = page « ' + second.current + ' » + ' + second.tiles + ' visualisations, annonce, focus, fermeture');
+    }
   } catch (e) {
     problems.push('essai interrompu : ' + String((e && e.message) || e).slice(0, 240));
   } finally {

@@ -247,5 +247,5 @@
     return { items, missing, unused, covered };
   }
 
-  return { complete, questionKeys, intentsOfTile, columnsOfTile, readsColumn, meaningfulColumns, intentsOfSuggestion, GAP_KEYS, NEW_COLUMN_KEY, GAP_BONUS, NEW_COLUMN_BONUS, DULL_INTEREST, MIN_SCORE, MIN_SCORE_COLUMN };
+  return { complete, questionKeys, isAsked, intentsOfTile, columnsOfTile, readsColumn, meaningfulColumns, intentsOfSuggestion, GAP_KEYS, NEW_COLUMN_KEY, GAP_BONUS, NEW_COLUMN_BONUS, DULL_INTEREST, MIN_SCORE, MIN_SCORE_COLUMN };
 });

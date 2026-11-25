@@ -431,6 +431,9 @@
   const tileJoinEl = document.getElementById('tile-join');
   const tileJoinListEl = document.getElementById('tile-join-list');
   const tileJoinDoneEl = document.getElementById('tile-join-done');
+  const tilePagesEl = document.getElementById('tile-pages');
+  const tilePagesListEl = document.getElementById('tile-pages-list');
+  const tilePagesLiveEl = document.getElementById('tile-pages-live');
   // « Que faire avec cette colonne ? » (étape « Choisir » du panneau, js/advice-column.js).
   const tileColumnEl = document.getElementById('tile-column');
   const columnPickEl = document.getElementById('tile-column-pick');
@@ -696,6 +699,7 @@
     targetColumnField, targetColumnSelect, targetField, targetInput, thresholdsField, tileAdviceEl, tileColumnsField, tileCompleteEl, tileCompleteListEl, tileCompleteLiveEl,
     tileColumnEl, columnPickEl, columnProfileEl, columnUsedEl, columnEmptyEl, columnListEl, columnLiveEl,
     tileJoinEl, tileJoinListEl, tileJoinDoneEl,
+    tilePagesEl, tilePagesListEl, tilePagesLiveEl,
     tileColumnsList, tilePanel, tilePanelCloseBtn, tilePanelTitle, tilePreviewEl, tilePreviewEmptyEl, tileTextField,
     tileTextInput, tileTitleInput, tileTypeSelect, tilesContainer, trendDimensionSelect, trendField, typeGridEl,
     typeLineNameEl, updateBookmarkBtn, valueLabelsCheckbox, valueLabelsField, viewChipEl, viewChipLeaveBtn,

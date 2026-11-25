@@ -582,6 +582,34 @@
       fr: '« {table} » est reliée : ses colonnes ({axes}…) sont disponibles. Menu Données › « Joindre une autre table » pour la retirer.',
       en: '“{table}” is linked: its columns ({axes}…) are now available. Data menu › “Join another table” to remove it.'
     },
+    // « Ajouter une page entière » (js/advice-pages.js) : les modèles de rapport proposés comme pages d'un tableau de bord déjà commencé.
+    'advice.pages.title': { fr: 'Page « {page} »', en: '“{page}” page' },
+    'advice.pages.reason.overview': {
+      fr: '{n} nouvelles visualisations pour voir l\'ensemble d\'un coup d\'œil : {titles}',
+      en: '{n} new charts to see the big picture at a glance: {titles}'
+    },
+    'advice.pages.reason.evolution': {
+      fr: '{n} nouvelles visualisations pour suivre l\'évolution dans le temps : {titles}',
+      en: '{n} new charts to follow how things change over time: {titles}'
+    },
+    'advice.pages.reason.breakdown': {
+      fr: '{n} nouvelles visualisations pour voir comment le total se répartit : {titles}',
+      en: '{n} new charts to see how the total splits up: {titles}'
+    },
+    'tilePanel.pages.title': { fr: 'Ajouter une page entière', en: 'Add a whole page' },
+    'tilePanel.pages.lead': {
+      fr: 'Un ensemble de visualisations qui se complètent, sur une nouvelle page.',
+      en: 'A set of charts that work together, on a new page.'
+    },
+    'tilePanel.pages.add': { fr: 'Ajouter la page', en: 'Add the page' },
+    'tilePanel.pages.addAria': {
+      fr: 'Ajouter la page « {page} » ({n} visualisations)',
+      en: 'Add the “{page}” page ({n} charts)'
+    },
+    'tilePanel.pages.added': {
+      fr: 'Page « {page} » ajoutée : {n} {n|visualisation|visualisations}.',
+      en: '“{page}” page added: {n} {n|chart|charts}.'
+    },
     'tilePanel.column.found': { fr: '{n} {n|proposition|propositions} pour « {column} ».', en: '{n} {n|suggestion|suggestions} for “{column}”.' },
     'tilePanel.back': { fr: 'Changer de type', en: 'Change type' },
     'tilePanel.titleField.label': { fr: 'Titre (facultatif)', en: 'Title (optional)' },

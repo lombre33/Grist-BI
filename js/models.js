@@ -124,7 +124,9 @@
 
   // Tuiles du modèle `id` pour ce tableau. `rows` = les lignes déjà enrichies des colonnes dérivées
   // (js/main.js:withDateHierarchies), `columnIds` = ses colonnes (par défaut celles de la 1re ligne).
-  // `opts.t` résout les titres persistés et le nom de page dans la langue courante.
+  // `opts.t` résout les titres persistés et le nom de page dans la langue courante. `opts.ctx` et `opts.pool` (facultatifs) sont le profil des colonnes
+  // et les suggestions que l'appelant a DÉJÀ calculés pour ces lignes (js/advice-pages.js construit trois modèles d'affilée : un seul profilage au
+  // lieu de trois, 300 000 lignes : ~120 ms au lieu de ~360) ; `build` ne les modifie jamais.
   // Rend `{ ok: true, pageName, tiles }` (tuiles SANS `id`, prêtes pour `store.addTile` une fois un id
   // posé) ou `{ ok: false, missing }` : `missing` ∈ 'data' | 'time' | 'category' — de quoi dire à la
   // personne ce qui manque (clés `models.need.*`). `{ ok: false, unknown: true }` pour un `id` inconnu.
@@ -133,11 +135,11 @@
     const model = MODELS[id];
     rows = Array.isArray(rows) ? rows : [];
     const t = (opts && typeof opts.t === 'function') ? opts.t : null;
-    const ctx = advice.analyzeColumns(rows, columnIds);
+    const ctx = (opts && opts.ctx) || advice.analyzeColumns(rows, columnIds);
     const missing = missingRoles(model, ctx, rows);
     if (missing.length) return { ok: false, missing };
 
-    const pool = advice.suggestTiles(rows, columnIds, { limit: POOL, t: t || undefined });
+    const pool = (opts && Array.isArray(opts.pool)) ? opts.pool : advice.suggestTiles(rows, columnIds, { limit: POOL, t: t || undefined });
     const used = new Set();
     const tiles = [];
     model.slots.forEach((slot) => {
@@ -203,5 +205,5 @@
     return { ok: true, pageName: t ? t(model.pageKey) : id, tiles };
   }
 
-  return { REPORT_TYPE, MODELS, ids, has, build };
+  return { REPORT_TYPE, POOL, MODELS, ids, has, build };
 });

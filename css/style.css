@@ -1477,6 +1477,12 @@ td.pivot-cell:not(.pivot-cell-empty):not(.pivot-total-cell):hover { background: 
 .tile-join-done { margin: 0; font-size: 12px; line-height: 1.45; color: var(--good-ink, var(--text-secondary)); }
 .tile-join-done[hidden] { display: none; }
 
+/* « Ajouter une page entière » : mêmes cartes que « Analyser par nom », sans miniature ; une rangée d'icônes dit de quels types de visualisation la page est faite. */
+.page-card { grid-template-columns: minmax(0, 1fr); }
+.page-card-types { display: flex; flex-wrap: wrap; gap: 6px; }
+.page-card-type { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 6px; background: var(--surface-sunken); }
+.page-card-type .icon { width: 16px; height: 16px; color: var(--accent-ink); }
+
 /* « Que faire avec cette colonne ? » : un bloc replié, mêmes cartes que « Pour compléter ». */
 .tile-column { margin: 0 0 18px; padding-bottom: 12px; border-bottom: var(--bw, 1px) solid var(--border); }
 .tile-column > summary { padding: 4px 0; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text); list-style-position: inside; }
