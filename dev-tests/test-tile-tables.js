@@ -354,4 +354,83 @@ console.log(`OK tuile et table — ${seen} versions fautives vues par les vérif
   ok(/'table',\n\];/.test(read('js', 'graphique', 'definition.js')), 'js/graphique/definition.js lit `table`');
 }
 
+// ---- 4. Menu Filtre : la table d'un filtre avancé (2e moitié du lot 2) ------------------------------------------------------------------
+// Le menu Filtre n'a PAS de liste déroulante (elle débordait du menu, retour d'Antoine du 18/11/2026) : la table se choisit par des boutons. Le filtre
+// porte `table` seulement quand elle diffère de la table de travail ; les colonnes et les valeurs viennent des lignes de CETTE table.
+{
+  const filtersSource = read('js', 'main-filters.js');
+  const index = read('index.html');
+  const harness = read('dev-tests', 'harness.html');
+  const css = read('css', 'style.css');
+  const session = read('js', 'main-session.js');
+  const core = read('js', 'main-core.js');
+
+  const FILTER_CHECKS = [
+    ['la table du filtre repart de la table de travail', (src) => /S\.filterTable = '';\s*let filterTableNames = \[\];/.test(src)],
+    ['les lignes du filtre sont celles de SA table (vides tant qu\'elle n\'est pas lue)', (src) => /function filterRows\(\) \{[\s\S]{0,200}if \(!S\.filterTable\) return state\.rows;[\s\S]{0,120}Array\.isArray\(rows\) \? rows : \[\];/.test(src)],
+    ['une autre table n\'a que ses colonnes (pas de jointure)', (src) => /columnOptions\(rows, undefined, !!S\.filterTable\)/.test(src) && /rows = S\.filterTable \? filterRows\(\) : \(rows \|\| store\.getState\(\)\.rows\);/.test(src)],
+    ['le genre de la colonne (nombre, date, texte) se juge sur les lignes de sa table', (src) => /inferColumnKind\(column, filterRows\(\)\)/.test(src) && /updateAdvancedFilterFieldsForColumn\(rows\) \{\s*rows = S\.filterTable \? filterRows\(\)/.test(src)],
+    ['le filtre porte `table` pour une autre table, avant d\'être posé', (src) => /if \(S\.filterTable\) filter\.table = S\.filterTable;\s*store\.setAdvancedFilter\(column, filter\);/.test(src)],
+    ['la table de travail n\'est jamais une « autre table »', (src) => /const next = table && table !== store\.getState\(\)\.workingTable \? table : '';/.test(src)],
+    ['le dernier choix de table compte (la lecture arrive après un autre clic)', (src) => /const token = \+\+filterTableToken;/.test(src) && /if \(next\) await ensureTableRows\(next\);\s*if \(token !== filterTableToken \|\| S\.filterTable !== next\) return;/.test(src)],
+    ['une ouverture du menu remet la table de travail et relit la liste des tables', (src) => /if \(S\.filterTable\) \{ filterTableToken \+= 1; S\.filterTable = ''; renderFilterColumns\(\); \}\s*renderFilterTables\(\);\s*loadFilterTables\(\);/.test(src)],
+    ['les boutons de table ne se montrent qu\'avec deux tables au moins', (src) => /filterTableField\.hidden = filterTableNames\.length < 2;/.test(src)],
+    ['chaque bouton de table dit s\'il est choisi (aria-pressed) et n\'envoie rien', (src) => /<button type="button" class="filter-table-btn" data-table="\$\{escapeHtml\(name\)\}" aria-pressed="\$\{name === current \? 'true' : 'false'\}">\$\{escapeHtml\(name\)\}<\/button>/.test(src)],
+    ['le nom de la table est écrit échappé', (src) => /data-table="\$\{escapeHtml\(name\)\}"/.test(src) && !/data-table="\$\{name\}"/.test(src)],
+    ['la colonne choisie dit sa table à l\'étape 2', (src) => /filterColumnNameEl\.textContent = S\.filterTable \? `\$\{S\.filterTable\} › \$\{columnId\}` : columnId;/.test(src)],
+    ['une table pas lue ou illisible : la phrase le dit, pas « aucune colonne ne correspond »', (src) => /filterColumnEmpty\.hidden = shown\.length > 0 \|\| \(!!S\.filterTable && GristBI\.data\.tableRowsStatus\(store\.getState\(\), S\.filterTable\) !== 'ready'\);/.test(src) && /status === 'failed' \? 'filters\.table\.failed' : \(status === 'loading' \? 'filters\.table\.loading' : 'filters\.table\.scope'\)/.test(src)],
+    ['un clic sur un bouton de table est délégué (la liste est reconstruite)', (src) => /filterTablesEl\.addEventListener\('click'/.test(src) && /evt\.target\.closest\('\.filter-table-btn'\)/.test(src)],
+    ['aucune liste déroulante dans le menu Filtre (piège des menus qui débordent)', (src) => !/combobox\.attach\(filterTables/.test(src) && !/GristBI\.combobox/.test(src)]
+  ];
+  FILTER_CHECKS.forEach(([label, check]) => ok(check(filtersSource), label));
+
+  // Chaque vérification doit pouvoir échouer : le texte d'origine est remplacé par une version fautive.
+  const FILTER_MUTANTS = [
+    ['le filtre ne dit jamais sa table', 'if (S.filterTable) filter.table = S.filterTable;', ''],
+    ['les colonnes de la table de travail pour une autre table', 'columnOptions(rows, undefined, !!S.filterTable)', 'columnOptions(rows)'],
+    ['le genre jugé sur les lignes de travail', 'inferColumnKind(column, filterRows())', 'inferColumnKind(column)'],
+    ['le dernier choix de table ne compte pas', 'if (token !== filterTableToken || S.filterTable !== next) return;', ''],
+    ['la table de travail prise pour une autre', "table && table !== store.getState().workingTable ? table : ''", "table || ''"],
+    ['la table gardée d\'une ouverture à l\'autre', "if (S.filterTable) { filterTableToken += 1; S.filterTable = ''; renderFilterColumns(); }", ''],
+    ['la liste des tables jamais relue', 'loadFilterTables();\n    refreshFilterColumnList();', 'refreshFilterColumnList();'],
+    ['les boutons de table avec une seule table', 'filterTableField.hidden = filterTableNames.length < 2;', 'filterTableField.hidden = false;'],
+    ['un bouton de table sans état', "aria-pressed=\"${name === current ? 'true' : 'false'}\"", ''],
+    ['un nom de table non échappé', 'data-table="${escapeHtml(name)}"', 'data-table="${name}"'],
+    ['une table illisible qui ne dit rien', "status === 'failed' ? 'filters.table.failed' : (status === 'loading' ? 'filters.table.loading' : 'filters.table.scope')", "'filters.table.scope'"],
+    ['les lignes d\'une table pas lue remplacées par celles de travail', 'return Array.isArray(rows) ? rows : [];', 'return Array.isArray(rows) ? rows : state.rows;'],
+    ['la table non lue attendue pour rien', 'if (next) await ensureTableRows(next);', ''],
+    ['la table absente de l\'étape 2', 'S.filterTable ? `${S.filterTable} › ${columnId}` : columnId', 'columnId'],
+    ['une liste déroulante dans le menu', 'filterTablesEl.addEventListener(\'click\'', 'GristBI.combobox.attach(filterTablesEl); filterTablesEl.addEventListener(\'click\'']
+  ];
+  let filterSeen = 0;
+  FILTER_MUTANTS.forEach(([label, from, to]) => {
+    assert.ok(filtersSource.includes(from), `version fautive « ${label} » : le texte à remplacer n'est plus dans js/main-filters.js`);
+    const mutated = filtersSource.replace(from, to);
+    assert.ok(FILTER_CHECKS.some(([, check]) => !check(mutated)), `version fautive non vue : ${label}`);
+    filterSeen += 1;
+  });
+  console.log(`OK menu Filtre et table — ${filterSeen} versions fautives vues par les vérifications`);
+
+  // Une autre table que celle de travail : la table de travail est remise à zéro du côté de la session.
+  ok(/S\.formTable = ''; S\.filterTable = ''; store\.setWorkingTable\(tableId\);/.test(session), 'un changement de table de travail remet la table du filtre à la table de travail');
+  ok(!/S\.formTable = ''; store\.setWorkingTable/.test(session), 'aucune remise à zéro de la table de travail ne laisse le filtre sur l\'ancienne');
+
+  // Le balisage, les références du DOM, la règle de masquage (piège n°10) et les textes.
+  [['index.html', index], ['harness.html', harness]].forEach(([name, text]) => {
+    ok(/<div id="filter-table-field" class="filter-table-field" hidden>/.test(text) && /id="filter-tables" class="filter-tables" role="group" aria-labelledby="filter-table-label"/.test(text) && /id="filter-table-note"[^>]*role="status"[^>]*hidden/.test(text), `${name} : le groupe de boutons de table est dans le menu Filtre, masqué au départ, nommé, avec sa phrase annoncée`);
+    const step = text.slice(text.indexOf('id="filter-step-columns"'), text.indexOf('id="filter-column-list"'));
+    ok(step.indexOf('id="filter-table-field"') !== -1 && step.indexOf('id="filter-table-field"') < step.indexOf('id="filter-column-search"'), `${name} : les boutons de table précèdent la recherche de colonne (étape 1)`);
+  });
+  ok(/const filterTablesEl = document\.getElementById\('filter-tables'\);/.test(core) && /filterTableField, filterTablesEl, filterTableNoteEl/.test(core), 'les trois références du DOM sont posées et partagées');
+  ok(/\.filter-table-field\[hidden\] \{ display: none; \}/.test(css) && /\.filter-table-btn\[aria-pressed="true"\]/.test(css), 'le groupe est masqué par une règle explicite (piège n°10) et le bouton choisi se voit');
+  ['filters.table.label', 'filters.table.loading', 'filters.table.scope', 'filters.table.failed'].forEach((key) => {
+    ['fr', 'en'].forEach((lang) => {
+      i18n.setLang(lang);
+      const text = i18n.t(key, { table: 'Clients' });
+      ok(text && text !== key && text.indexOf('{') === -1, `« ${key} » en ${lang} : ${text}`);
+    });
+  });
+  i18n.setLang('fr');
+}
+
 console.log(`\nTOUT PASSE (${checks} vérifications) : une tuile, sa table`);

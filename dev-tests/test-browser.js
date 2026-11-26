@@ -1043,6 +1043,128 @@ async function scenario(browser, origin, { name, url, framed }) {
     await frame.evaluate(() => { window.__gristStubFailTables = []; GristBI.closeTilePanel(false); });
     if (!problems.some((p) => /une tuile, sa table|table illisible/.test(p))) verified.push('une tuile, sa table : champ « Table » (trois tables, aucune interne), colonnes de Clients seules, badge, graphique des villes, filtres qui ne sortent pas de leur table (pastille, croix), modification, retour à la table de travail ; table illisible = badge ⚠, zéro ligne, aucun nouvel essai, formulaire refusé');
     }
+
+    // 12. Lot 2 (suite) : le menu Filtre choisit la TABLE du filtre par des boutons (jamais une liste déroulante). Un VRAI clic sur « Clients » donne ses colonnes et
+    // elles seules, le filtre posé porte `table`, ne touche que les visualisations de Clients, et le menu repart de la table de travail à chaque ouverture.
+    {
+    const restartMenu = async () => {
+      await page.reload({ waitUntil: 'load' });
+      frame = page.mainFrame();
+      if (framed) { await page.waitForSelector('#app'); frame = await (await page.$('#app')).contentFrame(); }
+      await frame.waitForFunction(
+        () => typeof window.grist === 'object' && window.GristBI && GristBI.store && GristBI.store.getState().rows.length > 0 && GristBI.mainParts && GristBI.mainParts.S.linkSchema instanceof Map,
+        null, { timeout: 25000 }
+      );
+      await frame.evaluate(() => { if (document.body.dataset.mode !== 'edit') document.getElementById('mode-toggle').click(); });
+    };
+    const closeNotice = async () => {
+      await frame.waitForSelector('#pp-dialog-modal', { state: 'visible', timeout: 8000 }).catch(() => {});
+      await frame.click('#pp-dialog-modal button:has-text("Fermer")', { timeout: 3000 }).catch(() => frame.press('body', 'Escape').catch(() => {}));
+      await frame.waitForFunction(() => { const d = document.getElementById('pp-dialog-modal'); return !d || d.hidden; }, null, { timeout: 4000 }).catch(() => {});
+    };
+    const menuState = () => frame.evaluate(() => ({
+      field: !document.getElementById('filter-table-field').hidden,
+      pills: Array.from(document.querySelectorAll('#filter-tables .filter-table-btn')).map((b) => b.dataset.table + (b.getAttribute('aria-pressed') === 'true' ? '*' : '')),
+      note: document.getElementById('filter-table-note').hidden ? '' : document.getElementById('filter-table-note').textContent,
+      groups: Array.from(document.querySelectorAll('#filter-column-list .filter-column-group')).map((li) => li.textContent),
+      columns: Array.from(document.querySelectorAll('#filter-column-list .filter-column-item')).map((b) => b.dataset.column),
+      pending: document.querySelectorAll('#filter-column-list [data-pending]').length,
+      empty: !document.getElementById('filter-column-empty').hidden,
+      combobox: document.querySelectorAll('#filter-popover .combobox-list').length,
+      form: !document.getElementById('advanced-filter-form').hidden,
+      name: document.getElementById('filter-column-name').textContent,
+      filterTable: GristBI.mainParts.S.filterTable
+    }));
+    // Ouvre le menu Filtre s'il est fermé (un second clic le refermerait).
+    const openFilterMenu = async () => {
+      if (await frame.evaluate(() => document.getElementById('filter-popover').hidden)) await frame.click('#filter-toggle');
+      await frame.waitForFunction(() => !document.getElementById('filter-popover').hidden, null, { timeout: 5000 }).catch(() => {});
+    };
+    // Ferme puis rouvre le menu : c'est l'ouverture qui le remet sur son premier écran.
+    const reopenFilterMenu = async () => {
+      if (!(await frame.evaluate(() => document.getElementById('filter-popover').hidden))) await frame.click('#filter-toggle');
+      await frame.waitForFunction(() => document.getElementById('filter-popover').hidden, null, { timeout: 5000 }).catch(() => {});
+      await openFilterMenu();
+    };
+
+    await restartMenu();
+    await frame.evaluate(() => {
+      GristBI.store.addTile({ id: 'v1', type: 'bar', dimension: 'Region', measure: 'Montant', aggFn: 'sum' });
+      GristBI.store.addTile({ id: 'c2', type: 'bar', dimension: 'Ville', measure: 'Nom', aggFn: 'count', table: 'Clients' });
+      GristBI.store.addTile({ id: 'c3', type: 'bar', dimension: 'Segment', measure: 'Nom', aggFn: 'count', table: 'Clients' });
+    });
+    await frame.waitForFunction(() => Array.isArray(GristBI.store.getState().tableRows.Clients), null, { timeout: 8000 }).catch(() => {});
+    await openFilterMenu();
+    await frame.waitForFunction(() => !document.getElementById('filter-table-field').hidden && document.querySelectorAll('#filter-tables .filter-table-btn').length === 3, null, { timeout: 8000 }).catch(() => {});
+    const m0 = await menuState();
+    if (!m0.field || m0.pills.join() !== 'Ventes*,Clients,Personnes') problems.push('menu Filtre, tables : boutons « ' + m0.pills.join() + ' » (attendu Ventes*,Clients,Personnes, l\'ordre du document : trois tables, la table de travail choisie)');
+    if (m0.note) problems.push('menu Filtre, tables : une phrase de table s\'affiche pour la table de travail : « ' + m0.note + ' »');
+    if (m0.combobox) problems.push('menu Filtre, tables : une liste déroulante (' + m0.combobox + ') dans le menu Filtre');
+    if (m0.groups.join('|') !== 'Ventes|Clients|Personnes') problems.push('menu Filtre, tables : la table de travail garde ses intitulés de tables liées (« ' + m0.groups.join(' | ') + ' »)');
+    // Un VRAI clic sur le bouton « Clients ».
+    await frame.click('#filter-tables [data-table="Clients"]');
+    await frame.waitForFunction(() => GristBI.mainParts.S.filterTable === 'Clients' && document.querySelectorAll('#filter-column-list .filter-column-item').length === 3, null, { timeout: 8000 }).catch(() => {});
+    const m1 = await menuState();
+    if (m1.pills.join() !== 'Ventes,Clients*,Personnes') problems.push('menu Filtre, tables : après le clic les boutons sont « ' + m1.pills.join() + ' »');
+    if (m1.columns.join() !== 'Nom,Ville,Segment') problems.push('menu Filtre, tables : colonnes de Clients « ' + m1.columns.join() + ' » au lieu de Nom,Ville,Segment');
+    if (m1.pending || m1.groups.length) problems.push('menu Filtre, tables : une autre table n\'a pas de jointure ni d\'intitulé (' + m1.pending + ' à relier, ' + m1.groups.length + ' intitulé(s))');
+    if (!/Clients/.test(m1.note)) problems.push('menu Filtre, tables : la phrase de la table ne la nomme pas : « ' + m1.note + ' »');
+    // Un clic sur la colonne : l'étape 2 dit « Clients › Ville » et propose les villes de Clients (pas celles d'un autre jeu de lignes).
+    await frame.click('#filter-column-list [data-column="Ville"]');
+    const opened = await frame.waitForFunction(() => !document.getElementById('advanced-filter-form').hidden, null, { timeout: 5000 }).then(() => true, () => false);
+    if (!opened) problems.push('menu Filtre, tables : le clic sur « Ville » n\'a pas ouvert le réglage du filtre');
+    const step2 = await frame.evaluate(() => ({
+      name: document.getElementById('filter-column-name').textContent,
+      values: Array.from(document.querySelectorAll('#filter-value-list .filter-value-item')).map((b) => b.textContent).sort()
+    }));
+    if (step2.name !== 'Clients › Ville') problems.push('menu Filtre, tables : l\'étape 2 s\'intitule « ' + step2.name + ' » (attendu « Clients › Ville »)');
+    if (step2.values.join() !== 'Lille,Lyon,Nantes') problems.push('menu Filtre, tables : valeurs proposées « ' + step2.values.join() + ' » au lieu des villes de Clients');
+    await frame.click('#filter-value-list [data-value="Lyon"]');
+    await frame.waitForFunction(() => GristBI.store.getState().advancedFilters.length === 1, null, { timeout: 5000 }).catch(() => {});
+    await frame.waitForTimeout(300);
+    const posed = await frame.evaluate(async () => {
+      await GristBI.charts.whenSettled();
+      const st = GristBI.store.getState();
+      const rowsOf = (id) => GristBI.data.rowsForTile(st.tiles.find((tl) => tl.id === id), st).length;
+      return {
+        filters: st.advancedFilters.map((f) => f.column + ':' + f.type + ':' + (f.query || '') + (f.table ? '@' + f.table : '')),
+        ventes: rowsOf('v1'), villes: rowsOf('c2'), segments: rowsOf('c3'),
+        chip: document.getElementById('advanced-filter-badges').textContent.replace(/\s+/g, ' ').trim()
+      };
+    });
+    if (posed.filters.join() !== 'Ville:contains:Lyon@Clients') problems.push('menu Filtre, tables : le filtre posé est « ' + posed.filters.join() + ' » (attendu un filtre « contient Lyon » de la table Clients)');
+    if (posed.ventes !== 36) problems.push('menu Filtre, tables : un filtre de Clients touche les ventes (' + posed.ventes + ' lignes au lieu de 36)');
+    if (posed.villes !== 2 || posed.segments !== 2) problems.push('menu Filtre, tables : le filtre ne retient pas 2 clients pour les deux visualisations de Clients (' + posed.villes + ' et ' + posed.segments + ')');
+    if (!/Clients ›/.test(posed.chip)) problems.push('menu Filtre, tables : la pastille ne nomme pas la table : « ' + posed.chip + ' »');
+    // Rouvert, le menu repart de la table de travail.
+    await reopenFilterMenu();
+    await frame.waitForFunction(() => GristBI.mainParts.S.filterTable === '' && document.querySelectorAll('#filter-tables .filter-table-btn').length === 3, null, { timeout: 5000 }).catch(() => {});
+    const m3 = await menuState();
+    if (m3.filterTable !== '' || m3.pills.join() !== 'Ventes*,Clients,Personnes' || m3.note || m3.form) problems.push('menu Filtre, tables : le menu rouvert garde le choix précédent : ' + JSON.stringify({ filterTable: m3.filterTable, pills: m3.pills, note: m3.note, form: m3.form }));
+    // La croix de la pastille retire le filtre de Clients.
+    await frame.evaluate(() => GristBI.store.clearAdvancedFilter('Ville', 'Clients'));
+    if (await frame.evaluate(() => GristBI.store.getState().advancedFilters.length)) problems.push('menu Filtre, tables : le filtre de Clients n\'a pas été retiré par `clearAdvancedFilter(colonne, table)`');
+
+    // 12b. Une table illisible : le bouton reste, la phrase le dit, aucune colonne n'est proposée, la table de travail revient à la réouverture.
+    tolerated.push(/illisible pour une tuile/, /Table illisible|n'est pas lue/, /illisible \(menu Filtre\)/);
+    await restartMenu();
+    await frame.evaluate(() => { window.__gristStubFailTables = ['Personnes']; });
+    await openFilterMenu();
+    await frame.waitForFunction(() => document.querySelectorAll('#filter-tables .filter-table-btn').length === 3, null, { timeout: 8000 }).catch(() => {});
+    await frame.click('#filter-tables [data-table="Personnes"]');
+    await frame.waitForFunction(() => GristBI.store.getState().tableRows.Personnes === null, null, { timeout: 8000 }).catch(() => {});
+    await closeNotice();
+    const m4 = await menuState();
+    if (m4.pills.join() !== 'Ventes,Clients,Personnes*') problems.push('menu Filtre, table illisible : boutons « ' + m4.pills.join() + ' »');
+    if (m4.columns.length || m4.empty) problems.push('menu Filtre, table illisible : ' + m4.columns.length + ' colonne(s) proposée(s) et « aucune colonne ne correspond » ' + (m4.empty ? 'affiché' : 'masqué') + ' (attendu 0 colonne, la phrase de la table à la place)');
+    if (!/Personnes/.test(m4.note)) problems.push('menu Filtre, table illisible : la phrase ne nomme pas la table : « ' + m4.note + ' »');
+    await frame.evaluate(() => { window.__gristStubFailTables = []; });
+    await reopenFilterMenu();
+    await frame.waitForFunction(() => GristBI.mainParts.S.filterTable === '' && document.querySelectorAll('#filter-column-list .filter-column-item').length > 3, null, { timeout: 5000 }).catch(() => {});
+    const m5 = await menuState();
+    if (m5.filterTable !== '' || m5.pills.join() !== 'Ventes*,Clients,Personnes' || m5.columns.indexOf('Region') === -1 || m5.note) problems.push('menu Filtre, table illisible : la réouverture ne revient pas à la table de travail : ' + JSON.stringify({ filterTable: m5.filterTable, pills: m5.pills, note: m5.note, columns: m5.columns.length }));
+    if (!problems.some((p) => /menu Filtre, (tables|table illisible)/.test(p))) verified.push('menu Filtre, table du filtre : boutons (jamais une liste déroulante), un clic donne les colonnes de Clients seules, « Clients › Ville », valeurs des villes de Clients, filtre « contient Lyon » de la table Clients qui ne touche que ses visualisations (ventes inchangées), pastille, réouverture sur la table de travail ; table illisible = phrase, aucune colonne, retour à la table de travail');
+    }
   } catch (e) {
     problems.push('essai interrompu : ' + String((e && e.message) || e).slice(0, 240));
   } finally {

@@ -177,6 +177,11 @@
   <div id="filter-popover" class="popover popover-filter" role="dialog" data-i18n-aria="filters.popover.aria" aria-label="Filtre" hidden>
     <div id="filter-step-columns" class="filter-step">
       <p class="pop-title" data-i18n="filters.popover.title">Filtrer sur quelle colonne ?</p>
+      <div id="filter-table-field" class="filter-table-field" hidden>
+        <span id="filter-table-label" class="filter-table-label" data-i18n="filters.table.label">Table</span>
+        <div id="filter-tables" class="filter-tables" role="group" aria-labelledby="filter-table-label"></div>
+        <p id="filter-table-note" class="tile-advice tile-link-note" role="status" aria-live="polite" hidden></p>
+      </div>
       <input type="search" id="filter-column-search" class="filter-search" autocomplete="off" spellcheck="false" data-i18n-placeholder="filters.column.search" data-i18n-aria="filters.column.search" placeholder="Rechercher une colonne…" aria-label="Rechercher une colonne…" data-autofocus />
       <ul id="filter-column-list" class="filter-column-list"></ul>
       <p id="filter-column-empty" class="filter-empty" data-i18n="filters.column.none" hidden>Aucune colonne ne correspond.</p>

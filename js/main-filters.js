@@ -12,13 +12,31 @@
     filterColumnNameEl, filterColumnSearch, filterColumnSelect, filterDateEndInput, filterDateModeField,
     filterDateModeSelect, filterDateRangeField, filterDateStartInput, filterErrorEl, filterMaxInput, filterMinInput,
     filterNumberField, filterRelativeDateField, filterRelativePresetSelect, filterStepColumns, filterTextField,
-    columnOptions, filterLinkNoteEl, filterTextInput, filterValueList, filterValueMore, filterValuesHint, inferColumnKind, store
+    columnOptions, filterLinkNoteEl, filterTableField, filterTableNoteEl, filterTablesEl, filterTextInput, filterValueList, filterValueMore,
+    filterValuesHint, inferColumnKind, store
   } = parts;
-  // Définie dans un fichier chargé plus tard : liaison tardive, résolue à l'appel.
+  const S = parts.S;
+  // Définies dans un fichier chargé plus tard : liaison tardive, résolue à l'appel.
   const joinColumn = (...args) => parts.joinColumn(...args);
+  const ensureTableRows = (...args) => parts.ensureTableRows(...args);
   Object.assign(parts, {
     renderFilterColumns, updateAdvancedFilterFieldsForColumn
   });
+
+  // La table sur laquelle porte le filtre en cours de réglage (lot 2 de « Colonnes de toutes les tables », 26/11/2026) : '' = la table de travail.
+  // Un autre choix donne les colonnes de CETTE table (sans jointure : elle n'a que les siennes) et un filtre qui porte `table` — il ne touche que les
+  // visualisations qui lisent cette table. Remis à '' à chaque ouverture du menu et à chaque changement de table de travail.
+  S.filterTable = '';
+  let filterTableNames = []; // les tables du document, relues à chaque ouverture du menu
+  let filterTableToken = 0; // le dernier choix de table compte (la lecture d'une table peut arriver après un autre clic)
+
+  // Les lignes sur lesquelles se règle le filtre : celles de la table de travail, ou celles de l'autre table choisie (`[]` tant qu'elle n'est pas lue).
+  function filterRows() {
+    const state = store.getState();
+    if (!S.filterTable) return state.rows;
+    const rows = state.tableRows[S.filterTable];
+    return Array.isArray(rows) ? rows : [];
+  }
 
   const FILTER_VALUES_SHOWN = 40;
  // au-delà : « N autres valeurs », on affine en tapant
@@ -31,9 +49,10 @@
   const KIND_BADGES = { text: 'Aa', number: '123', date: '31' };
 
   function renderFilterColumns(rows) {
-    rows = rows || store.getState().rows;
+    rows = S.filterTable ? filterRows() : (rows || store.getState().rows);
     // Une seule table en jeu : les colonnes seules, comme avant. Sinon rangées par table (js/main-fields.js:columnOptions), celles à relier en dernier.
-    filterColumns = columnOptions(rows).map((o) => (typeof o === 'string'
+    // Une autre table que celle de travail : ses colonnes seules (`plainOnly`), quand elle est lue.
+    filterColumns = columnOptions(rows, undefined, !!S.filterTable).map((o) => (typeof o === 'string'
       ? { id: o, kind: inferColumnKind(o, rows), label: o, group: '' }
       : { id: o.value, kind: o.pending ? (o.kind || 'text') : inferColumnKind(o.value, rows), label: o.label, group: o.group, pending: !!o.pending, table: o.table }));
     // La colonne choisie a disparu (changement de table) : retour à l'étape 1.
@@ -60,7 +79,53 @@
         + `<span class="kind-badge kind-${c.kind}" aria-hidden="true">${KIND_BADGES[c.kind]}</span>`
         + `<span class="filter-column-label">${escapeHtml(c.label)}</span></button></li>`;
     }).join(''));
-    filterColumnEmpty.hidden = shown.length > 0;
+    // Une table pas encore lue, ou illisible, n'a pas de colonne à montrer : la phrase de la table le dit, pas « aucune colonne ne correspond ».
+    filterColumnEmpty.hidden = shown.length > 0 || (!!S.filterTable && GristBI.data.tableRowsStatus(store.getState(), S.filterTable) !== 'ready');
+  }
+
+  // Les boutons de table (au moins deux tables dans le document) et la phrase de la table choisie.
+  function renderFilterTables() {
+    const working = store.getState().workingTable;
+    const current = S.filterTable || working;
+    filterTableField.hidden = filterTableNames.length < 2;
+    GristBI.safeHtml.setHtml(filterTablesEl, filterTableNames.map((name) => (
+      `<button type="button" class="filter-table-btn" data-table="${escapeHtml(name)}" aria-pressed="${name === current ? 'true' : 'false'}">${escapeHtml(name)}</button>`
+    )).join(''));
+    updateFilterTableNote();
+  }
+
+  function updateFilterTableNote() {
+    const table = S.filterTable;
+    let key = '';
+    if (table) {
+      const status = GristBI.data.tableRowsStatus(store.getState(), table);
+      key = status === 'failed' ? 'filters.table.failed' : (status === 'loading' ? 'filters.table.loading' : 'filters.table.scope');
+    }
+    filterTableNoteEl.hidden = !key;
+    filterTableNoteEl.textContent = key ? t(key, { table }) : '';
+  }
+
+  async function loadFilterTables() {
+    let tables = [];
+    try { tables = await GristBI.api.listAvailableTables(); } catch (e) { console.error('[GristBI] liste des tables illisible (menu Filtre)', e); }
+    filterTableNames = tables;
+    renderFilterTables();
+  }
+
+  // Un clic sur un bouton de table : les colonnes de cette table (lue à la demande), le dernier choix compte.
+  async function chooseFilterTable(table) {
+    const next = table && table !== store.getState().workingTable ? table : '';
+    if (next === S.filterTable) return;
+    const token = ++filterTableToken;
+    S.filterTable = next;
+    filterColumnSearch.value = '';
+    filterColumnSelect.value = '';
+    renderFilterTables();
+    renderFilterColumns();
+    if (next) await ensureTableRows(next);
+    if (token !== filterTableToken || S.filterTable !== next) return;
+    updateFilterTableNote();
+    renderFilterColumns();
   }
 
   function showFilterStep(step) {
@@ -73,7 +138,7 @@
   // Étape 2 : réglage du filtre pour la colonne cliquée.
   function selectFilterColumn(columnId) {
     filterColumnSelect.value = columnId;
-    filterColumnNameEl.textContent = columnId;
+    filterColumnNameEl.textContent = S.filterTable ? `${S.filterTable} › ${columnId}` : columnId;
     const kind = (filterColumns.find((c) => c.id === columnId) || {}).kind || 'text';
     filterColumnNameEl.dataset.kind = kind;
     filterTextInput.value = '';
@@ -105,6 +170,9 @@
     filterColumnSearch.value = '';
     filterColumnSelect.value = '';
     hideFilterLinkNote();
+    if (S.filterTable) { filterTableToken += 1; S.filterTable = ''; renderFilterColumns(); }
+    renderFilterTables();
+    loadFilterTables();
     refreshFilterColumnList();
     showFilterStep('columns');
   }
@@ -154,7 +222,7 @@
   // table à cet instant précis) ; sinon (changement de colonne/mode par l'utilisateur, table déjà
   // stable) repli sur `store.getState().rows`, à jour dans ce cas.
   function updateAdvancedFilterFieldsForColumn(rows) {
-    rows = rows || store.getState().rows;
+    rows = S.filterTable ? filterRows() : (rows || store.getState().rows);
     const column = filterColumnSelect.value;
     const kind = column ? inferColumnKind(column, rows) : 'text';
     filterNumberField.hidden = kind !== 'number';
@@ -195,6 +263,11 @@
 
   filterColumnSearch.addEventListener('input', refreshFilterColumnList);
 
+  filterTablesEl.addEventListener('click', (evt) => {
+    const btn = evt.target.closest('.filter-table-btn');
+    if (btn) chooseFilterTable(btn.dataset.table);
+  });
+
   filterColumnSearch.addEventListener('keydown', (evt) => {
     if (evt.key === 'Enter') {
       evt.preventDefault();
@@ -229,7 +302,7 @@
   function submitAdvancedFilter() {
     const column = filterColumnSelect.value;
     if (!column) return;
-    const kind = inferColumnKind(column);
+    const kind = inferColumnKind(column, filterRows());
     let filter;
     if (kind === 'number') {
       const min = filterMinInput.value === '' ? null : parseFloat(filterMinInput.value);
@@ -252,6 +325,8 @@
       if (!query) { showFilterError('filters.textRequired'); filterTextInput.focus(); return; }
       filter = { type: 'contains', query };
     }
+    // Une autre table que celle de travail : le filtre le dit (`table`) et ne touche que les visualisations qui la lisent.
+    if (S.filterTable) filter.table = S.filterTable;
     store.setAdvancedFilter(column, filter);
     // Formulaire remis à zéro après ajout (contrairement au formulaire de tuile, qui reste
     // pré-rempli en mode édition) : un filtre avancé n'a pas de mode édition, juste
