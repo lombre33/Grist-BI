@@ -824,12 +824,12 @@ const ALL = ['standard'].concat(NEW_STYLES);
     const main = readMain();
     assert.ok(main.includes('GristBI.styles.apply(state.dashStyle)'), 'render() pose le style avant de dessiner les tuiles');
     assert.ok(main.includes('store.setDashStyle(saved.style)'), 'le chargement d\'un rapport pose son style');
-    assert.ok(/scheduleSave\(state\.pages, state\.currentPageId, state\.bookmarks, state\.blend, state\.dashStyle, state\.dashStyleOptions\)/.test(main), 'un changement de style ou d\'option planifie la sauvegarde');
+    assert.ok(/scheduleSave\(state\.pages, state\.currentPageId, state\.bookmarks, state\.blend, state\.dashStyle, state\.dashStyleOptions, state\.joins\)/.test(main), 'un changement de style ou d\'option planifie la sauvegarde');
     assert.ok(main.includes('state.dashStyle !== lastRenderedDashStyle'), 'et un changement de style est détecté par render()');
     assert.ok(main.includes('GristBI.styles.applyOptions(state.dashStyleOptions)'), 'render() pose les options avant de dessiner les tuiles');
     assert.ok(main.includes('state.dashStyleOptions !== lastRenderedDashStyleOptions'), 'et un changement d\'option est détecté par render()');
     assert.ok(main.includes('store.setDashStyleOptions(saved.styleOptions)'), 'le chargement d\'un rapport pose ses options (absentes d\'un ancien rapport : aucune)');
-    assert.ok(/p\.authorLabel, p\.dashStyle, p\.dashStyleOptions\)/.test(main), 'la sauvegarde planifiée écrit les options capturées au moment du geste');
+    assert.ok(/p\.authorLabel, p\.dashStyle, p\.dashStyleOptions, p\.joins\)/.test(main), 'la sauvegarde planifiée écrit les options capturées au moment du geste');
     // Les cases à cocher : dans les Réglages (section Édition), liées au store.
     for (const file of ['index.html', path.join('dev-tests', 'harness.html')]) {
       const html = read(file);

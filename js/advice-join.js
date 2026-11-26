@@ -6,10 +6,11 @@
  *
  * La jointure elle-même est celle du data blending (js/data.js:blendRows, le LEFT JOIN `Référence -> id` : une ligne de la table de travail pour une
  * ligne de l'autre table, donc JAMAIS un comptage multiplié). Ce module ne la fait pas : il rend `join = { secondaryTableId, primaryColumn,
- * secondaryColumn: 'id' }`, que l'appelant pose avec `store.setBlend`.
+ * secondaryColumn: 'id' }`, que l'appelant pose avec `GristBI.tableGraph.addJoin` (js/table-graph.js : plusieurs jointures à la fois depuis le lot 1).
  *
  * Règles (chaque porte a sa faute volontaire dans l'essai) :
- *   - UNE seule jointure à la fois (le store n'en porte qu'une) : s'il y en a déjà une, aucune proposition ;
+ *   - une jointure déjà posée sur CETTE colonne vers CETTE table n'est pas reproposée (`opts.joined`, ou l'ancien `opts.blend` unique) ; au-delà de
+ *     `MAX_JOINS` jointures, plus rien n'est proposé ;
  *   - seule une référence SIMPLE (`Ref:`) est proposée, jamais une liste (`RefList:`) ni la table de travail elle-même ;
  *   - la jointure doit retrouver ses lignes : au moins 80 % des références renseignées visent une ligne qui existe (et au moins 10 renseignées) ;
  *   - elle doit APPORTER un axe : une colonne de l'autre table qui, une fois jointe, a de 2 à 30 valeurs (catégorie) ou de 31 à 60 (libellé, comme un
@@ -34,6 +35,7 @@
   const MIN_FILLED = 10;        // références renseignées pour juger la jointure
   const MIN_COVERAGE = 0.8;     // part des références renseignées qui visent une ligne existante
   const MAX_PROPOSALS = 2;
+  const MAX_JOINS = 12;         // le même plafond que js/table-graph.js
   const MAX_TARGETS = 4;        // tables de l'autre côté lues (une lecture par table)
   const MAX_AXES = 3;           // axes nommés dans la phrase
   const EVAL_SAMPLE = 4000;     // lignes jointes pour juger ce que la jointure apporte
@@ -46,16 +48,29 @@
   const usable = (rows) => (Array.isArray(rows) ? rows.filter(isObject) : []);
   const filledRef = (v) => v !== null && v !== undefined && v !== '' && v !== 0 && v !== '0';
 
+  // Les jointures déjà posées, sous la forme `[{ table, primaryColumn }]` : `opts.joined` (les `joins` du store : `{ table, primaryColumn }`) et l'ancienne
+  // jointure manuelle unique `opts.blend` (`{ secondaryTableId, primaryColumn }`). Une entrée mal formée est ignorée.
+  function joinedOf(o) {
+    const out = [];
+    (Array.isArray(o.joined) ? o.joined : []).forEach((j) => {
+      if (isObject(j) && text(j.table) && text(j.primaryColumn)) out.push({ table: j.table, primaryColumn: j.primaryColumn });
+    });
+    if (isObject(o.blend) && text(o.blend.secondaryTableId) && text(o.blend.primaryColumn)) out.push({ table: o.blend.secondaryTableId, primaryColumn: o.blend.primaryColumn });
+    return out;
+  }
+
   // Les colonnes Référence SIMPLE de la table de travail : `[{ column, table, filled, distinct }]`, au plus une par couple (colonne, table).
-  // Le type vient du type Grist réel (`columnInfo`, ou le registre de js/advice.js) : jamais deviné sur le nom.
+  // Le type vient du type Grist réel (`columnInfo`, ou le registre de js/advice.js) : jamais deviné sur le nom. Une colonne déjà jointe vers sa table n'y est plus.
   function candidates(rows, opts) {
     const o = opts || {};
     const clean = usable(rows);
     if (!clean.length) return [];
+    const joined = joinedOf(o);
     const found = [];
     advice.profileColumns(clean, undefined, o.columnInfo).forEach((p) => {
       const m = /^Ref:(.+)$/.exec(p.gristType || '');
       if (!m || p.role !== 'reference' || m[1] === o.currentTable) return;
+      if (joined.some((j) => j.table === m[1] && j.primaryColumn === p.id)) return;
       found.push({ column: p.id, table: m[1], filled: p.filled, distinct: p.distinct });
     });
     return found;
@@ -127,10 +142,10 @@
   }
 
   // Les propositions : `{ proposals, reason }`. `secondary` = `{ [table]: lignes }` des tables lues (une table absente = non lue, pas de proposition).
-  // `reason` : `'blend'` quand une jointure existe déjà (rien n'est proposé), `''` sinon.
+  // `reason` : `'full'` quand le plafond de jointures est atteint (rien n'est proposé), `''` sinon.
   function propose(rows, secondary, opts) {
     const o = opts || {};
-    if (isObject(o.blend) && o.blend.secondaryTableId) return { proposals: [], reason: 'blend' };
+    if (joinedOf(o).length >= MAX_JOINS) return { proposals: [], reason: 'full' };
     const out = [];
     candidates(rows, o).forEach((c) => {
       const res = evaluate(rows, c, isObject(secondary) ? secondary[c.table] : null, o);

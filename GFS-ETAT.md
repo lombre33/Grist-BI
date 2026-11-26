@@ -462,6 +462,14 @@ Mis à jour le 2026-11-26 (la dernière table ouverte est mémorisée, `gristbi_
   **Pas vérifié** : le chargement de `kit/` depuis GitHub Pages dans un vrai GFS, ni les fenêtres sous une
   ambiance choisie. Ce qui est dit dans « Rien d'autre du guide 1.2 engagé » (consigne 004) reste vrai :
   ni `gfs.json`, ni stockage par le courtier.
+- 2026-11-26 · tables liées par une colonne Référence (lot 1a du chantier « colonnes de toutes les tables », `js/table-graph.js`) :
+  la configuration d'un rapport (`ConfigJSON` de `BI_Dashboard_Config`) peut porter un champ `joins`
+  (`[{ alias, table, primaryColumn, secondaryColumn: 'id' }]`, au plus 12), écrit SEULEMENT quand le rapport en a ; un
+  rapport sans jointure reste identique octet pour octet. **Une version plus ancienne du widget qui rouvre un tel rapport
+  ne connaît pas `joins` et le perd à sa prochaine sauvegarde.** Le widget lit en plus `_grist_Tables` et
+  `_grist_Tables_column` (comme il le fait déjà pour les types de colonnes) pour connaître les colonnes Référence ; s'il
+  ne peut pas les lire (droits, courtier), il retombe sans colonne d'une autre table, comme avant. Aucune nouvelle table,
+  aucune nouvelle bibliothèque, aucune nouvelle adresse, aucune nouvelle clé de `localStorage`.
 
 ## Questions pour GFS
 - **Le rôle du propriétaire dans le contexte (consigne 030, point 4b, contrats 5.2 point 8).** Mon `port.isOwner` lit `contexte.role.proprietaire` dans GFS, comme tu me le demandes. Or `kit/js/gfs-link.js` (`d061fbf`) ne garde du contexte que les champs de `FIXED` (`contrat`, `hote`, `instance`, `document`, `page`, `section`, `adresseWidget`, `culture`, `fuseau`, `devise`, `lectureSeule`, `acces`) : **`role` n'y est pas**, donc `GfsLink.context().role` est `undefined` et mon widget répond `null` (« non ») : **la fenêtre ne s'ouvrirait jamais dans GFS**. Soit le lien du kit garde `role` (je le lirai tel quel : `GfsLink.context().role.proprietaire`, un booléen), soit tu me dis une autre lecture (un autre appel, un autre champ). Je n'ai PAS utilisé la preuve du moteur de partage (`GET /webhooks` avec un jeton d'écriture) dans GFS : ma fiche ne déclare que `jeton` en lecture seule, et je ne veux pas en demander plus pour une fenêtre qui s'ouvre une fois.

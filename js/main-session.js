@@ -10,10 +10,11 @@
   const { t } = GristBI.i18n;
   const {
     autoMode, availableColumns, blendJoinColumns, blendPrimaryColumnInput, blendSecondaryColumnInput,
-    blendSecondaryTableInput, closeTilePanel, currentReportAuthorLabel, fillCombobox, genTileId, refreshColumnSelects,
+    blendSecondaryTableInput, joinsBarEl, joinsListEl, joinsNoteEl, closeTilePanel, currentReportAuthorLabel, fillCombobox, genTileId, refreshColumnSelects,
     render, renderConnectionStatus, retryConnectBtn, setConnectionState, sharedReadOnlyWarning, showError, showNotice,
     store, tableSelectInput, withDateHierarchies
   } = parts;
+  const { escapeHtml } = GristBI.data;
   Object.assign(parts, {
     connectToFirstTable, flushPendingSave, offerMergeConfigNames, openBlankReport, openModelById, openReportById, refreshBlendPicker,
     linkTable, refreshTablePicker, reloadWorkingTable, runNamesUpdate, scheduleSave, switchTable
@@ -84,10 +85,10 @@
   // réel trouvé en testant le sélecteur de table — voir flushPendingSave()/HYPOTHESES.md). Même
   // raison pour `reportId`/`authorLabel` (consigne GFS 007) : capturés ici, jamais relus plus tard
   // dans le setTimeout.
-  function scheduleSave(pages, currentPageId, bookmarks, blend, dashStyle, dashStyleOptions) {
+  function scheduleSave(pages, currentPageId, bookmarks, blend, dashStyle, dashStyleOptions, joins) {
     if (!S.currentTableId) return;
     clearTimeout(saveTimer);
-    pendingSave = { tableId: S.currentTableId, reportId: currentReportId, authorLabel: currentReportAuthorLabel(), pages, currentPageId, bookmarks, blend, dashStyle, dashStyleOptions };
+    pendingSave = { tableId: S.currentTableId, reportId: currentReportId, authorLabel: currentReportAuthorLabel(), pages, currentPageId, bookmarks, blend, dashStyle, dashStyleOptions, joins };
     saveTimer = setTimeout(() => {
       saveTimer = null;
       const p = pendingSave;
@@ -104,7 +105,7 @@
   // `'new'` : un changement de table/rapport pendant l'écriture (rare, mais possible) l'aurait déjà
   // remplacé, et l'écraser ici serait une course perdante sur l'état affiché à l'écran.
   function runPendingSave(p) {
-    return GristBI.api.saveConfig(p.tableId, p.pages, p.currentPageId, p.bookmarks, p.blend, p.reportId, p.authorLabel, p.dashStyle, p.dashStyleOptions).then((rowId) => {
+    return GristBI.api.saveConfig(p.tableId, p.pages, p.currentPageId, p.bookmarks, p.blend, p.reportId, p.authorLabel, p.dashStyle, p.dashStyleOptions, p.joins).then((rowId) => {
       if (p.reportId === 'new' && currentReportId === 'new') currentReportId = rowId;
     }).catch((e) => {
       console.error('[GristBI] échec de sauvegarde de la config', e);
@@ -196,35 +197,85 @@
     return runPendingSave(p);
   }
 
-  // Rejoint `currentPrimaryRows` (TOUJOURS les lignes brutes de la table principale, jamais des
-  // lignes déjà jointes, voir la déclaration de `currentPrimaryRows` plus haut) avec la table
-  // secondaire de `blend`, si elle est complètement configurée (les 3 champs remplis — un blend
-  // partiel équivaut à "aucune jointure", plus simple et plus sûr qu'un état intermédiaire à moitié
-  // appliqué). `withDateHierarchies` (voir plus haut) enrichit ensuite systématiquement le résultat,
-  // qu'une jointure ait eu lieu ou non — jamais sauté, y compris sans blend, sinon la hiérarchie
-  // Année/Trimestre/Mois de la table de travail principale elle-même ne serait jamais dérivée.
-  // Pousse toujours le résultat dans le store, y compris `blend == null` : c'est l'unique point
+  // Rejoint `currentPrimaryRows` (TOUJOURS les lignes brutes de la table de travail PRINCIPALE, jamais des
+  // lignes déjà jointes, voir la déclaration de `currentPrimaryRows` plus haut) avec les tables jointes : le
+  // réglage manuel `blend` (« Joindre une autre table », s'il est complètement configuré — les 3 champs
+  // remplis, un blend partiel équivaut à "aucune jointure", plus simple et plus sûr qu'un état intermédiaire
+  // à moitié appliqué) puis les jointures des colonnes Référence (`store.getState().joins`, js/table-graph.js :
+  // une table liée par UNE Référence, jusqu'à deux sauts, toujours un LEFT JOIN sur `id`). Chaque table jointe
+  // est lue UNE fois (`loadJoinTable`) ; une table illisible n'en retire pas les autres (`applyJoins`). `withDateHierarchies` (voir plus haut)
+  // enrichit ensuite systématiquement le résultat, qu'une jointure ait eu lieu ou non — jamais sauté, y compris
+  // sans jointure, sinon la hiérarchie Année/Trimestre/Mois de la table de travail principale elle-même ne
+  // serait jamais dérivée.
+  // Pousse toujours le résultat dans le store, y compris sans aucune jointure : c'est l'unique point
   // d'entrée qui alimente `refreshColumnSelects`/`store.setRows` après le chargement initial, pour
-  // que ces deux appels ne soient jamais dupliqués/oubliés à un site d'appel.
+  // que ces deux appels ne soient jamais dupliqués/oubliés à un site d'appel. Une réponse devenue périmée
+  // (une jointure posée entre-temps) n'écrit rien : seule la dernière demande compte (`applySeq`).
+  let applySeq = 0;
   async function applyBlend(blend) {
-    if (!blend || !blend.secondaryTableId || !blend.primaryColumn || !blend.secondaryColumn) {
+    const seq = ++applySeq;
+    const all = GristBI.tableGraph.allJoins(blend, store.getState().joins);
+    if (!all.length) {
       const rows = withDateHierarchies(currentPrimaryRows);
       refreshColumnSelects(rows);
       store.setRows(rows);
       return;
     }
     try {
-      const { rows: secondaryRows } = await GristBI.api.loadTable(blend.secondaryTableId);
-      const merged = GristBI.data.blendRows(currentPrimaryRows, secondaryRows, blend.primaryColumn, blend.secondaryColumn, blend.secondaryTableId);
+      const tables = Array.from(new Set(all.map((j) => j.table)));
+      const loaded = await Promise.all(tables.map(loadJoinTable));
+      if (seq !== applySeq) return;
+      const tableRows = {};
+      tables.forEach((id, i) => { tableRows[id] = loaded[i]; });
+      const { rows: merged, failed } = GristBI.data.applyJoins(currentPrimaryRows, all, tableRows, columnsOfTables(tables));
+      if (failed.length) showError(t('blend.failed', { table: failed.join(', ') }));
       const rows = withDateHierarchies(merged);
       refreshColumnSelects(rows);
       store.setRows(rows);
     } catch (e) {
       console.error('[GristBI] échec de la jointure avec la table secondaire', e);
-      showError(t('blend.failed', { table: blend.secondaryTableId }));
+      if (seq !== applySeq) return;
+      showError(t('blend.failed', { table: all.map((j) => j.alias).join(', ') }));
       const rows = withDateHierarchies(currentPrimaryRows);
       refreshColumnSelects(rows);
       store.setRows(rows);
+    }
+  }
+
+  // Les lignes d'une table jointe, lues UNE fois tant qu'on reste sur la même table de travail (poser une 2e jointure ne relit pas la 1re) ;
+  // vidées au changement de table, au rechargement, et à chaque geste sur « Joindre une autre table ». Une table illisible (règle d'accès,
+  // table disparue) vaut `null` et n'est pas gardée : la prochaine demande la relira.
+  const joinTableCache = new Map();
+  function loadJoinTable(tableId) {
+    if (!joinTableCache.has(tableId)) {
+      joinTableCache.set(tableId, GristBI.api.loadTable(tableId).then((res) => res.rows, (e) => {
+        joinTableCache.delete(tableId);
+        console.error(`[GristBI] table jointe "${tableId}" illisible`, e);
+        return null;
+      }));
+    }
+    return joinTableCache.get(tableId);
+  }
+
+  // Les colonnes de chaque table jointe d'après le schéma des liens, pour qu'une table SANS ligne apporte quand même les siennes (les lignes seules
+  // ne les disent pas) ; rien tant que le schéma n'est pas lu.
+  function columnsOfTables(tables) {
+    const out = {};
+    if (!(S.linkSchema instanceof Map)) return out;
+    tables.forEach((id) => { if (S.linkSchema.has(id)) out[id] = S.linkSchema.get(id).map((c) => c.id).filter((c) => c !== 'manualSort' && !/^gristHelper_/.test(c)); });
+    return out;
+  }
+
+  // Le schéma des LIENS du document (types des colonnes, Références), relu à chaque changement de table de travail ; vide si la lecture échoue
+  // (le widget marche alors comme avant : aucune colonne d'une autre table n'est proposée).
+  async function refreshLinkSchema(tableId) {
+    S.linkSchema = null;
+    try {
+      const schema = await GristBI.api.readLinkSchema();
+      if (tableId !== S.currentTableId) return;
+      S.linkSchema = GristBI.tableGraph.indexSchema(schema);
+    } catch (e) {
+      console.warn('[GristBI] schéma des liens illisible', e);
     }
   }
 
@@ -238,6 +289,7 @@
     const { rows } = await GristBI.api.loadTable(tableId);
     if (tableId !== S.currentTableId) return;
     currentPrimaryRows = rows;
+    joinTableCache.clear();
     await refreshColumnFormats(tableId, false);
     await applyBlend(currentBlend);
   }
@@ -276,7 +328,9 @@
     const isNewTable = tableId !== S.currentTableId || Boolean(report);
     S.currentTableId = tableId;
     currentPrimaryRows = rows;
+    if (isNewTable) joinTableCache.clear();
     await refreshColumnFormats(tableId, isNewTable);
+    if (isNewTable) await refreshLinkSchema(tableId);
     if (isNewTable) {
       S.dashboardReady = false;
       S.connectionState = 'connecting';
@@ -307,6 +361,8 @@
         store.setBookmarks(saved.bookmarks);
         currentBlend = saved.blend;
         store.setBlend(currentBlend);
+        // Les jointures des Références sont lues d'une ligne que d'autres personnes ont pu écrire : formes et alias contrôlés avant d'entrer dans l'état.
+        store.setJoins(GristBI.tableGraph.sanitizeJoins(saved.joins, currentBlend ? [currentBlend.secondaryTableId] : []));
         store.setDashStyle(saved.style); // absent d'une configuration d'avant ce réglage -> Standard
         store.setDashStyleOptions(saved.styleOptions); // idem : aucune option cochée
       } finally {
@@ -411,6 +467,45 @@
 
   store.subscribe(render);
 
+  // « Tables liées » (menu Données) : les jointures posées depuis les colonnes Référence (js/table-graph.js), une ligne chacune avec la colonne qui
+  // les porte et une croix pour la retirer. Retirer une jointure que des tuiles, des filtres ou des vues lisent encore les viderait (un filtre sur une
+  // colonne absente retire TOUTES les lignes) : la croix est refusée, avec ce qui la lit. Une jointure dont dépend une autre (le 2e saut d'une route)
+  // part avec elle. Redessinée seulement quand la liste change.
+  let joinsShownKey = null;
+  function renderJoinsList(state) {
+    const joins = state.joins || [];
+    const key = JSON.stringify(joins) + '|' + GristBI.i18n.getLang();
+    if (key === joinsShownKey) return;
+    joinsShownKey = key;
+    joinsNoteEl.textContent = '';
+    joinsBarEl.hidden = joins.length === 0;
+    GristBI.safeHtml.setHtml(joinsListEl, joins.map((j) => `<li class="views-item joins-item">
+        <span class="views-item-name joins-item-name">${escapeHtml(j.alias)}<small class="joins-item-via"> ${escapeHtml(t('joins.via', { column: j.primaryColumn }))}</small></span>
+        <button type="button" class="views-item-delete" data-alias="${escapeHtml(j.alias)}"
+                aria-label="${escapeHtml(t('joins.remove.aria', { alias: j.alias }))}" title="${escapeHtml(t('joins.remove.title'))}">
+          <svg class="icon icon-close" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+        </button>
+      </li>`).join(''));
+  }
+  store.subscribe(renderJoinsList);
+
+  joinsListEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('.views-item-delete');
+    if (!btn) return;
+    const alias = btn.dataset.alias;
+    const state = store.getState();
+    const removal = GristBI.tableGraph.removeJoin(state.joins, alias);
+    if (!removal.removed.length) return;
+    const use = GristBI.tableGraph.usageOf(state, removal.removed, GristBI.adviceComplete && GristBI.adviceComplete.columnsOfTile);
+    if (use.tiles || use.filters || use.bookmarks) {
+      joinsNoteEl.textContent = t('joins.inUse', { alias, tiles: use.tiles, filters: use.filters, views: use.bookmarks });
+      return;
+    }
+    joinsNoteEl.textContent = '';
+    store.setJoins(removal.joins);
+    applyBlend(currentBlend);
+  });
+
   // Liste les tables du document dans le sélecteur (voir GristBI.api.listAvailableTables — relit
   // TOUJOURS à la demande, jamais un cache, pour refléter une table créée dans Grist entre-temps) et
   // remet la valeur sur `currentTableId`. Rechargée après chaque changement de table réussi, pas
@@ -478,25 +573,25 @@
       ? { secondaryTableId, primaryColumn, secondaryColumn }
       : null;
     store.setBlend(currentBlend);
+    joinTableCache.clear();
     applyBlend(currentBlend);
   }
 
   // Pose la jointure PROPOSÉE par le panneau (js/advice-join.js : `{ secondaryTableId, primaryColumn, secondaryColumn: 'id' }`, une colonne Référence
-  // jointe sur le numéro de ligne de l'autre table) : même chemin que les trois champs de « Joindre une autre table » — le store, les champs du menu
-  // Données mis à jour (la personne la voit et peut la retirer là), puis `applyBlend`. Rend `true` quand les colonnes de l'autre table sont bien dans
-  // les lignes ; sinon la jointure est retirée aussitôt (`applyBlend` a déjà dit l'échec) : jamais une jointure annoncée qui n'a pas eu lieu.
+  // jointe sur le numéro de ligne de l'autre table) : elle s'AJOUTE aux jointures des Références (`store.setJoins`, js/table-graph.js:addJoin — sous un
+  // alias libre, la table elle-même quand c'est possible), puis `applyBlend`. Le réglage manuel « Joindre une autre table » n'est plus écrasé : plusieurs
+  // tables peuvent être reliées. Rend `true` quand les colonnes de l'autre table sont bien dans les lignes ; sinon la jointure est retirée aussitôt
+  // (`applyBlend` a déjà dit l'échec) : jamais une jointure annoncée qui n'a pas eu lieu.
   async function linkTable(join) {
-    currentBlend = { secondaryTableId: join.secondaryTableId, primaryColumn: join.primaryColumn, secondaryColumn: join.secondaryColumn };
-    store.setBlend(currentBlend);
-    refreshBlendPicker();
+    joinTableCache.clear();
+    const added = GristBI.tableGraph.addJoin(store.getState().joins, currentBlend, join.secondaryTableId, join.primaryColumn);
+    if (!added.join) { showError(t('joins.full', { max: GristBI.tableGraph.MAX_JOINS })); return false; }
+    if (added.added) store.setJoins(added.joins);
     await applyBlend(currentBlend);
     const first = store.getState().rows[0] || {};
-    const joined = Object.keys(first).some((k) => k.indexOf(join.secondaryTableId + '.') === 0);
-    if (!joined) {
-      currentBlend = null;
-      store.setBlend(null);
-      refreshBlendPicker();
-    }
+    const prefix = added.join.alias + '.';
+    const joined = Object.keys(first).some((k) => k.indexOf(prefix) === 0);
+    if (!joined && added.added) store.setJoins(GristBI.tableGraph.removeJoin(store.getState().joins, added.join.alias).joins);
     return joined;
   }
 

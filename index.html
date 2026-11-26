@@ -157,6 +157,12 @@
         </div>
       </div>
     </div>
+    <!-- Tables liées par une colonne Référence (js/table-graph.js) : celles que « Relier » ou le choix d'une colonne d'une autre table ont jointes. -->
+    <div id="joins-bar" class="pop-group edit-only" hidden>
+      <p class="pop-title" data-i18n="joins.title">Tables liées</p>
+      <ul id="joins-list" class="joins-list"></ul>
+      <p id="joins-note" class="joins-note" role="status" aria-live="polite"></p>
+    </div>
     <div class="pop-footer">
       <button id="open-keywords" type="button" class="btn-secondary edit-only" data-close-popover data-i18n="keywords.open">Mots-clés des publications…</button>
       <button id="open-pbix-import" type="button" class="btn-secondary edit-only" data-close-popover data-i18n="pbixImport.button">Importer Power BI</button>
@@ -1037,6 +1043,7 @@
   <script src="js/models.js"></script>
   <script src="js/advice-pages.js"></script>
   <script src="js/combobox.js"></script>
+  <script src="js/table-graph.js"></script>
   <script src="js/state.js"></script>
   <script src="js/charts-core.js"></script>
   <script src="js/charts-cards.js"></script>
