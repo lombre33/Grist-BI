@@ -24,14 +24,16 @@
     columnPickEl, columnProfileEl, columnUsedEl, columnEmptyEl, columnListEl, columnLiveEl, tilePanel, tilePanelCloseBtn, tilePanelTitle, tilePreviewEl,
     tilePreviewEmptyEl, tileTextInput, tileTitleInput, tileTypeSelect, trendDimensionSelect, typeGridEl,
     typeLineNameEl, updateFormFieldsForType, updateNumberFormatUI, valueLabelsCheckbox, warnPctInput, welcomeAddBtn,
-    wordCloudSplitCheckbox, workspaceEl, workspaceMainEl
+    wordCloudSplitCheckbox, workspaceEl, workspaceMainEl, clearFormColumns, fillCombobox, formRows, refreshFormColumns, tableInput, tableNoteEl,
+    updateTableFieldVisibility
   } = parts;
   // Définies dans un fichier chargé plus tard : liaison tardive, résolue à l'appel.
   const buildTileElement = (...args) => parts.buildTileElement(...args);
   const setMode = (...args) => parts.setMode(...args);
   const linkTable = (...args) => parts.linkTable(...args);
+  const ensureTableRows = (...args) => parts.ensureTableRows(...args);
   Object.assign(parts, {
-    closeTilePanel, flashTile, hideColumnResults, openTilePanel, refreshTilePanelTexts, renderColumnHelper, schedulePreview,
+    closeTilePanel, flashTile, hideColumnResults, openTilePanel, refreshTableField, refreshTilePanelTexts, renderColumnHelper, schedulePreview,
     updateAdvancedVisibility, updatePanelTexts
   });
 
@@ -433,6 +435,76 @@
     });
   });
 
+  // --- Le champ « Table » (lot 2 de « colonnes de toutes les tables », 26/11/2026) ---------------------------------------------------------
+  // Une visualisation lit la table de travail du rapport, sauf si on en choisit une autre ici : elle porte alors `tile.table` et ne voit que les
+  // lignes (et les filtres) de cette table. Le champ ne se montre que si le document compte au moins deux tables. Les listes de colonnes du formulaire
+  // suivent la table choisie (`S.formTable`, `formRows`) ; la table est lue à la demande (`ensureTableRows`).
+  // Pas de `beforeOpen` (la liste s'ouvre alors tout de suite, comme celle des colonnes) : une liste qui s'ouvre après une attente échappe à l'Échap
+  // synthétique de `showFormErrors`, qui fermerait le PANNEAU au lieu de la liste. La liste se relit à l'ouverture du panneau et à chaque prise de
+  // focus du champ (une table créée dans Grist entre-temps se voit à l'ouverture suivante).
+  GristBI.combobox.attach(tableInput, tableInput.nextElementSibling, { strict: true });
+
+  let tableNames = '';
+  async function loadTableOptions() {
+    let tables = [];
+    try { tables = await GristBI.api.listAvailableTables(); } catch (e) { console.error('[GristBI] liste des tables illisible (champ Table)', e); }
+    S.tableCount = tables.length;
+    // Une liste identique ne se repose pas : `setOptions` d'un champ strict efface un texte en cours de frappe.
+    if (tables.join('\n') !== tableNames) {
+      tableNames = tables.join('\n');
+      const typing = tableInput.value;
+      fillCombobox(tableInput, tables);
+      if (tables.indexOf(typing) !== -1) tableInput.value = typing;
+    }
+    updateTableFieldVisibility();
+    return tables;
+  }
+
+  async function refreshTableField() {
+    await loadTableOptions();
+    tableInput.value = S.formTable || store.getState().workingTable;
+    updateTableNote();
+    updateTableFieldVisibility();
+  }
+
+  tableInput.addEventListener('focus', () => { loadTableOptions(); });
+
+  // Ce que dit le champ de la table choisie : lecture en cours, illisible, ou la portée de la tuile (ses filtres sont ceux de SA table).
+  function updateTableNote() {
+    const table = S.formTable;
+    let key = '';
+    if (table) {
+      const status = GristBI.data.tableRowsStatus(store.getState(), table);
+      key = status === 'failed' ? 'tileTable.failed' : (status === 'loading' ? 'tileForm.table.loading' : 'tileForm.table.other');
+    }
+    tableNoteEl.hidden = !key;
+    tableNoteEl.textContent = key ? t(key, { table }) : '';
+  }
+
+  // Un seul changement à la fois compte : le dernier (une lecture lente d'une table abandonnée n'écrit rien dans le formulaire).
+  let tableChangeToken = 0;
+  async function changeFormTable() {
+    const chosen = tableInput.value;
+    const table = chosen && chosen !== store.getState().workingTable ? chosen : '';
+    if (table === S.formTable) return;
+    const token = ++tableChangeToken;
+    S.formTable = table;
+    // Les colonnes choisies appartenaient à l'autre table : on les vide (un même nom ailleurs n'est pas la même colonne), sans toucher au reste.
+    clearFormColumns();
+    refreshFormColumns();
+    updateTableNote();
+    updateTableFieldVisibility();
+    if (table) await ensureTableRows(table);
+    if (token !== tableChangeToken || S.formTable !== table) return;
+    updateTableNote();
+    refreshFormColumns();
+    if (!S.editingTileId) applyTypeDefaults(tileTypeSelect.value); // un nouvel ajout : les colonnes que cette table suggère, comme au choix du type
+    updateFormFieldsForType();
+    schedulePreview();
+  }
+
+  tableInput.addEventListener('change', changeFormTable);
+
   // Remet le formulaire à blanc (les valeurs du dernier ajout ne doivent pas fuiter dans le suivant).
   function resetTileForm() {
     dimensionSelect.value = '';
@@ -494,7 +566,7 @@
   function applyTypeDefaults(type) {
     resetTileForm();
     tileTypeSelect.value = type;
-    const rows = store.getState().rows;
+    const rows = formRows();
     const typeDefaults = GristBI.advice ? GristBI.advice.defaultsForType(type, rows, availableColumns(rows)) : null;
     if (typeDefaults) {
       if (typeDefaults.dimension) dimensionSelect.value = typeDefaults.dimension;
@@ -575,8 +647,13 @@
     const opener = document.activeElement;
     panelOpener = (opener && opener !== document.body && opener.id !== 'tile-panel-close') ? opener : addTileOpenBtn;
     const wasOpen = !tilePanel.hidden;
-    if (!opts.editing) { stopEditTile(); resetTileForm(); }
+    if (!opts.editing) {
+      stopEditTile();
+      if (S.formTable) { S.formTable = ''; refreshFormColumns(); } // un nouvel ajout repart de la table de travail
+      resetTileForm();
+    }
     tilePanel.hidden = false;
+    refreshTableField();
     workspaceEl.classList.add('panel-open');
     addTileOpenBtn.setAttribute('aria-expanded', 'true');
     S.submitAttempted = false;
@@ -606,6 +683,7 @@
   function closeTilePanel(returnFocus) {
     if (tilePanel.hidden) { if (S.editingTileId) stopEditTile(); return; }
     if (S.editingTileId) stopEditTile();
+    if (S.formTable) { S.formTable = ''; refreshFormColumns(); }
     tilePanel.hidden = true;
     hideLinkNote();
     hideCompletion();
@@ -657,7 +735,7 @@
 
   // Un seul conseil à la fois (voir js/advice.js:adviceForTile), recalculé sur toutes les lignes.
   function refreshTileAdvice(tileData) {
-    const advice = (GristBI.advice && tileData) ? GristBI.advice.adviceForTile(tileData, store.getState().rows) : null;
+    const advice = (GristBI.advice && tileData) ? GristBI.advice.adviceForTile(tileData, formRows()) : null;
     tileAdviceEl.hidden = !advice;
     if (advice) { tileAdviceEl.textContent = t(advice.key, advice.vars); tileAdviceEl.dataset.level = advice.level; }
     else tileAdviceEl.textContent = '';

@@ -17,6 +17,8 @@ const IDENTIFIANT_SUR = /^[a-z][a-z0-9-]{0,31}$/;
 const CHAMPS_TEXTE = [
   'dimension', 'measure', 'measureY', 'measureSize', 'columnDimension', 'seriesColumn', 'targetColumn', 'startColumn', 'endColumn', 'dateColumn',
   'radarEntityColumn', 'radarEntityValue', 'trendDimension', 'drillDimension', 'title', 'titleKey',
+  // La table que lit la tuile quand ce n'est pas celle du rapport (Grist BI, 26/11/2026) : lue et gardée, jamais utilisée ici — c'est l'hôte qui donne les lignes.
+  'table',
 ];
 const CHAMPS_AGREGAT = ['aggFn', 'aggFnY', 'aggFnSize'];
 const CHAMPS_BOOLEENS = [

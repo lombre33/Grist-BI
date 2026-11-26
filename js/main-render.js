@@ -25,6 +25,8 @@
   const refreshLayoutOptions = (...args) => parts.refreshLayoutOptions(...args);
   const refreshStyleOptions = (...args) => parts.refreshStyleOptions(...args);
   const scheduleSave = (...args) => parts.scheduleSave(...args);
+  const ensureTileTables = (...args) => parts.ensureTileTables(...args);
+  const ensureAllTileTables = (...args) => parts.ensureAllTileTables(...args);
   Object.assign(parts, {
     autoMode, buildTileElement, render, renderConnectionStatus, setConnectionState, setMode
   });
@@ -284,6 +286,23 @@
         if (titleEl.textContent !== titleText) titleEl.textContent = titleText;
         titleEl.title = titleText;
       }
+      // Table lue par la tuile (lot 2 de « colonnes de toutes les tables ») : un badge dans l'en-tête seulement quand ce n'est pas la table de
+      // travail du rapport ; `⚠` et une infobulle quand elle n'a pas pu être lue (la tuile n'a alors aucune ligne). Relu à chaque rendu : la
+      // table se lit à la demande (`ensureTileTables`) et le badge suit son état.
+      const tableEl = el.querySelector('.tile-table');
+      if (tableEl) {
+        const table = GristBI.data.tileTable(tile, state);
+        const status = GristBI.data.tableRowsStatus(state, table);
+        tableEl.hidden = !table;
+        if (table) {
+          const label = t(status === 'failed' ? 'tile.table.failed' : 'tile.table.title', { table });
+          const shown = (status === 'failed' ? '⚠ ' : '') + table;
+          if (tableEl.textContent !== shown) tableEl.textContent = shown;
+          tableEl.dataset.state = status;
+          tableEl.title = label;
+          tableEl.setAttribute('aria-label', label);
+        }
+      }
       const moveLeftBtn = el.querySelector('.tile-move-left');
       const moveRightBtn = el.querySelector('.tile-move-right');
       // Dans un agencement, une tuile ne dépasse que celles de son groupe (js/layouts.js:moveTarget) : sinon rien ne changerait à l'écran.
@@ -319,8 +338,8 @@
     }
 
     renderPageTabs(state.pages, state.currentPageId);
-    renderFilterBadges(state.activeFilters);
-    renderAdvancedFilterBadges(state.advancedFilters);
+    renderFilterBadges(state.activeFilters, state);
+    renderAdvancedFilterBadges(state.advancedFilters, state);
     renderFilterSummary(state.activeFilters.length + state.advancedFilters.length, Boolean(state.activeBookmarkId));
     applyMode();
     setTableDependentControlsEnabled(Boolean(S.currentTableId) && S.dashboardReady);
@@ -354,6 +373,8 @@
     // changement de langue...) sans avoir à le refermer/rouvrir — no-op si fermé
     // (commentsModalTileId à null, voir sa définition).
     renderCommentsModal();
+    // Les tuiles de la page qui lisent une autre table : lue à la demande, une seule fois (js/main-session.js:ensureTileTables).
+    ensureTileTables(state);
     // Même principe pour la modale de détail : un filtre posé/levé pendant qu'elle est ouverte doit
     // se refléter dans les lignes affichées, pas seulement au prochain clic sur le bouton Détail.
     renderDetailModal();
@@ -466,15 +487,19 @@
   // Un badge par filtre actif (plusieurs colonnes peuvent être filtrées en même temps), chacun
   // avec son propre bouton de suppression, + le bouton "Effacer les filtres" global reste utile
   // dès qu'il y en a 2+.
-  function renderFilterBadges(activeFilters) {
+  // Un filtre d'une AUTRE table que celle de travail s'écrit « Table › colonne = valeur » (deux tables peuvent avoir une colonne du même nom) et se
+  // retire avec sa table (`data-table`, absent = la table de travail comme avant). `state` donne la table de travail.
+  const filterTableOf = (f, state) => GristBI.data.filterTable(f, state);
+  const chipTablePrefix = (f, state) => (filterTableOf(f, state) ? `${escapeHtml(filterTableOf(f, state))} › ` : '');
+  function renderFilterBadges(activeFilters, state) {
     GristBI.safeHtml.setHtml(filterBadgesEl, activeFilters.map((f) => `
       <span class="filter-chip">
-        ${f.type && f.type !== 'eq' ? escapeHtml(describeAdvancedFilter(f)) : `${escapeHtml(f.column)} = ${escapeHtml(String(f.value))}`}
-        <button type="button" class="filter-chip-remove" data-column="${escapeHtml(f.column)}" aria-label="${escapeHtml(t('filters.remove.aria'))}">${icon('close')}</button>
+        ${chipTablePrefix(f, state)}${f.type && f.type !== 'eq' ? escapeHtml(describeAdvancedFilter(f)) : `${escapeHtml(f.column)} = ${escapeHtml(String(f.value))}`}
+        <button type="button" class="filter-chip-remove" data-column="${escapeHtml(f.column)}" data-table="${escapeHtml(filterTableOf(f, state))}" aria-label="${escapeHtml(t('filters.remove.aria'))}">${icon('close')}</button>
       </span>
     `).join(''));
     for (const btn of filterBadgesEl.querySelectorAll('.filter-chip-remove')) {
-      btn.addEventListener('click', () => store.clearFilter(btn.dataset.column));
+      btn.addEventListener('click', () => store.clearFilter(btn.dataset.column, btn.dataset.table || undefined));
     }
   }
 
@@ -527,15 +552,15 @@
   // Filtres avancés (barre dédiée, pas un clic sur une tuile) : mêmes badges que les filtres
   // croisés, mais retirés via clearAdvancedFilter et sans bouton "Effacer les filtres" partagé (une
   // barre de filtres avancés vide se contente de n'afficher aucun badge).
-  function renderAdvancedFilterBadges(advancedFilters) {
+  function renderAdvancedFilterBadges(advancedFilters, state) {
     GristBI.safeHtml.setHtml(advancedFilterBadgesEl, advancedFilters.map((f) => `
       <span class="filter-chip">
-        ${escapeHtml(describeAdvancedFilter(f))}
-        <button type="button" class="advanced-filter-chip-remove" data-column="${escapeHtml(f.column)}" aria-label="${escapeHtml(t('filters.remove.aria'))}">${icon('close')}</button>
+        ${chipTablePrefix(f, state)}${escapeHtml(describeAdvancedFilter(f))}
+        <button type="button" class="advanced-filter-chip-remove" data-column="${escapeHtml(f.column)}" data-table="${escapeHtml(filterTableOf(f, state))}" aria-label="${escapeHtml(t('filters.remove.aria'))}">${icon('close')}</button>
       </span>
     `).join(''));
     for (const btn of advancedFilterBadgesEl.querySelectorAll('.advanced-filter-chip-remove')) {
-      btn.addEventListener('click', () => store.clearAdvancedFilter(btn.dataset.column));
+      btn.addEventListener('click', () => store.clearAdvancedFilter(btn.dataset.column, btn.dataset.table || undefined));
     }
   }
 
@@ -599,7 +624,7 @@
     // langue seul ne repasserait jamais ici — c'est GristBI.i18n.applyTranslations(), appelé à
     // chaque render(), qui retrouve ces boutons par leurs attributs et les corrige sans
     // reconstruction (voir le commentaire en tête de render()).
-    const header = `<div class="tile-header"><span class="tile-title" title="${escapeHtml(GristBI.i18n.tileTitle(tile))}">${escapeHtml(GristBI.i18n.tileTitle(tile))}</span>
+    const header = `<div class="tile-header"><span class="tile-title" title="${escapeHtml(GristBI.i18n.tileTitle(tile))}">${escapeHtml(GristBI.i18n.tileTitle(tile))}</span><span class="tile-table" hidden></span>
         ${preview ? '' : `<span class="tile-actions">
           <button class="tile-move-left edit-only" type="button" data-i18n-aria="tile.moveLeft" data-i18n-title="tile.moveLeft" aria-label="${escapeHtml(t('tile.moveLeft'))}" title="${escapeHtml(t('tile.moveLeft'))}">${icon('chevronLeft')}</button>
           <button class="tile-move-right edit-only" type="button" data-i18n-aria="tile.moveRight" data-i18n-title="tile.moveRight" aria-label="${escapeHtml(t('tile.moveRight'))}" title="${escapeHtml(t('tile.moveRight'))}">${icon('chevronRight')}</button>
@@ -707,6 +732,7 @@
     exportExcelBtn.disabled = true;
     if (renderTimeEl) renderTimeEl.textContent = t('export.xlsx.preparing');
     try {
+      await ensureAllTileTables(); // les tuiles qui lisent une autre table (de toutes les pages) doivent l'avoir lue : sans elle leur feuille serait vide
       const exported = await GristBI.exportExcel.exportDashboardToExcel(store.getState());
       if (!exported) showNotice(t('export.none'));
     } catch (e) {
@@ -727,6 +753,7 @@
     btn.dataset.busy = '1';
     btn.disabled = true;
     try {
+      await ensureAllTileTables();
       const exported = await run(store.getState());
       if (!exported) showNotice(t('export.none'));
     } catch (e) {

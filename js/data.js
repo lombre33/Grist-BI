@@ -758,9 +758,55 @@
   // filtres, réutilisée par charts.js (rendu) ET l'export Excel (buildWorkbookSheets) : ce que
   // l'utilisateur exporte doit correspondre exactement à ce qu'il voit à l'écran.
   function rowsForTile(tile, state) {
-    const filtersFromOtherTiles = state.activeFilters.filter((f) => f.sourceTileId !== tile.id);
-    const drillPath = (state.drillIns && state.drillIns[tile.id]) || [];
-    return applyFilters(state.rows, filtersFromOtherTiles.concat(state.advancedFilters || []).concat(drillPath));
+    const view = stateForTile(tile, state);
+    const filtersFromOtherTiles = view.activeFilters.filter((f) => f.sourceTileId !== tile.id);
+    const drillPath = (view.drillIns && view.drillIns[tile.id]) || [];
+    return applyFilters(view.rows, filtersFromOtherTiles.concat(view.advancedFilters || []).concat(drillPath));
+  }
+
+  // ---- Une tuile, sa table (lot 2 de « colonnes de toutes les tables », 26/11/2026) -------------------------------
+  // Une tuile lit par défaut la table de travail du rapport (`state.rows`, jointures comprises) ; avec `tile.table` elle lit une AUTRE table
+  // du document (`state.tableRows[table]`, lue à la demande par js/main-session.js). Un rapport d'avant ce lot n'a aucun `tile.table` : rien ne
+  // change pour lui, et `stateForTile` rend alors l'état LUI-MÊME (même référence, aucune copie).
+  const isTableName = (v) => typeof v === 'string' && v !== '' && v.length <= 160 && !/[\u0000-\u001f\u007f]/.test(v);
+
+  // La table lue par `tile` : '' pour la table de travail (pas de `table`, ou la même que celle du rapport), sinon le nom de l'autre table.
+  function tileTable(tile, state) {
+    const table = tile && isTableName(tile.table) ? tile.table : '';
+    return table !== ((state && state.workingTable) || '') ? table : '';
+  }
+
+  // La table qu'un filtre restreint : même règle que pour une tuile (le champ `table` n'existe que pour une autre table que celle de travail).
+  function filterTable(filter, state) {
+    const table = filter && isTableName(filter.table) ? filter.table : '';
+    return table !== ((state && state.workingTable) || '') ? table : '';
+  }
+
+  // Les lignes d'une table : celles de la table de travail pour '', sinon celles qu'on a lues. `loading` = pas encore lue, `failed` = illisible.
+  function tableRowsStatus(state, table) {
+    if (!table) return 'ready';
+    const rows = state.tableRows && Object.prototype.hasOwnProperty.call(state.tableRows, table) ? state.tableRows[table] : undefined;
+    if (Array.isArray(rows)) return 'ready';
+    return rows === null ? 'failed' : 'loading';
+  }
+
+  // L'état tel que le voit UNE tuile : ses lignes (celles de SA table) et seulement les filtres de cette table. Un filtre posé sur les ventes ne touche
+  // jamais une tuile des RH, même si les deux tables ont une colonne `Region` : ce serait filtrer une table par le choix fait sur une autre. Une table pas
+  // encore lue ou illisible donne zéro ligne (la tuile le dit par son badge). Idempotente : appliquée à une vue, elle rend la même vue.
+  function stateForTile(tile, state) {
+    if (state.__tileView === tile.id) return state;
+    const table = tileTable(tile, state);
+    const filters = state.activeFilters || [];
+    const advanced = state.advancedFilters || [];
+    const mixed = filters.some((f) => filterTable(f, state)) || advanced.some((f) => filterTable(f, state));
+    if (!table && !mixed) return state;
+    const rows = table ? (tableRowsStatus(state, table) === 'ready' ? state.tableRows[table] : []) : state.rows;
+    return Object.assign({}, state, {
+      rows,
+      activeFilters: filters.filter((f) => filterTable(f, state) === table),
+      advancedFilters: advanced.filter((f) => filterTable(f, state) === table),
+      __tileView: tile.id
+    });
   }
 
   // ---- Tuile Texte (type 'text') ----------------------------------------------------------------
@@ -1105,7 +1151,7 @@
     // Histogramme : une ligne par classe (mêmes classes et mêmes comptes que l'écran). En-têtes en dur, comme les autres
     // exports (contenu généré, hors i18n) ; la borne haute est exclue sauf pour la dernière classe.
     if (tile.type === 'histogram') {
-      const hist = histogramBins(state.rows, rows, tile.measure, tile.bins);
+      const hist = histogramBins(stateForTile(tile, state).rows, rows, tile.measure, tile.bins);
       return { name: title, header: [tile.measure + ' : borne basse', 'borne haute', 'Lignes'], rows: hist.bins.map((b) => [b.lo, b.hi, b.count]) };
     }
     // Boîte à moustaches : une ligne par groupe, les statistiques tracées (effectif, moustaches, quartiles, médiane) et le nombre de
@@ -1444,7 +1490,7 @@
     isStackedPercentTile, shareOfTotal, stackShares, REF_LINE_KINDS, supportsRefLine, refLineKind,
     refLineValue, cellFilterToggles, isStackedTile, splitBySeries, assembleSeries, PALETTES, PALETTE_KEYS,
     paletteColors, supportsPalette, supportsNumberFormat, NUMBER_FORMAT_TILE_TYPES, escapeHtml,
-    tileDrillLevels, currentDimension, rowsForTile, tileExportSheet, tileExportKind, renderTextHtml,
+    tileDrillLevels, currentDimension, rowsForTile, tileTable, filterTable, tableRowsStatus, stateForTile, tileExportSheet, tileExportKind, renderTextHtml,
     plainTextOf, TEXT_TILE_MAX, DEFAULT_GOOD_PCT, DEFAULT_WARN_PCT, targetProgress, progressRows,
     sparklineValues, sparklineGeometry, TABLE_TILE_MAX_ROWS, TABLE_EXPORT_MAX_ROWS, tableColumnsOf, cellText,
     compareCells, sortRowsBy, moveInOrder, nextSortDir, tableSheet, sanitizeSheetName, buildWorkbookSheets,

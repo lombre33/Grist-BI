@@ -48,8 +48,18 @@
     return id;
   }
 
-  // Rend des pages dont toutes les tuiles ont un id sûr et unique. Rend la MÊME référence quand rien ne
-  // change (le cas de toute configuration écrite par ce widget) : `main.js:render()` compare `state.pages`
+  // Table que lit une tuile (`tile.table`, lot 2 du chantier « colonnes de toutes les tables », 26/11/2026) : un NOM de table, relu de la
+  // configuration comme les ids — seul un texte non vide, court et sans caractère de contrôle est gardé (il finit dans un badge de tuile et
+  // dans une lecture de table ; une valeur forgée ne doit pas aller plus loin). Un nom qui n'est PAS une table du document est refusé plus
+  // loin, à la lecture (`js/main-session.js:loadTileTable`) : ce module ne connaît pas les tables.
+  const TABLE_NAME_MAX = 160;
+  const CONTROL_CHARS = /[\u0000-\u001f\u007f]/;
+  function isTableName(raw) {
+    return typeof raw === 'string' && raw !== '' && raw.length <= TABLE_NAME_MAX && !CONTROL_CHARS.test(raw);
+  }
+
+  // Rend des pages dont toutes les tuiles ont un id sûr et unique (et, si elles en portent un, un nom de table bien formé). Rend la MÊME
+  // référence quand rien ne change (le cas de toute configuration écrite par ce widget) : `main.js:render()` compare `state.pages`
   // par référence pour décider d'une sauvegarde, une copie à chaque chargement en déclencherait une.
   function sanitizePages(pages) {
     const used = new Set();
@@ -63,9 +73,12 @@
       const safeTiles = tiles.map((tile) => {
         if (!tile || typeof tile !== 'object') { pageChanged = true; return null; }
         const id = safeTileId(tile.id, used);
-        if (id === tile.id) return tile;
+        const badTable = Object.prototype.hasOwnProperty.call(tile, 'table') && tile.table !== undefined && !isTableName(tile.table);
+        if (id === tile.id && !badTable) return tile;
         pageChanged = true;
-        return Object.assign({}, tile, { id });
+        const fixed = Object.assign({}, tile, { id });
+        if (badTable) delete fixed.table;
+        return fixed;
       }).filter(Boolean);
       if (!pageChanged && safeTiles.length === tiles.length) return page;
       changed = true;
@@ -110,6 +123,12 @@
 
   function createStore() {
     let rows = [];
+    // Table de travail du rapport (`''` tant qu'aucune n'est ouverte) et lignes des AUTRES tables lues par des tuiles (lot 2 de « colonnes de
+    // toutes les tables », 26/11/2026) : `tableRows[nom]` = les lignes (tableau), `null` = table illisible, absent = pas encore lue. Une tuile
+    // sans `table` lit la table de travail (`rows`) : un rapport d'avant ce lot ne change pas d'un octet. Un objet sans prototype : le nom
+    // d'une table est une clé, `__proto__` n'y est qu'une clé comme une autre. Vidé à chaque changement de table de travail.
+    let workingTable = '';
+    let tableRows = Object.create(null);
     // pages: [{ id, name, tiles: [...] }, ...] — un dashboard multi-pages est un tableau de pages,
     // chacune avec ses propres tuiles ; activeFilters/drillIns restent GLOBAUX (pas par page,
     // décision produit délibérée : garder un mécanisme unique de cross-filtering plutôt que le
@@ -183,7 +202,7 @@
       // ou drill-downs actuels ne sont plus ceux de cette vue (voir activeBookmarkId plus haut).
       const active = activeBookmarkId && bookmarks.find((b) => b.id === activeBookmarkId);
       return {
-        rows, pages, currentPageId, tiles: currentPage().tiles, pageLayout: currentPage().layout || DEFAULT_PAGE_LAYOUT, activeFilters, advancedFilters, drillIns, bookmarks, blend, joins, dashStyle, dashStyleOptions, comments,
+        rows, workingTable, tableRows, pages, currentPageId, tiles: currentPage().tiles, pageLayout: currentPage().layout || DEFAULT_PAGE_LAYOUT, activeFilters, advancedFilters, drillIns, bookmarks, blend, joins, dashStyle, dashStyleOptions, comments,
         zoomedTileIds: currentPage().tiles.map((t) => t.id).filter((id) => zoomedTileIds.includes(id)),
         activeBookmarkId: active ? active.id : null,
         activeBookmarkModified: active ? !sameSnapshot(active, { activeFilters, advancedFilters, drillIns }) : false
@@ -193,6 +212,48 @@
     function subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 
     function setRows(newRows) { rows = newRows || []; notify(); }
+
+    // La table de travail du rapport ouvert. Un changement vide les lignes des autres tables (elles appartenaient à l'autre rapport) ; rien ne
+    // se passe si la table est la même.
+    function setWorkingTable(id) {
+      const next = typeof id === 'string' ? id : '';
+      if (next === workingTable) return;
+      workingTable = next;
+      tableRows = Object.create(null);
+      notify();
+    }
+
+    // Les lignes d'une AUTRE table lue par une tuile : un tableau, ou `null` quand la table est illisible (règle d'accès, table disparue, nom
+    // qui n'est pas une table du document). Un objet NEUF à chaque écriture, jamais modifié sur place.
+    function setTableRows(table, newRows) {
+      if (!isTableName(table)) return;
+      tableRows = Object.assign(Object.create(null), tableRows);
+      tableRows[table] = Array.isArray(newRows) ? newRows : null;
+      notify();
+    }
+
+    // Oublie les lignes des autres tables (rechargement des données) : les tuiles qui en lisent les redemandent.
+    function clearTableRows() {
+      if (!Object.keys(tableRows).length) return;
+      tableRows = Object.create(null);
+      notify();
+    }
+
+    // La table lue par la tuile `tile`, '' pour la table de travail (pas de `table`, ou la même que celle du rapport).
+    function tileTableKey(tile) {
+      const table = tile && isTableName(tile.table) ? tile.table : '';
+      return table !== workingTable ? table : '';
+    }
+    // Identité d'un filtre : sa colonne ET la table qu'il filtre ('' = la table de travail, l'absence du champ `table`). Deux tables peuvent avoir
+    // une colonne de même nom sans que leurs filtres se confondent. Un filtre posé depuis une tuile prend la table de CETTE tuile.
+    const filterTableKey = (f) => (f && isTableName(f.table) ? f.table : '');
+    const sameFilterKey = (f, column, table) => f.column === column && filterTableKey(f) === table;
+    function sourceTableOf(sourceTileId) {
+      const tile = pages.reduce((all, page) => all.concat(page.tiles || []), []).find((t) => t.id === sourceTileId);
+      return tile ? tileTableKey(tile) : '';
+    }
+    // Un filtre ne porte `table` que pour une AUTRE table que celle de travail : sans, il est identique octet pour octet à ceux d'avant ce lot.
+    const withTable = (filter, table) => (table ? Object.assign(filter, { table }) : filter);
 
     function replaceCurrentPageTiles(newTiles) {
       pages = pages.map((p) => (p.id === currentPageId ? Object.assign({}, p, { tiles: newTiles }) : p));
@@ -284,6 +345,7 @@
     // Remplace une tuile existante en place (même id, mêmes voisines) plutôt que
     // supprimer+ajouter : garde sa position dans la grille.
     function updateTile(id, patch) {
+      const before = currentPage().tiles.find((t) => t.id === id);
       replaceCurrentPageTiles(currentPage().tiles.map((t) => (t.id === id ? Object.assign({}, t, patch) : t)));
       // Une édition touchant le drill-down invalide le chemin de drill-down EN COURS pour cette
       // tuile : le garder référencerait potentiellement des niveaux qui n'ont plus cours (ex.
@@ -293,6 +355,17 @@
       if ('drillDimensions' in patch && id in drillIns) {
         drillIns = Object.assign({}, drillIns);
         delete drillIns[id];
+      }
+      // Une tuile qui change de TABLE ne filtre plus la même chose : ses filtres croisés (posés sur les colonnes de l'ancienne table) et son
+      // chemin de drill-down ne valent plus rien. Levés ici plutôt que laissés à filtrer, sans la tuile qui permettrait de les comprendre, une
+      // table à laquelle ils ne se rapportent pas.
+      if ('table' in patch) {
+        const previous = before ? tileTableKey(before) : '';
+        const next = tileTableKey(Object.assign({}, before, patch));
+        if (previous !== next) {
+          if (id in drillIns) { drillIns = Object.assign({}, drillIns); delete drillIns[id]; }
+          activeFilters = activeFilters.filter((f) => f.sourceTileId !== id);
+        }
       }
       syncDrillCrossFilters(id);
       notify();
@@ -343,13 +416,14 @@
     // autre valeur d'une dimension n'a pas de sens en cumulé). Clic sur une colonne DIFFÉRENTE =
     // s'ajoute aux filtres déjà actifs (cumul façon slicers Power BI).
     function toggleFilter(column, value, sourceTileId) {
-      const idx = activeFilters.findIndex((f) => f.column === column);
+      const table = sourceTableOf(sourceTileId);
+      const idx = activeFilters.findIndex((f) => sameFilterKey(f, column, table));
       if (idx >= 0 && activeFilters[idx].value === value) {
         activeFilters = activeFilters.filter((_, i) => i !== idx);
       } else if (idx >= 0) {
-        activeFilters = activeFilters.map((f, i) => (i === idx ? { column, value, sourceTileId } : f));
+        activeFilters = activeFilters.map((f, i) => (i === idx ? withTable({ column, value, sourceTileId }, table) : f));
       } else {
-        activeFilters = activeFilters.concat([{ column, value, sourceTileId }]);
+        activeFilters = activeFilters.concat([withTable({ column, value, sourceTileId }, table)]);
       }
       notify();
     }
@@ -359,8 +433,9 @@
     // (`{type:'range', min, max, maxExclusive?}`, voir data.js:matchesFilter). Cliquer la MÊME plage retire le filtre ; une
     // autre plage (ou un filtre d'égalité posé sur cette colonne) la remplace.
     function toggleRangeFilter(column, range, sourceTileId) {
-      const idx = activeFilters.findIndex((f) => f.column === column);
-      const filter = { column, type: 'range', min: range.min, max: range.max, sourceTileId };
+      const table = sourceTableOf(sourceTileId);
+      const idx = activeFilters.findIndex((f) => sameFilterKey(f, column, table));
+      const filter = withTable({ column, type: 'range', min: range.min, max: range.max, sourceTileId }, table);
       if (range.maxExclusive) filter.maxExclusive = true;
       const same = idx >= 0 && activeFilters[idx].type === 'range' && activeFilters[idx].min === filter.min
         && activeFilters[idx].max === filter.max && !!activeFilters[idx].maxExclusive === !!filter.maxExclusive;
@@ -370,9 +445,11 @@
       notify();
     }
 
-    // Sans argument : efface tous les filtres. Avec une colonne : efface seulement celui-là.
-    function clearFilter(column) {
-      activeFilters = column ? activeFilters.filter((f) => f.column !== column) : [];
+    // Sans argument : efface tous les filtres. Avec une colonne : efface seulement celui-là (`table` : la table qu'il filtre, absente = la table
+    // de travail, comme avant ce lot).
+    function clearFilter(column, table) {
+      const key = isTableName(table) ? table : '';
+      activeFilters = column ? activeFilters.filter((f) => !sameFilterKey(f, column, key)) : [];
       notify();
     }
 
@@ -381,15 +458,21 @@
     // filtrée remplace l'ancien plutôt que de les cumuler (ex. changer les bornes d'une plage plutôt
     // que d'en ajouter une seconde qui ne matcherait jamais rien en ET avec la première).
     // `filter`: `{type: 'range'|'dateRange'|'relativeDate'|'contains', ...}` (voir data.js:matchesFilter).
+    // `filter.table` (facultatif) : la table que ce filtre restreint, quand ce n'est pas la table de travail ; deux tables peuvent porter une colonne
+    // de même nom, chacune a son filtre.
     function setAdvancedFilter(column, filter) {
-      const withoutThisColumn = advancedFilters.filter((f) => f.column !== column);
-      advancedFilters = withoutThisColumn.concat([Object.assign({ column }, filter)]);
+      const table = isTableName(filter && filter.table) && filter.table !== workingTable ? filter.table : '';
+      const withoutThisColumn = advancedFilters.filter((f) => !sameFilterKey(f, column, table));
+      const next = Object.assign({ column }, filter);
+      if (table) next.table = table; else delete next.table;
+      advancedFilters = withoutThisColumn.concat([next]);
       notify();
     }
 
-    // Sans argument : efface tous les filtres avancés. Avec une colonne : efface seulement celui-là.
-    function clearAdvancedFilter(column) {
-      advancedFilters = column ? advancedFilters.filter((f) => f.column !== column) : [];
+    // Sans argument : efface tous les filtres avancés. Avec une colonne : efface seulement celui-là (`table` : voir clearFilter).
+    function clearAdvancedFilter(column, table) {
+      const key = isTableName(table) ? table : '';
+      advancedFilters = column ? advancedFilters.filter((f) => !sameFilterKey(f, column, key)) : [];
       notify();
     }
 
@@ -406,8 +489,9 @@
       if (!tile || !tile.drillCrossFilter) return;
       const path = drillIns[tileId] || [];
       if (!path.length) return;
+      const table = tileTableKey(tile);
       activeFilters = activeFilters.concat(
-        path.map((step) => ({ column: step.column, value: step.value, sourceTileId: tileId, fromDrill: true }))
+        path.map((step) => withTable({ column: step.column, value: step.value, sourceTileId: tileId, fromDrill: true }, table))
       );
     }
 
@@ -514,7 +598,7 @@
     }
 
     return {
-      getState, subscribe, setRows,
+      getState, subscribe, setRows, setWorkingTable, setTableRows, clearTableRows,
       setPages, setCurrentPage, addPage, renamePage, removePage,
       addTile, removeTile, updateTile, moveTile, setPageLayout,
       toggleFilter, toggleRangeFilter, clearFilter, setAdvancedFilter, clearAdvancedFilter, drillInto, drillUp,

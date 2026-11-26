@@ -661,6 +661,14 @@
         <option value="text" data-i18n="tileForm.type.text">Texte</option>
       </select>
     </div>
+      <div class="field" id="tile-table-field" hidden>
+        <label for="tile-table" data-i18n="tileForm.table.label">Table</label>
+        <div class="combobox">
+          <input type="text" id="tile-table" class="combobox-input" />
+          <ul class="combobox-list" hidden></ul>
+        </div>
+        <p id="tile-table-note" class="tile-advice tile-link-note" role="status" aria-live="polite" hidden></p>
+      </div>
       <div class="field" id="tile-radar-mode-field" hidden>
         <label for="tile-radar-mode" data-i18n="tileForm.radarMode.label">Axes du radar</label>
         <select id="tile-radar-mode">
