@@ -94,8 +94,9 @@
       virtual = graph.virtualColumns(S.linkSchema, S.currentTableId, joins, Object.keys(rows[0]));
       if (kind) virtual = virtual.filter((v) => graph.kindOfType(v.type) === kind);
     }
+    const typeOf = new Map(virtual.map((v) => [v.id, v.type]));
     return graph.groupColumns(plain, virtual, joins, S.currentTableId || '').map((o) => (
-      typeof o === 'object' && o.pending ? Object.assign({}, o, { title: t('joins.pick.hint', { table: o.table }) }) : o
+      typeof o === 'object' && o.pending ? Object.assign({}, o, { title: t('joins.pick.hint', { table: o.table }), kind: graph.kindOfType(typeOf.get(o.value)) }) : o
     ));
   }
 
@@ -144,9 +145,14 @@
     fillCombobox(dateColumnSelect, choices);
     // « Que faire avec cette colonne ? » : les colonnes de la table (sans les dérivées d'une date) ; une colonne choisie sur la table
     // d'AVANT (autres lignes, même du même nom), ou qui a disparu, n'est plus une réponse : champ et résultats sont vidés.
-    const pickable = GristBI.adviceColumn ? GristBI.adviceColumn.pickableColumns(cols) : cols;
+    // Les colonnes d'une table liée (pas encore jointe) y sont aussi : la choisir pose la jointure d'abord (`prepare`), puis la question est posée sur les lignes jointes.
+    const pickableIds = new Set(GristBI.adviceColumn ? GristBI.adviceColumn.pickableColumns(cols) : cols);
+    const pickable = choices.filter((o) => (typeof o === 'string' ? pickableIds.has(o) : o.pending || pickableIds.has(o.value)));
     fillCombobox(columnPickEl, pickable);
-    if (columnPickEl.value && (pickable.indexOf(columnPickEl.value) === -1 || (S.columnHelperRows && S.columnHelperRows !== rows))) { columnPickEl.value = ''; hideColumnResults(); }
+    const pickableValues = pickable.map((o) => (typeof o === 'string' ? o : o.value));
+    if (columnPickEl.value && (pickableValues.indexOf(columnPickEl.value) === -1 || (S.columnHelperRows && S.columnHelperRows !== rows))) { columnPickEl.value = ''; hideColumnResults(); }
+    // Table plate : les colonnes des tables liées qu'on n'a pas encore jointes se proposent à la suite (les cocher pose la jointure).
+    S.columnsPickerPending = choices.filter((o) => typeof o === 'object' && o.pending);
     refreshColumnsPicker(cols);
     renderFilterColumns(rows);
     updateAdvancedFilterFieldsForColumn(rows);
@@ -509,10 +515,13 @@
   // `tile.columns` = les colonnes COCHÉES, dans l'ordre de la liste. Les colonnes non cochées suivent, dans
   // l'ordre de la table. L'état vit dans le DOM (une ligne `li[data-col]` par colonne) : la lecture
   // (`readColumnsPicker`) ne mémorise rien, donc rien à resynchroniser quand la table change.
-  function readColumnsOrder() { return Array.from(tileColumnsList.querySelectorAll('li')).map((li) => li.dataset.col); }
+  // Les lignes « colonne » seulement : ni l'intitulé des tables liées, ni leurs colonnes encore à relier (`li[data-pending]`, jamais une colonne des lignes).
+  function columnRows() { return Array.from(tileColumnsList.querySelectorAll('li[data-col]:not([data-pending])')); }
+
+  function readColumnsOrder() { return columnRows().map((li) => li.dataset.col); }
 
   function readColumnsPicker() {
-    return Array.from(tileColumnsList.querySelectorAll('li')).filter((li) => li.querySelector('input').checked).map((li) => li.dataset.col);
+    return columnRows().filter((li) => li.querySelector('input').checked).map((li) => li.dataset.col);
   }
 
   function renderColumnsPicker(order, checkedSet, focusCol, focusDir) {
@@ -529,8 +538,29 @@
       li.querySelector('[data-dir="1"]').disabled = i === order.length - 1;
       tileColumnsList.appendChild(li);
     });
+    // Colonnes des tables liées qu'on n'a pas encore jointes : cocher l'une d'elles pose la jointure (js/main-form.js), puis la colonne prend sa place.
+    const pending = Array.isArray(S.columnsPickerPending) ? S.columnsPickerPending : [];
+    let lastGroup = '';
+    pending.forEach((o) => {
+      if (o.group !== lastGroup) {
+        lastGroup = o.group;
+        const head = document.createElement('li');
+        head.className = 'col-group';
+        head.setAttribute('role', 'presentation');
+        head.textContent = o.group;
+        tileColumnsList.appendChild(head);
+      }
+      const li = document.createElement('li');
+      li.dataset.col = o.value;
+      li.dataset.pending = '1';
+      li.title = o.title || '';
+      GristBI.safeHtml.setHtml(li, '<label><input type="checkbox"> <span></span></label>');
+      li.querySelector('span').textContent = o.label;
+      li.querySelector('input').setAttribute('aria-label', t('tileForm.columns.pending', { column: o.value, table: o.table || o.group }));
+      tileColumnsList.appendChild(li);
+    });
     if (focusCol) {
-      const li = Array.from(tileColumnsList.children).find((n) => n.dataset.col === focusCol);
+      const li = Array.from(tileColumnsList.children).find((n) => n.dataset.col === focusCol && !n.dataset.pending);
       const btn = li && li.querySelector(`[data-dir="${focusDir}"]:not(:disabled)`) || (li && li.querySelector('.col-move:not(:disabled)'));
       if (btn) btn.focus({ preventScroll: true });
     }

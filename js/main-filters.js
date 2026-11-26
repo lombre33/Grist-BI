@@ -12,8 +12,10 @@
     filterColumnNameEl, filterColumnSearch, filterColumnSelect, filterDateEndInput, filterDateModeField,
     filterDateModeSelect, filterDateRangeField, filterDateStartInput, filterErrorEl, filterMaxInput, filterMinInput,
     filterNumberField, filterRelativeDateField, filterRelativePresetSelect, filterStepColumns, filterTextField,
-    filterTextInput, filterValueList, filterValueMore, filterValuesHint, inferColumnKind, store
+    columnOptions, filterLinkNoteEl, filterTextInput, filterValueList, filterValueMore, filterValuesHint, inferColumnKind, store
   } = parts;
+  // Définie dans un fichier chargé plus tard : liaison tardive, résolue à l'appel.
+  const joinColumn = (...args) => parts.joinColumn(...args);
   Object.assign(parts, {
     renderFilterColumns, updateAdvancedFilterFieldsForColumn
   });
@@ -21,7 +23,8 @@
   const FILTER_VALUES_SHOWN = 40;
  // au-delà : « N autres valeurs », on affine en tapant
   let filterColumns = [];
- // [{ id, kind }] — colonnes proposées par l'étape 1
+ // [{ id, kind, label, group, pending, table }] — colonnes proposées par l'étape 1 (celles des lignes, puis celles des tables liées
+ // qu'on n'a pas encore jointes : `pending`, choisir l'une d'elles pose la jointure d'abord)
   let filterValuesPool = [];
  // valeurs distinctes de la colonne choisie (filtre texte)
 
@@ -29,7 +32,10 @@
 
   function renderFilterColumns(rows) {
     rows = rows || store.getState().rows;
-    filterColumns = availableColumns(rows).map((id) => ({ id, kind: inferColumnKind(id, rows) }));
+    // Une seule table en jeu : les colonnes seules, comme avant. Sinon rangées par table (js/main-fields.js:columnOptions), celles à relier en dernier.
+    filterColumns = columnOptions(rows).map((o) => (typeof o === 'string'
+      ? { id: o, kind: inferColumnKind(o, rows), label: o, group: '' }
+      : { id: o.value, kind: o.pending ? (o.kind || 'text') : inferColumnKind(o.value, rows), label: o.label, group: o.group, pending: !!o.pending, table: o.table }));
     // La colonne choisie a disparu (changement de table) : retour à l'étape 1.
     if (filterColumnSelect.value && !filterColumns.some((c) => c.id === filterColumnSelect.value)) {
       filterColumnSelect.value = '';
@@ -40,12 +46,19 @@
 
   function refreshFilterColumnList() {
     const q = filterColumnSearch.value.trim().toLowerCase();
-    const shown = q ? filterColumns.filter((c) => c.id.toLowerCase().includes(q)) : filterColumns;
+    // On cherche aussi par table : « clients » montre ses colonnes (comme la liste déroulante des champs du formulaire).
+    const shown = q ? filterColumns.filter((c) => `${c.id} ${c.group}`.toLowerCase().includes(q)) : filterColumns;
+    let lastGroup = '';
     GristBI.safeHtml.setHtml(filterColumnList, shown.map((c) => {
       const kind = t('filters.kind.' + c.kind);
-      return `<li><button type="button" class="filter-column-item" data-column="${escapeHtml(c.id)}" aria-label="${escapeHtml(t('filters.column.aria', { name: c.id, kind }))}">`
+      let head = '';
+      if (c.group && c.group !== lastGroup) head = `<li class="filter-column-group" role="presentation">${escapeHtml(c.group)}</li>`;
+      lastGroup = c.group;
+      const aria = c.pending ? t('filters.column.ariaLinked', { name: c.id, kind, table: c.table || c.group }) : t('filters.column.aria', { name: c.id, kind });
+      const title = c.pending ? ` title="${escapeHtml(t('joins.pick.hint', { table: c.table || c.group }))}"` : '';
+      return `${head}<li><button type="button" class="filter-column-item${c.pending ? ' filter-column-pending' : ''}${c.group ? ' filter-column-grouped' : ''}" data-column="${escapeHtml(c.id)}"${c.pending ? ' data-pending="1"' : ''}${title} aria-label="${escapeHtml(aria)}">`
         + `<span class="kind-badge kind-${c.kind}" aria-hidden="true">${KIND_BADGES[c.kind]}</span>`
-        + `<span class="filter-column-label">${escapeHtml(c.id)}</span></button></li>`;
+        + `<span class="filter-column-label">${escapeHtml(c.label)}</span></button></li>`;
     }).join(''));
     filterColumnEmpty.hidden = shown.length > 0;
   }
@@ -71,12 +84,34 @@
     first.focus({ preventScroll: true });
   }
 
+  // Un clic (ou Entrée) sur une colonne de la liste. Une colonne d'une table LIÉE pas encore jointe pose la jointure d'abord (js/main-session.js:joinColumn),
+  // puis passe à l'étape 2 sur les lignes jointes ; si la jointure n'a pas lieu, la liste reste ouverte, rien n'est choisi. Un seul choix à la fois.
+  let filterJoining = false;
+  async function pickFilterColumn(columnId, button) {
+    const entry = filterColumns.find((c) => c.id === columnId);
+    if (!entry || !entry.pending) { selectFilterColumn(columnId); return; }
+    if (filterJoining) return;
+    filterJoining = true;
+    if (button) button.setAttribute('aria-busy', 'true');
+    let ok = false;
+    try { ok = await joinColumn(columnId, filterLinkNoteEl); } catch (err) { console.error('[GristBI] choix d\'une colonne liée impossible', err); }
+    filterJoining = false;
+    if (ok && filterColumns.some((c) => c.id === columnId && !c.pending)) { selectFilterColumn(columnId); return; }
+    filterColumnSearch.focus({ preventScroll: true });
+  }
+
   // Remet le menu sur son 1er écran : appelé à CHAQUE ouverture (js/appbar.js:onOpen).
   function resetFilterPopover() {
     filterColumnSearch.value = '';
     filterColumnSelect.value = '';
+    hideFilterLinkNote();
     refreshFilterColumnList();
     showFilterStep('columns');
+  }
+
+  function hideFilterLinkNote() {
+    filterLinkNoteEl.hidden = true;
+    filterLinkNoteEl.textContent = '';
   }
 
   // Valeurs cliquables du filtre texte, filtrées par ce qui est tapé dans le champ.
@@ -155,7 +190,7 @@
 
   filterColumnList.addEventListener('click', (evt) => {
     const btn = evt.target.closest('.filter-column-item');
-    if (btn) selectFilterColumn(btn.dataset.column);
+    if (btn) pickFilterColumn(btn.dataset.column, btn);
   });
 
   filterColumnSearch.addEventListener('input', refreshFilterColumnList);
@@ -164,13 +199,13 @@
     if (evt.key === 'Enter') {
       evt.preventDefault();
       const first = filterColumnList.querySelector('.filter-column-item');
-      if (first) selectFilterColumn(first.dataset.column);
+      if (first) pickFilterColumn(first.dataset.column, first);
     } else listArrowNav(evt, filterColumnList, null);
   });
 
   filterColumnList.addEventListener('keydown', (evt) => listArrowNav(evt, filterColumnList, filterColumnSearch));
 
-  filterBackBtn.addEventListener('click', () => { showFilterStep('columns'); filterColumnSearch.focus({ preventScroll: true }); });
+  filterBackBtn.addEventListener('click', () => { hideFilterLinkNote(); showFilterStep('columns'); filterColumnSearch.focus({ preventScroll: true }); });
 
   filterTextInput.addEventListener('input', () => { refreshFilterValues(); showFilterError(null); });
 

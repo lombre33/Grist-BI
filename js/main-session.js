@@ -16,7 +16,7 @@
   } = parts;
   const { escapeHtml } = GristBI.data;
   Object.assign(parts, {
-    connectToFirstTable, ensureColumnJoined, flushPendingSave, offerMergeConfigNames, openBlankReport, openModelById, openReportById, refreshBlendPicker,
+    connectToFirstTable, ensureColumnJoined, joinColumn, flushPendingSave, offerMergeConfigNames, openBlankReport, openModelById, openReportById, refreshBlendPicker,
     linkTable, refreshTablePicker, reloadWorkingTable, runNamesUpdate, scheduleSave, switchTable
   });
 
@@ -601,8 +601,11 @@
   // plafond de jointures, schéma changé entre-temps) les jointures posées par CE choix sont retirées aussitôt et le choix est annulé : jamais une
   // jointure annoncée qui n'a pas eu lieu (même règle que `linkTable` ; `applyBlend` dit lui-même l'échec d'une table illisible). Trois essais au plus :
   // deux choix qui se suivent font abandonner le premier `applyBlend` (`applySeq`), le suivant le rattrape. La personne est prévenue (`#tile-link-note`)
-  // de la table reliée et de l'endroit où la délier.
-  async function ensureColumnJoined(id) {
+  // de la table reliée et de l'endroit où la délier. `joinColumn` fait le travail et écrit la phrase dans `noteEl` (le panneau d'ajout, le menu Filtre ou
+  // le formulaire de la table plate la placent chacun chez eux) ; `ensureColumnJoined` est le `prepare` des combobox du panneau, qui n'ont que celle-là.
+  async function ensureColumnJoined(id) { return joinColumn(id, tileLinkNoteEl); }
+
+  async function joinColumn(id, noteEl) {
     const graph = GristBI.tableGraph;
     const hasColumn = () => { const first = store.getState().rows[0]; return !!first && Object.prototype.hasOwnProperty.call(first, id); };
     const added = [];
@@ -621,9 +624,9 @@
       await applyBlend(currentBlend);
     }
     if (hasColumn()) {
-      if (added.length) {
-        tileLinkNoteEl.textContent = t('joins.pick.done', { tables: added.join(', ') });
-        tileLinkNoteEl.hidden = false;
+      if (added.length && noteEl) {
+        noteEl.textContent = t('joins.pick.done', { tables: added.join(', ') });
+        noteEl.hidden = false;
       }
       return true;
     }

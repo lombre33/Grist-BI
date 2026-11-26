@@ -648,6 +648,207 @@ async function scenario(browser, origin, { name, url, framed }) {
     }
     if (!problems.some((p) => /colonnes liées/.test(p))) verified.push('colonnes liées : listes rangées par table, table illisible = choix annulé sans « change » ni jointure, table lisible = jointure posée AVANT le « change », tuile par « Personnes.Equipe » dessinée');
     }
+
+    // 10. Lot 1c « colonnes de toutes les tables » : le menu Filtre, « Que faire avec cette colonne ? » et les cases de la table plate portent aussi les
+    // colonnes des tables LIÉES. Chaque sous-pas repart d'une page neuve (aucune jointure : `Clients` et `Personnes` sont toutes deux « à relier »).
+    {
+    const restart = async () => {
+      await page.reload({ waitUntil: 'load' });
+      frame = page.mainFrame();
+      if (framed) { await page.waitForSelector('#app'); frame = await (await page.$('#app')).contentFrame(); }
+      await frame.waitForFunction(
+        () => typeof window.grist === 'object' && window.GristBI && GristBI.store && GristBI.store.getState().rows.length > 0 && GristBI.mainParts && GristBI.mainParts.S.linkSchema instanceof Map,
+        null, { timeout: 25000 }
+      );
+      await frame.evaluate(() => { if (document.body.dataset.mode !== 'edit') document.getElementById('mode-toggle').click(); });
+    };
+    const joinsOf = () => frame.evaluate(() => GristBI.store.getState().joins.map((j) => j.alias));
+    const closeDialog = async () => {
+      await frame.waitForSelector('#pp-dialog-modal', { state: 'visible', timeout: 8000 }).catch(() => {});
+      await frame.press('body', 'Escape').catch(() => {});
+      await frame.waitForFunction(() => { const d = document.getElementById('pp-dialog-modal'); return !d || d.hidden; }, null, { timeout: 4000 }).catch(() => {});
+    };
+
+    // 10a à 10d. Le menu Filtre.
+    await restart();
+    const filterState = () => frame.evaluate(() => ({
+      groups: Array.from(document.querySelectorAll('#filter-column-list .filter-column-group')).map((li) => li.textContent),
+      items: Array.from(document.querySelectorAll('#filter-column-list .filter-column-item')).map((b) => ({
+        column: b.dataset.column, label: b.querySelector('.filter-column-label').textContent, pending: b.dataset.pending === '1', kind: b.querySelector('.kind-badge').textContent, aria: b.getAttribute('aria-label') || '', busy: b.hasAttribute('aria-busy')
+      })),
+      form: !document.getElementById('advanced-filter-form').hidden,
+      name: document.getElementById('filter-column-name').textContent,
+      note: document.getElementById('filter-link-note').hidden ? '' : document.getElementById('filter-link-note').textContent,
+      popover: !document.getElementById('filter-popover').hidden
+    }));
+    await frame.click('#filter-toggle');
+    await frame.waitForSelector('#filter-column-list .filter-column-item', { state: 'visible', timeout: 8000 });
+    const f0 = await filterState();
+    const itemOf = (st, column) => st.items.find((i) => i.column === column);
+    if (f0.groups.join('|') !== 'Ventes|Clients|Personnes') problems.push('menu Filtre : intitulés « ' + f0.groups.join(' | ') + ' » au lieu de « Ventes | Clients | Personnes »');
+    const nom = itemOf(f0, 'Clients.Nom');
+    const equipe0 = itemOf(f0, 'Personnes.Equipe');
+    if (!nom || nom.label !== 'Nom' || !nom.pending || nom.kind !== 'Aa' || !/Clients/.test(nom.aria)) problems.push('menu Filtre : « Clients.Nom » : ' + JSON.stringify(nom));
+    if (!equipe0 || equipe0.label !== 'Equipe' || !equipe0.pending) problems.push('menu Filtre : « Personnes.Equipe » : ' + JSON.stringify(equipe0));
+    if (!itemOf(f0, 'Region') || itemOf(f0, 'Region').pending || itemOf(f0, 'Region').label !== 'Region') problems.push('menu Filtre : « Region » (table de travail) : ' + JSON.stringify(itemOf(f0, 'Region')));
+    if (f0.items.some((i) => /\.(id|manualSort)$/.test(i.column))) problems.push('menu Filtre : un numéro de ligne est proposé comme colonne');
+    // La recherche porte aussi sur le nom de la table.
+    await frame.fill('#filter-column-search', 'personnes');
+    const f1 = await filterState();
+    if (f1.groups.join('|') !== 'Personnes' || !f1.items.length || f1.items.some((i) => i.column.indexOf('Personnes.') !== 0)) problems.push('menu Filtre : la recherche « personnes » montre ' + JSON.stringify(f1.groups) + ' / ' + f1.items.map((i) => i.column).join(','));
+    // 10b. Table illisible : un VRAI clic ne passe pas à l'étape 2, ne joint rien, dit l'échec ; la liste reste là.
+    await frame.evaluate(async () => { await GristBI.mainParts.reloadWorkingTable(); window.__gristStubFailTables = ['Personnes']; });
+    await frame.click('#filter-column-list [data-column="Personnes.Prenom"]');
+    await closeDialog();
+    const f2 = await frame.evaluate(() => ({
+      form: !document.getElementById('advanced-filter-form').hidden,
+      note: document.getElementById('filter-link-note').hidden,
+      busy: !!document.querySelector('#filter-column-list [aria-busy]'),
+      linked: 'Personnes.Prenom' in (GristBI.store.getState().rows[0] || {}),
+      joins: GristBI.store.getState().joins.length
+    }));
+    if (f2.form) problems.push('menu Filtre : une table illisible a quand même ouvert le réglage du filtre');
+    if (!f2.note) problems.push('menu Filtre : la phrase « table reliée » est affichée alors que rien n\'a été relié');
+    if (f2.busy) problems.push('menu Filtre : une colonne reste « occupée » après l\'échec');
+    if (f2.linked || f2.joins) problems.push('menu Filtre : la jointure posée pour ce choix n\'a pas été retirée (' + f2.joins + ')');
+    await frame.evaluate(() => { window.__gristStubFailTables = []; });
+    // 10c. Table lisible : le même clic pose la jointure, passe à l'étape 2 sur les lignes jointes, dit la table reliée, propose les valeurs.
+    if (await frame.evaluate(() => document.getElementById('filter-popover').hidden)) await frame.click('#filter-toggle');
+    await frame.fill('#filter-column-search', 'personnes.eq');
+    await frame.click('#filter-column-list [data-column="Personnes.Equipe"]');
+    const stepTwo = await frame.waitForFunction(() => !document.getElementById('advanced-filter-form').hidden && GristBI.store.getState().joins.length === 1, null, { timeout: 8000 }).then(() => true, () => false);
+    if (!stepTwo) problems.push('menu Filtre : choisir « Personnes.Equipe » n\'a pas posé la jointure ni ouvert le réglage du filtre');
+    const f3 = await frame.evaluate(() => ({
+      name: document.getElementById('filter-column-name').textContent,
+      note: document.getElementById('filter-link-note').hidden ? '' : document.getElementById('filter-link-note').textContent,
+      values: Array.from(document.querySelectorAll('#filter-value-list .filter-value-item')).map((b) => b.textContent).sort(),
+      joins: GristBI.store.getState().joins.map((j) => j.alias),
+      rows: GristBI.store.getState().rows.length
+    }));
+    if (f3.name !== 'Personnes.Equipe') problems.push('menu Filtre : colonne du réglage « ' + f3.name + ' »');
+    if (!/Personnes/.test(f3.note)) problems.push('menu Filtre : la phrase « table reliée » est absente ou ne nomme pas la table : « ' + f3.note + ' »');
+    if (f3.values.join() !== 'Alpha,Beta,Gamma') problems.push('menu Filtre : valeurs proposées « ' + f3.values.join() + ' » au lieu de « Alpha,Beta,Gamma »');
+    if (f3.joins.join() !== 'Personnes') problems.push('menu Filtre : jointures « ' + f3.joins.join() + ' »');
+    await frame.click('#filter-value-list [data-value="Alpha"]');
+    const f4 = await frame.evaluate(() => {
+      const state = GristBI.store.getState();
+      const kept = GristBI.data.applyFilters(state.rows, state.advancedFilters);
+      return { filters: state.advancedFilters.map((f) => f.column), total: state.rows.length, kept: kept.length, allAlpha: kept.every((r) => r['Personnes.Equipe'] === 'Alpha') };
+    });
+    if (f4.filters.join() !== 'Personnes.Equipe') problems.push('menu Filtre : filtres posés « ' + f4.filters.join() + ' »');
+    if (!f4.kept || f4.kept >= f4.total || !f4.allAlpha) problems.push('menu Filtre : le filtre sur « Personnes.Equipe » retient ' + f4.kept + ' lignes sur ' + f4.total + (f4.allAlpha ? '' : ' (pas toutes Alpha)'));
+    // Rouvert, le menu repart de son 1er écran : plus de phrase.
+    await frame.evaluate(() => { document.getElementById('filter-toggle').click(); document.getElementById('filter-toggle').click(); });
+    const f5 = await filterState();
+    if (f5.note) problems.push('menu Filtre : la phrase « table reliée » reste au menu rouvert : « ' + f5.note + ' »');
+    if (!problems.some((p) => /menu Filtre/.test(p))) verified.push('menu Filtre : colonnes rangées par table (recherche par table comprise), table illisible = rien choisi ni joint, table lisible = jointure posée puis réglage sur les lignes jointes, valeurs proposées, filtre posé (' + f4.kept + ' lignes sur ' + f4.total + ')');
+
+    // 10d. « Que faire avec cette colonne ? » : une colonne d'une table liée se choisit comme les autres ; la jointure est posée avant la question.
+    await restart();
+    await frame.evaluate(() => { GristBI.closeTilePanel(false); GristBI.openTilePanel({ step: 'choose' }); });
+    await frame.click('#tile-column > summary');
+    await frame.click('#tile-column-pick');
+    const colList = await frame.evaluate(() => {
+      const ul = document.getElementById('tile-column-pick').nextElementSibling;
+      return { groups: Array.from(ul.querySelectorAll('.combobox-group')).map((li) => li.textContent), pending: Array.from(ul.querySelectorAll('.combobox-option-pending')).map((li) => li.dataset.value) };
+    });
+    if (colList.groups.join('|') !== 'Ventes|Clients|Personnes') problems.push('« Que faire avec cette colonne ? » : intitulés « ' + colList.groups.join(' | ') + ' »');
+    if (colList.pending.indexOf('Clients.Ville') === -1) problems.push('« Que faire avec cette colonne ? » : « Clients.Ville » n\'est pas proposée (' + colList.pending.join(',') + ')');
+    await page.keyboard.type('clients.vil');
+    await page.keyboard.press('Enter');
+    const asked = await frame.waitForSelector('#tile-column-list button[data-column-add]', { state: 'visible', timeout: 10000 }).then(() => true, () => false);
+    if (!asked) problems.push('« Que faire avec cette colonne ? » : aucune carte après le choix de « Clients.Ville »');
+    else {
+      const c1 = await frame.evaluate(() => ({
+        value: document.getElementById('tile-column-pick').value,
+        profile: document.getElementById('tile-column-profile').textContent,
+        cards: document.querySelectorAll('#tile-column-list .complete-card').length,
+        joins: GristBI.store.getState().joins.map((j) => j.alias),
+        note: document.getElementById('tile-link-note').hidden ? '' : document.getElementById('tile-link-note').textContent,
+        tiles: GristBI.store.getState().tiles.length
+      }));
+      if (c1.value !== 'Clients.Ville') problems.push('« Que faire avec cette colonne ? » : le champ vaut « ' + c1.value + ' »');
+      if (c1.joins.join() !== 'Clients') problems.push('« Que faire avec cette colonne ? » : jointures « ' + c1.joins.join() + ' » au lieu de « Clients »');
+      if (!/Clients\.Ville/.test(c1.profile)) problems.push('« Que faire avec cette colonne ? » : la phrase du rôle ne nomme pas la colonne : « ' + c1.profile + ' »');
+      if (c1.cards < 1 || c1.cards > 3) problems.push('« Que faire avec cette colonne ? » : ' + c1.cards + ' cartes (1 à 3 attendues)');
+      if (!/Clients/.test(c1.note)) problems.push('« Que faire avec cette colonne ? » : la phrase « table reliée » est absente : « ' + c1.note + ' »');
+      await frame.click('#tile-column-list button[data-column-add="0"]');
+      await frame.waitForFunction((n) => GristBI.store.getState().tiles.length === n + 1, c1.tiles, { timeout: 5000 }).catch(() => {});
+      const c2 = await frame.evaluate(() => {
+        const state = GristBI.store.getState();
+        return { tiles: state.tiles.length, reads: state.tiles.length ? JSON.stringify(state.tiles[state.tiles.length - 1]).indexOf('Clients.Ville') !== -1 : false, joins: state.joins.length };
+      });
+      if (c2.tiles !== c1.tiles + 1) problems.push('« Que faire avec cette colonne ? » : « Ajouter » ' + c1.tiles + ' -> ' + c2.tiles + ' tuiles');
+      else if (!c2.reads || c2.joins !== 1) problems.push('« Que faire avec cette colonne ? » : la tuile posée ne lit pas « Clients.Ville » ou la jointure a disparu (' + JSON.stringify(c2) + ')');
+      if (!problems.some((p) => /Que faire/.test(p))) verified.push('« Que faire avec cette colonne ? » sur une table liée : intitulés, jointure posée au choix, phrase du rôle, ' + c1.cards + ' cartes, la tuile posée lit « Clients.Ville »');
+    }
+
+    // 10e. Table plate : les colonnes des tables liées se cochent à la suite de la liste ; cocher pose la jointure, la colonne prend sa place, cochée.
+    await restart();
+    await frame.evaluate(() => { GristBI.closeTilePanel(false); GristBI.openTilePanel({ type: 'table' }); });
+    const plate = () => frame.evaluate(() => ({
+      groups: Array.from(document.querySelectorAll('#tile-columns li.col-group')).map((li) => li.textContent),
+      pending: Array.from(document.querySelectorAll('#tile-columns li[data-pending]')).map((li) => li.dataset.col),
+      checkedReal: Array.from(document.querySelectorAll('#tile-columns li[data-col]:not([data-pending])')).filter((li) => li.querySelector('input').checked).map((li) => li.dataset.col),
+      all: Array.from(document.querySelectorAll('#tile-columns li[data-col]:not([data-pending])')).map((li) => li.dataset.col),
+      pickerRead: GristBI.mainParts.readColumnsPicker(),
+      joins: GristBI.store.getState().joins.map((j) => j.alias),
+      note: document.getElementById('tile-link-note').hidden ? '' : document.getElementById('tile-link-note').textContent
+    }));
+    const p0 = await plate();
+    if (p0.groups.join('|') !== 'Clients|Personnes') problems.push('table plate : intitulés « ' + p0.groups.join(' | ') + ' » au lieu de « Clients | Personnes »');
+    if (p0.pending.join() !== 'Clients.Nom,Clients.Ville,Clients.Segment,Personnes.Prenom,Personnes.Equipe') problems.push('table plate : colonnes à relier « ' + p0.pending.join() + ' »');
+    if (p0.pickerRead.some((c) => /\./.test(c)) || p0.all.some((c) => /^(Clients|Personnes)\./.test(c))) problems.push('table plate : une colonne à relier a été prise pour une colonne de la table : ' + JSON.stringify(p0.pickerRead));
+    // Table illisible : la case se décoche, rien n'est joint.
+    await frame.evaluate(async () => { await GristBI.mainParts.reloadWorkingTable(); window.__gristStubFailTables = ['Personnes']; });
+    await frame.click('#tile-columns li[data-col="Personnes.Prenom"] input');
+    await closeDialog();
+    await frame.waitForFunction(() => !document.querySelector('#tile-columns [aria-busy]'), null, { timeout: 8000 }).catch(() => {});
+    const p1 = await frame.evaluate(() => {
+      const li = document.querySelector('#tile-columns li[data-col="Personnes.Prenom"]');
+      return { exists: !!li, pending: li ? li.hasAttribute('data-pending') : null, checked: li ? li.querySelector('input').checked : null, joins: GristBI.store.getState().joins.length };
+    });
+    if (!p1.exists || !p1.pending || p1.checked || p1.joins) problems.push('table plate : une table illisible laisse la case cochée ou une jointure : ' + JSON.stringify(p1));
+    await frame.evaluate(() => { window.__gristStubFailTables = []; });
+    // Un schéma qui ne connaît plus la table (changé entre l'ouverture de la liste et la case) : aucune jointure n'est tentée, donc AUCUNE liste refaite —
+    // c'est le gestionnaire de la case qui doit la décocher.
+    await frame.evaluate(() => { window.__savedSchema = GristBI.mainParts.S.linkSchema; GristBI.mainParts.S.linkSchema = new Map(); });
+    await frame.click('#tile-columns li[data-col="Personnes.Equipe"] input');
+    await frame.waitForFunction(() => !document.querySelector('#tile-columns [aria-busy]'), null, { timeout: 8000 }).catch(() => {});
+    const p1b = await frame.evaluate(() => {
+      const li = document.querySelector('#tile-columns li[data-col="Personnes.Equipe"]');
+      GristBI.mainParts.S.linkSchema = window.__savedSchema;
+      return { exists: !!li, pending: li ? li.hasAttribute('data-pending') : null, checked: li ? li.querySelector('input').checked : null, busy: li ? li.hasAttribute('aria-busy') : null, joins: GristBI.store.getState().joins.length };
+    });
+    if (!p1b.exists || !p1b.pending || p1b.checked || p1b.busy || p1b.joins) problems.push('table plate : un schéma qui ne connaît plus la table laisse la case cochée, occupée ou une jointure : ' + JSON.stringify(p1b));
+    // Table lisible : la case cochée devient la colonne de la liste, cochée, avec le focus ; la jointure est posée ; la phrase le dit.
+    await frame.click('#tile-columns li[data-col="Clients.Ville"] input');
+    const placed = await frame.waitForSelector('#tile-columns li[data-col="Clients.Ville"]:not([data-pending]) input:checked', { timeout: 8000 }).then(() => true, () => false);
+    if (!placed) problems.push('table plate : cocher « Clients.Ville » ne l\'a pas placée dans la liste, cochée');
+    else {
+      const p2 = await plate();
+      const focus = await frame.evaluate(() => { const a = document.activeElement; return a && a.closest && a.closest('li') ? a.closest('li').dataset.col : (a ? a.tagName : ''); });
+      if (p2.joins.join() !== 'Clients') problems.push('table plate : jointures « ' + p2.joins.join() + ' » au lieu de « Clients »');
+      if (p2.checkedReal.indexOf('Clients.Ville') === -1 || p2.pickerRead.indexOf('Clients.Ville') === -1) problems.push('table plate : « Clients.Ville » n\'est pas lue comme colonne cochée : ' + JSON.stringify(p2.pickerRead));
+      if (p2.pending.some((c) => /^Clients\./.test(c)) || p2.pending.join() !== 'Personnes.Prenom,Personnes.Equipe') problems.push('table plate : encore à relier « ' + p2.pending.join() + ' »');
+      if (!/Clients/.test(p2.note)) problems.push('table plate : la phrase « table reliée » est absente : « ' + p2.note + ' »');
+      if (focus !== 'Clients.Ville') problems.push('table plate : le focus est sur « ' + focus + ' » au lieu de la case « Clients.Ville »');
+      await frame.click('#submit-tile');
+      const made = await frame.waitForFunction(() => GristBI.store.getState().tiles.some((tl) => tl.type === 'table' && (tl.columns || []).indexOf('Clients.Ville') !== -1), null, { timeout: 8000 }).then(() => true, () => false);
+      if (!made) problems.push('table plate : la tuile ajoutée ne porte pas « Clients.Ville » parmi ses colonnes');
+      else {
+        await frame.waitForTimeout(500);
+        const header = await frame.evaluate(async () => {
+          await GristBI.charts.whenSettled();
+          const tile = GristBI.store.getState().tiles.find((tl) => tl.type === 'table');
+          const el = document.querySelector('.tile[data-tile-id="' + tile.id + '"]');
+          return el ? el.textContent.indexOf('Clients.Ville') !== -1 && /Lyon|Nantes|Lille/.test(el.textContent) : false;
+        });
+        if (!header) problems.push('table plate : la tuile n\'affiche pas la colonne « Clients.Ville » et ses villes');
+      }
+    }
+    if (!problems.some((p) => /table plate/.test(p))) verified.push('table plate : colonnes liées à la suite de la liste, table illisible = case décochée sans jointure, table lisible = jointure posée et colonne cochée à sa place (focus, phrase), tuile qui affiche les villes');
+    }
   } catch (e) {
     problems.push('essai interrompu : ' + String((e && e.message) || e).slice(0, 240));
   } finally {
