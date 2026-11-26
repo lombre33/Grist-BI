@@ -50,7 +50,7 @@ Il reprend des mécaniques de **Power BI** et de **DigDash** que Grist n'a pas n
 - **Filtres avancés** : plage de valeurs, plage de dates, dates relatives (30 derniers jours, ce mois-ci…), recherche dans le texte.
 - **Plusieurs pages** par tableau de bord et **vues sauvegardées** : on mémorise un état de filtres et de drill-down, on le retrouve en un clic.
 - **Assistant de démarrage** : sur un tableau de bord vide, des visualisations sont suggérées d'après vos colonnes.
-- **Jointure** avec une deuxième table du même document.
+- **Colonnes des tables liées** : une colonne Référence ouvre les colonnes de l'autre table dans tous les sélecteurs, sans changer de table de travail ; une jointure par clés au choix reste possible avec une deuxième table du même document.
 - **Commentaires par tuile**, stockés dans une table du document.
 - **Mots-clés des publications** (menu de la table, en mode édition) : remplit une colonne de mots-clés à partir d'une colonne de texte (titre, résumé…), après confirmation.
 - **Exports PDF et PowerPoint**, fidèles à l'écran (l'export Excel, déjà écrit, est grisé dans l'alpha : « bientôt disponible »).
@@ -86,11 +86,13 @@ Astuce : donnez-lui une page entière, un tableau de bord a besoin de place.
 
 ### 2. Choisir la table de travail
 
-Au chargement, le widget se connecte tout seul à la **première table** du document. Pour en choisir une autre, cliquez sur le bouton en haut à gauche (il porte le nom de la table), puis sur **Table de travail**. Chaque table garde sa propre configuration : revenir sur une table déjà visitée restaure ses tuiles.
+Au chargement, le widget rouvre tout seul la **dernière table que vous avez utilisée** ; à défaut, la table du tableau de bord enregistré le plus récemment, puis la première table du document. Pour en choisir une autre, cliquez sur le bouton en haut à gauche (il porte le nom de la table), puis sur **Table de travail**. Chaque table garde sa propre configuration : revenir sur une table déjà visitée restaure ses tuiles.
 
 Si le document ne contient encore aucune table, le widget le dit et attend : créez une table dans Grist, puis choisissez-la.
 
 En mode édition, ce même menu permet de **joindre une deuxième table** du document : vous indiquez la colonne clé de chaque table, et les colonnes de la seconde apparaissent (préfixées de son nom) dans tous les sélecteurs.
+
+**Les colonnes des autres tables.** Quand une colonne de votre table est une *Référence* vers une autre table (par exemple `Client` qui désigne une ligne de `Clients`), il n'y a pas besoin de changer de table de travail : dans toutes les listes de colonnes (dimension, mesure, série, filtre, « Que faire avec cette colonne ? », colonnes d'une table plate), les colonnes des tables liées suivent celles de la vôtre, rangées sous le nom de leur table (« Clients » : Nom, Ville…). Il suffit de choisir l'une d'elles : le widget relie la table tout seul, refait les lignes, puis applique votre choix, et une phrase dit quelle table vient d'être reliée. Si la table ne peut pas être lue, rien n'est choisi ni relié. En mode édition, ce même menu liste les **Tables liées** et permet d'en retirer une, tant qu'aucune tuile, aucun filtre ni aucune vue ne s'en sert. Le widget ne suit que les Références simples (une ligne pour une ligne), sur deux niveaux au plus et douze liaisons au plus ; il ne suit pas encore les listes de références ni le sens inverse (« les commandes d'un client »).
 
 ### 3. Construire le tableau de bord
 
@@ -200,6 +202,7 @@ Voici ce qu'il vaut mieux savoir avant de l'adopter.
 - **Nuage de mots et lecture de PDF : pas dans cette version.** Ces deux fonctions demandent des extensions fournies par l'hôte Grist Factory Suite : elles sont grisées dans l'interface quand le widget tourne seul, et un clic l'explique. Les mots-clés calculés à partir d'une colonne de texte, eux, ne dépendent d'aucune extension.
 - **Mesures temporelles simplifiées.** Cumul, YTD et comparaison N-1 se règlent sur une tuile en barres, par mois uniquement : ce n'est pas un langage de mesures complet façon DAX.
 - **Quelques choix de conception.** Le nuage de points est agrégé (un point par catégorie, pas par ligne) ; le radar ne filtre pas les autres tuiles ; une table plate affiche 500 lignes au plus ; les filtres croisés et le drill-down sont communs à toutes les pages.
+- **Tables liées : un périmètre volontairement simple.** Seules les Références simples sont suivies (une ligne de votre table pour une ligne de l'autre), sur deux niveaux et douze liaisons au plus ; pas encore les listes de références ni le sens inverse (« les commandes d'un client »). Une tuile lit toujours la table de travail de la page, avec les colonnes qu'on lui a jointes. Une ancienne version du widget qui rouvre un tableau de bord enregistré avec des tables liées ne connaît pas ces liaisons et les perd à sa prochaine sauvegarde.
 - **Textes tirés de vos données non traduits.** Seule l'interface est bilingue : les titres de tuile composés à partir de noms de colonnes et les en-têtes des exports gardent le nom de vos colonnes.
 - **Pas encore essayé** : le widget avec un compte en lecture seule (on s'attend à ce que les clics de filtrage fonctionnent dans le navigateur, mais que l'enregistrement des vues, des commentaires et de la configuration soit refusé), la reconnaissance automatique de l'auteur d'un commentaire (sinon, le nom se saisit à la main), et l'usage sur téléphone.
 - **Navigateurs.** Le widget a surtout été essayé sous Chromium (Chrome, Edge). Firefox et Safari n'ont pas été vérifiés.
@@ -287,7 +290,7 @@ https://grist-factory.github.io/grist-widget-grist-BI/
 
 **Quick start**
 
-1. The widget connects by itself to the **first table** of your document; use the button at the top left to pick another one (it can also join a second table).
+1. The widget reopens the **last table you used** (otherwise the table of the most recently saved dashboard, then the first table of your document); use the button at the top left to pick another one. When a column is a *Reference* to another table, that table's columns appear in every column list under its name, and picking one links the table automatically (it can also join a second table on keys you choose).
 2. Click **Edit**. On an empty dashboard it suggests visualizations based on your columns; or click **Add**, pick a tile type, choose columns and watch the live preview.
 3. Click a bar or a slice to filter every other tile; click again to clear. Click a year to drill down to quarters and months. Use **Filter** for ranges, dates and text search.
 4. Save a **view** to come back to a filtered state in one click; add **pages** for more tiles.
@@ -306,6 +309,7 @@ https://grist-factory.github.io/grist-widget-grist-BI/
 - The first heavy calculation downloads the SQL engine (about 34 MB).
 - The word cloud and PDF reading need extensions that are not part of this standalone version; they appear greyed out.
 - Mostly tried in Chromium-based browsers; read-only accounts and phones have not been tried.
+- Linked tables are deliberately simple: only single Reference columns are followed (one row of your table for one row of the other), up to two levels and twelve links; no reference lists yet, and not the reverse direction ("the orders of a customer"). A tile always reads the page's working table with the columns joined to it. An older version of the widget that reopens a dashboard saved with linked tables does not know those links and loses them on its next save.
 - Only the interface is bilingual; titles and export headers built from your column names are not translated.
 
 **License:** GNU GPL v3.0, see [LICENSE](./LICENSE). Bundled libraries keep their own licenses (Apache-2.0, MIT, 0BSD), included in each `js/vendor/` folder. Made by [Grist Factory](https://grist-factory.fr).

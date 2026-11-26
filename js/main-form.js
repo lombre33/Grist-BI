@@ -28,7 +28,7 @@
     sortSelect, sparklineCheckbox, sparklineField, stackField, stackPercentCheckbox, stackPercentField,
     stackedCheckbox, startColumnField, startColumnSelect, store, suggestDateHierarchyBtn, supportsLevels,
     targetColumnField, targetColumnSelect, targetField, targetInput, thresholdsField, tileColumnsField,
-    tileColumnsList, tileTextField, tileTextInput, tileTitleInput, tileTypeSelect, trendDimensionSelect, trendField,
+    tileColumnsList, tileLinkNoteEl, tileTextField, tileTextInput, tileTitleInput, tileTypeSelect, trendDimensionSelect, trendField,
     updateDrillLevelsUI, updateNumberFormatUI, updatePaletteSwatch, updateRadarAxesUI, updateRadarEntityValueOptions,
     updateSuggestDateHierarchyVisibility, valueLabelsCheckbox, valueLabelsField, warnPctInput, wordCloudSplitCheckbox,
     wordCloudSplitField
@@ -36,6 +36,7 @@
   // Définies dans un fichier chargé plus tard : liaison tardive, résolue à l'appel.
   const closeTilePanel = (...args) => parts.closeTilePanel(...args);
   const flashTile = (...args) => parts.flashTile(...args);
+  const joinColumn = (...args) => parts.joinColumn(...args);
   const openTilePanel = (...args) => parts.openTilePanel(...args);
   const schedulePreview = (...args) => parts.schedulePreview(...args);
   const updateAdvancedVisibility = (...args) => parts.updateAdvancedVisibility(...args);
@@ -57,7 +58,27 @@
     schedulePreview();
   });
 
-  tileColumnsList.addEventListener('change', () => schedulePreview());
+  // Une colonne d'une table LIÉE pas encore jointe (les cases à la suite de la liste, `li[data-pending]`) : la cocher pose la jointure, refait les
+  // lignes, puis la colonne prend sa place dans la liste, cochée ; si la jointure n'a pas lieu, la case se décoche (jamais une colonne cochée qui n'existe pas).
+  tileColumnsList.addEventListener('change', async (e) => {
+    const li = e.target.closest && e.target.closest('li[data-pending]');
+    if (!li) { schedulePreview(); return; }
+    if (!e.target.checked || li.getAttribute('aria-busy')) return;
+    const col = li.dataset.col;
+    const rowOf = (pending) => Array.from(tileColumnsList.querySelectorAll('li[data-col]')).find((n) => n.dataset.col === col && Boolean(n.dataset.pending) === pending);
+    li.setAttribute('aria-busy', 'true');
+    let ok = false;
+    try { ok = await joinColumn(col, tileLinkNoteEl); } catch (err) { console.error('[GristBI] choix d\'une colonne liée impossible', err); }
+    const joined = ok && rowOf(false);
+    if (joined) {
+      joined.querySelector('input').checked = true;
+      joined.querySelector('input').focus({ preventScroll: true });
+      schedulePreview();
+      return;
+    }
+    const still = rowOf(true);
+    if (still) { still.querySelector('input').checked = false; still.removeAttribute('aria-busy'); }
+  });
 
   function updateFormFieldsForType() {
     const type = tileTypeSelect.value;

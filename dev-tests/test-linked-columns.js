@@ -341,7 +341,44 @@ async function asyncChecks(combobox) {
   ok(/all\.length \+ toAdd\.length > graph\.MAX_JOINS/.test(session) && /showError\(t\('joins\.full'/.test(session), 'au plafond de jointures : refusé en le disant');
   ok(/await applyBlend\(currentBlend\);\s*\}\s*if \(hasColumn\(\)\) \{/.test(session) && /for \(let attempt = 0; attempt < 3 && !hasColumn\(\); attempt\+\+\)/.test(session), 'les lignes sont refaites, jusqu\'à trois essais (une demande abandonnée par une autre est rattrapée)');
   ok(/added\.forEach\(\(alias\) => \{ joins = graph\.removeJoin\(joins, alias\)\.joins; \}\);\s*store\.setJoins\(joins\);\s*await applyBlend\(currentBlend\);\s*\}\s*return false;/.test(session), 'sans la colonne : les jointures posées pour CE choix sont retirées et le choix refusé');
-  ok(/tileLinkNoteEl\.textContent = t\('joins\.pick\.done', \{ tables: added\.join\(', '\) \}\);\s*tileLinkNoteEl\.hidden = false;/.test(session), 'la phrase dit quelle table vient d\'être reliée');
+  ok(/noteEl\.textContent = t\('joins\.pick\.done', \{ tables: added\.join\(', '\) \}\);\s*noteEl\.hidden = false;/.test(session), 'la phrase dit quelle table vient d\'être reliée, là où l\'appelant la veut');
+  ok(/async function ensureColumnJoined\(id\) \{ return joinColumn\(id, tileLinkNoteEl\); \}/.test(session) && /async function joinColumn\(id, noteEl\)/.test(session), 'ensureColumnJoined (le `prepare` des combobox) écrit la phrase du panneau d\'ajout ; joinColumn fait le travail pour tous');
+  // ---- Lot 1c : menu Filtre, « Que faire avec cette colonne ? », cases de la table plate ----
+  const filters = read('js', 'main-filters.js');
+  ok(/const joinColumn = \(\.\.\.args\) => parts\.joinColumn\(\.\.\.args\);/.test(filters), 'menu Filtre : joinColumn vient de main-session.js par liaison tardive');
+  ok(/connectToFirstTable, ensureColumnJoined, joinColumn,/.test(session), 'main-session.js dépose joinColumn');
+  ok(/filterColumns = columnOptions\(rows\)\.map\(/.test(filters) && !/availableColumns\(rows\)\.map\(\(id\) => \(\{ id, kind/.test(filters), 'menu Filtre : la liste des colonnes vient de columnOptions (celles des tables liées comprises)');
+  ok(/kind: o\.pending \? \(o\.kind \|\| 'text'\) : inferColumnKind\(o\.value, rows\)/.test(filters), 'menu Filtre : le genre d\'une colonne à relier vient de son TYPE Grist, celui des autres des lignes');
+  ok(/filter-column-group" role="presentation"/.test(filters) && /\$\{c\.id\} \$\{c\.group\}/.test(filters), 'menu Filtre : un intitulé par table (jamais un bouton) ; la recherche porte aussi sur la table');
+  ok(/data-pending="1"/.test(filters) && /t\('filters\.column\.ariaLinked'/.test(filters) && /t\('joins\.pick\.hint'/.test(filters), 'menu Filtre : une colonne à relier a son marquage, son nom accessible et son infobulle');
+  ok(/if \(!entry \|\| !entry\.pending\) \{ selectFilterColumn\(columnId\); return; \}/.test(filters) && /ok = await joinColumn\(columnId, filterLinkNoteEl\)/.test(filters), 'menu Filtre : une colonne à relier pose la jointure AVANT l\'étape 2');
+  ok(/if \(ok && filterColumns\.some\(\(c\) => c\.id === columnId && !c\.pending\)\) \{ selectFilterColumn\(columnId\); return; \}/.test(filters), 'menu Filtre : l\'étape 2 seulement si la colonne est bien dans les lignes jointes');
+  ok(/if \(filterJoining\) return;/.test(filters) && /filterJoining = false;/.test(filters), 'menu Filtre : un seul choix à la fois');
+  ok(/if \(btn\) pickFilterColumn\(btn\.dataset\.column, btn\);/.test(filters) && /if \(first\) pickFilterColumn\(first\.dataset\.column, first\);/.test(filters), 'menu Filtre : le clic ET Entrée dans la recherche passent par pickFilterColumn');
+  ok(/hideFilterLinkNote\(\);\s*refreshFilterColumnList\(\);/.test(filters) && /filterBackBtn\.addEventListener\('click', \(\) => \{ hideFilterLinkNote\(\);/.test(filters), 'menu Filtre : la phrase est retirée à chaque ouverture et au retour aux colonnes');
+  ok(/const pickable = choices\.filter\(\(o\) => \(typeof o === 'string' \? pickableIds\.has\(o\) : o\.pending \|\| pickableIds\.has\(o\.value\)\)\);/.test(fields) && /fillCombobox\(columnPickEl, pickable\);/.test(fields), '« Que faire avec cette colonne ? » : les colonnes à relier sont proposées avec celles de la table (sans les dérivées d\'une date)');
+  ok(/S\.columnsPickerPending = choices\.filter\(\(o\) => typeof o === 'object' && o\.pending\);\s*refreshColumnsPicker\(cols\);/.test(fields), 'table plate : les colonnes à relier sont celles de columnOptions');
+  ok(/function columnRows\(\) \{ return Array\.from\(tileColumnsList\.querySelectorAll\('li\[data-col\]:not\(\[data-pending\]\)'\)\); \}/.test(fields) && /function readColumnsOrder\(\) \{ return columnRows\(\)/.test(fields) && /return columnRows\(\)\.filter\(\(li\) => li\.querySelector\('input'\)\.checked\)/.test(fields), 'table plate : ni intitulé ni colonne à relier ne compte comme colonne de la liste');
+  ok(/li\.dataset\.pending = '1';/.test(fields) && /head\.className = 'col-group';/.test(fields) && /t\('tileForm\.columns\.pending'/.test(fields), 'table plate : les colonnes à relier ont leur intitulé de table, leur marquage et leur nom accessible');
+  ok(/e\.target\.closest\('li\[data-pending\]'\)/.test(form) && /ok = await joinColumn\(col, tileLinkNoteEl\)/.test(form), 'table plate : cocher une colonne à relier pose la jointure (phrase du panneau d\'ajout)');
+  ok(/joined\.querySelector\('input'\)\.checked = true;/.test(form) && /still\.querySelector\('input'\)\.checked = false;/.test(form), 'table plate : réussite = la colonne prend sa place cochée ; échec = la case se décoche');
+  ok(/const joinColumn = \(\.\.\.args\) => parts\.joinColumn\(\.\.\.args\);/.test(form) && /tileColumnsList, tileLinkNoteEl,/.test(form), 'table plate : joinColumn par liaison tardive, la phrase du panneau');
+  for (const [text, label] of [[fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8'), 'index.html'], [fs.readFileSync(path.join(__dirname, 'harness.html'), 'utf8'), 'harness.html']]) {
+    ok(/<p id="filter-link-note" class="tile-advice tile-link-note" role="status" aria-live="polite" hidden><\/p>/.test(text), `${label} : la phrase du menu Filtre est une zone de statut, masquée au départ`);
+  }
+  ['.filter-column-group', '.filter-column-grouped', '.columns-list li.col-group'].forEach((sel) => ok(css.indexOf(sel) !== -1, `style.css : ${sel}`));
+  ok(/filterLinkNoteEl = document\.getElementById\('filter-link-note'\)/.test(read('js', 'main-core.js')), 'main-core.js : la référence de la phrase du menu Filtre');
+  ['tileForm.columns.pending', 'filters.column.ariaLinked'].forEach((key) => ok(i18n.STRINGS[key] && i18n.STRINGS[key].fr && i18n.STRINGS[key].en, `clé ${key} en fr et en`));
+  ['fr', 'en'].forEach((lang) => {
+    i18n.setLang(lang);
+    [['tileForm.columns.pending', { column: 'Clients.Ville', table: 'Clients' }], ['filters.column.ariaLinked', { name: 'Clients.Ville', kind: 'texte', table: 'Clients' }]].forEach(([key, vars]) => {
+      const text = i18n.t(key, vars);
+      assert.ok(text && !/[{}]|NaN|undefined/.test(text) && /Clients/.test(text), `${lang} ${key} : « ${text} »`);
+      checks += 1;
+    });
+  });
+  i18n.setLang('fr');
+
   // La phrase : un seul panneau, jamais gardée d'un panneau à l'autre.
   ok(/hideLinkNote\(\);\s*renderTypeCards\(\);/.test(panel) && /tilePanel\.hidden = true;\s*hideLinkNote\(\);/.test(panel), 'la phrase est retirée à l\'ouverture et à la fermeture du panneau');
   for (const [text, label] of [[fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8'), 'index.html'], [fs.readFileSync(path.join(__dirname, 'harness.html'), 'utf8'), 'harness.html']]) {

@@ -66,6 +66,8 @@
       fr: 'Trop de tables liées (au plus {max}) : déliez-en une avant d\'en ajouter.',
       en: 'Too many linked tables ({max} at most): unlink one before adding another.',
     },
+    'tileForm.columns.pending': { fr: '{column} (relie la table « {table} »)', en: '{column} (links table “{table}”)' },
+    'filters.column.ariaLinked': { fr: '{name}, colonne de type {kind}, relie la table « {table} »', en: '{name}, {kind} column, links table “{table}”' },
     'joins.pick.hint': { fr: 'Relie la table « {table} » à celle-ci', en: 'Links table “{table}” to this one' },
     'joins.pick.done': {
       fr: 'Table « {tables} » reliée. Pour la délier : menu des données, en haut, rubrique « Tables liées ».',
