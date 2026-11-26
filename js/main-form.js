@@ -11,7 +11,7 @@
   const { t } = GristBI.i18n;
   const {
     addTileForm, aggField, aggLabel, aggSelect, aggSizeField, aggSizeSelect, aggYField, aggYSelect, areaCheckbox,
-    areaField, autoTileTitle, availableColumns, binsField, binsInput, cancelEditBtn, columnDimensionField,
+    areaField, autoTileTitle, availableColumns, binsField, binsInput, cancelEditBtn, columnDimensionField, columnOptions,
     columnDimensionLabel, columnDimensionSelect, comboModeField, comboModeSelect, createDrillLevelSelect,
     createRadarAxisSelect, dateColumnField, dateColumnSelect, dimensionField, dimensionLabel, dimensionSelect,
     donutCheckbox, donutField, drillCrossFilterCheckbox, drillField, drillLabel, drillLevelsContainer, endColumnField,
@@ -198,7 +198,7 @@
   // sans que l'utilisateur ait cliqué "+ Niveau" à la main.
   function setDrillLevels(levels) {
     resetDrillLevels();
-    const cols = availableColumns(store.getState().rows);
+    const cols = columnOptions(store.getState().rows);
     levels.forEach((lvl, i) => {
       if (i >= S.drillLevelSelects.length) {
         const select = createDrillLevelSelect(i);
@@ -216,7 +216,7 @@
   // manquantes au besoin.
   function setRadarAxes(axes) {
     resetRadarAxes();
-    const cols = numericColumns(store.getState().rows);
+    const cols = columnOptions(store.getState().rows, 'number');
     (axes || []).forEach((col, i) => {
       if (i >= S.radarAxisSelects.length) {
         const select = createRadarAxisSelect(i);

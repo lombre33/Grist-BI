@@ -913,6 +913,18 @@ button:focus-visible, select:focus-visible, input:focus-visible {
 }
 .combobox-option:hover, .combobox-option.active { background: var(--accent-soft); }
 .combobox-option mark { background: none; color: var(--accent-ink); font-weight: 700; }
+/* Colonnes rangées par table (js/table-graph.js:groupColumns) : l'intitulé de la table au-dessus de ses colonnes, légèrement en retrait. Un intitulé
+   n'est pas une option (jamais `.combobox-option` : la navigation clavier et le survol l'ignorent). */
+.combobox-group {
+  padding: 8px 8px 2px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+  cursor: default;
+}
+.combobox-group:not(:first-child) { margin-top: 4px; border-top: var(--bw, 1px) solid var(--border); }
+.combobox-option-grouped { padding-left: 16px; }
 
 .field-checkbox label {
   display: flex;

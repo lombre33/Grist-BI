@@ -70,8 +70,9 @@ un essai fait seulement dans une page directe ne voit pas ce défaut (`CLAUDE.md
 ## Non-régression dans un vrai navigateur, à lancer avant toute fusion et tout envoi
 
 ```
-sh dev-tests/run-all.sh          # les vingt et un essais Node (dont test-advice, test-advice-names, test-advice-insights, test-advice-types, test-advice-types-time-grid, test-advice-complete, test-advice-column, test-advice-join, test-advice-pages, test-advice-quality, test-graphique et test-graphique-dessin), puis les deux essais du navigateur (≈ 2 min) ; sortie 0 = on peut fusionner / envoyer
+sh dev-tests/run-all.sh          # les vingt-quatre essais Node (dont test-table-graph, test-linked-columns, test-advice, test-advice-names, test-advice-insights, test-advice-types, test-advice-types-time-grid, test-advice-complete, test-advice-column, test-advice-join, test-advice-pages, test-advice-quality, test-graphique et test-graphique-dessin), puis les deux essais du navigateur (≈ 2 min) ; sortie 0 = on peut fusionner / envoyer
 NODE_PATH=$(npm root -g) node dev-tests/test-browser.js     # le seul essai du navigateur
+TEST_BROWSER_QUICK=1 NODE_PATH=$(npm root -g) node dev-tests/test-browser.js     # seulement page directe + cadre isolé (une étape en travail) ; JAMAIS pour fusionner
 ```
 
 **Le dessin du module `js/graphique/`** (`CLAUDE.md` §2) a deux essais : `node dev-tests/test-graphique-dessin.js` (Node, faux ECharts : formats comparés à `js/format.js` sur 23 520 combinaisons, options, refus, `image()`, vue, modèle Office) et `NODE_PATH=$(npm root -g) node dev-tests/test-graphique-navigateur.js` (Chromium : le module est comparé PIXEL À PIXEL au dessin de Grist BI pour dix tuiles, puis 500 images de suite avec contrôle du tas JS et de la mémoire des processus de rendu). Mesures de volume du second : `MESURES=1 TAILLES=5000,20000,50000,500000 NODE_PATH=$(npm root -g) node dev-tests/test-graphique-navigateur.js` ; sans `MESURES`, seuls la parité et la charge sont jouées. La charge sans libération des toiles monte à 2,9 Go : l'essai la voit.

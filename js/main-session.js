@@ -10,13 +10,13 @@
   const { t } = GristBI.i18n;
   const {
     autoMode, availableColumns, blendJoinColumns, blendPrimaryColumnInput, blendSecondaryColumnInput,
-    blendSecondaryTableInput, joinsBarEl, joinsListEl, joinsNoteEl, closeTilePanel, currentReportAuthorLabel, fillCombobox, genTileId, refreshColumnSelects,
+    blendSecondaryTableInput, joinsBarEl, joinsListEl, joinsNoteEl, tileLinkNoteEl, closeTilePanel, currentReportAuthorLabel, fillCombobox, genTileId, refreshColumnSelects,
     render, renderConnectionStatus, retryConnectBtn, setConnectionState, sharedReadOnlyWarning, showError, showNotice,
     store, tableSelectInput, withDateHierarchies
   } = parts;
   const { escapeHtml } = GristBI.data;
   Object.assign(parts, {
-    connectToFirstTable, flushPendingSave, offerMergeConfigNames, openBlankReport, openModelById, openReportById, refreshBlendPicker,
+    connectToFirstTable, ensureColumnJoined, flushPendingSave, offerMergeConfigNames, openBlankReport, openModelById, openReportById, refreshBlendPicker,
     linkTable, refreshTablePicker, reloadWorkingTable, runNamesUpdate, scheduleSave, switchTable
   });
 
@@ -593,6 +593,47 @@
     const joined = Object.keys(first).some((k) => k.indexOf(prefix) === 0);
     if (!joined && added.added) store.setJoins(GristBI.tableGraph.removeJoin(store.getState().joins, added.join.alias).joins);
     return joined;
+  }
+
+  // Choisir, dans une liste de colonnes, celle d'une table LIÉE que les lignes n'ont pas encore (js/main-fields.js:columnOptions, option `pending`
+  // du combobox) : pose les jointures de sa route (la table visée, et celle d'avant pour un 2e saut), relit les lignes (`applyBlend`) puis rend `true`
+  // quand la colonne y est — le combobox n'émet son `change` qu'ensuite, donc tout ce qui lit les lignes la voit. Sans la colonne (table illisible,
+  // plafond de jointures, schéma changé entre-temps) les jointures posées par CE choix sont retirées aussitôt et le choix est annulé : jamais une
+  // jointure annoncée qui n'a pas eu lieu (même règle que `linkTable` ; `applyBlend` dit lui-même l'échec d'une table illisible). Trois essais au plus :
+  // deux choix qui se suivent font abandonner le premier `applyBlend` (`applySeq`), le suivant le rattrape. La personne est prévenue (`#tile-link-note`)
+  // de la table reliée et de l'endroit où la délier.
+  async function ensureColumnJoined(id) {
+    const graph = GristBI.tableGraph;
+    const hasColumn = () => { const first = store.getState().rows[0]; return !!first && Object.prototype.hasOwnProperty.call(first, id); };
+    const added = [];
+    for (let attempt = 0; attempt < 3 && !hasColumn(); attempt++) {
+      const state = store.getState();
+      if (!state.rows.length || !(S.linkSchema instanceof Map)) break;
+      const all = graph.allJoins(state.blend, state.joins);
+      const virtual = graph.virtualColumns(S.linkSchema, S.currentTableId, all, Object.keys(state.rows[0])).find((v) => v.id === id);
+      if (!virtual) break;
+      const toAdd = graph.joinsToAdd(virtual);
+      if (toAdd.length) {
+        if (all.length + toAdd.length > graph.MAX_JOINS) { showError(t('joins.full', { max: graph.MAX_JOINS })); break; }
+        store.setJoins((state.joins || []).concat(toAdd));
+        toAdd.forEach((j) => added.push(j.alias));
+      }
+      await applyBlend(currentBlend);
+    }
+    if (hasColumn()) {
+      if (added.length) {
+        tileLinkNoteEl.textContent = t('joins.pick.done', { tables: added.join(', ') });
+        tileLinkNoteEl.hidden = false;
+      }
+      return true;
+    }
+    if (added.length) {
+      let joins = store.getState().joins;
+      added.forEach((alias) => { joins = graph.removeJoin(joins, alias).joins; });
+      store.setJoins(joins);
+      await applyBlend(currentBlend);
+    }
+    return false;
   }
 
   // Suggère une paire de clés de jointure à partir des colonnes de référence Grist RÉELLES

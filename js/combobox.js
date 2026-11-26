@@ -9,6 +9,12 @@
  *     dernière valeur valide.
  *   - `strict: false` : texte libre, la liste n'est qu'une SUGGESTION (utilisé pour les valeurs de
  *     filtre — voir js/main.js, barre de filtres avancés).
+ * Une option est une chaîne, ou un objet `{ value, label?, group?, pending?, title? }` : `group` range les
+ * options sous un intitulé (les colonnes de chaque table liée, voir js/table-graph.js:groupColumns), `label`
+ * est ce qu'on lit dans la liste quand il diffère de la valeur (la colonne seule sous l'intitulé de sa
+ * table), `pending` dit que la valeur n'existe pas encore (une colonne d'une table qu'il faut d'abord
+ * relier) : le choix passe alors par `config.prepare(valeur, option)`, attendue AVANT d'écrire la valeur et
+ * d'émettre `change` (`false` ou un refus = le choix est annulé, le champ revient à sa valeur d'avant).
  * Logique de filtrage/surlignage pure (testable sous Node, comme data.js) ; câblage DOM séparé,
  * jamais appelé sous Node (pas de `document`).
  */
@@ -24,10 +30,15 @@
 
   // Sous-chaîne insensible à la casse, ordre d'origine préservé (pas de tri alphabétique — l'appelant
   // choisit l'ordre via setOptions). Query vide -> tout matche (état initial du menu, avant saisie).
+  // Une option objet se retrouve par sa valeur ET par l'intitulé de son groupe (taper « clients » montre les colonnes de cette table).
+  function searchText(option) {
+    return typeof option === 'string' ? option : `${option.value} ${option.group || ''}`;
+  }
+
   function filterOptions(options, query) {
     const q = String(query || '').trim().toLowerCase();
     if (!q) return options.slice();
-    return options.filter((o) => String(o).toLowerCase().includes(q));
+    return options.filter((o) => searchText(o).toLowerCase().includes(q));
   }
 
   // Découpe `text` en 3 segments autour de la PREMIÈRE occurrence de `query` (insensible à la casse),
@@ -43,6 +54,20 @@
   }
 
   const MAX_VISIBLE_OPTIONS = 50;
+  // Une liste rangée par table porte plus de colonnes (celles de la table de travail, puis celles des tables liées) : un plafond de 50 en
+  // cacherait des groupes entiers sans que taper ne soit nécessaire pour s'en douter.
+  const MAX_VISIBLE_GROUPED = 200;
+
+  // Une option, toujours sous la forme d'un objet : `{ value, label, group, pending, title }`.
+  function normalizeOption(o) {
+    if (o && typeof o === 'object') {
+      return {
+        value: String(o.value), label: o.label != null ? String(o.label) : String(o.value), group: o.group ? String(o.group) : '',
+        pending: o.pending === true, title: o.title ? String(o.title) : ''
+      };
+    }
+    return { value: String(o), label: String(o), group: '', pending: false, title: '' };
+  }
 
   // Attache le comportement combobox à `inputEl`/`listEl` déjà présents dans le DOM (voir
   // index.html/harness.html : un <div class="combobox"> contenant l'input + le <ul>). Retourne
@@ -56,6 +81,8 @@
       : (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
     let options = [];
+    let optionByValue = new Map();
+    let grouped = false;
     let blankLabel = opts.blankLabel || null;
     let matches = [];
     let activeIndex = -1;
@@ -63,8 +90,10 @@
     let currentQuery = '';
 
     function isValid(v) {
-      return v === '' ? !!blankLabel : options.includes(v);
+      return v === '' ? !!blankLabel : optionByValue.has(v);
     }
+
+    function visibleMax() { return grouped ? MAX_VISIBLE_GROUPED : MAX_VISIBLE_OPTIONS; }
 
     function closeList() {
       listEl.hidden = true;
@@ -75,10 +104,16 @@
     function renderList() {
       const rows = [];
       if (blankLabel) rows.push(`<li class="combobox-option" data-value="" role="option">${escapeHtml(blankLabel)}</li>`);
-      matches.slice(0, MAX_VISIBLE_OPTIONS).forEach((m) => {
-        const h = highlightMatch(m, currentQuery);
+      let lastGroup = null;
+      matches.slice(0, visibleMax()).forEach((m) => {
+        // Un intitulé de groupe n'est pas une option : classe à part, jamais compté par la navigation clavier (`.combobox-option` seulement).
+        if (m.group && m.group !== lastGroup) rows.push(`<li class="combobox-group" role="presentation">${escapeHtml(m.group)}</li>`);
+        lastGroup = m.group;
+        const h = highlightMatch(m.label, currentQuery);
         const html = `${escapeHtml(h.before)}${h.match ? `<mark>${escapeHtml(h.match)}</mark>` : ''}${escapeHtml(h.after)}`;
-        rows.push(`<li class="combobox-option" data-value="${escapeHtml(m)}" role="option">${html}</li>`);
+        const label = m.label !== m.value ? ` aria-label="${escapeHtml(m.value)}"` : '';
+        const title = m.title || (m.label !== m.value ? m.value : '');
+        rows.push(`<li class="combobox-option${m.group ? ' combobox-option-grouped' : ''}${m.pending ? ' combobox-option-pending' : ''}" data-value="${escapeHtml(m.value)}" role="option"${label}${title ? ` title="${escapeHtml(title)}"` : ''}>${html}</li>`);
       });
       GristBI.safeHtml.setHtml(listEl, rows.join(''));
       updateActiveHighlight();
@@ -142,23 +177,51 @@
       showList();
     }
 
-    function commit(value) {
+    function finish(value) {
+      inputEl.removeAttribute('aria-busy');
       inputEl.value = value;
       lastValidValue = value;
       closeList();
       inputEl.dispatchEvent(new Event('change', { bubbles: true }));
     }
 
+    // Le choix d'une valeur qui n'existe pas encore (`pending`) attend `config.prepare` : le champ montre déjà la valeur choisie (`aria-busy`), mais
+    // aucun `change` ne part avant que la préparation soit finie. Un refus ou une erreur rend au champ sa valeur d'avant, sans `change`.
+    let commitToken = 0;
+    function commit(value) {
+      const token = ++commitToken; // un choix plus récent l'emporte sur une préparation encore en cours
+      const option = optionByValue.get(value);
+      if (!option || !option.pending || typeof opts.prepare !== 'function') { finish(value); return; }
+      const previous = lastValidValue;
+      inputEl.value = value;
+      inputEl.setAttribute('aria-busy', 'true');
+      closeList();
+      const revert = () => {
+        inputEl.removeAttribute('aria-busy');
+        inputEl.value = previous;
+        lastValidValue = previous;
+      };
+      let outcome;
+      try { outcome = Promise.resolve(opts.prepare(value, option)); } catch (e) { outcome = Promise.reject(e); }
+      outcome.then((ok) => {
+        if (token !== commitToken) return;
+        if (ok === false) revert(); else finish(value);
+      }, (e) => {
+        console.error('[GristBI] choix d\'une colonne liée impossible', e);
+        if (token === commitToken) revert();
+      });
+    }
+
     function optionCount() {
-      return (blankLabel ? 1 : 0) + Math.min(matches.length, MAX_VISIBLE_OPTIONS);
+      return (blankLabel ? 1 : 0) + Math.min(matches.length, visibleMax());
     }
 
     function valueAt(index) {
       if (blankLabel) {
         if (index === 0) return '';
-        return matches[index - 1];
+        return matches[index - 1].value;
       }
-      return matches[index];
+      return matches[index].value;
     }
 
     // Focus (ou clic sur un champ déjà rempli) : sélectionne tout le texte (prêt à être remplacé en
@@ -233,15 +296,17 @@
     // recherche déjà saisi, même s'il ne correspond littéralement à aucune valeur connue (c'est
     // justement le cas d'usage d'une recherche "contient" par sous-chaîne).
     inputEl.setOptions = function (newOptions, cfg) {
-      options = (newOptions || []).slice();
+      options = (newOptions || []).map(normalizeOption);
+      optionByValue = new Map(options.map((o) => [o.value, o]));
+      grouped = options.some((o) => o.group);
       if (cfg && 'blankLabel' in cfg) blankLabel = cfg.blankLabel || null;
       if (blankLabel) inputEl.placeholder = blankLabel;
-      if (strict && !isValid(inputEl.value)) inputEl.value = blankLabel ? '' : (options[0] || '');
+      if (strict && !isValid(inputEl.value)) inputEl.value = blankLabel ? '' : (options[0] ? options[0].value : '');
       lastValidValue = inputEl.value;
     };
 
     return inputEl;
   }
 
-  return { filterOptions, highlightMatch, attach };
+  return { filterOptions, highlightMatch, normalizeOption, attach };
 });

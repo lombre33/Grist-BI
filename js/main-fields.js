@@ -22,8 +22,9 @@
   const renderFilterColumns = (...args) => parts.renderFilterColumns(...args);
   const updateAdvancedFilterFieldsForColumn = (...args) => parts.updateAdvancedFilterFieldsForColumn(...args);
   const hideColumnResults = (...args) => parts.hideColumnResults(...args);
+  const ensureColumnJoined = (...args) => parts.ensureColumnJoined(...args);
   Object.assign(parts, {
-    autoTileTitle, availableColumns, blendJoinColumns, createDrillLevelSelect, createRadarAxisSelect, fillCombobox,
+    autoTileTitle, availableColumns, blendJoinColumns, columnOptions, createDrillLevelSelect, createRadarAxisSelect, fillCombobox,
     formHasNoDimension, genTileId, inferColumnKind, isRadarColumnsMode, isWordCloudSplitMode, numberFormatFromForm,
     numericColumns, readColumnsOrder, readColumnsPicker, refreshColumnSelects, renderColumnsPicker, resetDrillLevels,
     resetRadarAxes, setColumnsPicker, setNumberFormatForm, showError, showNotice, supportsLevels, updateDrillLevelsUI,
@@ -53,9 +54,11 @@
   // (demande explicite de l'utilisateur, voir js/combobox.js) — en mode strict : la valeur doit
   // rester l'une des colonnes réellement chargées, comme un <select>. `.nextElementSibling` est le
   // <ul class="combobox-list"> voisin dans le même wrapper `.combobox` (voir index.html/harness.html).
+  // `prepare` : choisir une colonne d'une table liée qu'on n'a pas encore jointe (`columnOptions` plus bas) pose d'abord la jointure
+  // (js/main-session.js:ensureColumnJoined) ; les listes de valeurs (`radarEntityValueSelect`) n'en proposent jamais.
   [dimensionSelect, columnDimensionSelect, startColumnSelect, endColumnSelect, seriesSelect, measureSelect, measureYSelect, measureSizeSelect, trendDimensionSelect, dateColumnSelect,
    radarEntityColumnSelect, radarEntityValueSelect, targetColumnSelect, columnPickEl].forEach((input) => {
-    GristBI.combobox.attach(input, input.nextElementSibling, { strict: true });
+    GristBI.combobox.attach(input, input.nextElementSibling, { strict: true, prepare: ensureColumnJoined });
   });
 
   function availableColumns(rows) {
@@ -72,6 +75,28 @@
   function numericColumns(rows) {
     rows = rows || store.getState().rows;
     return availableColumns(rows).filter((col) => inferColumnKind(col, rows) === 'number');
+  }
+
+  // Les colonnes d'une liste de choix : celles des lignes, puis — rangées sous l'intitulé de leur table — celles des tables LIÉES par une
+  // Référence que les lignes n'ont pas encore (js/table-graph.js:virtualColumns, d'après le schéma lu à chaque changement de table). Choisir
+  // l'une d'elles pose la jointure avant de valider le choix (`prepare` du combobox). `kind` = `'number'` pour les listes qui n'acceptent que des
+  // nombres (axes d'un radar, objectif) : une colonne liée y entre d'après son TYPE Grist. Sans table liée (ou schéma illisible) : la liste d'avant,
+  // chaînes seules. Sans ligne, aucune colonne n'est proposée (comme avant) : le schéma seul ne dit pas quoi montrer.
+  function columnOptions(rows, kind) {
+    rows = rows || store.getState().rows;
+    const plain = kind === 'number' ? numericColumns(rows) : availableColumns(rows);
+    const graph = GristBI.tableGraph;
+    if (!graph || !rows.length) return plain;
+    const state = store.getState();
+    const joins = graph.allJoins(state.blend, state.joins);
+    let virtual = [];
+    if (S.linkSchema instanceof Map && S.currentTableId) {
+      virtual = graph.virtualColumns(S.linkSchema, S.currentTableId, joins, Object.keys(rows[0]));
+      if (kind) virtual = virtual.filter((v) => graph.kindOfType(v.type) === kind);
+    }
+    return graph.groupColumns(plain, virtual, joins, S.currentTableId || '').map((o) => (
+      typeof o === 'object' && o.pending ? Object.assign({}, o, { title: t('joins.pick.hint', { table: o.table }) }) : o
+    ));
   }
 
   // Colonnes proposables comme CLÉ DE JOINTURE pour le data blending (voir applyBlend/
@@ -99,22 +124,24 @@
 
   function refreshColumnSelects(rows) {
     const cols = availableColumns(rows);
-    fillCombobox(dimensionSelect, cols);
-    fillCombobox(columnDimensionSelect, cols);
-    fillCombobox(startColumnSelect, cols);
-    fillCombobox(endColumnSelect, cols);
-    fillCombobox(seriesSelect, cols, { blankLabel: t('tileForm.none.f') });
-    fillCombobox(measureSelect, cols);
-    fillCombobox(measureYSelect, cols);
-    fillCombobox(measureSizeSelect, cols, { blankLabel: t('tileForm.none.f') });
-    S.drillLevelSelects.forEach((select) => fillCombobox(select, cols, { blankLabel: t('tileForm.none.m') }));
-    const numCols = numericColumns(rows);
-    S.radarAxisSelects.forEach((select) => fillCombobox(select, numCols));
-    fillCombobox(trendDimensionSelect, cols, { blankLabel: t('tileForm.none.f') });
-    fillCombobox(targetColumnSelect, numCols, { blankLabel: t('tileForm.none.f') });
-    fillCombobox(radarEntityColumnSelect, cols, { blankLabel: t('tileForm.none.f') });
+    // Les listes de choix de colonne portent aussi celles des tables liées (columnOptions) ; `cols` ne sert plus qu'aux listes qui n'en proposent pas.
+    const choices = columnOptions(rows);
+    fillCombobox(dimensionSelect, choices);
+    fillCombobox(columnDimensionSelect, choices);
+    fillCombobox(startColumnSelect, choices);
+    fillCombobox(endColumnSelect, choices);
+    fillCombobox(seriesSelect, choices, { blankLabel: t('tileForm.none.f') });
+    fillCombobox(measureSelect, choices);
+    fillCombobox(measureYSelect, choices);
+    fillCombobox(measureSizeSelect, choices, { blankLabel: t('tileForm.none.f') });
+    S.drillLevelSelects.forEach((select) => fillCombobox(select, choices, { blankLabel: t('tileForm.none.m') }));
+    const numChoices = columnOptions(rows, 'number');
+    S.radarAxisSelects.forEach((select) => fillCombobox(select, numChoices));
+    fillCombobox(trendDimensionSelect, choices, { blankLabel: t('tileForm.none.f') });
+    fillCombobox(targetColumnSelect, numChoices, { blankLabel: t('tileForm.none.f') });
+    fillCombobox(radarEntityColumnSelect, choices, { blankLabel: t('tileForm.none.f') });
     updateRadarEntityValueOptions(rows);
-    fillCombobox(dateColumnSelect, cols);
+    fillCombobox(dateColumnSelect, choices);
     // « Que faire avec cette colonne ? » : les colonnes de la table (sans les dérivées d'une date) ; une colonne choisie sur la table
     // d'AVANT (autres lignes, même du même nom), ou qui a disparu, n'est plus une réponse : champ et résultats sont vidés.
     const pickable = GristBI.adviceColumn ? GristBI.adviceColumn.pickableColumns(cols) : cols;
@@ -302,7 +329,7 @@
     list.hidden = true;
     wrapper.appendChild(input);
     wrapper.appendChild(list);
-    GristBI.combobox.attach(input, list, { strict: true, blankLabel: t('tileForm.none.m') });
+    GristBI.combobox.attach(input, list, { strict: true, blankLabel: t('tileForm.none.m'), prepare: ensureColumnJoined });
     input.addEventListener('change', () => {
       if (!input.value) {
         // Niveau vidé -> tout niveau plus profond n'a plus de sens (un trou dans la hiérarchie,
@@ -334,7 +361,7 @@
   addDrillLevelBtn.addEventListener('click', () => {
     if (S.drillLevelSelects.length >= MAX_DRILL_LEVELS) return;
     const select = createDrillLevelSelect(S.drillLevelSelects.length);
-    fillCombobox(select, availableColumns(store.getState().rows), { blankLabel: t('tileForm.none.m') });
+    fillCombobox(select, columnOptions(store.getState().rows), { blankLabel: t('tileForm.none.m') });
     drillLevelsContainer.appendChild(select.parentElement);
     S.drillLevelSelects.push(select);
     updateDrillLevelsUI();
@@ -371,7 +398,7 @@
     list.hidden = true;
     wrapper.appendChild(input);
     wrapper.appendChild(list);
-    GristBI.combobox.attach(input, list, { strict: true });
+    GristBI.combobox.attach(input, list, { strict: true, prepare: ensureColumnJoined });
     input.addEventListener('change', () => {
       if (!input.value) truncateRadarAxesAfter(index);
       updateRadarAxesUI();
@@ -396,7 +423,7 @@
   addRadarAxisBtn.addEventListener('click', () => {
     if (S.radarAxisSelects.length >= MAX_RADAR_AXES) return;
     const select = createRadarAxisSelect(S.radarAxisSelects.length);
-    fillCombobox(select, numericColumns(store.getState().rows));
+    fillCombobox(select, columnOptions(store.getState().rows, 'number'));
     radarAxesContainer.appendChild(select.parentElement);
     S.radarAxisSelects.push(select);
     updateRadarAxesUI();
