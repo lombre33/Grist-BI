@@ -35,7 +35,7 @@
   const suggestionTable = (...args) => parts.suggestionTable(...args);
   Object.assign(parts, {
     closeTilePanel, flashTile, hideColumnResults, openTilePanel, refreshTableField, refreshTilePanelTexts, renderColumnHelper, schedulePreview,
-    updateAdvancedVisibility, updatePanelTexts
+    updateAdvancedVisibility, updatePanelTexts, welcomeOtherTables
   });
 
   // =============================================================================================
@@ -198,31 +198,53 @@
     return out;
   }
 
+  // Lit et profile les AUTRES tables du document (lot 3 : « Pour compléter » et l'écran d'accueil) : chaque table que `pickTables` retient (celles que des
+  // tuiles lisent, celles qu'une Référence vise, puis l'ordre du document) est lue en silence (8 s au plus) puis jugée par `js/advice-tables.js:completeTable`
+  // avec SES tuiles, en rendant la main entre deux profilages. Rend `{ parts, rowsOf }`, ou `null` si le calcul est devenu périmé (`stale()`).
+  async function profileOtherTables(state, tiles, lang, stale) {
+    const adviceTables = GristBI.adviceTables;
+    const working = workingTableOf(state);
+    let names = [];
+    try { names = await GristBI.api.listAvailableTables(); } catch (e) { console.warn('[GristBI] liste des tables illisible (suggestions)', e); }
+    if (stale()) return null;
+    const others = adviceTables.pickTables(names, working, tiles, referencedTables(working));
+    const reads = await Promise.all(others.map((name) => readWithin(suggestionTable(name), SUGGESTION_READ_TIMEOUT_MS)));
+    if (stale()) return null;
+    const parts = [];
+    const rowsOf = {};
+    for (let i = 0; i < others.length; i++) {
+      await pause(); // chaque profilage rend la main : l'interface reste réactive entre deux tables
+      if (stale()) return null;
+      rowsOf[others[i]] = reads[i].rows;
+      parts.push(adviceTables.completeTable({ id: others[i], rows: reads[i].rows, columnInfo: reads[i].columnInfo }, tiles, { t, lang }));
+    }
+    return { parts, rowsOf };
+  }
+
   // Les propositions sur TOUT le document (lot 3, js/advice-tables.js) : la table de travail et — seulement quand le rapport a déjà des tuiles — les
   // autres tables du document (au plus `MAX_TABLES` en tout). Rend `null` si le calcul est devenu périmé (panneau fermé, autre calcul lancé).
   async function suggestAcrossDocument(state, tiles, lang, token) {
     const adviceTables = GristBI.adviceTables;
     const stale = () => token !== completionToken || tilePanel.hidden;
-    const working = workingTableOf(state);
-    const opts = { t, lang };
-    let names = [];
-    if (tiles.length) {
-      try { names = await GristBI.api.listAvailableTables(); } catch (e) { console.warn('[GristBI] liste des tables illisible (suggestions)', e); }
-      if (stale()) return null;
-    }
-    const others = tiles.length ? adviceTables.pickTables(names, working, tiles, referencedTables(working)) : [];
-    const reads = await Promise.all(others.map((name) => readWithin(suggestionTable(name), SUGGESTION_READ_TIMEOUT_MS)));
-    if (stale()) return null;
-    const parts = [adviceTables.completeTable({ id: working, rows: state.rows, working: true }, tiles, opts)];
-    const rowsOf = {};
-    for (let i = 0; i < others.length; i++) {
-      await pause(); // chaque profilage rend la main : le panneau reste réactif entre deux tables
-      if (stale()) return null;
-      rowsOf[others[i]] = reads[i].rows;
-      parts.push(adviceTables.completeTable({ id: others[i], rows: reads[i].rows, columnInfo: reads[i].columnInfo }, tiles, opts));
-    }
-    const items = adviceTables.merge(parts, { limit: 3 });
-    items.forEach((item) => { if (item.table) item.rows = rowsOf[item.table]; });
+    const others = tiles.length ? await profileOtherTables(state, tiles, lang, stale) : { parts: [], rowsOf: {} };
+    if (others === null) return null;
+    const workingPart = adviceTables.completeTable({ id: workingTableOf(state), rows: state.rows, working: true }, tiles, { t, lang });
+    const items = adviceTables.merge([workingPart].concat(others.parts), { limit: 3 });
+    items.forEach((item) => { if (item.table) item.rows = others.rowsOf[item.table]; });
+    return items;
+  }
+
+  // Les propositions des AUTRES tables pour l'écran d'accueil (lot 3B, js/welcome.js) : un tableau de bord sans tuile, donc rien à confronter — les
+  // meilleures suggestions de chaque autre table, fusionnées comme « Pour compléter » le fait (deux au plus par table, jamais sous le seuil). Elles
+  // s'ajoutent après celles de la table de travail, dans les suggestions repliées. Rend `null` si périmé (`stale()` : l'accueil a changé entre-temps).
+  const WELCOME_OTHER_LIMIT = 4;
+  async function welcomeOtherTables(state, lang, stale) {
+    const adviceTables = GristBI.adviceTables;
+    if (!adviceTables || !state.rows.length) return [];
+    const got = await profileOtherTables(state, [], lang, stale);
+    if (got === null) return null;
+    const items = adviceTables.merge(got.parts, { limit: WELCOME_OTHER_LIMIT });
+    items.forEach((item) => { item.rows = got.rowsOf[item.table]; });
     return items;
   }
 

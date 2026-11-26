@@ -998,7 +998,9 @@ async function scenario(browser, origin, { name, url, framed }) {
     // 11b. Une table illisible : la tuile dit « illisible » (badge ⚠, message, zéro ligne) sans toucher aux autres ni relire en boucle.
     tolerated.push(/illisible pour une tuile/, /Table illisible|n'est pas lue/);
     await restartFresh();
-    await frame.evaluate(() => { window.__gristStubFailTables = ['Clients']; });
+    // Un rapport vide lit déjà les autres tables en silence au démarrage (l'accueil, lot 3B) et garde leurs lignes : la table est donc rendue
+    // illisible AVANT de vider cette mémoire (`reloadWorkingTable`), sinon la tuile reprendrait les lignes lues quand elle l'était encore.
+    await frame.evaluate(async () => { window.__gristStubFailTables = ['Clients']; await GristBI.mainParts.reloadWorkingTable(); });
     await frame.evaluate(() => {
       GristBI.store.addTile({ id: 'v1', type: 'bar', dimension: 'Region', measure: 'Montant', aggFn: 'sum' });
       GristBI.store.addTile({ id: 'c1', type: 'bar', dimension: 'Ville', measure: 'Nom', aggFn: 'count', table: 'Clients' });
@@ -1148,7 +1150,8 @@ async function scenario(browser, origin, { name, url, framed }) {
     // 12b. Une table illisible : le bouton reste, la phrase le dit, aucune colonne n'est proposée, la table de travail revient à la réouverture.
     tolerated.push(/illisible pour une tuile/, /Table illisible|n'est pas lue/, /illisible \(menu Filtre\)/);
     await restartMenu();
-    await frame.evaluate(() => { window.__gristStubFailTables = ['Personnes']; });
+    // Même raison qu'en 11b : l'accueil a déjà lu `Personnes` en silence, on vide cette mémoire une fois la table rendue illisible.
+    await frame.evaluate(async () => { window.__gristStubFailTables = ['Personnes']; await GristBI.mainParts.reloadWorkingTable(); });
     await openFilterMenu();
     await frame.waitForFunction(() => document.querySelectorAll('#filter-tables .filter-table-btn').length === 3, null, { timeout: 8000 }).catch(() => {});
     await frame.click('#filter-tables [data-table="Personnes"]');
@@ -1500,7 +1503,8 @@ async function suggestScenario(browser, origin, { framed }) {
   });
   page.on('response', (r) => { if (r.status() >= 400) problems.push('réponse ' + r.status() + ' : ' + r.url().replace(origin, '')); });
   let frame;
-  const start = async () => {
+  const start = async (failTables) => {
+    if (failTables) await context.addInitScript((names) => { window.__gristStubFailTables = names; }, failTables);
     await page.goto(origin + (framed ? '/__frame.html' : '/index.html'), { waitUntil: 'load' });
     frame = page.mainFrame();
     if (framed) { await page.waitForSelector('#app'); frame = await (await page.$('#app')).contentFrame(); }
@@ -1533,11 +1537,7 @@ async function suggestScenario(browser, origin, { framed }) {
     });
     if (saturated.left !== 0 || saturated.tiles < 3) problems.push('préparation : les questions de Ventes ne sont pas épuisées (' + JSON.stringify(saturated) + ')');
     await frame.waitForTimeout(500);
-    await frame.evaluate(() => {
-      window.__loads = {};
-      const original = GristBI.api.loadTable;
-      GristBI.api.loadTable = function (name) { window.__loads[name] = (window.__loads[name] || 0) + 1; return original.apply(this, arguments); };
-    });
+    // Les lectures sont comptées par le faux Grist (`window.__gristStubFetches`) depuis le chargement : l'accueil (rapport vide au départ) lit déjà les autres tables en silence.
     await frame.evaluate(() => GristBI.openTilePanel({ step: 'choose' }));
     const listed = await frame.waitForSelector('#tile-complete-list button[data-complete]', { state: 'visible', timeout: 15000 }).then(() => true, () => false);
     if (!listed) problems.push('autres tables : aucune carte après l\'ouverture du panneau alors que `Activite` a des questions à poser');
@@ -1546,7 +1546,7 @@ async function suggestScenario(browser, origin, { framed }) {
       const side = await frame.evaluate(() => ({
         badges: document.querySelectorAll('.type-card-badge').length,
         read: Array.isArray(GristBI.store.getState().tableRows.Activite),
-        loads: (window.__loads || {}).Activite || 0,
+        loads: (window.__gristStubFetches || {}).Activite || 0,
         tiles: GristBI.store.getState().tiles.length
       }));
       if (cards.length < 1 || cards.length > 3) problems.push('autres tables : ' + cards.length + ' cartes (1 à 3 attendues)');
@@ -1571,7 +1571,7 @@ async function suggestScenario(browser, origin, { framed }) {
         const el = added[0] ? document.querySelector('.tile[data-tile-id="' + added[0].id + '"]') : null;
         const badge = el && el.querySelector('.tile-table');
         return {
-          tiles: st.tiles.length, added: added.length, read: Array.isArray(st.tableRows.Activite), loads: (window.__loads || {}).Activite || 0,
+          tiles: st.tiles.length, added: added.length, read: Array.isArray(st.tableRows.Activite), loads: (window.__gristStubFetches || {}).Activite || 0,
           badge: badge && !badge.hidden ? badge.textContent : '', rows: added[0] ? GristBI.data.rowsForTile(added[0], st).length : -1,
           live: document.getElementById('tile-complete-live').textContent,
           focusInPanel: !!(active && active.closest && active.closest('#tile-panel')), focusTag: active ? active.tagName : ''
@@ -1592,9 +1592,8 @@ async function suggestScenario(browser, origin, { framed }) {
     }
 
     // Une table illisible : elle n'est pas proposée, le panneau marche comme avant, un avertissement (jamais une erreur) le dit.
-    await start();
+    await start(['Activite']);
     await frame.evaluate(() => {
-      window.__gristStubFailTables = ['Activite'];
       GristBI.store.addTile({ id: 'v1', type: 'bar', dimension: 'Region', measure: 'Montant', aggFn: 'sum' });
       GristBI.openTilePanel({ step: 'choose' });
     });
@@ -1607,6 +1606,140 @@ async function suggestScenario(browser, origin, { framed }) {
       if (!warnings.some((w) => /illisible pour les suggestions/.test(w))) problems.push('table illisible : aucun avertissement « illisible pour les suggestions » en console');
       if (!problems.some((p) => /table illisible/.test(p))) verified.push('table illisible : pas proposée, les propositions de Ventes restent (' + cards2.length + '), un avertissement en console');
     }
+  } catch (e) {
+    problems.push('essai interrompu : ' + String((e && e.message) || e).slice(0, 240));
+  } finally {
+    await context.close();
+  }
+  return { problems, verified };
+}
+
+/**
+ * L'écran d'accueil sur TOUT le document (lot 3B, 26/11/2026), dans la vraie page, sous sa politique, avec de VRAIS gestes. Le document est celui du lot 3A
+ * (`Ventes`, table de travail, et `Activite`) ; le rapport est VIDE, donc l'accueil se montre :
+ *  - les trois premières cartes sont celles de la table de travail, inchangées (ce que `advice.suggestTiles` rend), sans nom de table ;
+ *  - les suggestions d'`Activite` s'ajoutent À LA SUITE, repliées avec les autres suggestions (invisibles tant qu'on ne déplie pas), chacune dit sa table
+ *    (carte et bouton) et dessine son aperçu avec les lignes d'`Activite` ;
+ *  - la lecture est SILENCIEUSE (`Activite` n'entre pas dans le store) et unique ;
+ *  - « Voir d'autres suggestions » les montre ; un VRAI clic sur « Ajouter » d'une carte d'`Activite` pose UNE tuile qui lit `Activite` (60 lignes, badge de
+ *    table), l'accueil se masque, la table n'est toujours lue qu'une fois ;
+ *  - une table illisible n'est pas proposée et ne retire rien (avertissement en console, jamais une erreur).
+ */
+async function welcomeScenario(browser, origin, { framed }) {
+  const problems = [];
+  const verified = [];
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  await context.addInitScript((fixture) => { window.__gristStubPreseed = fixture; }, suggestFixture());
+  await context.route((u) => u.hostname !== '127.0.0.1', (route) => {
+    const u = new URL(route.request().url());
+    if (u.hostname === 'docs.getgrist.com' && u.pathname === '/grist-plugin-api.js') route.fulfill({ status: 200, contentType: 'text/javascript', body: gristApiBody() });
+    else { problems.push('requête vers un autre site : ' + u.origin + u.pathname); route.abort(); }
+  });
+  const page = await context.newPage();
+  const warnings = [];
+  page.on('console', (m) => {
+    if (m.type() === 'error') problems.push('console : ' + m.text().slice(0, 240));
+    if (m.type() === 'warning') warnings.push(m.text());
+  });
+  page.on('pageerror', (e) => problems.push('exception de page : ' + String(e.message || e).slice(0, 240)));
+  page.on('requestfailed', (r) => {
+    if (new URL(r.url()).hostname !== '127.0.0.1') return;
+    const text = (r.failure() && r.failure().errorText) || 'cause inconnue';
+    if (text !== 'net::ERR_ABORTED') problems.push('requête échouée : ' + r.url().replace(origin, '') + ' (' + text + ')');
+  });
+  page.on('response', (r) => { if (r.status() >= 400) problems.push('réponse ' + r.status() + ' : ' + r.url().replace(origin, '')); });
+  let frame;
+  const start = async (failTables) => {
+    if (failTables) await context.addInitScript((names) => { window.__gristStubFailTables = names; }, failTables);
+    await page.goto(origin + (framed ? '/__frame.html' : '/index.html'), { waitUntil: 'load' });
+    frame = page.mainFrame();
+    if (framed) { await page.waitForSelector('#app'); frame = await (await page.$('#app')).contentFrame(); }
+    await frame.waitForFunction(
+      () => typeof window.grist === 'object' && window.GristBI && GristBI.store && GristBI.store.getState().rows.length > 0 && GristBI.mainParts && GristBI.mainParts.S.dashboardReady,
+      null, { timeout: 25000 }
+    );
+    await frame.evaluate(() => { if (document.body.dataset.mode !== 'edit') document.getElementById('mode-toggle').click(); });
+  };
+  const cardsOf = () => frame.evaluate(() => Array.from(document.querySelectorAll('#welcome-cards .welcome-card')).map((li, i) => ({
+    i,
+    extra: li.classList.contains('welcome-card-extra'),
+    shown: li.getClientRects().length > 0,
+    table: (li.querySelector('.welcome-card-table') || {}).textContent || '',
+    title: li.querySelector('.welcome-card-title').textContent,
+    aria: li.querySelector('button').getAttribute('aria-label') || '',
+    preview: !!li.querySelector('.welcome-preview svg') && li.querySelector('.welcome-preview svg').children.length > 0
+  })));
+  try {
+    await start();
+    const arrived = await frame.waitForSelector('#welcome-cards .welcome-card-table', { state: 'attached', timeout: 20000 }).then(() => true, () => false);
+    if (!arrived) problems.push('accueil : aucune carte d\'une autre table après le chargement (Activite a des suggestions)');
+    else {
+      const cards = await cardsOf();
+      const expected = await frame.evaluate(() => {
+        const st = GristBI.store.getState();
+        return GristBI.advice.suggestTiles(st.rows, undefined, { t: GristBI.i18n.t, lang: GristBI.i18n.getLang(), limit: 9 })
+          .map((s) => GristBI.i18n.t(s.titleKey, s.titleVars));
+      });
+      const working = cards.filter((c) => !c.table);
+      const others = cards.filter((c) => c.table);
+      if (working.length !== expected.length || working.some((c, i) => c.title !== expected[i])) problems.push('accueil : les cartes de la table de travail ont changé : ' + JSON.stringify(working.map((c) => c.title)) + ' au lieu de ' + JSON.stringify(expected));
+      if (cards.slice(0, working.length).some((c) => c.table)) problems.push('accueil : une carte d\'une autre table passe devant celles de la table de travail');
+      if (working.slice(0, 3).some((c) => c.extra || !c.shown)) problems.push('accueil : les trois premières cartes ne sont pas visibles d\'emblée');
+      if (!others.length || others.length > 4) problems.push('accueil : ' + others.length + ' cartes d\'une autre table (1 à 4 attendues)');
+      others.forEach((c) => {
+        if (!/Activite/.test(c.table)) problems.push('accueil : une carte ne dit pas sa table : ' + JSON.stringify(c));
+        if (!/Activite/.test(c.aria)) problems.push('accueil : le bouton « Ajouter » ne dit pas la table : « ' + c.aria + ' »');
+        if (!c.preview) problems.push('accueil : l\'aperçu d\'une carte d\'Activite est vide : « ' + c.title + ' »');
+        if (!c.extra || c.shown) problems.push('accueil : une carte d\'une autre table est visible avant le dépli (' + JSON.stringify({ extra: c.extra, shown: c.shown }) + ')');
+      });
+      const side = await frame.evaluate(() => ({
+        read: Array.isArray(GristBI.store.getState().tableRows.Activite),
+        loads: (window.__gristStubFetches || {}).Activite || 0,
+        tiles: GristBI.store.getState().tiles.length,
+        more: !document.getElementById('welcome-more').hidden
+      }));
+      if (side.read) problems.push('accueil : la lecture silencieuse d\'Activite est entrée dans le store (elle redessinerait toutes les tuiles)');
+      if (side.loads !== 1) problems.push('accueil : Activite lue ' + side.loads + ' fois pour l\'accueil (une seule attendue)');
+      if (side.tiles) problems.push('accueil : une tuile posée sans geste (' + side.tiles + ')');
+      if (!side.more) problems.push('accueil : « Voir d\'autres suggestions » absent');
+      // Déplier, puis un VRAI clic sur « Ajouter » d'une carte d'Activite.
+      await frame.click('#welcome-more');
+      const unfolded = await cardsOf();
+      if (unfolded.filter((c) => c.table).some((c) => !c.shown)) problems.push('accueil : une carte d\'Activite reste invisible après « Voir d\'autres suggestions »');
+      const target = unfolded.find((c) => c.table);
+      await frame.click('#welcome-cards button[data-suggestion="' + target.i + '"]');
+      await frame.waitForFunction(() => GristBI.store.getState().tiles.length === 1, null, { timeout: 5000 }).catch(() => {});
+      await frame.waitForFunction(() => Array.isArray(GristBI.store.getState().tableRows.Activite), null, { timeout: 8000 }).catch(() => {});
+      await frame.waitForTimeout(700);
+      const after = await frame.evaluate(() => {
+        const st = GristBI.store.getState();
+        const el = st.tiles[0] ? document.querySelector('.tile[data-tile-id="' + st.tiles[0].id + '"]') : null;
+        const badge = el && el.querySelector('.tile-table');
+        return {
+          tiles: st.tiles.length, table: st.tiles[0] ? st.tiles[0].table : null, read: Array.isArray(st.tableRows.Activite),
+          rows: st.tiles[0] ? GristBI.data.rowsForTile(st.tiles[0], st).length : -1,
+          loads: (window.__gristStubFetches || {}).Activite || 0,
+          badge: badge && !badge.hidden ? badge.textContent : '', welcomeHidden: document.getElementById('welcome').hidden
+        };
+      });
+      if (after.tiles !== 1 || after.table !== 'Activite') problems.push('accueil : un clic sur « Ajouter » a posé ' + after.tiles + ' tuile(s), table « ' + after.table + ' » (une tuile qui lit Activite attendue)');
+      if (!after.read || after.rows !== 60) problems.push('accueil : la tuile posée ne lit pas les 60 lignes d\'Activite (lues : ' + after.read + ', lignes : ' + after.rows + ')');
+      if (after.loads !== 1) problems.push('accueil : Activite lue ' + after.loads + ' fois en tout (la tuile devait réutiliser les lignes déjà lues)');
+      if (!/Activite/.test(after.badge)) problems.push('accueil : le badge de table de la tuile posée est « ' + after.badge + ' »');
+      if (!after.welcomeHidden) problems.push('accueil : toujours affiché une fois une tuile posée');
+      if (!problems.length) verified.push('accueil sur tout le document : ' + working.length + ' cartes de la table de travail inchangées, ' + others.length + ' d\'Activite à la suite (repliées, table dite, aperçu), lecture silencieuse (hors du store, 1 lecture), un clic réel = une tuile qui lit Activite, accueil masqué');
+    }
+
+    // Une table illisible : elle n'est pas proposée, l'accueil marche comme avant, un avertissement (jamais une erreur) le dit.
+    const warnedBefore = warnings.length;
+    await start(['Activite']);
+    await frame.waitForSelector('#welcome-cards .welcome-card', { state: 'attached', timeout: 15000 });
+    await frame.waitForTimeout(1500);
+    const cards2 = await cardsOf();
+    if (!cards2.length) problems.push('table illisible : plus aucune carte (celles de la table de travail devaient rester)');
+    if (cards2.some((c) => c.table)) problems.push('table illisible : une carte vient d\'une autre table : ' + JSON.stringify(cards2.filter((c) => c.table)));
+    if (!warnings.slice(warnedBefore).some((w) => /illisible pour les suggestions/.test(w))) problems.push('table illisible : aucun avertissement « illisible pour les suggestions » en console');
+    if (!problems.some((p) => /table illisible/.test(p))) verified.push('table illisible : pas proposée, les ' + cards2.length + ' cartes de la table de travail restent, un avertissement en console');
   } catch (e) {
     problems.push('essai interrompu : ' + String((e && e.message) || e).slice(0, 240));
   } finally {
@@ -1651,6 +1784,8 @@ async function suggestScenario(browser, origin, { framed }) {
     if (process.env.TEST_BROWSER_ONLY === 'suggest') {
       report('suggestions sur tout le document (page directe)', await suggestScenario(browser, origin, { framed: false }), { violations: 'aucune erreur de console' });
       report('suggestions sur tout le document (cadre isolé)', await suggestScenario(browser, origin, { framed: true }), { violations: 'aucune erreur de console' });
+      report('accueil sur tout le document (page directe)', await welcomeScenario(browser, origin, { framed: false }), { violations: 'aucune erreur de console' });
+      report('accueil sur tout le document (cadre isolé)', await welcomeScenario(browser, origin, { framed: true }), { violations: 'aucune erreur de console' });
       await browser.close(); server.close(); process.exit(failed ? 1 : 0);
     }
     report('page directe', await scenario(browser, origin, { name: 'direct', url: '/index.html', framed: false }));
@@ -1689,6 +1824,10 @@ async function suggestScenario(browser, origin, { framed }) {
     // Les suggestions sur tout le document (lot 3A, 26/11/2026) : « Pour compléter » propose aussi les tuiles des autres tables.
     report('suggestions sur tout le document (page directe) : cartes d\'une autre table, lecture silencieuse, un clic réel', await suggestScenario(browser, origin, { framed: false }), { violations: 'aucune erreur de console' });
     report('suggestions sur tout le document (cadre isolé)', await suggestScenario(browser, origin, { framed: true }), { violations: 'aucune erreur de console' });
+
+    // L'accueil sur tout le document (lot 3B, 26/11/2026) : les suggestions des autres tables s'ajoutent à la suite de celles de la table de travail.
+    report('accueil sur tout le document (page directe) : cartes d\'une autre table repliées, lecture silencieuse, un clic réel', await welcomeScenario(browser, origin, { framed: false }), { violations: 'aucune erreur de console' });
+    report('accueil sur tout le document (cadre isolé)', await welcomeScenario(browser, origin, { framed: true }), { violations: 'aucune erreur de console' });
 
     // La vérification sait-elle échouer ? Sans 'unsafe-eval', l'API de Grist ne s'exécute pas : elle DOIT le dire.
     const strict = await scenario(browser, origin, { name: 'strict', url: '/__strict.html', framed: false });

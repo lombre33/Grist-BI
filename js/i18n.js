@@ -983,6 +983,8 @@
     'welcome.addAll': { fr: '{n|Ajouter cette visualisation|Ajouter ces {n} visualisations}', en: '{n|Add this visualization|Add these {n} visualizations}' },
     'welcome.more': { fr: 'Voir d’autres suggestions', en: 'See more suggestions' },
     'welcome.less': { fr: 'Moins de suggestions', en: 'Fewer suggestions' },
+    'welcome.table': { fr: 'Dans la table « {table} »', en: 'In the “{table}” table' },
+    'welcome.addAriaTable': { fr: 'Ajouter la visualisation « {title} » (table « {table} »)', en: 'Add the visualization “{title}” (“{table}” table)' },
     'advice.intent.overview': { fr: 'Vue d’ensemble', en: 'Overview' },
     'advice.intent.trend': { fr: 'Évolution', en: 'Trend' },
     'advice.intent.compare': { fr: 'Comparaison', en: 'Comparison' },

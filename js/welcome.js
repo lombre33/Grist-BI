@@ -9,6 +9,11 @@
  *
  * Toute la décision (quoi proposer, pourquoi) vient de js/advice.js, qui ne renvoie que des clés
  * i18n : ce fichier ne contient que des clés `welcome.*` et ce que ces clés traduisent.
+ *
+ * Les AUTRES tables du document (lot 3B, 26/11/2026) : après les suggestions de la table de travail, `options.otherTables(state, lang, isStale)`
+ * (un rappel : ce fichier ne lit aucune table) peut rendre, plus tard, des suggestions d'autres tables ; elles s'AJOUTENT à la suite (jamais avant :
+ * les trois premières cartes de la table de travail ne bougent pas), repliées avec les autres suggestions, chacune disant sa table. Une carte d'une
+ * autre table pose une tuile qui porte `table`. Un résultat périmé (autres lignes, autre langue, plus d'accueil) n'écrit rien.
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
@@ -354,15 +359,17 @@
   const MAX_SUGGESTIONS = 9;
 
   let cfg = null;
-  let shown = { rows: null, lang: null, suggestions: [] };
+  // `others` : 'idle' (pas demandées, ou demande annulée), 'loading' (en vol), 'done' (reçues : rien ne se redemande pour les mêmes lignes).
+  let shown = { rows: null, lang: null, suggestions: [], others: 'idle' };
+  let othersToken = 0;
 
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
-  // `options` : { addTile(tileData, index), importPowerBi() } — des rappels,
+  // `options` : { addTile(tileData, index), importPowerBi(), otherTables?(state, lang, isStale) } — des rappels,
   // pour que ce fichier ne dépende ni du store ni de la façon dont js/main.js ouvre le formulaire (qui
-  // change avec la refonte de l'interface).
+  // change avec la refonte de l'interface). `otherTables` rend une promesse de suggestions d'autres tables (`null` si périmée).
   function init(options) {
     cfg = options;
     const byId = (id) => document.getElementById(id);
@@ -393,13 +400,61 @@
     const t = G.i18n.t;
     const title = t(s.titleKey, s.titleVars);
     const intent = s.intentKey ? `<span class="welcome-card-intent">${escapeHtml(t(s.intentKey))}</span>` : '';
+    // Une suggestion d'une AUTRE table (`s.table`, lot 3B) dit laquelle sous son titre et dessine son aperçu avec SES lignes (`s.rows`).
+    const other = typeof s.table === 'string' && s.table !== '';
+    const addAria = other ? t('welcome.addAriaTable', { title, table: s.table }) : t('welcome.addAria', { title });
     return `<li class="welcome-card${i >= FIRST_SUGGESTIONS ? ' welcome-card-extra' : ''}">
-      <div class="welcome-preview">${previewSvg(G.advice.previewFor(s.tileData, rows), { lang })}</div>
+      <div class="welcome-preview">${previewSvg(G.advice.previewFor(s.tileData, Array.isArray(s.rows) ? s.rows : rows), { lang })}</div>
       ${intent}
       <h3 class="welcome-card-title">${escapeHtml(title)}</h3>
+      ${other ? `<p class="welcome-card-table">${escapeHtml(t('welcome.table', { table: s.table }))}</p>` : ''}
       <p class="welcome-card-reason">${escapeHtml(t(s.reasonKey, s.reasonVars))}</p>
-      <button type="button" class="btn-primary" data-suggestion="${i}" aria-label="${escapeHtml(t('welcome.addAria', { title }))}">${escapeHtml(t('welcome.add'))}</button>
+      <button type="button" class="btn-primary" data-suggestion="${i}" aria-label="${escapeHtml(addAria)}">${escapeHtml(t('welcome.add'))}</button>
     </li>`;
+  }
+
+  // Les boutons qui dépendent du nombre de suggestions (« Ajouter ces N » ne porte que sur les trois premières ; « Voir d'autres suggestions »
+  // n'existe que s'il y en a au-delà ; le bloc entier se masque sans aucune suggestion).
+  function refreshControls() {
+    const n = shown.suggestions.length;
+    const first = Math.min(n, FIRST_SUGGESTIONS);
+    const addAll = document.getElementById('welcome-add-all');
+    addAll.hidden = first < 2;
+    addAll.textContent = G.i18n.t('welcome.addAll', { n: first });
+    document.getElementById('welcome-more').hidden = n <= FIRST_SUGGESTIONS;
+    document.getElementById('welcome-suggestions-body').hidden = n === 0;
+  }
+
+  // Les suggestions des autres tables arrivent plus tard (lecture des tables) : elles s'ajoutent À LA SUITE des cartes déjà dessinées, qui ne sont
+  // jamais refaites (le survol, le focus et le dépli restent). Un jeton périmé n'écrit rien.
+  function loadOthers(state, lang) {
+    if (!cfg || typeof cfg.otherTables !== 'function') return;
+    const token = ++othersToken;
+    const isStale = () => token !== othersToken;
+    shown.others = 'loading';
+    let pending;
+    try { pending = Promise.resolve(cfg.otherTables(state, lang, isStale)); } catch (e) { pending = Promise.reject(e); }
+    pending.then((items) => {
+      if (isStale()) return;
+      shown.others = 'done';
+      if (!Array.isArray(items) || !items.length) return;
+      const base = shown.suggestions.length;
+      shown.suggestions = shown.suggestions.concat(items);
+      const holder = document.createElement('ul');
+      G.safeHtml.setHtml(holder, items.map((s, k) => cardHtml(s, base + k, state.rows, lang)).join(''));
+      const cards = document.getElementById('welcome-cards');
+      while (holder.firstChild) cards.appendChild(holder.firstChild);
+      refreshControls();
+    }).catch((e) => {
+      if (!isStale()) shown.others = 'done';
+      console.warn('[GristBI] suggestions des autres tables indisponibles', e);
+    });
+  }
+
+  // Annule une demande des autres tables en vol (l'accueil n'est plus affiché, ou les lignes ont changé) : elle n'écrira rien.
+  function cancelOthers() {
+    othersToken++;
+    if (shown.others === 'loading') shown.others = 'idle';
   }
 
   // Appelé à chaque rendu (js/main.js:render) : ne recalcule que si les lignes ou la langue ont changé
@@ -409,30 +464,32 @@
     if (!box || !cfg) return;
     const empty = connected && state.tiles.length === 0;
     box.hidden = !empty;
-    if (!empty) return;
+    if (!empty) { cancelOthers(); return; }
     const lang = G.i18n.getLang();
     const noRows = state.rows.length === 0;
     document.getElementById('welcome-no-rows').hidden = !noRows;
     document.getElementById('welcome-suggestions-body').hidden = noRows;
     document.getElementById('welcome-no-rows').textContent = noRows ? G.i18n.t('welcome.emptyTable', { table: tableId || '' }) : '';
     if (noRows) {
+      cancelOthers();
       document.getElementById('welcome-add-all').hidden = true;
-      shown = { rows: null, lang: null, suggestions: [] };
+      shown = { rows: null, lang: null, suggestions: [], others: 'idle' };
       return;
     }
-    if (shown.rows === state.rows && shown.lang === lang) return;
+    if (shown.rows === state.rows && shown.lang === lang) {
+      // Les mêmes lignes : rien ne se recalcule — sauf une demande des autres tables annulée entre-temps (l'accueil a été masqué un instant).
+      if (shown.others === 'idle') loadOthers(state, lang);
+      return;
+    }
+    cancelOthers();
     const suggestions = G.advice.suggestTiles(state.rows, undefined, { t: G.i18n.t, lang, limit: MAX_SUGGESTIONS });
-    shown = { rows: state.rows, lang, suggestions };
+    shown = { rows: state.rows, lang, suggestions, others: 'idle' };
     const cards = document.getElementById('welcome-cards');
     cards.classList.remove('is-expanded');
     G.safeHtml.setHtml(cards, suggestions.map((s, i) => cardHtml(s, i, state.rows, lang)).join(''));
-    const first = Math.min(suggestions.length, FIRST_SUGGESTIONS);
-    const addAll = document.getElementById('welcome-add-all');
-    addAll.hidden = first < 2;
-    addAll.textContent = G.i18n.t('welcome.addAll', { n: first });
-    document.getElementById('welcome-more').hidden = suggestions.length <= FIRST_SUGGESTIONS;
+    refreshControls();
     setMoreLabel(false);
-    document.getElementById('welcome-suggestions-body').hidden = suggestions.length === 0;
+    loadOthers(state, lang);
   }
 
   return { previewSvg, init, update };
