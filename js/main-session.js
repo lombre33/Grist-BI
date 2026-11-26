@@ -315,6 +315,7 @@
       S.dashboardReady = true;
       autoMode();
       refreshBlendPicker();
+      saveLastTable(tableId); // la prochaine ouverture du widget reprend cette table (chooseStartTable)
     }
     await applyBlend(currentBlend);
   }
@@ -347,7 +348,7 @@
     try {
       const tables = await GristBI.api.listAvailableTables();
       if (!tables.length) { setConnectionState('noTables'); return; }
-      const tableId = tables[0];
+      const tableId = await chooseStartTable(tables);
       const { rows } = await GristBI.api.loadTable(tableId);
       await switchTable(tableId, rows, { id: 'new', config: GristBI.api.blankConfig() });
       await refreshTablePicker();
@@ -379,8 +380,8 @@
     try {
       const names = await GristBI.api.listAvailableTables();
       if (!names.length) { showNotice(t('models.noTables')); return false; }
-      const ordered = (S.currentTableId && names.indexOf(S.currentTableId) !== -1)
-        ? [S.currentTableId].concat(names.filter((n) => n !== S.currentTableId)) : names;
+      const first = (S.currentTableId && names.indexOf(S.currentTableId) !== -1) ? S.currentTableId : await chooseStartTable(names);
+      const ordered = [first].concat(names.filter((n) => n !== first));
       let firstMissing = null;
       for (const tableId of ordered.slice(0, MODEL_TABLE_SCAN_LIMIT)) {
         const { rows } = await GristBI.api.loadTable(tableId);
@@ -567,6 +568,36 @@
     }
   });
 
+  // Dernière table ouverte, mémorisée d'une session à l'autre comme le nom d'auteur des commentaires (js/main-dialogs.js:loadSavedCommentAuthor) :
+  // chez GFS quand il héberge le widget (`GfsLink.storageGet`/`storageSet`, le cadre isolé n'a pas de stockage fiable), sinon dans
+  // `localStorage`, `typeof` DANS le `try` (il lève dans un cadre isolé). Sans mémoire disponible, `chooseStartTable` retombe sur le rapport
+  // le plus récent : jamais une erreur. La clé est la même pour tous les documents du widget, d'où la validation dans `pickStartTable`
+  // (une table inconnue du document est ignorée). Retour d'un utilisateur, 26/11/2026 : le widget s'ouvrait toujours sur la 1re table.
+  const LAST_TABLE_KEY = 'gristbi_last_table';
+  function loadLastTable() {
+    try {
+      if (S.gfsLink && S.gfsLink.hosted) return S.gfsLink.storageGet(LAST_TABLE_KEY) || '';
+      if (typeof localStorage === 'undefined') return '';
+      return localStorage.getItem(LAST_TABLE_KEY) || '';
+    } catch (e) { return ''; }
+  }
+  function saveLastTable(tableId) {
+    try {
+      if (S.gfsLink && S.gfsLink.hosted) { S.gfsLink.storageSet(LAST_TABLE_KEY, tableId); return; }
+      if (typeof localStorage === 'undefined') return;
+      localStorage.setItem(LAST_TABLE_KEY, tableId);
+    } catch (e) { /* stockage indisponible : sans conséquence, le rapport le plus récent prendra le relais */ }
+  }
+
+  // Table sur laquelle s'ouvrir quand rien ne l'impose : la dernière ouverte, sinon celle du rapport enregistré le plus récemment, sinon la
+  // première (`GristBI.state.pickStartTable`, pur et testé). `tables` vient de `listAvailableTables`, déjà lue : jamais vide ici.
+  async function chooseStartTable(tables) {
+    const remembered = loadLastTable();
+    // La lecture de BI_Dashboard_Config ne sert que sans mémoire valable : inutile de la faire sinon.
+    const latest = tables.indexOf(remembered) !== -1 ? '' : await GristBI.api.latestReportTableId(tables);
+    return GristBI.state.pickStartTable({ available: tables, remembered, latest });
+  }
+
   // Connexion automatique, au démarrage, à la 1re table du document (voir
   // GristBI.api.listAvailableTables ci-dessus) — plus de table de données par défaut créée par ce
   // widget depuis que la table de test de charge (`BI_StressTest`) a été retirée (demande explicite
@@ -577,14 +608,15 @@
   // il n'y a rien à connecter automatiquement (voir `status.noTables`) : l'utilisateur peut créer
   // une table dans Grist puis la choisir via le sélecteur ci-dessus SANS recharger le widget — son
   // `beforeOpen` (`refreshTablePicker`) relit toujours la liste à la demande, jamais un instantané.
-  // Connexion automatique à la 1re table du document (voir plus haut) — extraite de bootstrap()
+  // Connexion automatique à la table de départ (voir `chooseStartTable` ci-dessus ; la 1re table du document seulement faute de mémoire et de rapport
+  // enregistré — d'où le nom d'origine, gardé : bootstrap() et la lecture de `dev-tests/test-config-names.js` le citent) — extraite de bootstrap()
   // pour que le bouton « Réessayer » de l'état vide (échec de connexion) la rejoue telle quelle.
   async function connectToFirstTable() {
     setConnectionState('connecting');
     try {
       const tables = await GristBI.api.listAvailableTables();
       if (tables.length) {
-        const tableId = tables[0];
+        const tableId = await chooseStartTable(tables);
         const { rows } = await GristBI.api.loadTable(tableId);
         await switchTable(tableId, rows);
         await refreshTablePicker();

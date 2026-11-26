@@ -496,6 +496,29 @@
     return { id: numericId, tableId, name, config };
   }
 
+  // Table du rapport enregistré le PLUS RÉCEMMENT (colonne ModifiedAt, ex-DateModif), parmi `available` : sert de table de départ quand la
+  // personne n'a pas de dernière table mémorisée (js/main-session.js:chooseStartTable). Lecture seule : ne crée jamais BI_Dashboard_Config
+  // (un document qui n'en a pas encore n'a aucun rapport), ne dit rien d'une ligne de type inconnu (même règle que `saveConfig`/
+  // `loadConfigById`) et rend '' au moindre doute — l'appelant retombe alors sur la première table, comme avant ce réglage.
+  async function latestReportTableId(available) {
+    try {
+      if (!(GristBI.state && GristBI.state.latestReportTable)) return '';
+      if (!tableExistsIn(await listAllTablesCached(), CONFIG_TABLE)) return '';
+      const table = await refreshConfigNames();
+      const ids = (table && table.id) || [];
+      const entries = [];
+      for (let i = 0; i < ids.length; i++) {
+        const type = CN.cell(table, _configCols, 'reportType', i);
+        if (type && type !== CONFIG_REPORT_TYPE) continue;
+        entries.push({ table: table.TableId[i], modifiedAt: CN.cell(table, _configCols, 'modifiedAt', i), id: ids[i] });
+      }
+      return GristBI.state.latestReportTable(entries, available);
+    } catch (e) {
+      console.warn('[GristBI] latestReportTableId : lecture impossible, la première table sera ouverte', e);
+      return '';
+    }
+  }
+
   // Dashboard vierge, prêt pour `store.setPages`/`setBookmarks`/`setBlend` — utilisé pour "Nouveau"
   // (consigne GFS 007, point 3) : un rapport qui ne s'écrit qu'à son premier enregistrement, jamais
   // au démarrage (voir main.js:bootstrap/switchTable).
@@ -1150,7 +1173,7 @@
 
   GristBI.api = {
     configNamesStatus, mergeConfigNames, refreshConfigNames, isNameError: CN.isNameError, namesPort, afterNamesUpdate, readDocumentSchema, documentOwnerProof,
-    init, loadConfig, saveConfig, loadConfigById, blankConfig,
+    init, loadConfig, saveConfig, loadConfigById, blankConfig, latestReportTableId,
     listAvailableTables, loadTable, loadOrCreateComments, addComment, refColumnsForTable,
     getCurrentUserEmail, createTableFromRows, readColumnFormats, organizeInternalPages,
     checkAttachmentAccess, getAttachmentBytes, fetchRawTable, addTextColumn, writeColumnValues, safeAttachmentBase

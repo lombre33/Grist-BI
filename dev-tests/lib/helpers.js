@@ -79,7 +79,7 @@ function configColumnsFor(names) {
 function loadApiWithFakeConfigTable(data, i18n, actions, names) {
   const sandbox = { console: { error() {}, log() {}, warn() {} }, setTimeout: (fn) => { fn(); return 0; } };
   sandbox.window = sandbox;
-  sandbox.GristBI = { data, i18n, state: { DEFAULT_PAGE_ID: 'page_default' } };
+  sandbox.GristBI = { data, i18n, state: require('../../js/state.js') }; // le vrai module : le pont lit `latestReportTable` (table de départ)
   vm.runInNewContext(read('js', 'config-names.js'), sandbox);
   const cfg = configColumnsFor(names);
   sandbox.grist = { docApi: {
@@ -115,7 +115,7 @@ function loadApiWithFakeConfigTable(data, i18n, actions, names) {
   vm.runInNewContext(read('js', 'grist-api.js'), sandbox);
   // L'autre onglet qui renomme une colonne (le fichier qui sert la page ouverte garde les noms qu'il a lu avant).
   const renameColumn = (from, to) => { cfg[to] = cfg[from]; delete cfg[from]; };
-  return { api: sandbox.GristBI.api, cfg, renameColumn };
+  return { api: sandbox.GristBI.api, cfg, renameColumn, sandbox };
 }
 
 module.exports = { ROOT, read, readCharts, CHARTS_FILES, readMain, MAIN_FILES, plain, parseCssRules, loadApiWithFakeConfigTable };
