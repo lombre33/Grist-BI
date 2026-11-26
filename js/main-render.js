@@ -52,9 +52,12 @@
   // Cartes de suggestion de l'écran d'accueil (js/welcome.js, décisions de js/advice.js) : seulement des
   // rappels ici, pour que ce fichier-là ne connaisse ni le store ni le formulaire. Le bouton « Créer une
   // visualisation » de l'accueil n'est pas ici : il appartient à la refonte de l'interface (lot 2).
+  // `otherTables` (lot 3B) : les suggestions des autres tables du document, lues en silence (js/main-panel.js:welcomeOtherTables) ; l'accueil les
+  // ajoute à la suite de celles de la table de travail.
   GristBI.welcome.init({
     addTile: (tileData, index) => store.addTile(Object.assign({ id: genTileId(index) }, tileData)),
-    importPowerBi: () => document.getElementById('open-pbix-import').click()
+    importPowerBi: () => document.getElementById('open-pbix-import').click(),
+    otherTables: (state, lang, isStale) => parts.welcomeOtherTables(state, lang, isStale)
   });
 
   // Si le <script> ECharts (js/vendor/echarts/, voir index.html) n'a pas pu se charger, les tuiles

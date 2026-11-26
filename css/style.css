@@ -1431,6 +1431,7 @@ td.pivot-cell:not(.pivot-cell-empty):not(.pivot-total-cell):hover { background: 
 }
 .welcome-preview svg { width: 100%; height: 100%; }
 .welcome-card-title { margin: 4px 0 0; font-size: 13px; font-weight: 600; color: var(--text); }
+.welcome-card-table { margin: 0; font-size: 11.5px; line-height: 1.4; font-weight: 600; color: var(--text-secondary); overflow-wrap: anywhere; }
 .welcome-card-reason { flex: 1; margin: 0; font-size: 12px; line-height: 1.45; color: var(--text-muted); }
 .welcome-card .btn-primary { align-self: flex-start; }
 /* Ce que la suggestion répond (Évolution, Répartition…) : une étiquette discrète, jamais la seule information (le titre dit tout). */

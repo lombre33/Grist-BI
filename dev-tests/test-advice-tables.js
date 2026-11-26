@@ -406,14 +406,14 @@ console.log(`OK versions fautives — ${seen} versions de js/advice-tables.js vu
   });
   // Le panneau : une seule liste sur tout le document, les autres tables lues par la lecture silencieuse.
   ok(/async function suggestAcrossDocument\(/.test(panel) && /GristBI\.adviceTables\.pickTables|adviceTables\.pickTables\(/.test(panel), 'le panneau choisit les tables');
-  ok(/adviceTables\.merge\(parts, \{ limit: 3 \}\)/.test(panel), 'et fusionne trois propositions au plus');
+  ok(/adviceTables\.merge\(\[workingPart\]\.concat\(others\.parts\), \{ limit: 3 \}\)/.test(panel), 'et fusionne trois propositions au plus');
   ok(/suggestionTable\(name\)/.test(panel) && /const suggestionTable = \(\.\.\.args\) => parts\.suggestionTable\(\.\.\.args\);/.test(panel), 'la lecture silencieuse est celle de main-session.js');
   ok(/SUGGESTION_READ_TIMEOUT_MS = 8000/.test(panel) && /readWithin\(suggestionTable/.test(panel), 'une table qui ne répond pas en 8 s est laissée de côté');
   ok(/await pause\(\)/.test(panel), 'chaque table rend la main avant son profilage');
-  ok(/tiles\.length \? adviceTables\.pickTables/.test(panel), 'les autres tables ne sont regardées que si le rapport a déjà des tuiles');
+  ok(/const others = tiles\.length \? await profileOtherTables\(state, tiles, lang, stale\)/.test(panel) && /adviceTables\.pickTables\(names, working, tiles, referencedTables\(working\)\)/.test(panel), 'les autres tables ne sont regardées que si le rapport a déjà des tuiles (sinon l\'accueil s\'en charge, lot 3B)');
   ok(/referencedTables\(working\)/.test(panel) && /\^Ref:\(\.\+\)\$/.test(panel), 'les tables visées par une Référence passent avant');
   ok(/markRecommended\(items\.filter\(\(item\) => !item\.table\)\)/.test(panel), 'un badge « Recommandé » ne vient jamais d\'une autre table');
-  ok(/item\.rows = rowsOf\[item\.table\]/.test(panel) && /Array\.isArray\(s\.rows\) \? s\.rows : rows/.test(panel), 'l\'aperçu d\'une carte d\'une autre table est dessiné avec SES lignes');
+  ok(/item\.rows = others\.rowsOf\[item\.table\]/.test(panel) && /Array\.isArray\(s\.rows\) \? s\.rows : rows/.test(panel), 'l\'aperçu d\'une carte d\'une autre table est dessiné avec SES lignes');
   ok(/tilePanel\.complete\.table/.test(panel) && /tilePanel\.complete\.addAriaTable/.test(panel), 'la carte dit sa table, le bouton aussi');
   // « Que faire avec cette colonne ? » et « Ajouter une page entière » ne comptent que les tuiles de la table de travail.
   const pagesBody = panel.slice(panel.indexOf('function renderPages('), panel.indexOf('tilePagesListEl.addEventListener'));
