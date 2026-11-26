@@ -652,6 +652,119 @@ async function namesScenario(browser, origin, { mode, framed }) {
   return { problems, verified };
 }
 
+/**
+ * Un document à trois tables (`Alpha`, `Beta`, `Gamma`, dans cet ordre) dont `reports` = [[table, date de modification]] ont un rapport enregistré dans
+ * BI_Dashboard_Config (noms anglais, rien à renommer) : chaque rapport porte une tuile `t_<table>`, ce qui dit lequel s'est ouvert.
+ */
+function startFixture(reports) {
+  const meta = { id: [1, 2, 3, 4], tableId: ['Alpha', 'Beta', 'Gamma', 'BI_Dashboard_Config'] };
+  const columns = { id: [], parentId: [], colId: [], type: [], widgetOptions: [] };
+  const add = (parent, ids) => ids.forEach((colId) => { columns.id.push(columns.id.length + 1); columns.parentId.push(parent); columns.colId.push(colId); columns.type.push('Text'); columns.widgetOptions.push(''); });
+  [1, 2, 3].forEach((parent) => add(parent, ['Region', 'Produit', 'Mois', 'Quantite', 'Montant']));
+  add(4, ['TableId', 'ConfigJSON', 'Name', 'ReportType', 'ModifiedAt', 'ModifiedBy']);
+  const config = { id: [], TableId: [], ConfigJSON: [], Name: [], ReportType: [], ModifiedAt: [], ModifiedBy: [] };
+  reports.forEach(([table, at], i) => {
+    const report = { pages: [{ id: 'p_' + table, name: 'Page ' + table, tiles: [{ id: 't_' + table, type: 'bar', title: 'Montant par région ' + table, dimension: 'Region', measure: 'Montant', aggFn: 'sum' }] }], currentPageId: 'p_' + table };
+    config.id.push(i + 1); config.TableId.push(table); config.ConfigJSON.push(JSON.stringify(report)); config.Name.push('Rapport ' + table);
+    config.ReportType.push('rapport'); config.ModifiedAt.push(at); config.ModifiedBy.push('');
+  });
+  return { Alpha: salesTable(), Beta: salesTable(), Gamma: salesTable(), BI_Dashboard_Config: config, _grist_Tables: meta, _grist_Tables_column: columns };
+}
+
+/**
+ * La table de départ (26/11/2026, retour d'un utilisateur : « je suis obligé de changer de table pour accéder aux tableaux de bord
+ * pertinents ») dans la vraie page : le widget s'ouvre sur la dernière table ouverte, sinon sur celle du rapport enregistré le plus récemment,
+ * sinon sur la 1re. Le document : Alpha (aucun rapport), Beta (rapport de 2023), Gamma (rapport de 2024, le plus récent).
+ *  - `direct` : (1) rien en mémoire -> Gamma (rapport le plus récent, sa tuile est là) ; (2) choisir Alpha dans le sélecteur de la barre (vrais gestes),
+ *    la table est mémorisée, une page rechargée s'ouvre sur Alpha ; (3) une mémoire d'une table inconnue du document est ignorée -> Gamma ;
+ *  - `framed` : dans un `<iframe sandbox="allow-scripts allow-downloads">` (cadre de Grist et de GFS) où `localStorage` LÈVE : aucune erreur, le rapport
+ *    le plus récent prend le relais, avant comme après un changement de table ;
+ *  - `empty` : aucun rapport enregistré, aucune mémoire -> la 1re table, comme avant ce réglage.
+ */
+async function startScenario(browser, origin, { mode }) {
+  const problems = [];
+  const verified = [];
+  const reports = mode === 'empty' ? [] : [['Beta', 1700000000], ['Gamma', 1750000000]];
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  await context.addInitScript((fixture) => { window.__gristStubPreseed = fixture; }, startFixture(reports));
+  await context.route((u) => u.hostname !== '127.0.0.1', (route) => {
+    const u = new URL(route.request().url());
+    if (u.hostname === 'docs.getgrist.com' && u.pathname === '/grist-plugin-api.js') route.fulfill({ status: 200, contentType: 'text/javascript', body: gristApiBody() });
+    else { problems.push('requête vers un autre site : ' + u.origin + u.pathname); route.abort(); }
+  });
+  const page = await context.newPage();
+  page.on('console', (m) => { if (m.type() === 'error') problems.push('console : ' + m.text().slice(0, 240)); });
+  page.on('pageerror', (e) => problems.push('exception de page : ' + String(e.message || e).slice(0, 240)));
+  page.on('requestfailed', (r) => {
+    if (new URL(r.url()).hostname !== '127.0.0.1') return;
+    const text = (r.failure() && r.failure().errorText) || 'cause inconnue';
+    if (text !== 'net::ERR_ABORTED') problems.push('requête échouée : ' + r.url().replace(origin, '') + ' (' + text + ')');
+  });
+  page.on('response', (r) => { if (r.status() >= 400) problems.push('réponse ' + r.status() + ' : ' + r.url().replace(origin, '')); });
+  const frameOf = async () => (mode === 'framed' ? (await (await page.waitForSelector('#app')).contentFrame()) : page.mainFrame());
+  // La table ouverte : le sélecteur de la barre, une fois le rapport chargé et les lignes là ; les tuiles dites par leur id.
+  const opened = async (frame) => {
+    await frame.waitForFunction(() => typeof window.GristBI === 'object' && GristBI.store && GristBI.store.getState().rows.length > 0
+      && document.getElementById('table-select').value !== '', null, { timeout: 30000 });
+    await frame.waitForTimeout(400); // le rapport de la table est posé juste avant les lignes : on laisse le rendu se stabiliser
+    return frame.evaluate(() => ({ table: document.getElementById('table-select').value, tiles: GristBI.store.getState().tiles.map((t) => t.id) }));
+  };
+  const expectOpened = (got, table, label) => {
+    if (got.table !== table) problems.push(label + ' : table ouverte « ' + got.table + ' », attendu « ' + table + ' »');
+    const wantTiles = reports.some(([t]) => t === table) ? ['t_' + table] : [];
+    if (JSON.stringify(got.tiles) !== JSON.stringify(wantTiles)) problems.push(label + ' : tuiles ' + JSON.stringify(got.tiles) + ', attendu ' + JSON.stringify(wantTiles) + ' (le rapport de cette table)');
+  };
+  // Choisir une autre table comme une personne : menu Données, champ « Table de travail », frappe, Entrée.
+  const pickTable = async (frame, name) => {
+    await frame.click('#data-pill');
+    await frame.click('#table-select');
+    await frame.fill('#table-select', name);
+    await frame.press('#table-select', 'Enter');
+    await frame.waitForFunction((n) => document.getElementById('table-select').value === n && GristBI.store.getState().rows.length > 0, name, { timeout: 15000 });
+    await frame.waitForTimeout(600);
+  };
+  const memory = (frame) => frame.evaluate(() => { try { return localStorage.getItem('gristbi_last_table'); } catch (e) { return 'LÈVE'; } });
+  try {
+    await page.goto(origin + (mode === 'framed' ? '/__frame.html' : '/index.html'), { waitUntil: 'load' });
+    let frame = await frameOf();
+    if (mode === 'empty') {
+      expectOpened(await opened(frame), 'Alpha', 'sans rapport ni mémoire');
+      verified.push('aucun rapport, aucune mémoire : la 1re table (Alpha), comme avant');
+    } else if (mode === 'direct') {
+      expectOpened(await opened(frame), 'Gamma', 'rien en mémoire');
+      verified.push('rien en mémoire : Gamma, la table du rapport enregistré le plus récemment (sa tuile est là)');
+      await pickTable(frame, 'Alpha');
+      expectOpened(await opened(frame), 'Alpha', 'après le choix de la table');
+      const kept = await memory(frame);
+      if (kept !== 'Alpha') problems.push('la table choisie n\'est pas mémorisée : gristbi_last_table = ' + JSON.stringify(kept));
+      await page.reload({ waitUntil: 'load' });
+      frame = await frameOf();
+      expectOpened(await opened(frame), 'Alpha', 'page rechargée après le choix d\'Alpha');
+      verified.push('Alpha choisie dans le sélecteur, mémorisée ; la page rechargée s\'ouvre sur Alpha (pas sur Gamma, malgré son rapport plus récent)');
+      await frame.evaluate(() => localStorage.setItem('gristbi_last_table', 'Zèbre'));
+      await page.reload({ waitUntil: 'load' });
+      frame = await frameOf();
+      expectOpened(await opened(frame), 'Gamma', 'mémoire d\'une table inconnue du document');
+      verified.push('une mémoire d\'une table inconnue de ce document est ignorée (retour au rapport le plus récent)');
+    } else {
+      const throws = await frame.evaluate(() => { try { localStorage.getItem('x'); return false; } catch (e) { return true; } });
+      if (!throws) problems.push('le cadre isolé laisse lire localStorage : l\'essai ne prouve plus rien sur le repli');
+      expectOpened(await opened(frame), 'Gamma', 'cadre isolé, rien en mémoire');
+      await pickTable(frame, 'Alpha');
+      expectOpened(await opened(frame), 'Alpha', 'cadre isolé, après le choix de la table');
+      await page.reload({ waitUntil: 'load' });
+      frame = await frameOf();
+      expectOpened(await opened(frame), 'Gamma', 'cadre isolé, page rechargée (aucune mémoire possible)');
+      verified.push('localStorage lève dans le cadre : aucune erreur, Gamma (rapport le plus récent) avant comme après le choix d\'Alpha');
+    }
+  } catch (e) {
+    problems.push('essai interrompu : ' + String((e && e.message) || e).slice(0, 240));
+  } finally {
+    await context.close();
+  }
+  return { problems, verified };
+}
+
 (async () => {
   const server = await startServer();
   const origin = 'http://127.0.0.1:' + server.address().port;
@@ -709,6 +822,11 @@ async function namesScenario(browser, origin, { mode, framed }) {
     report('mise à jour des noms, propriétaire (cadre isolé)', await namesScenario(browser, origin, { mode: 'owner', framed: true }), { violations: '1 preuve /webhooks' });
     report('mise à jour des noms, autre personne (403, cadre isolé) : aucune fenêtre', await namesScenario(browser, origin, { mode: 'guest', framed: true }), { violations: '1 preuve /webhooks refusée' });
     report('mise à jour des noms, hébergé par un faux GFS qui ne dit pas le rôle : aucune fenêtre, aucun jeton', await namesScenario(browser, origin, { mode: 'hosted', framed: true }), { violations: '0 appel /webhooks' });
+
+    // La table de départ (26/11/2026) : dernière table ouverte, sinon rapport le plus récent, sinon la 1re.
+    report('table de départ (page directe) : rapport le plus récent, choix mémorisé, mémoire inconnue ignorée', await startScenario(browser, origin, { mode: 'direct' }), { violations: 'aucune erreur de console' });
+    report('table de départ (cadre isolé, localStorage interdit) : le rapport le plus récent prend le relais', await startScenario(browser, origin, { mode: 'framed' }), { violations: 'aucune erreur de console' });
+    report('table de départ (aucun rapport) : la 1re table, comme avant', await startScenario(browser, origin, { mode: 'empty' }), { violations: 'aucune erreur de console' });
 
     // La vérification sait-elle échouer ? Sans 'unsafe-eval', l'API de Grist ne s'exécute pas : elle DOIT le dire.
     const strict = await scenario(browser, origin, { name: 'strict', url: '/__strict.html', framed: false });

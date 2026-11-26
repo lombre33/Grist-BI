@@ -516,5 +516,40 @@
     };
   }
 
-  return { createStore, sameSnapshot, sanitizePages, safeTileId, DEFAULT_PAGE_ID };
+  // ---- Table de départ ------------------------------------------------------------------------------
+  // Quand rien n'impose de table au démarrage (pas de rapport ni de modèle demandé par GFS), le widget ne s'ouvre plus sur « la première
+  // table du document » mais sur celle où la personne travaille : (1) la dernière table qu'elle a ouverte (`remembered`, gardée côté
+  // navigateur ou chez GFS), (2) sinon la table du rapport enregistré le plus récemment (`latest`, lu dans BI_Dashboard_Config, donc
+  // partagé par tout le monde), (3) sinon la première. Une table citée mais absente de `available` (supprimée, renommée, ou mémoire d'un
+  // AUTRE document : la clé de mémoire est la même pour tous les documents du widget) est ignorée, jamais ouverte à tort.
+  // Retour d'un utilisateur, 26/11/2026 : « je suis obligé de changer de table pour accéder aux tableaux de bord pertinents ».
+  function inList(list, id) {
+    return typeof id === 'string' && id !== '' && Array.isArray(list) && list.indexOf(id) !== -1;
+  }
+
+  // `entries` : une par rapport enregistré, `{ table, modifiedAt (secondes, vide = inconnue), id (numéro de ligne) }`. Rend la table du plus
+  // récent parmi ceux dont la table est dans `available` ('' s'il n'y en a aucun). Une date vide ou illisible vaut 0 : ce rapport existe,
+  // mais passe derrière tout rapport daté ; à date égale, la ligne la plus récente (numéro le plus haut) gagne.
+  function latestReportTable(entries, available) {
+    let best = null;
+    (Array.isArray(entries) ? entries : []).forEach((entry) => {
+      if (!entry || !inList(available, entry.table)) return;
+      const at = Number(entry.modifiedAt);
+      const when = Number.isFinite(at) && at > 0 ? at : 0;
+      const row = Number.isFinite(Number(entry.id)) ? Number(entry.id) : 0;
+      if (!best || when > best.when || (when === best.when && row >= best.row)) best = { table: entry.table, when, row };
+    });
+    return best ? best.table : '';
+  }
+
+  function pickStartTable(options) {
+    const o = options || {};
+    const available = Array.isArray(o.available) ? o.available.filter((t) => typeof t === 'string' && t !== '') : [];
+    if (!available.length) return '';
+    if (inList(available, o.remembered)) return o.remembered;
+    if (inList(available, o.latest)) return o.latest;
+    return available[0];
+  }
+
+  return { createStore, sameSnapshot, sanitizePages, safeTileId, DEFAULT_PAGE_ID, latestReportTable, pickStartTable };
 });
