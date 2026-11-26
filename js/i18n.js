@@ -66,6 +66,11 @@
       fr: 'Trop de tables liées (au plus {max}) : déliez-en une avant d\'en ajouter.',
       en: 'Too many linked tables ({max} at most): unlink one before adding another.',
     },
+    'joins.pick.hint': { fr: 'Relie la table « {table} » à celle-ci', en: 'Links table “{table}” to this one' },
+    'joins.pick.done': {
+      fr: 'Table « {tables} » reliée. Pour la délier : menu des données, en haut, rubrique « Tables liées ».',
+      en: 'Table “{tables}” linked. To unlink it: data menu at the top, “Linked tables”.',
+    },
     'joins.inUse': {
       fr: '« {alias} » est encore lue par {tiles} {tiles|tuile|tuiles}, {filters} {filters|filtre|filtres} et {views} {views|vue|vues} : retirez-les d\'abord.',
       en: '“{alias}” is still read by {tiles} {tiles|tile|tiles}, {filters} {filters|filter|filters} and {views} {views|view|views}: remove them first.',

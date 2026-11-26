@@ -283,8 +283,50 @@
     return out;
   }
 
+  /**
+   * Le genre qu'une colonne aura une fois ses valeurs lues (`number` | `date` | `text`), d'après son TYPE Grist : les lignes d'une table qu'on n'a pas encore
+   * jointe ne peuvent pas être échantillonnées (js/main-fields.js:inferColumnKind), alors qu'une liste réservée aux colonnes numériques doit déjà savoir
+   * si `Clients.Age` en est une. Une colonne `Date`/`DateTime` est lue comme une date (ISO) par js/data.js:tableToRows.
+   */
+  function kindOfType(type) {
+    const s = typeof type === 'string' ? type : '';
+    if (s === 'Int' || s === 'Numeric') return 'number';
+    if (s === 'Date' || /^DateTime(:|$)/.test(s)) return 'date';
+    return 'text';
+  }
+
+  /**
+   * Les colonnes d'une liste de choix, rangées par table : `plain` = les colonnes que les lignes ont déjà (celles de la table de travail, puis
+   * `Alias.colonne` pour chaque table déjà jointe), `virtual` = celles des tables liées qu'on peut encore atteindre (`virtualColumns`). Rend `plain`
+   * TEL QUEL tant qu'une seule table est en jeu (la liste d'avant, octet pour octet), sinon des options `{ value, label, group, pending?, table? }` :
+   * la table de travail d'abord, puis les tables jointes dans l'ordre des jointures, puis celles qu'un choix relierait. `pending` = la valeur n'est pas
+   * dans les lignes : la choisir pose d'abord la jointure. `joins` doit contenir TOUTES les jointures posées (`allJoins`) ; le préfixe le plus long gagne
+   * (`Clients (Client).Ville` n'est pas une colonne de `Clients`).
+   */
+  function groupColumns(plain, virtual, joins, home) {
+    const list = Array.isArray(plain) ? plain : [];
+    const extra = Array.isArray(virtual) ? virtual : [];
+    const aliases = (Array.isArray(joins) ? joins : []).map((j) => j.alias).filter((a) => typeof a === 'string' && a !== home);
+    const groups = new Map();
+    groups.set(home, []);
+    aliases.forEach((a) => groups.set(a, []));
+    list.forEach((col) => {
+      let best = '';
+      aliases.forEach((a) => { if (col.indexOf(`${a}.`) === 0 && a.length > best.length) best = a; });
+      if (best) groups.get(best).push({ value: col, label: col.slice(best.length + 1), group: best });
+      else groups.get(home).push({ value: col, label: col, group: home });
+    });
+    extra.forEach((v) => {
+      if (!groups.has(v.alias)) groups.set(v.alias, []);
+      groups.get(v.alias).push({ value: v.id, label: v.column, group: v.alias, pending: true, table: v.table });
+    });
+    const filled = Array.from(groups.values()).filter((entries) => entries.length);
+    if (filled.length <= 1) return list.slice();
+    return [].concat(...filled);
+  }
+
   return {
     indexSchema, refTarget, routesFrom, legacyJoin, allJoins, sanitizeJoins, sameJoins, findJoin, freshAlias, resolveRoute, virtualColumns, joinsToAdd,
-    addJoin, removeJoin, usageOf, MAX_HOPS, MAX_ROUTES, MAX_JOINS
+    addJoin, removeJoin, usageOf, kindOfType, groupColumns, MAX_HOPS, MAX_ROUTES, MAX_JOINS
   };
 });

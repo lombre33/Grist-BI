@@ -176,6 +176,44 @@ function graphChecks(g) {
   ok(g.sameJoins(chain, chain.slice()) && !g.sameJoins(chain, chain.slice(0, 2)) && !g.sameJoins(chain, [chain[0], chain[1], Object.assign({}, chain[2], { alias: 'P' })]), 'comparaison de deux listes');
   eq(g.findJoin(chain, { column: 'Pays', target: 'Pays' }, 'Clients'), chain[1], 'la jointure qui suit une étape');
   eq(g.findJoin(chain, { column: 'Pays', target: 'Pays' }, ''), null, 'depuis une autre colonne de départ : aucune');
+
+  // Lot 1b : le genre d'une colonne qu'on n'a pas encore jointe vient de son TYPE Grist.
+  eq(['Int', 'Numeric', 'Date', 'DateTime:Europe/Paris', 'DateTime', 'Text', 'Choice', 'Bool', 'Any', '', null, 7, 'Datetime', 'DateTimeX', 'Numeric ', 'int'].map((type) => g.kindOfType(type)),
+    ['number', 'number', 'date', 'date', 'date', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'text'], 'genre d\'une colonne d\'après son type (un booléen, une date mal écrite : du texte)');
+
+  // Lot 1b : les listes de choix rangées par table.
+  eq(g.groupColumns(['Montant', 'Region'], [], [], 'Ventes'), ['Montant', 'Region'], 'une seule table en jeu : la liste d\'avant, chaînes seules, même ordre');
+  eq(g.groupColumns(['Montant', 'Region'], [], [clientsJoin], 'Ventes'), ['Montant', 'Region'], 'une jointure posée dont aucune colonne n\'est dans la liste : toujours la liste d\'avant');
+  eq(g.groupColumns([], [], [], 'Ventes'), [], 'liste vide');
+  const virtualNow = g.virtualColumns(idx, 'Ventes', [], new Set(['Montant', 'Region']));
+  const listed = g.groupColumns(['Montant', 'Region'], virtualNow, [], 'Ventes');
+  eq(listed.slice(0, 2), [{ value: 'Montant', label: 'Montant', group: 'Ventes' }, { value: 'Region', label: 'Region', group: 'Ventes' }], 'la table de travail d\'abord, sous son nom');
+  eq(listed.filter((o) => o.group === 'Clients'), [
+    { value: 'Clients.Nom', label: 'Nom', group: 'Clients', pending: true, table: 'Clients' },
+    { value: 'Clients.Ville', label: 'Ville', group: 'Clients', pending: true, table: 'Clients' }
+  ], 'les colonnes d\'une table liée : sous le nom de la table, la colonne seule pour libellé, en attente de la jointure');
+  eq(Array.from(new Set(listed.map((o) => o.group))), ['Ventes', 'Clients', 'Produits', 'Personnes (Livreur)', 'Personnes (Vendeur)', 'Pays'], 'les tables dans l\'ordre des routes : un saut, puis deux');
+  ok(listed.slice(2).every((o) => o.pending === true), 'toute colonne liée non jointe attend sa jointure');
+  eq(new Set(listed.map((o) => o.value)).size, listed.length, 'aucune valeur en double');
+  // Une jointure posée : ses colonnes sont dans les lignes (plus « en attente »), sous le nom de la table, avant celles qu'il reste à relier.
+  const joinedList = g.groupColumns(['Montant', 'Clients.Nom', 'Clients.Ville', 'Clients.Pays'],
+    g.virtualColumns(idx, 'Ventes', [clientsJoin], new Set(['Montant', 'Clients.Nom', 'Clients.Ville', 'Clients.Pays'])), [clientsJoin], 'Ventes');
+  eq(joinedList.slice(0, 4), [
+    { value: 'Montant', label: 'Montant', group: 'Ventes' },
+    { value: 'Clients.Nom', label: 'Nom', group: 'Clients' }, { value: 'Clients.Ville', label: 'Ville', group: 'Clients' }, { value: 'Clients.Pays', label: 'Pays', group: 'Clients' }
+  ], 'une table déjà jointe : ses colonnes, sous son nom, sans « en attente »');
+  ok(!joinedList.slice(0, 4).some((o) => o.pending) && joinedList.slice(4).every((o) => o.pending && o.group !== 'Clients'), 'seules les tables encore à relier attendent');
+  // Le préfixe le plus long gagne (un alias qui en prolonge un autre) ; « Clients (Client).Ville » n'est pas une colonne de « Clients ».
+  eq(g.groupColumns(['A', 'Clients.Ville', 'Clients (Client).Ville'], [], [{ alias: 'Clients' }, { alias: 'Clients (Client)' }], 'Ventes').map((o) => o.group),
+    ['Ventes', 'Clients', 'Clients (Client)'], 'deux alias dont l\'un commence comme l\'autre');
+  eq(g.groupColumns(['Ventes.x', 'B'], [], [{ alias: 'Ventes' }], 'Ventes'), ['Ventes.x', 'B'], 'un alias égal à la table de travail n\'ouvre pas un second groupe du même nom');
+  eq(g.groupColumns(['Ventes.x', 'Clients.Nom'], [], [{ alias: 'Ventes' }, { alias: 'Clients' }], 'Ventes'),
+    [{ value: 'Ventes.x', label: 'Ventes.x', group: 'Ventes' }, { value: 'Clients.Nom', label: 'Nom', group: 'Clients' }], 'un alias égal à la table de travail ne coupe pas le nom de ses colonnes');
+  eq(g.groupColumns(['A.x', 'A.B.y', 'z'], [], [{ alias: 'A' }, { alias: 'A.B' }], 'T').map((o) => o.group), ['T', 'A', 'A.B'], 'le préfixe le plus long l\'emporte');
+  // Une seule table dans la liste, mais ce n'est pas la table de travail : chaînes seules (rien à ranger).
+  eq(g.groupColumns(['Clients.Age'], [], [clientsJoin], 'Ventes'), ['Clients.Age'], 'une liste d\'une seule table n\'a pas d\'intitulé');
+  eq(g.groupColumns(null, null, null, 'Ventes'), [], 'entrées absentes');
+  eq(g.groupColumns(['A'], [{ id: 'Z.b', column: 'b', alias: 'Z', table: 'ZT' }], [], 'Ventes').map((o) => [o.value, o.group, !!o.pending]), [['A', 'Ventes', false], ['Z.b', 'Z', true]], 'une colonne liée sans route connue : rangée sous son alias');
 }
 graphChecks(require('../js/table-graph.js'));
 console.log(`OK table-graph — schéma, routes (un et deux sauts, jamais de cycle ni de liste), alias stables, colonnes virtuelles, ajout, retrait en cascade, usage, nettoyage de la configuration (${checks} vérifications)`);
@@ -211,7 +249,17 @@ const MUTANTS = [
   ['les filtres avancés oubliés de l\'usage', '+ (Array.isArray(s.advancedFilters) ? s.advancedFilters : []).filter(filterUses).length;', ';'],
   ['un réglage manuel incomplet pris pour une jointure', "if (!isObject(blend) || !validId(blend.secondaryTableId) || !validId(blend.primaryColumn) || !validId(blend.secondaryColumn)) return null;", 'if (!isObject(blend)) return null;'],
   ['un alias numéroté jamais atteint', "while (used.has(`${named} ${n}`)) n++;", ''],
-  ['un nom trop long accepté', 'v.length <= MAX_ID_LENGTH &&', '']
+  ['un nom trop long accepté', 'v.length <= MAX_ID_LENGTH &&', ''],
+  ['une liste d\'une seule table rangée quand même', 'if (filled.length <= 1) return list.slice();', ''],
+  ['le préfixe le plus court l\'emporte', "if (col.indexOf(`${a}.`) === 0 && a.length > best.length) best = a;", "if (col.indexOf(`${a}.`) === 0 && !best) best = a;"],
+  ['une colonne à relier qui n\'attend rien', 'pending: true, table: v.table', 'table: v.table'],
+  ['les tables liées avant la table de travail', "groups.set(home, []);\n    aliases.forEach((a) => groups.set(a, []));", "aliases.forEach((a) => groups.set(a, []));\n    groups.set(home, []);"],
+  ['une table déjà jointe rangée sous la table de travail', "if (best) groups.get(best).push(", "if (false) groups.get(best).push("],
+  ['la colonne liée écrite en entier sous son intitulé', 'label: col.slice(best.length + 1)', 'label: col'],
+  ['un alias égal à la table de travail ouvre un second groupe', "filter((a) => typeof a === 'string' && a !== home)", "filter((a) => typeof a === 'string')"],
+  ['une date-heure prise pour du texte', "if (s === 'Date' || /^DateTime(:|$)/.test(s)) return 'date';", "if (s === 'Date') return 'date';"],
+  ['un nom qui commence par DateTime pris pour une date', '/^DateTime(:|$)/', '/^DateTime/'],
+  ['un entier pris pour du texte', "if (s === 'Int' || s === 'Numeric') return 'number';", "if (s === 'Numeric') return 'number';"]
 ];
 let seen = 0;
 MUTANTS.forEach(([label, from, to]) => {

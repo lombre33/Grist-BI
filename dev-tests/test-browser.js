@@ -180,7 +180,8 @@ async function scenario(browser, origin, { name, url, framed }) {
     }
   });
   const page = await context.newPage();
-  page.on('console', (m) => { if (m.type() === 'error') problems.push('console : ' + m.text().slice(0, 240)); });
+  const tolerated = []; // erreurs de console ATTENDUES (une table illisible provoquée par l'essai), posées par l'étape qui les provoque
+  page.on('console', (m) => { if (m.type() === 'error' && !tolerated.some((re) => re.test(m.text()))) problems.push('console : ' + m.text().slice(0, 240)); });
   page.on('pageerror', (e) => problems.push('exception de page : ' + String(e.message || e).slice(0, 240)));
   const answered = new WeakSet(); // requêtes dont la réponse est arrivée (l'événement `response` précède toujours `requestfailed`)
   const notes = []; // réponses annulées par la page : relevées, jamais comptées comme un défaut (voir `isPageCancel`)
@@ -539,6 +540,114 @@ async function scenario(browser, origin, { name, url, framed }) {
       if (!closed.hidden || closed.cards) problems.push('panneau fermé : les cartes de pages restent (' + JSON.stringify(closed) + ')');
       if (!problems.some((p) => /page entière|panneau fermé/.test(p))) verified.push('« Ajouter une page entière » : ' + first.cards + ' propositions, un clic réel = page « ' + second.current + ' » + ' + second.tiles + ' visualisations, annonce, focus, fermeture');
     }
+
+    // 9. Lot 1b « colonnes de toutes les tables » : les listes de colonnes du formulaire portent aussi celles des tables LIÉES, rangées par table.
+    // Après l'étape 7, `Clients` est jointe (ses colonnes sont dans les lignes) et `Personnes` ne l'est pas (`Ventes.Vendeur` est une Référence vers elle).
+    // 9a. Les intitulés : la table de travail, puis `Clients` (colonnes sans « en attente »), puis `Personnes` (colonnes à relier d'abord).
+    // 9b. Une table illisible : choisir sa colonne (frappe + Entrée, VRAIS gestes) dit l'échec, retire la jointure posée pour ce choix, rend au champ sa
+    //     valeur d'avant et n'émet AUCUN `change`. 9c. La table lisible : même geste = la jointure est posée, les lignes refaites, et le `change` ne part
+    //     qu'ENSUITE (la colonne est déjà dans les lignes) ; la phrase le dit ; la liste ne la propose plus « à relier » ; la tuile enregistrée se dessine.
+    {
+    await frame.evaluate(() => {
+      if (document.body.dataset.mode !== 'edit') document.getElementById('mode-toggle').click();
+      GristBI.closeTilePanel(false);
+      GristBI.openTilePanel({ type: 'bar' });
+      window.__picks = [];
+      const input = document.getElementById('tile-dimension');
+      input.addEventListener('change', () => window.__picks.push({
+        value: input.value, has: 'Personnes.Equipe' in (GristBI.store.getState().rows[0] || {}) || 'Personnes.Prenom' in (GristBI.store.getState().rows[0] || {}), joins: GristBI.store.getState().joins.length
+      }));
+    });
+    const listOf = () => frame.evaluate(() => {
+      const ul = document.getElementById('tile-dimension').nextElementSibling;
+      return {
+        hidden: ul.hidden,
+        groups: Array.from(ul.querySelectorAll('.combobox-group')).map((li) => li.textContent),
+        options: Array.from(ul.querySelectorAll('.combobox-option')).map((li) => ({ value: li.dataset.value, text: li.textContent, pending: li.classList.contains('combobox-option-pending') }))
+      };
+    });
+    await frame.click('#tile-dimension');
+    const listed = await listOf();
+    const optionOf = (list, value) => list.options.find((o) => o.value === value);
+    if (listed.hidden) problems.push('colonnes liées : la liste ne s\'ouvre pas au clic');
+    if (listed.groups.join('|') !== 'Ventes|Clients|Personnes') problems.push('colonnes liées : intitulés « ' + listed.groups.join(' | ') + ' » au lieu de « Ventes | Clients | Personnes »');
+    const ville = optionOf(listed, 'Clients.Ville');
+    const equipe = optionOf(listed, 'Personnes.Equipe');
+    if (!ville || ville.text !== 'Ville' || ville.pending) problems.push('colonnes liées : « Clients.Ville » (table déjà jointe) : ' + JSON.stringify(ville));
+    if (!equipe || equipe.text !== 'Equipe' || !equipe.pending) problems.push('colonnes liées : « Personnes.Equipe » (table à relier) : ' + JSON.stringify(equipe));
+    if (!optionOf(listed, 'Region') || optionOf(listed, 'Region').pending) problems.push('colonnes liées : la colonne de la table de travail « Region » manque ou attend une jointure');
+    if (listed.options.some((o) => /\.(id|manualSort)$/.test(o.value))) problems.push('colonnes liées : un numéro de ligne est proposé comme colonne');
+
+    // 9b. Table illisible.
+    tolerated.push(/table jointe "Personnes" illisible/, /échec de la jointure/);
+    // Les lignes d'une table jointe sont gardées en mémoire (étape 7 : Personnes l'a été) : on vide cette mémoire, puis on rend la table illisible.
+    await frame.evaluate(async () => { await GristBI.mainParts.reloadWorkingTable(); window.__gristStubFailTables = ['Personnes']; });
+    const before = await frame.evaluate(() => ({ value: document.getElementById('tile-dimension').value, joins: GristBI.store.getState().joins.map((j) => j.alias) }));
+    await frame.press('#tile-dimension', 'Control+A');
+    await frame.type('#tile-dimension', 'personnes.prenom');
+    await frame.press('#tile-dimension', 'Enter');
+    await frame.waitForSelector('#pp-dialog-modal', { state: 'visible', timeout: 8000 }).catch(() => {});
+    await frame.waitForFunction(() => !document.getElementById('tile-dimension').hasAttribute('aria-busy'), null, { timeout: 8000 }).catch(() => {});
+    const failed = await frame.evaluate(() => ({
+      value: document.getElementById('tile-dimension').value,
+      busy: document.getElementById('tile-dimension').hasAttribute('aria-busy'),
+      joins: GristBI.store.getState().joins.map((j) => j.alias),
+      linked: 'Personnes.Prenom' in (GristBI.store.getState().rows[0] || {}),
+      picks: window.__picks.length,
+      note: document.getElementById('tile-link-note').hidden,
+      dialog: !!document.getElementById('pp-dialog-modal') && !document.getElementById('pp-dialog-modal').hidden
+    }));
+    if (failed.picks !== 0) problems.push('colonnes liées : une table illisible a quand même émis ' + failed.picks + ' « change »');
+    if (failed.value !== before.value) problems.push('colonnes liées : après l\'échec le champ vaut « ' + failed.value + ' » au lieu de « ' + before.value + ' »');
+    if (failed.busy) problems.push('colonnes liées : le champ reste « occupé » après l\'échec');
+    if (failed.joins.join() !== before.joins.join() || failed.linked) problems.push('colonnes liées : la jointure posée pour ce choix n\'a pas été retirée (' + failed.joins.join() + ')');
+    if (!failed.note) problems.push('colonnes liées : la phrase « table reliée » est affichée alors que rien n\'a été relié');
+    if (!failed.dialog) problems.push('colonnes liées : l\'échec de la jointure n\'est pas dit à la personne');
+    await frame.press('body', 'Escape').catch(() => {});
+    await frame.evaluate(() => { window.__gristStubFailTables = []; });
+
+    // 9c. Table lisible : la jointure est posée AVANT le `change`.
+    await frame.click('#tile-dimension');
+    await frame.press('#tile-dimension', 'Control+A');
+    await frame.type('#tile-dimension', 'personnes.eq');
+    await frame.press('#tile-dimension', 'Enter');
+    const picked = await frame.waitForFunction(() => window.__picks.length === 1 && 'Personnes.Equipe' in (GristBI.store.getState().rows[0] || {}), null, { timeout: 8000 }).then(() => true, () => false);
+    if (!picked) problems.push('colonnes liées : choisir « Personnes.Equipe » n\'a pas posé la jointure ni émis de « change »');
+    await frame.waitForTimeout(300);
+    const done = await frame.evaluate(() => ({
+      picks: window.__picks,
+      value: document.getElementById('tile-dimension').value,
+      busy: document.getElementById('tile-dimension').hasAttribute('aria-busy'),
+      joins: GristBI.store.getState().joins.map((j) => j.alias),
+      note: document.getElementById('tile-link-note').hidden ? '' : document.getElementById('tile-link-note').textContent,
+      rows: GristBI.store.getState().rows.length
+    }));
+    if (done.picks.length !== 1 || done.picks[0].value !== 'Personnes.Equipe' || !done.picks[0].has || done.picks[0].joins !== 2) problems.push('colonnes liées : « change » = ' + JSON.stringify(done.picks) + ' (un seul attendu, après la jointure)');
+    if (done.value !== 'Personnes.Equipe' || done.busy) problems.push('colonnes liées : le champ vaut « ' + done.value + ' »' + (done.busy ? ' et reste occupé' : ''));
+    if (done.joins.join() !== 'Clients,Personnes') problems.push('colonnes liées : jointures « ' + done.joins.join() + ' » au lieu de « Clients,Personnes »');
+    if (!/Personnes/.test(done.note)) problems.push('colonnes liées : la phrase « table reliée » est absente ou ne nomme pas la table : « ' + done.note + ' »');
+    await frame.click('#tile-dimension'); // rouvre la liste : elle est refaite d'après les options d'AUJOURD'HUI (la jointure posée), jamais celle de la frappe d'avant
+    const again = await listOf();
+    if (again.options.some((o) => o.pending && /^Personnes\./.test(o.value)) || !optionOf(again, 'Personnes.Prenom')) problems.push('colonnes liées : une fois reliée, Personnes est encore proposée « à relier » ou a disparu : ' + JSON.stringify(again.options.filter((o) => /^Personnes\./.test(o.value))));
+    await frame.press('#tile-dimension', 'Escape');
+    await frame.click('#submit-tile');
+    const drawnTile = await frame.waitForFunction(() => GristBI.store.getState().tiles.some((tile) => tile.dimension === 'Personnes.Equipe'), null, { timeout: 8000 }).then(() => true, () => false);
+    if (!drawnTile) problems.push('colonnes liées : la tuile par « Personnes.Equipe » n\'a pas été ajoutée');
+    else {
+      await frame.waitForTimeout(900);
+      const chart = await frame.evaluate(async () => {
+        await GristBI.charts.whenSettled();
+        const tile = GristBI.store.getState().tiles.find((tl) => tl.dimension === 'Personnes.Equipe');
+        const el = document.querySelector('.tile[data-tile-id="' + tile.id + '"] .tile-chart');
+        const inst = el && window.echarts ? echarts.getInstanceByDom(el) : null;
+        const opt = inst ? inst.getOption() : null;
+        const names = opt ? [].concat((opt.xAxis && opt.xAxis[0] && opt.xAxis[0].data) || [], (opt.yAxis && opt.yAxis[0] && opt.yAxis[0].data) || []).map(String).sort() : null;
+        return { names };
+      });
+      if (!chart.names || chart.names.join() !== 'Alpha,Beta,Gamma') problems.push('colonnes liées : la tuile ne montre pas les équipes de Personnes : ' + JSON.stringify(chart.names));
+    }
+    if (!problems.some((p) => /colonnes liées/.test(p))) verified.push('colonnes liées : listes rangées par table, table illisible = choix annulé sans « change » ni jointure, table lisible = jointure posée AVANT le « change », tuile par « Personnes.Equipe » dessinée');
+    }
   } catch (e) {
     problems.push('essai interrompu : ' + String((e && e.message) || e).slice(0, 240));
   } finally {
@@ -853,6 +962,8 @@ async function startScenario(browser, origin, { mode }) {
   try {
     report('page directe', await scenario(browser, origin, { name: 'direct', url: '/index.html', framed: false }));
     report('cadre isolé (sandbox="allow-scripts allow-downloads")', await scenario(browser, origin, { name: 'cadre', url: '/__frame.html', framed: true }));
+    // `TEST_BROWSER_QUICK=1` : seulement les deux scénarios ci-dessus (page directe, cadre isolé), pour travailler une étape sans rejouer le reste. Jamais pour fusionner.
+    if (process.env.TEST_BROWSER_QUICK) { await browser.close(); server.close(); process.exit(failed ? 1 : 0); }
 
     // Règle S8 : le relais des appels bloqués. Hébergée : « relais actif » puis, pour ce que la politique bloque, l'HÔTE seul. Seule : rien. Sans la ligne : rien.
     const relayText = (r) => JSON.stringify(r.messages);

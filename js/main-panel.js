@@ -18,7 +18,7 @@
     refLineSelect, refValueInput, resetDrillLevels, resetRadarAxes, seriesSelect, setColumnsPicker, setDrillLevels,
     setNumberFormatForm, setRadarAxes, showFormErrors, showPctCheckbox, smallMultiplesCheckbox, sortSelect,
     sparklineCheckbox, stackPercentCheckbox, stackedCheckbox, startColumnSelect, stopEditTile, store, submitTileBtn,
-    targetColumnSelect, targetInput, tileAdviceEl, tileCompleteEl, tileCompleteListEl, tileCompleteLiveEl,
+    targetColumnSelect, targetInput, tileAdviceEl, tileLinkNoteEl, tileCompleteEl, tileCompleteListEl, tileCompleteLiveEl,
     tileJoinEl, tileJoinListEl, tileJoinDoneEl,
     tilePagesEl, tilePagesListEl, tilePagesLiveEl,
     columnPickEl, columnProfileEl, columnUsedEl, columnEmptyEl, columnListEl, columnLiveEl, tilePanel, tilePanelCloseBtn, tilePanelTitle, tilePreviewEl,
@@ -581,6 +581,7 @@
     addTileOpenBtn.setAttribute('aria-expanded', 'true');
     S.submitAttempted = false;
     clearFormErrors();
+    hideLinkNote();
     renderTypeCards();
     renderCompletion();
     renderJoin();
@@ -596,10 +597,17 @@
     });
   }
 
+  // La phrase qui dit qu'un choix de colonne vient de relier une table (js/main-session.js:ensureColumnJoined) : valable le temps d'un panneau.
+  function hideLinkNote() {
+    tileLinkNoteEl.hidden = true;
+    tileLinkNoteEl.textContent = '';
+  }
+
   function closeTilePanel(returnFocus) {
     if (tilePanel.hidden) { if (S.editingTileId) stopEditTile(); return; }
     if (S.editingTileId) stopEditTile();
     tilePanel.hidden = true;
+    hideLinkNote();
     hideCompletion();
     hideJoin();
     hidePages();

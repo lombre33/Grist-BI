@@ -210,6 +210,8 @@
         return Object.keys(tables).filter((id) => !id.startsWith('_grist_'));
       },
       async fetchTable(tableId) {
+        // `window.__gristStubFailTables` (liste de noms) : ces tables sont illisibles (règle d'accès, table disparue) — la lecture d'une table jointe échoue.
+        if (Array.isArray(window.__gristStubFailTables) && window.__gristStubFailTables.indexOf(tableId) !== -1) throw new Error('table illisible (simulation)');
         return tables[tableId] ? cloneColumnar(tables[tableId]) : { id: [] };
       },
       async applyUserActions(actions) {
