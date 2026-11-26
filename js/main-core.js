@@ -437,6 +437,9 @@
   // « Que faire avec cette colonne ? » (étape « Choisir » du panneau, js/advice-column.js).
   const tileColumnEl = document.getElementById('tile-column');
   const columnPickEl = document.getElementById('tile-column-pick');
+  const columnTableField = document.getElementById('tile-column-table-field');
+  const columnTablesEl = document.getElementById('tile-column-tables');
+  const columnTableNoteEl = document.getElementById('tile-column-table-note');
   const columnProfileEl = document.getElementById('tile-column-profile');
   const columnUsedEl = document.getElementById('tile-column-used');
   const columnEmptyEl = document.getElementById('tile-column-empty');
@@ -712,7 +715,7 @@
     sparklineField, stackField, stackPercentCheckbox, stackPercentField, stackedCheckbox, startColumnField,
     startColumnSelect, store, styleOptionsEl, submitTileBtn, suggestDateHierarchyBtn, tableSelectInput,
     targetColumnField, targetColumnSelect, targetField, targetInput, thresholdsField, tileAdviceEl, tileColumnsField, tileCompleteEl, tileCompleteListEl, tileCompleteLiveEl,
-    tileColumnEl, columnPickEl, columnProfileEl, columnUsedEl, columnEmptyEl, columnListEl, columnLiveEl,
+    tileColumnEl, columnPickEl, columnTableField, columnTablesEl, columnTableNoteEl, columnProfileEl, columnUsedEl, columnEmptyEl, columnListEl, columnLiveEl,
     tileJoinEl, tileJoinListEl, tileJoinDoneEl,
     tilePagesEl, tilePagesListEl, tilePagesLiveEl,
     tileColumnsList, tilePanel, tilePanelCloseBtn, tilePanelTitle, tilePreviewEl, tilePreviewEmptyEl, tileTextField,

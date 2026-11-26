@@ -29,7 +29,7 @@
   Object.assign(parts, {
     autoTileTitle, availableColumns, blendJoinColumns, columnOptions, clearFormColumns, formColumnOptions, formRows, refreshFormColumns, createDrillLevelSelect, createRadarAxisSelect, fillCombobox,
     formHasNoDimension, genTileId, inferColumnKind, isRadarColumnsMode, isWordCloudSplitMode, numberFormatFromForm,
-    numericColumns, readColumnsOrder, readColumnsPicker, refreshColumnSelects, renderColumnsPicker, resetDrillLevels,
+    fillColumnPick, numericColumns, readColumnsOrder, readColumnsPicker, refreshColumnSelects, renderColumnsPicker, resetDrillLevels,
     resetRadarAxes, setColumnsPicker, setNumberFormatForm, showError, showNotice, supportsLevels, updateDrillLevelsUI,
     updateNumberFormatUI, updatePaletteSwatch, updateRadarAxesUI, updateRadarEntityValueOptions,
     updateSuggestDateHierarchyVisibility, withDateHierarchies
@@ -124,8 +124,8 @@
   // colonne sont désormais des comboboxes avec autocomplétion (demande explicite de l'utilisateur),
   // plus de <select> brut. Le nom `fillCombobox` (plutôt que l'ancien `fillSelect`) reflète ça —
   // gardé comme petite fonction dédiée pour que les sites d'appel restent lisibles.
-  function fillCombobox(input, options, { blankLabel } = {}) {
-    input.setOptions(options, { blankLabel: blankLabel || null });
+  function fillCombobox(input, options, { blankLabel, keepEmpty } = {}) {
+    input.setOptions(options, { blankLabel: blankLabel || null, keepEmpty: !!keepEmpty });
   }
 
   // Les listes de choix du FORMULAIRE de tuile, remplies d'après les lignes de la table qu'il lit (`formRows`, ou `rows` quand on les donne : un
@@ -163,16 +163,25 @@
     // Les listes de choix de colonne portent aussi celles des tables liées (columnOptions) ; `cols` ne sert plus qu'aux listes qui n'en proposent pas.
     const choices = columnOptions(rows);
     refreshFormColumns(S.formTable ? formRows() : rows);
-    // « Que faire avec cette colonne ? » : les colonnes de la table (sans les dérivées d'une date) ; une colonne choisie sur la table
-    // d'AVANT (autres lignes, même du même nom), ou qui a disparu, n'est plus une réponse : champ et résultats sont vidés.
-    // Les colonnes d'une table liée (pas encore jointe) y sont aussi : la choisir pose la jointure d'abord (`prepare`), puis la question est posée sur les lignes jointes.
-    const pickableIds = new Set(GristBI.adviceColumn ? GristBI.adviceColumn.pickableColumns(cols) : cols);
-    const pickable = choices.filter((o) => (typeof o === 'string' ? pickableIds.has(o) : o.pending || pickableIds.has(o.value)));
-    fillCombobox(columnPickEl, pickable);
-    const pickableValues = pickable.map((o) => (typeof o === 'string' ? o : o.value));
-    if (columnPickEl.value && (pickableValues.indexOf(columnPickEl.value) === -1 || (S.columnHelperRows && S.columnHelperRows !== rows))) { columnPickEl.value = ''; hideColumnResults(); }
+    fillColumnPick(rows, cols, choices);
     renderFilterColumns(rows);
     updateAdvancedFilterFieldsForColumn(rows);
+  }
+
+  // « Que faire avec cette colonne ? » : les colonnes de la table de travail (sans les dérivées d'une date) ; une colonne choisie sur la table
+  // d'AVANT (autres lignes, même du même nom), ou qui a disparu, n'est plus une réponse : champ et résultats sont vidés.
+  // Les colonnes d'une table liée (pas encore jointe) y sont aussi : la choisir pose la jointure d'abord (`prepare`), puis la question est posée sur les lignes jointes.
+  // Quand une AUTRE table est choisie dans ce bloc (`S.columnTable`, lot 3C), le champ porte les colonnes de cette table (js/main-panel.js:refreshColumnPick) :
+  // les lignes de la table de travail n'y touchent pas.
+  function fillColumnPick(rows, cols, choices) {
+    if (S.columnTable) return;
+    cols = cols || availableColumns(rows);
+    choices = choices || columnOptions(rows);
+    const pickableIds = new Set(GristBI.adviceColumn ? GristBI.adviceColumn.pickableColumns(cols) : cols);
+    const pickable = choices.filter((o) => (typeof o === 'string' ? pickableIds.has(o) : o.pending || pickableIds.has(o.value)));
+    fillCombobox(columnPickEl, pickable, { keepEmpty: true });
+    const pickableValues = pickable.map((o) => (typeof o === 'string' ? o : o.value));
+    if (columnPickEl.value && (pickableValues.indexOf(columnPickEl.value) === -1 || (S.columnHelperRows && S.columnHelperRows !== rows))) { columnPickEl.value = ''; hideColumnResults(); }
   }
 
   // Vide tous les champs de COLONNE du formulaire : changer la table que lit la tuile rend celles d'avant sans objet (une colonne du même nom dans une

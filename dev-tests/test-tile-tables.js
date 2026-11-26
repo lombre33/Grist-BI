@@ -412,7 +412,7 @@ console.log(`OK tuile et table — ${seen} versions fautives vues par les vérif
   console.log(`OK menu Filtre et table — ${filterSeen} versions fautives vues par les vérifications`);
 
   // Une autre table que celle de travail : la table de travail est remise à zéro du côté de la session.
-  ok(/S\.formTable = ''; S\.filterTable = ''; store\.setWorkingTable\(tableId\);/.test(session), 'un changement de table de travail remet la table du filtre à la table de travail');
+  ok(/S\.formTable = ''; S\.filterTable = ''; (?:resetColumnTable\(\); )?store\.setWorkingTable\(tableId\);/.test(session), 'un changement de table de travail remet la table du filtre à la table de travail');
   ok(!/S\.formTable = ''; store\.setWorkingTable/.test(session), 'aucune remise à zéro de la table de travail ne laisse le filtre sur l\'ancienne');
 
   // Le balisage, les références du DOM, la règle de masquage (piège n°10) et les textes.

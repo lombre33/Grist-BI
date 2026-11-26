@@ -87,14 +87,21 @@
   // Ce qu'on peut faire de `column` : `{ ok: true, column, role, roleKey, roleVars, usedBy, items, covered, missing, emptyKey }` ou
   // `{ ok: false, reason: 'rows' | 'column' }` (aucune ligne, colonne inconnue). `items` = les propositions de js/advice-complete.js (trois au plus),
   // `covered` = celles que le tableau de bord montre déjà, `emptyKey` = pourquoi la liste est vide (`''` quand elle ne l'est pas).
+  // `opts.table` (lot 3C, 26/11/2026) : les lignes sont celles d'une AUTRE table que la table de travail — l'appelant ne passe alors que les tuiles
+  // qui lisent cette table (`js/advice-tables.js:tilesOf`), les types Grist de SES colonnes (ou rien : jamais le registre de la table de travail,
+  // qui dirait qu'une colonne de même nom est une Référence) et chaque proposition rend `table` + `tileData.table`, comme `completeTable` le fait.
   function describe(rows, tiles, column, opts) {
     const o = opts || {};
     if (!Array.isArray(rows) || !rows.length) return { ok: false, reason: 'rows' };
-    const profile = advice.profileColumns(rows, undefined, o.columnInfo).find((p) => p.id === column);
+    const other = text(o.table);
+    const columnInfo = other ? (o.columnInfo || {}) : o.columnInfo;
+    const profile = advice.profileColumns(rows, undefined, columnInfo).find((p) => p.id === column);
     if (!profile) return { ok: false, reason: 'column' };
     const role = roleOf(profile);
-    const result = complete.complete(rows, tiles, { column, t: o.t, lang: o.lang, columnInfo: o.columnInfo, limit: o.limit > 0 ? o.limit : DEFAULT_LIMIT });
-    const items = result.items;
+    const result = complete.complete(rows, tiles, { column, t: o.t, lang: o.lang, columnInfo, limit: o.limit > 0 ? o.limit : DEFAULT_LIMIT });
+    const items = other
+      ? result.items.map((item) => Object.assign({}, item, { table: other, tileData: isObject(item.tileData) ? Object.assign({}, item.tileData, { table: other }) : item.tileData }))
+      : result.items;
     return {
       ok: true,
       column,

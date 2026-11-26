@@ -1748,6 +1748,228 @@ async function welcomeScenario(browser, origin, { framed }) {
   return { problems, verified };
 }
 
+/**
+ * « Que faire avec cette colonne ? » choisit sa table (lot 3C, 26/11/2026), dans la vraie page, sous sa politique, avec de VRAIS gestes. Le document : `Ventes`
+ * (table de travail) et `Activite`, qui ont toutes deux une colonne `Region` ; une tuile de `Ventes` lit `Region` :
+ *  - deux boutons de table dans le bloc (la table de travail enfoncée) ; la liste des colonnes est celle de la table de travail ;
+ *  - un VRAI clic sur « Activite » : champ et résultats vidés, la phrase de la table, les colonnes d'`Activite` (jamais celles de `Ventes`), le focus reste
+ *    sur le bouton ;
+ *  - `Region` dans `Ventes` est lue par une tuile, dans `Activite` par aucune (une tuile d'une autre table ne répond pas à la question) ;
+ *  - choisir `Equipe` (frappe + Entrée) : la phrase du rôle, des cartes qui disent leur table, un VRAI clic sur « Ajouter » pose UNE tuile qui porte
+ *    `table: 'Activite'` (60 lignes, badge de table, UNE seule lecture d'`Activite` en tout), la liste se recalcule, le focus reste dans le panneau ;
+ *  - revenir à `Ventes` rend ses colonnes ; fermer puis rouvrir le panneau oublie le choix de table ;
+ *  - une table illisible : la phrase le dit, aucune colonne, rien ne casse (avertissement en console, jamais une erreur).
+ */
+async function columnTableScenario(browser, origin, { framed }) {
+  const problems = [];
+  const verified = [];
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const fixture = suggestFixture();
+  // `Region` existe dans les deux tables : la même colonne, deux tables, une seule lue par une tuile.
+  fixture.Activite.Region = fixture.Activite.Equipe.slice();
+  fixture._grist_Tables_column.id.push(fixture._grist_Tables_column.id.length + 1);
+  fixture._grist_Tables_column.parentId.push(2);
+  fixture._grist_Tables_column.colId.push('Region');
+  fixture._grist_Tables_column.type.push('Text');
+  fixture._grist_Tables_column.widgetOptions.push('');
+  await context.addInitScript((fx) => { window.__gristStubPreseed = fx; }, fixture);
+  await context.route((u) => u.hostname !== '127.0.0.1', (route) => {
+    const u = new URL(route.request().url());
+    if (u.hostname === 'docs.getgrist.com' && u.pathname === '/grist-plugin-api.js') route.fulfill({ status: 200, contentType: 'text/javascript', body: gristApiBody() });
+    else { problems.push('requête vers un autre site : ' + u.origin + u.pathname); route.abort(); }
+  });
+  const page = await context.newPage();
+  const warnings = [];
+  page.on('console', (m) => {
+    if (m.type() === 'error') problems.push('console : ' + m.text().slice(0, 240));
+    if (m.type() === 'warning') warnings.push(m.text());
+  });
+  page.on('pageerror', (e) => problems.push('exception de page : ' + String(e.message || e).slice(0, 240)));
+  page.on('requestfailed', (r) => {
+    if (new URL(r.url()).hostname !== '127.0.0.1') return;
+    const text = (r.failure() && r.failure().errorText) || 'cause inconnue';
+    if (text !== 'net::ERR_ABORTED') problems.push('requête échouée : ' + r.url().replace(origin, '') + ' (' + text + ')');
+  });
+  page.on('response', (r) => { if (r.status() >= 400) problems.push('réponse ' + r.status() + ' : ' + r.url().replace(origin, '')); });
+  let frame;
+  const start = async (failTables) => {
+    if (failTables) await context.addInitScript((names) => { window.__gristStubFailTables = names; }, failTables);
+    await page.goto(origin + (framed ? '/__frame.html' : '/index.html'), { waitUntil: 'load' });
+    frame = page.mainFrame();
+    if (framed) { await page.waitForSelector('#app'); frame = await (await page.$('#app')).contentFrame(); }
+    await frame.waitForFunction(
+      () => typeof window.grist === 'object' && window.GristBI && GristBI.store && GristBI.store.getState().rows.length > 0 && GristBI.mainParts && GristBI.mainParts.S.linkSchema instanceof Map,
+      null, { timeout: 25000 }
+    );
+    await frame.evaluate(() => {
+      if (document.body.dataset.mode !== 'edit') document.getElementById('mode-toggle').click();
+      GristBI.store.addTile({ id: 'v1', type: 'bar', dimension: 'Region', measure: 'Montant', aggFn: 'sum' });
+      GristBI.openTilePanel({ step: 'choose' });
+    });
+    await frame.click('#tile-column > summary');
+    await frame.waitForFunction(() => document.querySelectorAll('#tile-column-tables .filter-table-btn').length === 2, null, { timeout: 8000 }).catch(() => {});
+  };
+  const state = () => frame.evaluate(() => {
+    const note = document.getElementById('tile-column-table-note');
+    const active = document.activeElement;
+    return {
+      field: !document.getElementById('tile-column-table-field').hidden,
+      pills: Array.from(document.querySelectorAll('#tile-column-tables .filter-table-btn')).map((b) => b.dataset.table + (b.getAttribute('aria-pressed') === 'true' ? '*' : '')).join(','),
+      note: note.hidden ? '' : note.textContent,
+      value: document.getElementById('tile-column-pick').value,
+      cards: document.querySelectorAll('#tile-column-list .complete-card').length,
+      profile: document.getElementById('tile-column-profile').textContent,
+      used: document.getElementById('tile-column-used').textContent,
+      focus: active && active.dataset && active.dataset.table ? 'bouton ' + active.dataset.table : (active ? active.tagName : '')
+    };
+  });
+  const optionsOf = async () => {
+    await frame.click('#tile-column-pick');
+    const names = await frame.evaluate(() => Array.from(document.getElementById('tile-column-pick').nextElementSibling.querySelectorAll('.combobox-option')).map((li) => li.textContent.trim()));
+    // Referme la liste (une liste ouverte reçoit l'Échap avant le panneau) ; sans liste ouverte (aucune colonne), Échap fermerait le panneau : on n'y touche pas.
+    if (await frame.evaluate(() => !document.getElementById('tile-column-pick').nextElementSibling.hidden)) await page.keyboard.press('Escape');
+    return names;
+  };
+  const pick = async (text) => {
+    await frame.click('#tile-column-pick');
+    await page.keyboard.type(text);
+    await page.keyboard.press('Enter');
+  };
+  const sameSet = (a, b) => a.length === b.length && a.every((x) => b.indexOf(x) !== -1);
+  let step = 'démarrage';
+  try {
+    await start();
+    // 1. Deux boutons, la table de travail enfoncée ; ses colonnes.
+    const s0 = await state();
+    if (!s0.field || s0.pills !== 'Ventes*,Activite') problems.push('boutons de table : « ' + s0.pills + ' » (champ visible : ' + s0.field + ')');
+    if (s0.note) problems.push('boutons de table : une phrase sur la table de travail : « ' + s0.note + ' »');
+    const working = await optionsOf();
+    if (working.indexOf('Region') === -1 || working.indexOf('Montant') === -1 || working.indexOf('Equipe') !== -1) problems.push('table de travail : colonnes « ' + working.join(',') + ' »');
+    // `Region` : lue par la tuile v1 de Ventes.
+    await pick('Regi');
+    await frame.waitForFunction(() => /\d/.test(document.getElementById('tile-column-used').textContent), null, { timeout: 8000 }).catch(() => {});
+    const w = await state();
+    if (w.value !== 'Region' || !/1/.test(w.used)) problems.push('table de travail : « Region » est lue par une tuile, le bloc dit « ' + w.used + ' »');
+
+    step = 'clic sur Activite';
+    // 2. Un VRAI clic sur « Activite ».
+    await frame.click('#tile-column-tables [data-table="Activite"]');
+    await frame.waitForFunction(() => GristBI.mainParts.S.columnTableRows !== null, null, { timeout: 8000 }).catch(() => {});
+    const a = await state();
+    if (a.pills !== 'Ventes,Activite*') problems.push('Activite choisie : boutons « ' + a.pills + ' »');
+    if (a.value || a.cards || a.profile || a.used) problems.push('Activite choisie : le champ ou les résultats de la table d\'avant restent : ' + JSON.stringify(a));
+    if (!/Activite/.test(a.note)) problems.push('Activite choisie : la phrase ne dit pas la table : « ' + a.note + ' »');
+    if (a.focus !== 'bouton Activite') problems.push('Activite choisie : le focus a quitté le bouton cliqué (' + a.focus + ')');
+    const cols = await optionsOf();
+    if (!sameSet(cols, ['Equipe', 'Statut', 'Duree_h', 'Cout', 'Region'])) problems.push('Activite choisie : colonnes « ' + cols.join(',') + ' » (celles d\'Activite seulement attendues)');
+    // `Region` d'Activite : aucune tuile d'Activite ne la lit (celle de Ventes ne compte pas).
+    await pick('Regi');
+    await frame.waitForSelector('#tile-column-list button[data-column-add]', { state: 'attached', timeout: 8000 }).catch(() => {});
+    await frame.waitForTimeout(300);
+    const r = await state();
+    if (r.value !== 'Region' || r.used) problems.push('Activite : « Region » ne doit pas compter la tuile de Ventes (« ' + r.used + ' »)');
+
+    step = 'Equipe et Ajouter';
+    // 3. `Equipe` : cartes qui disent leur table, un VRAI clic sur « Ajouter ».
+    await pick('Equi');
+    const picked = await frame.waitForFunction(() => document.getElementById('tile-column-pick').value === 'Equipe' && document.querySelectorAll('#tile-column-list .complete-card').length > 0, null, { timeout: 8000 }).then(() => true, () => false);
+    if (!picked) problems.push('Activite : aucune carte après le choix d\'« Equipe »');
+    else {
+      const first = await frame.evaluate(() => ({
+        profile: document.getElementById('tile-column-profile').textContent,
+        cards: Array.from(document.querySelectorAll('#tile-column-list .complete-card')).map((li) => ({
+          table: (li.querySelector('.complete-card-table') || {}).textContent || '',
+          aria: li.querySelector('button').getAttribute('aria-label') || '',
+          preview: !!li.querySelector('.complete-preview svg') && li.querySelector('.complete-preview svg').children.length > 0
+        })),
+        tiles: GristBI.store.getState().tiles.length,
+        loads: (window.__gristStubFetches || {}).Activite || 0,
+        inStore: Array.isArray(GristBI.store.getState().tableRows.Activite)
+      }));
+      if (!/Equipe/.test(first.profile)) problems.push('Equipe : la phrase du rôle ne nomme pas la colonne : « ' + first.profile + ' »');
+      if (first.cards.length < 1 || first.cards.length > 3) problems.push('Equipe : ' + first.cards.length + ' cartes (1 à 3 attendues)');
+      first.cards.forEach((c) => {
+        if (!/Activite/.test(c.table) || !/Activite/.test(c.aria)) problems.push('Equipe : une carte ne dit pas sa table : ' + JSON.stringify(c));
+        if (!c.preview) problems.push('Equipe : l\'aperçu d\'une carte est vide');
+      });
+      if (first.inStore) problems.push('Equipe : la lecture d\'Activite est entrée dans le store avant qu\'une tuile la demande');
+      await frame.click('#tile-column-list button[data-column-add="0"]');
+      await frame.waitForFunction((n) => GristBI.store.getState().tiles.length === n + 1, first.tiles, { timeout: 5000 }).catch(() => {});
+      await frame.waitForFunction(() => Array.isArray(GristBI.store.getState().tableRows.Activite), null, { timeout: 8000 }).catch(() => {});
+      await frame.waitForTimeout(700);
+      const after = await frame.evaluate(() => {
+        const st = GristBI.store.getState();
+        const added = st.tiles.filter((tl) => tl.table === 'Activite');
+        const active = document.activeElement;
+        const el = added[0] ? document.querySelector('.tile[data-tile-id="' + added[0].id + '"]') : null;
+        const badge = el && el.querySelector('.tile-table');
+        return {
+          tiles: st.tiles.length, added: added.length, reads: added[0] ? JSON.stringify(added[0]).indexOf('Equipe') !== -1 : false,
+          rows: added[0] ? GristBI.data.rowsForTile(added[0], st).length : -1, loads: (window.__gristStubFetches || {}).Activite || 0,
+          badge: badge && !badge.hidden ? badge.textContent : '', live: document.getElementById('tile-column-live').textContent,
+          used: document.getElementById('tile-column-used').textContent,
+          pills: Array.from(document.querySelectorAll('#tile-column-tables .filter-table-btn')).map((b) => b.dataset.table + (b.getAttribute('aria-pressed') === 'true' ? '*' : '')).join(','),
+          focusInPanel: !!(active && active.closest && active.closest('#tile-panel')), focusTag: active ? active.tagName : ''
+        };
+      });
+      if (after.tiles !== first.tiles + 1 || after.added !== 1) problems.push('Equipe : « Ajouter » ' + first.tiles + ' -> ' + after.tiles + ' tuiles, ' + after.added + ' lisant Activite (une seule attendue ; un clic perdu ?)');
+      if (!after.reads) problems.push('Equipe : la tuile posée ne lit pas « Equipe »');
+      if (after.rows !== 60) problems.push('Equipe : la tuile posée lit ' + after.rows + ' lignes (60 attendues)');
+      if (after.loads !== 1) problems.push('Equipe : Activite lue ' + after.loads + ' fois en tout (une seule attendue)');
+      if (!/Activite/.test(after.badge)) problems.push('Equipe : le badge de table de la tuile posée est « ' + after.badge + ' »');
+      if (!/1/.test(after.used)) problems.push('Equipe : la tuile posée n\'est pas comptée (« ' + after.used + ' »)');
+      if (!after.live) problems.push('Equipe : aucune annonce écrite');
+      if (after.pills !== 'Ventes,Activite*') problems.push('Equipe : le choix de table a changé après l\'ajout (« ' + after.pills + ' »)');
+      if (!after.focusInPanel || after.focusTag === 'BODY') problems.push('Equipe : le focus a quitté le panneau (' + after.focusTag + ')');
+    }
+
+    step = 'retour à Ventes';
+    // 4. Retour à Ventes : ses colonnes, plus de phrase de table.
+    await frame.click('#tile-column-tables [data-table="Ventes"]');
+    await frame.waitForTimeout(300);
+    const back = await state();
+    const backCols = await optionsOf();
+    if (back.pills !== 'Ventes*,Activite' || back.note || back.value || back.cards) problems.push('retour à Ventes : ' + JSON.stringify(back));
+    if (backCols.indexOf('Montant') === -1 || backCols.indexOf('Equipe') !== -1) problems.push('retour à Ventes : colonnes « ' + backCols.join(',') + ' »');
+
+    step = 'réouverture';
+    // 5. Le choix de table est oublié à la fermeture du panneau.
+    await frame.click('#tile-column-tables [data-table="Activite"]');
+    await frame.waitForFunction(() => GristBI.mainParts.S.columnTableRows !== null, null, { timeout: 8000 }).catch(() => {});
+    await frame.evaluate(() => { GristBI.closeTilePanel(false); GristBI.openTilePanel({ step: 'choose' }); });
+    // Le bloc dépliable garde son état d'une ouverture à l'autre : on le déplie par le geste seulement s'il est replié.
+    if (await frame.evaluate(() => !document.getElementById('tile-column').open)) await frame.click('#tile-column > summary');
+    await frame.waitForFunction(() => document.querySelectorAll('#tile-column-tables .filter-table-btn').length === 2, null, { timeout: 8000 }).catch(() => {});
+    const reopened = await state();
+    if (reopened.pills !== 'Ventes*,Activite' || reopened.note || reopened.value || reopened.cards) problems.push('réouverture du panneau : le choix de table est resté : ' + JSON.stringify(reopened));
+    const reopenedCols = await optionsOf();
+    if (reopenedCols.indexOf('Montant') === -1 || reopenedCols.indexOf('Equipe') !== -1) problems.push('réouverture du panneau : colonnes « ' + reopenedCols.join(',') + ' »');
+    if (!problems.length) verified.push('« Que faire avec cette colonne ? » choisit sa table : deux boutons, colonnes d\'Activite seules, « Region » comptée dans Ventes et pas dans Activite, cartes qui disent leur table, un clic réel = une tuile qui lit Activite (1 lecture), retour à Ventes, choix oublié à la réouverture');
+
+    step = 'table illisible';
+    // 6. Une table illisible : la phrase le dit, aucune colonne, rien ne casse.
+    await start(['Activite']);
+    await frame.click('#tile-column-tables [data-table="Activite"]');
+    await frame.waitForFunction(() => /Activite/.test(document.getElementById('tile-column-table-note').textContent) && !/Lecture/.test(document.getElementById('tile-column-table-note').textContent), null, { timeout: 12000 }).catch(() => {});
+    const bad = await state();
+    const badCols = await optionsOf();
+    if (bad.pills !== 'Ventes,Activite*' || !/Activite/.test(bad.note) || !/lue/.test(bad.note)) problems.push('table illisible : la phrase ne le dit pas : ' + JSON.stringify(bad));
+    if (badCols.length || bad.cards) problems.push('table illisible : ' + badCols.length + ' colonne(s) proposée(s), ' + bad.cards + ' carte(s)');
+    await frame.click('#tile-column-tables [data-table="Ventes"]');
+    await frame.waitForTimeout(300);
+    const okAgain = await optionsOf();
+    if (okAgain.indexOf('Montant') === -1) problems.push('table illisible : revenir à Ventes ne rend pas ses colonnes (« ' + okAgain.join(',') + ' »)');
+    await frame.waitForTimeout(300);
+    if (!warnings.some((w) => /illisible pour les suggestions/.test(w))) problems.push('table illisible : aucun avertissement « illisible pour les suggestions » en console');
+    if (!problems.some((p) => /table illisible/.test(p))) verified.push('table illisible : la phrase le dit, aucune colonne, revenir à Ventes rend ses colonnes, un avertissement en console');
+  } catch (e) {
+    problems.push('essai interrompu (' + step + ') : ' + String((e && e.message) || e).slice(0, 300));
+  } finally {
+    await context.close();
+  }
+  return { problems, verified };
+}
+
 (async () => {
   const server = await startServer();
   const origin = 'http://127.0.0.1:' + server.address().port;
@@ -1786,6 +2008,8 @@ async function welcomeScenario(browser, origin, { framed }) {
       report('suggestions sur tout le document (cadre isolé)', await suggestScenario(browser, origin, { framed: true }), { violations: 'aucune erreur de console' });
       report('accueil sur tout le document (page directe)', await welcomeScenario(browser, origin, { framed: false }), { violations: 'aucune erreur de console' });
       report('accueil sur tout le document (cadre isolé)', await welcomeScenario(browser, origin, { framed: true }), { violations: 'aucune erreur de console' });
+      report('une autre table pour « Que faire avec cette colonne ? » (page directe)', await columnTableScenario(browser, origin, { framed: false }), { violations: 'aucune erreur de console' });
+      report('une autre table pour « Que faire avec cette colonne ? » (cadre isolé)', await columnTableScenario(browser, origin, { framed: true }), { violations: 'aucune erreur de console' });
       await browser.close(); server.close(); process.exit(failed ? 1 : 0);
     }
     report('page directe', await scenario(browser, origin, { name: 'direct', url: '/index.html', framed: false }));
@@ -1828,6 +2052,10 @@ async function welcomeScenario(browser, origin, { framed }) {
     // L'accueil sur tout le document (lot 3B, 26/11/2026) : les suggestions des autres tables s'ajoutent à la suite de celles de la table de travail.
     report('accueil sur tout le document (page directe) : cartes d\'une autre table repliées, lecture silencieuse, un clic réel', await welcomeScenario(browser, origin, { framed: false }), { violations: 'aucune erreur de console' });
     report('accueil sur tout le document (cadre isolé)', await welcomeScenario(browser, origin, { framed: true }), { violations: 'aucune erreur de console' });
+
+    // « Que faire avec cette colonne ? » choisit sa table (lot 3C, 26/11/2026) : les colonnes et les propositions d'une autre table.
+    report('une autre table pour « Que faire avec cette colonne ? » (page directe) : boutons de table, colonnes d\'Activite, un clic réel', await columnTableScenario(browser, origin, { framed: false }), { violations: 'aucune erreur de console' });
+    report('une autre table pour « Que faire avec cette colonne ? » (cadre isolé)', await columnTableScenario(browser, origin, { framed: true }), { violations: 'aucune erreur de console' });
 
     // La vérification sait-elle échouer ? Sans 'unsafe-eval', l'API de Grist ne s'exécute pas : elle DOIT le dire.
     const strict = await scenario(browser, origin, { name: 'strict', url: '/__strict.html', framed: false });

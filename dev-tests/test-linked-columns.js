@@ -161,6 +161,19 @@ function comboChecks(combobox) {
     eq(input.value, 'Personnes.Equipe', 'une valeur qui n\'est pas une option revient à la dernière valeur valide');
     input.setOptions([ventes('Region')]);
     eq(input.value, 'Region', 'une valeur qui n\'existe plus : la 1re option, comme un <select>');
+    // `keepEmpty` (« Que faire avec cette colonne ? ») : un champ vide le reste, la 1re colonne n'est pas un choix par défaut — et sortir du champ vide ne
+    // la lui rend pas.
+    const empty = setup(['Region', 'Montant'], { keepEmpty: true });
+    eq(empty.input.value, '', 'keepEmpty : un champ vide reste vide');
+    empty.input.fire('blur');
+    eq(empty.input.value, '', 'keepEmpty : sortir d\'un champ vide le laisse vide');
+    empty.input.value = 'Montant';
+    empty.input.setOptions(['Region', 'Montant'], { keepEmpty: true });
+    eq(empty.input.value, 'Montant', 'keepEmpty : un choix valide est gardé');
+    empty.input.setOptions(['Region'], { keepEmpty: true });
+    eq(empty.input.value, 'Region', 'keepEmpty : un choix qui n\'existe plus passe à la 1re option, comme avant (le champ n\'était pas vide)');
+    const noKeep = setup(['Region', 'Montant']);
+    eq(noKeep.input.value, 'Region', 'sans keepEmpty : un champ vide prend la 1re option, comme un <select>');
     const grouped = setup(Array.from({ length: 260 }, (_, i) => ({ value: 'T.c' + i, label: 'c' + i, group: i < 130 ? 'A' : 'B' })));
     grouped.input.fire('focus');
     eq(grouped.list.querySelectorAll('.combobox-option').length, 200, 'une liste rangée par table montre jusqu\'à 200 options');
@@ -290,7 +303,8 @@ async function asyncChecks(combobox) {
     ['une colonne à relier non marquée', "${m.pending ? ' combobox-option-pending' : ''}", "${''}"],
     ['aucun nom accessible complet', 'const label = m.label !== m.value ?', 'const label = false ?'],
     ['un retrait de groupe sur une liste simple', "${m.group ? ' combobox-option-grouped' : ''}", "${' combobox-option-grouped'}"],
-    ['une option sans groupe qui prend un intitulé vide', "group: o.group ? String(o.group) : ''", "group: o.group ? String(o.group) : ' '"]
+    ['une option sans groupe qui prend un intitulé vide', "group: o.group ? String(o.group) : ''", "group: o.group ? String(o.group) : ' '"],
+    ['keepEmpty ignoré : la 1re option d\'office', "const stayEmpty = !!blankLabel || (!!(cfg && cfg.keepEmpty) && inputEl.value === '');", 'const stayEmpty = !!blankLabel;']
   ];
   let seen = 0;
   for (const [label, from, to] of MUTANTS) {
@@ -356,7 +370,7 @@ async function asyncChecks(combobox) {
   ok(/if \(filterJoining\) return;/.test(filters) && /filterJoining = false;/.test(filters), 'menu Filtre : un seul choix à la fois');
   ok(/if \(btn\) pickFilterColumn\(btn\.dataset\.column, btn\);/.test(filters) && /if \(first\) pickFilterColumn\(first\.dataset\.column, first\);/.test(filters), 'menu Filtre : le clic ET Entrée dans la recherche passent par pickFilterColumn');
   ok(/hideFilterLinkNote\(\);[\s\S]{0,260}refreshFilterColumnList\(\);\s*showFilterStep\('columns'\);/.test(filters) && /filterBackBtn\.addEventListener\('click', \(\) => \{ hideFilterLinkNote\(\);/.test(filters), 'menu Filtre : la phrase est retirée à chaque ouverture et au retour aux colonnes');
-  ok(/const pickable = choices\.filter\(\(o\) => \(typeof o === 'string' \? pickableIds\.has\(o\) : o\.pending \|\| pickableIds\.has\(o\.value\)\)\);/.test(fields) && /fillCombobox\(columnPickEl, pickable\);/.test(fields), '« Que faire avec cette colonne ? » : les colonnes à relier sont proposées avec celles de la table (sans les dérivées d\'une date)');
+  ok(/const pickable = choices\.filter\(\(o\) => \(typeof o === 'string' \? pickableIds\.has\(o\) : o\.pending \|\| pickableIds\.has\(o\.value\)\)\);/.test(fields) && /fillCombobox\(columnPickEl, pickable, \{ keepEmpty: true \}\);/.test(fields), '« Que faire avec cette colonne ? » : les colonnes à relier sont proposées avec celles de la table (sans les dérivées d\'une date)');
   ok(/S\.columnsPickerPending = choices\.filter\(\(o\) => typeof o === 'object' && o\.pending\);\s*refreshColumnsPicker\(cols\);/.test(fields), 'table plate : les colonnes à relier sont celles de columnOptions');
   ok(/function columnRows\(\) \{ return Array\.from\(tileColumnsList\.querySelectorAll\('li\[data-col\]:not\(\[data-pending\]\)'\)\); \}/.test(fields) && /function readColumnsOrder\(\) \{ return columnRows\(\)/.test(fields) && /return columnRows\(\)\.filter\(\(li\) => li\.querySelector\('input'\)\.checked\)/.test(fields), 'table plate : ni intitulé ni colonne à relier ne compte comme colonne de la liste');
   ok(/li\.dataset\.pending = '1';/.test(fields) && /head\.className = 'col-group';/.test(fields) && /t\('tileForm\.columns\.pending'/.test(fields), 'table plate : les colonnes à relier ont leur intitulé de table, leur marquage et leur nom accessible');

@@ -417,11 +417,12 @@ console.log(`OK versions fautives — ${seen} versions de js/advice-tables.js vu
   ok(/tilePanel\.complete\.table/.test(panel) && /tilePanel\.complete\.addAriaTable/.test(panel), 'la carte dit sa table, le bouton aussi');
   // « Que faire avec cette colonne ? » et « Ajouter une page entière » ne comptent que les tuiles de la table de travail.
   const pagesBody = panel.slice(panel.indexOf('function renderPages('), panel.indexOf('tilePagesListEl.addEventListener'));
-  const columnBody = panel.slice(panel.indexOf('function columnResultsAreFresh()'), panel.indexOf('function hideColumnResults'));
+  const columnBody = panel.slice(panel.indexOf('function columnContext('), panel.indexOf('function updateColumnTableNote'));
   const helperBody = panel.slice(panel.indexOf('function renderColumnHelper('), panel.indexOf('function renderColumnHelper(') + 2400);
   ok(/tilesOfWorkingTable\(state\)/.test(pagesBody) && !/tilesOfAllPages\(state\)/.test(pagesBody), 'les pages proposées ne lisent que les tuiles de la table de travail');
-  ok(/tilesOfWorkingTable\(state\)/.test(columnBody) && !/tilesOfAllPages\(state\)/.test(columnBody), 'la fraîcheur de la colonne choisie aussi');
-  ok(/tilesOfWorkingTable\(state\)/.test(helperBody) && !/tilesOfAllPages\(state\)/.test(helperBody), 'et « Que faire avec cette colonne ? »');
+  // « Que faire avec cette colonne ? » (lot 3C) : la table de travail ne compte que ses tuiles ; une autre table choisie, que les siennes.
+  ok(/tilesOfWorkingTable\(state\)/.test(columnBody) && /adviceTables\.tilesOf\(tilesOfAllPages\(state\), table, false\)/.test(columnBody), 'le contexte de la colonne choisie : les tuiles de la table de travail, ou celles de l\'autre table choisie seulement');
+  ok(/ctx\.tiles/.test(helperBody) && !/tilesOfAllPages\(state\)/.test(helperBody) && !/tilesOfWorkingTable\(state\)/.test(helperBody), 'et « Que faire avec cette colonne ? » ne lit que ce contexte');
   ok(/const tilesOfWorkingTable = \(state\) =>/.test(panel) && /adviceTables\.tilesOf\(tilesOfAllPages\(state\), workingTableOf\(state\), true\)/.test(panel));
   // La lecture silencieuse : jamais `setTableRows` (une lecture que personne n'a demandée ne redessine pas toutes les tuiles), vidée à chaque changement de table.
   const suggestionBody = session.slice(session.indexOf('function suggestionTable('), session.indexOf('// Lit la table `table` si elle ne l\'est pas encore'));

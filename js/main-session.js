@@ -11,7 +11,7 @@
   const {
     autoMode, availableColumns, blendJoinColumns, blendPrimaryColumnInput, blendSecondaryColumnInput,
     blendSecondaryTableInput, joinsBarEl, joinsListEl, joinsNoteEl, tileLinkNoteEl, closeTilePanel, currentReportAuthorLabel, fillCombobox, genTileId, refreshColumnSelects,
-    render, renderConnectionStatus, retryConnectBtn, setConnectionState, sharedReadOnlyWarning, showError, showNotice,
+    render, renderConnectionStatus, resetColumnTable, retryConnectBtn, setConnectionState, sharedReadOnlyWarning, showError, showNotice,
     store, tableSelectInput, withDateHierarchies
   } = parts;
   const { escapeHtml } = GristBI.data;
@@ -387,6 +387,7 @@
     // Les tuiles qui lisent une autre table la redemandent (les données ont pu changer).
     tileTablesAsked.clear();
     suggestionTables.clear();
+    resetColumnTable(); // « Que faire avec cette colonne ? » : les lignes lues de l'autre table ne sont plus celles du document
     store.clearTableRows();
     ensureTileTables(store.getState());
   }
@@ -426,7 +427,7 @@
     S.currentTableId = tableId;
     currentPrimaryRows = rows;
     if (isNewTable) joinTableCache.clear();
-    if (isNewTable) { tileTablesAsked.clear(); suggestionTables.clear(); S.formTable = ''; S.filterTable = ''; store.setWorkingTable(tableId); } // les autres tables lues appartenaient à l'autre rapport
+    if (isNewTable) { tileTablesAsked.clear(); suggestionTables.clear(); S.formTable = ''; S.filterTable = ''; resetColumnTable(); store.setWorkingTable(tableId); } // les autres tables lues appartenaient à l'autre rapport
     await refreshColumnFormats(tableId, isNewTable);
     if (isNewTable) await refreshLinkSchema(tableId);
     if (isNewTable) {

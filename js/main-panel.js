@@ -21,7 +21,7 @@
     targetColumnSelect, targetInput, tileAdviceEl, tileLinkNoteEl, tileCompleteEl, tileCompleteListEl, tileCompleteLiveEl,
     tileJoinEl, tileJoinListEl, tileJoinDoneEl,
     tilePagesEl, tilePagesListEl, tilePagesLiveEl,
-    columnPickEl, columnProfileEl, columnUsedEl, columnEmptyEl, columnListEl, columnLiveEl, tilePanel, tilePanelCloseBtn, tilePanelTitle, tilePreviewEl,
+    columnPickEl, columnTableField, columnTablesEl, columnTableNoteEl, columnProfileEl, columnUsedEl, columnEmptyEl, columnListEl, columnLiveEl, tilePanel, tilePanelCloseBtn, tilePanelTitle, tilePreviewEl,
     tilePreviewEmptyEl, tileTextInput, tileTitleInput, tileTypeSelect, trendDimensionSelect, typeGridEl,
     typeLineNameEl, updateFormFieldsForType, updateNumberFormatUI, valueLabelsCheckbox, warnPctInput, welcomeAddBtn,
     wordCloudSplitCheckbox, workspaceEl, workspaceMainEl, clearFormColumns, fillCombobox, formRows, refreshFormColumns, tableInput, tableNoteEl,
@@ -34,7 +34,7 @@
   const ensureTableRows = (...args) => parts.ensureTableRows(...args);
   const suggestionTable = (...args) => parts.suggestionTable(...args);
   Object.assign(parts, {
-    closeTilePanel, flashTile, hideColumnResults, openTilePanel, refreshTableField, refreshTilePanelTexts, renderColumnHelper, schedulePreview,
+    closeTilePanel, flashTile, hideColumnResults, openTilePanel, refreshTableField, refreshTilePanelTexts, renderColumnHelper, resetColumnTable, schedulePreview,
     updateAdvancedVisibility, updatePanelTexts, welcomeOtherTables
   });
 
@@ -461,9 +461,100 @@
   S.columnHelperRows = null; // les lignes pour lesquelles les résultats affichés ont été calculés (voir refreshColumnSelects)
 
   function columnResultsAreFresh() {
-    const state = store.getState();
-    return !!columnShown && columnShown.column === columnPickEl.value && columnShown.rows === state.rows
-      && columnShown.lang === GristBI.i18n.getLang() && sameRefs(columnShown.tiles, tilesOfWorkingTable(state));
+    const ctx = columnContext(store.getState());
+    return !!columnShown && columnShown.column === columnPickEl.value && columnShown.table === ctx.table && columnShown.rows === ctx.rows
+      && columnShown.lang === GristBI.i18n.getLang() && sameRefs(columnShown.tiles, ctx.tiles);
+  }
+
+  // --- La table de « Que faire avec cette colonne ? » (lot 3C de « Colonnes de toutes les tables », 26/11/2026) ---------------------------
+  // Des boutons de table, comme dans le menu Filtre (au moins deux tables dans le document) : le choix par défaut est la table de travail ; une
+  // autre table donne SES colonnes (lue en silence, comme pour les suggestions du lot 3A) et des propositions qui ne comptent que les tuiles posées
+  // sur cette table et se posent avec `table`. Le choix est oublié à chaque ouverture et fermeture du panneau, et dès que les lignes lues sont
+  // périmées (changement de table de travail, rechargement des données).
+  S.columnTable = '';       // '' = la table de travail
+  S.columnTableRows = null; // les lignes de l'autre table choisie (`null` tant qu'elle n'est pas lue, ou si elle est illisible ou vide)
+  S.columnTableInfo = {};   // les types Grist de SES colonnes (jamais ceux de la table de travail)
+  let columnTableNames = [];
+  let columnTablesShown = '';
+  let columnTableStatus = ''; // 'loading' | 'ready' | 'failed' | 'empty' ('' = la table de travail)
+  let columnTableToken = 0;   // le dernier choix de table compte (la lecture d'une table peut arriver après un autre clic)
+
+  // Ce sur quoi le bloc raisonne : la table choisie, ses lignes, ses types Grist et les tuiles qui la lisent.
+  function columnContext(state) {
+    const table = S.columnTable;
+    if (!table) return { table: '', rows: state.rows, info: undefined, tiles: tilesOfWorkingTable(state) };
+    return { table, rows: S.columnTableRows, info: S.columnTableInfo, tiles: GristBI.adviceTables ? GristBI.adviceTables.tilesOf(tilesOfAllPages(state), table, false) : [] };
+  }
+
+  function updateColumnTableNote() {
+    const table = S.columnTable;
+    const key = !table ? '' : ({ loading: 'tilePanel.column.tableLoading', failed: 'tilePanel.column.tableFailed', empty: 'tilePanel.column.tableEmpty' }[columnTableStatus] || 'tilePanel.column.tableScope');
+    columnTableNoteEl.hidden = !key;
+    columnTableNoteEl.textContent = key ? t(key, { table }) : '';
+  }
+
+  // Les boutons : reconstruits seulement si la liste des tables change (sinon seul `aria-pressed` bouge, le focus reste sur le bouton cliqué).
+  function renderColumnTables() {
+    const current = S.columnTable || workingTableOf(store.getState());
+    columnTableField.hidden = !GristBI.adviceTables || columnTableNames.length < 2;
+    const key = columnTableNames.join('\u0001');
+    if (key !== columnTablesShown) {
+      columnTablesShown = key;
+      GristBI.safeHtml.setHtml(columnTablesEl, columnTableNames.map((name) => `<button type="button" class="filter-table-btn" data-table="${escapeHtml(name)}" aria-pressed="false">${escapeHtml(name)}</button>`).join(''));
+    }
+    columnTablesEl.querySelectorAll('.filter-table-btn').forEach((btn) => btn.setAttribute('aria-pressed', btn.dataset.table === current ? 'true' : 'false'));
+    updateColumnTableNote();
+  }
+
+  async function loadColumnTables() {
+    let tables = [];
+    try { tables = await GristBI.api.listAvailableTables(); } catch (e) { console.warn('[GristBI] liste des tables illisible (Que faire avec cette colonne ?)', e); }
+    columnTableNames = tables;
+    renderColumnTables();
+  }
+
+  // Le champ « Colonne » porte les colonnes de la table choisie : celles de la table de travail (js/main-fields.js:fillColumnPick, avec les tables
+  // liées), ou celles de l'autre table, sans jointure — aucune tant qu'elle n'est pas lue.
+  function refreshColumnPick() {
+    if (!S.columnTable) { parts.fillColumnPick(store.getState().rows); return; }
+    const rows = S.columnTableRows;
+    fillCombobox(columnPickEl, rows && GristBI.adviceColumn ? GristBI.adviceColumn.pickableColumns(availableColumns(rows)) : [], { keepEmpty: true });
+  }
+
+  async function chooseColumnTable(table) {
+    const next = table && table !== store.getState().workingTable ? table : '';
+    if (next === S.columnTable) return;
+    const token = ++columnTableToken;
+    S.columnTable = next;
+    S.columnTableRows = null;
+    S.columnTableInfo = {};
+    columnTableStatus = next ? 'loading' : '';
+    columnPickEl.value = '';
+    hideColumnResults();
+    renderColumnTables();
+    refreshColumnPick();
+    if (!next) return;
+    const read = await readWithin(suggestionTable(next), SUGGESTION_READ_TIMEOUT_MS);
+    if (token !== columnTableToken || S.columnTable !== next) return;
+    const ok = Array.isArray(read.rows) && read.rows.length > 0;
+    S.columnTableRows = ok ? read.rows : null;
+    S.columnTableInfo = read.columnInfo || {};
+    columnTableStatus = !Array.isArray(read.rows) ? 'failed' : (ok ? 'ready' : 'empty');
+    updateColumnTableNote();
+    refreshColumnPick();
+  }
+
+  // Le choix de table est oublié : à l'ouverture et à la fermeture du panneau, et quand les lignes lues ne sont plus celles du document
+  // (js/main-session.js : changement de table de travail, rechargement des données).
+  function resetColumnTable() {
+    columnTableToken++;
+    const had = S.columnTable !== '';
+    S.columnTable = '';
+    S.columnTableRows = null;
+    S.columnTableInfo = {};
+    columnTableStatus = '';
+    if (had) { columnPickEl.value = ''; hideColumnResults(); parts.fillColumnPick(store.getState().rows); }
+    renderColumnTables();
   }
 
   function hideColumnResults() {
@@ -484,7 +575,8 @@
     const done = () => { if (afterPaint) afterPaint(); };
     const column = columnPickEl.value;
     const state = store.getState();
-    if (!GristBI.adviceColumn || S.editingTileId || !column || !state.rows.length) { hideColumnResults(); done(); return; }
+    const ctx = columnContext(state);
+    if (!GristBI.adviceColumn || S.editingTileId || !column || !ctx.rows || !ctx.rows.length) { hideColumnResults(); done(); return; }
     // Les résultats d'avant se retirent d'abord : ils parleraient de la colonne précédente ou de tuiles qui ont changé.
     columnItems = [];
     columnShown = null;
@@ -495,16 +587,16 @@
     setTimeout(() => {
       if (token !== columnToken || tilePanel.hidden) return; // fermé, rouvert, autre colonne ou déjà recalculé entre-temps
       const lang = GristBI.i18n.getLang();
-      const tiles = tilesOfWorkingTable(state);
-      const result = GristBI.adviceColumn.describe(state.rows, tiles, column, { t, lang, limit: 3 });
+      // Une AUTRE table (`ctx.table`) : ses types Grist, les tuiles posées sur elle, et des propositions qui portent `table`.
+      const result = GristBI.adviceColumn.describe(ctx.rows, ctx.tiles, column, { t, lang, limit: 3, table: ctx.table, columnInfo: ctx.info });
       if (!result.ok) { hideColumnResults(); done(); return; }
-      S.columnHelperRows = state.rows;
-      columnShown = { column, rows: state.rows, lang, tiles };
+      S.columnHelperRows = ctx.rows;
+      columnShown = { column, table: ctx.table, rows: ctx.rows, lang, tiles: ctx.tiles };
       columnItems = result.items;
       columnProfileEl.textContent = t(result.roleKey, result.roleVars);
       columnUsedEl.textContent = result.usedBy ? t(GristBI.adviceColumn.USED_KEY, { n: result.usedBy }) : '';
       columnListEl.textContent = '';
-      fillCards(columnListEl, result.items, state.rows, lang, 'data-column-add');
+      fillCards(columnListEl, result.items, ctx.rows, lang, 'data-column-add');
       columnEmptyEl.hidden = !result.emptyKey;
       columnEmptyEl.textContent = result.emptyKey ? t(result.emptyKey) : '';
       columnLiveEl.textContent = result.items.length ? t('tilePanel.column.found', { n: result.items.length, column }) : t(result.emptyKey);
@@ -513,6 +605,10 @@
   }
 
   columnPickEl.addEventListener('change', () => { if (!columnResultsAreFresh()) renderColumnHelper(); });
+  columnTablesEl.addEventListener('click', (evt) => {
+    const btn = evt.target.closest('.filter-table-btn');
+    if (btn) chooseColumnTable(btn.dataset.table);
+  });
   columnListEl.addEventListener('click', (evt) => {
     const btn = evt.target.closest('button[data-column-add]');
     const item = btn && columnItems[Number(btn.dataset.columnAdd)];
@@ -748,6 +844,8 @@
     }
     tilePanel.hidden = false;
     refreshTableField();
+    resetColumnTable();
+    loadColumnTables();
     workspaceEl.classList.add('panel-open');
     addTileOpenBtn.setAttribute('aria-expanded', 'true');
     S.submitAttempted = false;
@@ -780,6 +878,7 @@
     if (S.formTable) { S.formTable = ''; refreshFormColumns(); }
     tilePanel.hidden = true;
     hideLinkNote();
+    resetColumnTable();
     hideCompletion();
     hideJoin();
     hidePages();
