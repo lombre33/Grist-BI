@@ -1323,10 +1323,13 @@
   // (js/main.js) ne lit que `rows[0]` pour peupler les sélecteurs de colonne, donc une forme de
   // ligne qui varierait selon le résultat du match rendrait les colonnes secondaires invisibles dès
   // que la toute première ligne ne matche pas.
-  function blendRows(primaryRows, secondaryRows, primaryJoinCol, secondaryJoinCol, secondaryTableId) {
+  // `secondaryColumns` (facultatif, chantier « colonnes de toutes les tables », 26/11/2026) : les colonnes de la table secondaire quand ELLE n'a aucune
+  // ligne (ses lignes seules ne les disent pas) ; sans lui, les colonnes de sa 1re ligne, comme avant. `secondaryTableId` sert de préfixe : c'est
+  // l'alias de la jointure (`Clients`, ou `Personnes (Livreur)` quand deux Références visent la même table).
+  function blendRows(primaryRows, secondaryRows, primaryJoinCol, secondaryJoinCol, secondaryTableId, secondaryColumns) {
     const secondaryCols = (secondaryRows && secondaryRows.length)
       ? Object.keys(secondaryRows[0]).filter((k) => k !== 'id')
-      : [];
+      : (Array.isArray(secondaryColumns) ? secondaryColumns.filter((k) => typeof k === 'string' && k !== 'id') : []);
     const bySecondaryKey = new Map();
     // Dernière ligne gagne en cas de clé dupliquée côté secondaire (LEFT JOIN 1-n non géré ici :
     // limite connue documentée dans HYPOTHESES.md — un vrai blending 1-n demanderait d'agréger la
@@ -1338,6 +1341,25 @@
       secondaryCols.forEach((col) => { merged[`${secondaryTableId}.${col}`] = match ? match[col] : null; });
       return merged;
     });
+  }
+
+  // Plusieurs jointures de suite (js/table-graph.js) : `joins` = `[{ alias, table, primaryColumn, secondaryColumn }]` dans l'ordre où elles se
+  // jouent, `tableRows` = `{ [table]: lignes }` (une table illisible est absente ou `null`), `columnsByTable` = `{ [table]: [colonnes] }` pour une
+  // table sans ligne. Chaque jointure part des lignes DÉJÀ jointes : le 2e saut d'une route (`Clients.Pays -> Pays`) lit la colonne que le 1er a
+  // ajoutée. Une jointure dont la table est illisible, ou dont la colonne de départ manque (sa propre route a échoué), est sautée et rendue dans
+  // `failed` (par alias) : le reste s'applique, jamais un tableau de bord vide à cause d'une table. Chaque jointure est un LEFT JOIN sur `id`
+  // (`blendRows`) : une ligne de départ pour une ligne d'arrivée, donc jamais un comptage multiplié.
+  function applyJoins(primaryRows, joins, tableRows, columnsByTable) {
+    let rows = primaryRows || [];
+    const failed = [];
+    (joins || []).forEach((join) => {
+      const secondary = tableRows ? tableRows[join.table] : null;
+      const first = rows[0];
+      const missingKey = first && !Object.prototype.hasOwnProperty.call(first, join.primaryColumn);
+      if (!Array.isArray(secondary) || missingKey) { failed.push(join.alias); return; }
+      rows = blendRows(rows, secondary, join.primaryColumn, join.secondaryColumn, join.alias, columnsByTable ? columnsByTable[join.table] : null);
+    });
+    return { rows, failed };
   }
 
   // Drill-down hiérarchique automatique (ROADMAP.md Tier 2) : dérive Année/Trimestre/Mois à partir
@@ -1426,7 +1448,7 @@
     plainTextOf, TEXT_TILE_MAX, DEFAULT_GOOD_PCT, DEFAULT_WARN_PCT, targetProgress, progressRows,
     sparklineValues, sparklineGeometry, TABLE_TILE_MAX_ROWS, TABLE_EXPORT_MAX_ROWS, tableColumnsOf, cellText,
     compareCells, sortRowsBy, moveInOrder, nextSortDir, tableSheet, sanitizeSheetName, buildWorkbookSheets,
-    measureExportSheet, buildWorkbookSheetsAsync, buildExportPagesAsync, blendRows, deriveDateHierarchyColumns,
+    measureExportSheet, buildWorkbookSheetsAsync, buildExportPagesAsync, blendRows, applyJoins, deriveDateHierarchyColumns,
     commentsForTile, isAccessRuleRefusal, AGGREGATORS
   };
   api.extend = function extend(factory) {

@@ -37,6 +37,7 @@
  // idem, côté bookmarks
   let lastRenderedBlend = null;
  // idem, côté jointure de data blending (voir applyBlend/commitBlendFromForm)
+  let lastRenderedJoins = null; // idem, les jointures des colonnes Référence (js/table-graph.js)
   let lastRenderedDashStyle = 'standard';
  // idem, côté style global des tuiles (js/styles.js) — le Standard est ce que le chargement pose par défaut
   let lastRenderedDashStyleOptions = store.getState().dashStyleOptions;
@@ -333,12 +334,13 @@
     // chaque édition externe). Changer de page ne modifie QUE currentPageId (référence de `pages`
     // inchangée) mais mérite quand même d'être sauvegardé, comme la page active dans Power BI.
     if (state.pages !== lastRenderedPages || state.currentPageId !== lastRenderedCurrentPageId ||
-        state.bookmarks !== lastRenderedBookmarks || state.blend !== lastRenderedBlend || state.dashStyle !== lastRenderedDashStyle ||
+        state.bookmarks !== lastRenderedBookmarks || state.blend !== lastRenderedBlend || state.joins !== lastRenderedJoins || state.dashStyle !== lastRenderedDashStyle ||
         state.dashStyleOptions !== lastRenderedDashStyleOptions) {
       lastRenderedPages = state.pages;
       lastRenderedCurrentPageId = state.currentPageId;
       lastRenderedBookmarks = state.bookmarks;
       lastRenderedBlend = state.blend;
+      lastRenderedJoins = state.joins;
       lastRenderedDashStyle = state.dashStyle;
       lastRenderedDashStyleOptions = state.dashStyleOptions;
       // Consigne GFS 009 : pendant que switchTable CHARGE un rapport (même vierge, "Nouveau" dans
@@ -346,7 +348,7 @@
       // qu'aucun geste de la personne n'ait eu lieu — lastRendered* est quand même mis à jour
       // ci-dessus (pour ne pas se retrouver désynchronisé au prochain geste réel), mais aucune
       // sauvegarde n'est planifiée tant que switchTable n'a pas fini de poser son chargement.
-      if (!S.suppressNextSave) scheduleSave(state.pages, state.currentPageId, state.bookmarks, state.blend, state.dashStyle, state.dashStyleOptions);
+      if (!S.suppressNextSave) scheduleSave(state.pages, state.currentPageId, state.bookmarks, state.blend, state.dashStyle, state.dashStyleOptions, state.joins);
     }
     // Tient la liste du panneau Commentaires à jour s'il est ouvert (ajout d'un commentaire,
     // changement de langue...) sans avoir à le refermer/rouvrir — no-op si fermé

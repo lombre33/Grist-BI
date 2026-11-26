@@ -155,10 +155,25 @@ const orderInfo = { Client: { type: 'Ref:Clients' } };
   assert.ok(!evalOn(orderRows(100, (i) => 1 + (i % 10)), years).ok, 'une année ne justifie pas une jointure');
   // Table vide ou absente.
   assert.ok(!evalOn(orders.rows, []).ok && !evalOn(orders.rows, null).ok, 'table vide ou absente');
-  // Une jointure déjà posée : rien n'est proposé (le store n'en porte qu'une).
-  const blocked = join.propose(orders.rows, { Clients: clients }, opts({ blend: { secondaryTableId: 'Autre', primaryColumn: 'Statut', secondaryColumn: 'id' } }));
-  assert.deepStrictEqual(blocked, { proposals: [], reason: 'blend' }, 'une jointure existe : aucune proposition, raison dite');
-  console.log('OK portes — couverture 0,8 / 0,7, 10 / 9 références, références vides, axes (60 / 80 libellés, quasi uniques, année), jointure déjà posée');
+  // Plusieurs jointures à la fois (lot 1) : une jointure vers une AUTRE table ou depuis une AUTRE colonne n'empêche rien ; seule la même colonne vers la même
+  // table n'est plus reproposée (`joined` = les jointures du store, `blend` = l'ancien réglage manuel unique).
+  const other = join.propose(orders.rows, { Clients: clients }, opts({ blend: { secondaryTableId: 'Autre', primaryColumn: 'Statut', secondaryColumn: 'id' } }));
+  assert.strictEqual(other.proposals.length, 1, 'une jointure vers une autre table ne bloque pas celle-ci');
+  const otherJoined = join.propose(orders.rows, { Clients: clients }, opts({ joined: [{ alias: 'Autre', table: 'Autre', primaryColumn: 'Statut', secondaryColumn: 'id' }] }));
+  assert.strictEqual(otherJoined.proposals.length, 1, 'idem pour une jointure des Références');
+  const sameColumnOtherTable = join.propose(orders.rows, { Clients: clients }, opts({ joined: [{ table: 'Autre', primaryColumn: 'Client' }] }));
+  assert.strictEqual(sameColumnOtherTable.proposals.length, 1, 'la même colonne vers une AUTRE table : encore proposée');
+  const done = { proposals: [], reason: '' };
+  assert.deepStrictEqual(join.propose(orders.rows, { Clients: clients }, opts({ joined: [{ alias: 'Clients', table: 'Clients', primaryColumn: 'Client', secondaryColumn: 'id' }] })), done, 'déjà jointe (Références) : plus proposée');
+  assert.deepStrictEqual(join.propose(orders.rows, { Clients: clients }, opts({ blend: { secondaryTableId: 'Clients', primaryColumn: 'Client', secondaryColumn: 'id' } })), done, 'déjà jointe (réglage manuel) : plus proposée');
+  assert.deepStrictEqual(join.candidates(orders.rows, opts({ joined: [{ table: 'Clients', primaryColumn: 'Client' }] })), [], 'plus candidate une fois jointe');
+  // Entrées de jointures mal formées : ignorées, jamais une exception ni un blocage.
+  assert.strictEqual(join.propose(orders.rows, { Clients: clients }, opts({ joined: [null, 3, 'x', {}, { table: 'Clients' }, { primaryColumn: 'Client' }, { table: 4, primaryColumn: 'Client' }] })).proposals.length, 1, 'jointures mal formées ignorées');
+  // Le plafond : douze jointures, plus rien.
+  const twelve = Array.from({ length: 12 }, (_, i) => ({ table: 'T' + i, primaryColumn: 'C' + i }));
+  assert.deepStrictEqual(join.propose(orders.rows, { Clients: clients }, opts({ joined: twelve })), { proposals: [], reason: 'full' }, 'douze jointures : plafond atteint, raison dite');
+  assert.strictEqual(join.propose(orders.rows, { Clients: clients }, opts({ joined: twelve.slice(0, 11) })).proposals.length, 1, 'onze jointures : encore une place');
+  console.log('OK portes — couverture 0,8 / 0,7, 10 / 9 références, références vides, axes (60 / 80 libellés, quasi uniques, année), plusieurs jointures (la même colonne vers la même table seulement), plafond de douze');
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -204,7 +219,7 @@ const orderInfo = { Client: { type: 'Ref:Clients' } };
     assert.doesNotThrow(() => join.propose(bad, { Clients: bad }, opts()), 'propose(' + JSON.stringify(bad) + ')');
     assert.doesNotThrow(() => join.propose(orders.rows, { Clients: bad }, opts()), 'secondaire hostile ' + JSON.stringify(bad));
   });
-  assert.doesNotThrow(() => join.propose(orders.rows, 'x', opts()) && join.propose(orders.rows, null, null) && join.propose(orders.rows, { Clients: clients }, { blend: 3 }), 'options hostiles');
+  assert.doesNotThrow(() => join.propose(orders.rows, 'x', opts()) && join.propose(orders.rows, null, null) && join.propose(orders.rows, { Clients: clients }, { blend: 3, joined: 'x' }) && join.propose(orders.rows, { Clients: clients }, { joined: [null, [], { table: {} }] }), 'options hostiles');
   const hostile = [{ id: 1, Nom: 'a' }, null, 5, { id: NaN, Nom: 'b' }, { Nom: 'c' }];
   assert.doesNotThrow(() => join.propose(orders.rows, { Clients: hostile }, opts()), 'lignes de l\'autre table hostiles');
   // Les entrées ne sont jamais modifiées.
@@ -274,17 +289,20 @@ const orderInfo = { Client: { type: 'Ref:Clients' } };
   assert.ok(/function renderJoin\(/.test(main) && /function hideJoin\(/.test(main), 'fonctions du panneau');
   assert.ok(/token !== joinToken \|\| tilePanel\.hidden \|\| store\.getState\(\)\.rows !== state\.rows/.test(main), 'une lecture revenue trop tard (panneau fermé, lignes changées) n\'écrit rien');
   assert.ok(/GristBI\.api\.loadTable\(table\)\.then\(\(res\) => \[table, res && res\.rows\], \(\) => \[table, null\]\)/.test(main), 'une table illisible ne bloque pas les autres');
-  assert.ok(/if \(state\.blend\) \{/.test(main), 'une jointure en place : plus rien à proposer');
+  assert.ok(/const opts = \{ currentTable: S\.currentTableId, blend: state\.blend, joined: state\.joins \}/.test(main), 'les jointures posées (store et réglage manuel) sont passées au module : une colonne déjà jointe n\'est plus proposée');
+  assert.ok(!/if \(state\.blend\) \{ joinItems = \[\]/.test(main), 'une jointure en place ne coupe plus les propositions des autres colonnes');
   assert.ok(/joinShown\.rows === state\.rows && joinShown\.lang === lang/.test(main), 'mêmes lignes et même langue : rien n\'est relu');
   assert.ok(/renderCompletion\(\)[\s\S]{0,60}renderJoin\(\);\s*(?:renderPages\(\);\s*)?columnPickEl\.value = '';/.test(main), 'ouverture du panneau : les propositions se calculent');
   assert.ok(/renderCompletion\(\);\s*renderJoin\(\);\s*(?:renderPages\(\);\s*)?if \(columnPickEl\.value\) renderColumnHelper\(\);/.test(main), 'changement de langue : phrases refaites');
   assert.ok(/hideCompletion\(\);\s*hideJoin\(\);\s*(?:hidePages\(\);\s*)?hideColumnResults\(\);/.test(main), 'fermeture : propositions et confirmation retirées');
-  assert.ok(/linkTable\(item\.join\)\.then\(/.test(main) && /joinDone = \{ table: item\.table, axes: item\.reasonVars\.axes \}/.test(main), 'un clic pose la jointure puis dit ce qu\'elle apporte');
+  assert.ok(/linkTable\(item\.join\)\.then\(/.test(main) && /joinDone = \{ table: item\.table, column: item\.column, axes: item\.reasonVars\.axes \}/.test(main), 'un clic pose la jointure puis dit ce qu\'elle apporte');
   assert.ok(/linkTable\(item\.join\)\.then\([\s\S]{0,900}renderCompletion\(\(\) => \{[^}]*tileCompleteListEl\.querySelector\('button\[data-complete\]'\)/.test(main), 'les suggestions se recalculent sur les lignes jointes, le focus ne se perd pas');
   assert.ok(/async function linkTable\(join\)/.test(main) && /linkTable, refreshTablePicker/.test(main), 'linkTable est déposée pour le panneau');
   const link = main.slice(main.indexOf('async function linkTable(join)'));
-  assert.ok(/store\.setBlend\(currentBlend\);\s*refreshBlendPicker\(\);\s*await applyBlend\(currentBlend\);/.test(link), 'même chemin que « Joindre une autre table » : store, champs du menu Données, applyBlend');
-  assert.ok(/if \(!joined\) \{\s*currentBlend = null;\s*store\.setBlend\(null\);/.test(link), 'une jointure qui n\'a pas eu lieu est retirée aussitôt');
+  assert.ok(/GristBI\.tableGraph\.addJoin\(store\.getState\(\)\.joins, currentBlend, join\.secondaryTableId, join\.primaryColumn\);[\s\S]*?store\.setJoins\(added\.joins\);\s*await applyBlend\(currentBlend\);/.test(link), 'la jointure s\'AJOUTE aux autres (store.setJoins) sans écraser le réglage manuel, puis applyBlend');
+  assert.ok(!/store\.setBlend\(/.test(link.slice(0, link.indexOf('async function suggestBlendJoinColumns'))), 'linkTable n\'écrase plus le réglage manuel');
+  assert.ok(/if \(!joined && added\.added\) store\.setJoins\(GristBI\.tableGraph\.removeJoin\(/.test(link), 'une jointure qui n\'a pas eu lieu est retirée aussitôt');
+  assert.ok(/if \(!added\.join\) \{ showError\(/.test(link), 'le plafond de jointures est dit, jamais un clic muet');
   assert.ok(/data-join="\$\{i\}"/.test(main) && /tilePanel\.join\.add\b/.test(main), 'bouton « Relier » par carte');
   ['tilePanel.join.title', 'tilePanel.join.lead', 'tilePanel.join.add', 'tilePanel.join.addAria', 'tilePanel.join.done'].forEach((k) => assert.ok(i18n.STRINGS[k] && i18n.STRINGS[k].fr && i18n.STRINGS[k].en, k));
   const css = fs.readFileSync(path.join(__dirname, '..', 'css', 'style.css'), 'utf8');

@@ -83,18 +83,25 @@ function salesTable() {
 function joinFixture() {
   const ventes = salesTable();
   ventes.Client = ventes.id.map((id) => 1 + (id % 6));
+  ventes.Vendeur = ventes.id.map((id) => 1 + ((id * 5) % 6)); // une 2e Référence, vers une 2e table : plusieurs tables peuvent être liées
   const clients = {
     id: [1, 2, 3, 4, 5, 6],
     Nom: ['Atelier Nord', 'Boutique Sud', 'Cave Est', 'Dépôt Ouest', 'Epicerie Lac', 'Ferme Haute'],
     Ville: ['Lyon', 'Nantes', 'Lille', 'Lyon', 'Nantes', 'Lille'],
     Segment: ['Pro', 'Particulier', 'Pro', 'Public', 'Particulier', 'Public']
   };
-  const meta = { id: [1, 2], tableId: ['Ventes', 'Clients'] };
+  const personnes = {
+    id: [1, 2, 3, 4, 5, 6],
+    Prenom: ['Ada', 'Bruno', 'Chloé', 'Dario', 'Eva', 'Farid'],
+    Equipe: ['Alpha', 'Beta', 'Gamma', 'Alpha', 'Beta', 'Gamma']
+  };
+  const meta = { id: [1, 2, 3], tableId: ['Ventes', 'Clients', 'Personnes'] };
   const columns = { id: [], parentId: [], colId: [], type: [], widgetOptions: [] };
   const add = (parent, list) => list.forEach(([colId, type]) => { columns.id.push(columns.id.length + 1); columns.parentId.push(parent); columns.colId.push(colId); columns.type.push(type); columns.widgetOptions.push(''); });
-  add(1, [['Region', 'Text'], ['Produit', 'Text'], ['Mois', 'Text'], ['Quantite', 'Numeric'], ['Montant', 'Numeric'], ['Client', 'Ref:Clients']]);
+  add(1, [['Region', 'Text'], ['Produit', 'Text'], ['Mois', 'Text'], ['Quantite', 'Numeric'], ['Montant', 'Numeric'], ['Client', 'Ref:Clients'], ['Vendeur', 'Ref:Personnes']]);
   add(2, [['Nom', 'Text'], ['Ville', 'Text'], ['Segment', 'Text']]);
-  return { Ventes: ventes, Clients: clients, _grist_Tables: meta, _grist_Tables_column: columns };
+  add(3, [['Prenom', 'Text'], ['Equipe', 'Text']]);
+  return { Ventes: ventes, Clients: clients, Personnes: personnes, _grist_Tables: meta, _grist_Tables_column: columns };
 }
 
 function startServer() {
@@ -358,10 +365,12 @@ async function scenario(browser, origin, { name, url, framed }) {
       if (!problems.some((p) => /Pour compléter|Recommandé|Ajouter|panneau fermé/.test(p))) verified.push('panneau « Compléter » : liste, ' + before.badges.length + ' badges, un ajout, focus, fermeture');
     }
 
-    // 7. « Analyser par nom plutôt que par numéro » (niveau 3d) : `Ventes.Client` est une colonne Référence (`Ref:Clients`), le panneau propose de relier
-    // `Clients` (il lit l'autre table, d'où l'attente), un VRAI clic sur « Relier » pose la jointure (store, champs du menu Données, colonnes `Clients.*`
-    // dans les lignes, mêmes lignes), la phrase de confirmation prend la place des cartes, le focus reste dans le panneau, la jointure est ENREGISTRÉE
-    // avec le rapport, et à la réouverture il n'y a plus rien à proposer.
+    // 7. « Analyser par nom plutôt que par numéro » (niveau 3d, puis lot 1 « colonnes de toutes les tables ») : `Ventes.Client` (`Ref:Clients`) et
+    // `Ventes.Vendeur` (`Ref:Personnes`) sont des colonnes Référence ; le panneau propose de relier `Clients` ET `Personnes` (il lit les autres tables, d'où
+    // l'attente), un VRAI clic sur « Relier » pose une jointure qui S'AJOUTE aux autres (store.joins, colonnes `Clients.*` dans les lignes, mêmes lignes), la
+    // phrase de confirmation prend la place de la carte posée, le focus reste dans le panneau, la jointure est ENREGISTRÉE avec le rapport et listée dans
+    // « Tables liées » du menu Données ; une 2e jointure s'ajoute sans défaire la 1re ; retirer une jointure que des tuiles lisent est REFUSÉ (rien ne
+    // change, la raison est dite), retirer une jointure inutilisée marche et retire ses colonnes ; à la réouverture il n'y a plus rien à proposer.
     await frame.evaluate(() => {
       if (document.body.dataset.mode !== 'edit') document.getElementById('mode-toggle').click();
       GristBI.openTilePanel({ step: 'choose' });
@@ -369,64 +378,109 @@ async function scenario(browser, origin, { name, url, framed }) {
     const offered = await frame.waitForSelector('#tile-join-list button[data-join]', { state: 'visible', timeout: 8000 }).then(() => true, () => false);
     if (!offered) problems.push('« Analyser par nom » : aucune proposition de jointure après l\'ouverture du panneau');
     else {
-      const first = await frame.evaluate(() => ({
-        title: document.getElementById('tile-join-title').textContent,
-        cards: document.querySelectorAll('#tile-join-list .complete-card').length,
-        button: document.querySelector('#tile-join-list button[data-join]').textContent,
-        reason: document.querySelector('#tile-join-list .complete-card-reason').textContent,
-        blend: GristBI.store.getState().blend,
-        joined: 'Clients.Ville' in (GristBI.store.getState().rows[0] || {}),
-        rows: GristBI.store.getState().rows.length,
-      }));
-      if (first.cards !== 1) problems.push('« Analyser par nom » : ' + first.cards + ' cartes au lieu d\'une');
-      if (!/Clients/.test(first.button) || !/Ville/.test(first.reason) || !/Client/.test(first.reason)) problems.push('« Analyser par nom » : la carte ne nomme pas la table, la colonne et les axes : « ' + first.button + ' » / « ' + first.reason + ' »');
-      if (first.blend || first.joined) problems.push('« Analyser par nom » : la jointure existe avant le clic');
-      await frame.click('#tile-join-list button[data-join="0"]');
-      const linked = await frame.waitForFunction(() => !!GristBI.store.getState().blend && 'Clients.Ville' in (GristBI.store.getState().rows[0] || {}), null, { timeout: 8000 }).then(() => true, () => false);
+      await frame.waitForTimeout(500); // les deux tables sont lues : les deux cartes sont posées d'un coup
+      const first = await frame.evaluate(() => {
+        const cards = Array.from(document.querySelectorAll('#tile-join-list .complete-card'));
+        return {
+          title: document.getElementById('tile-join-title').textContent,
+          cards: cards.length,
+          buttons: cards.map((c) => c.querySelector('button[data-join]').textContent),
+          index: cards.findIndex((c) => /Clients/.test(c.querySelector('button[data-join]').textContent)),
+          reason: (cards.find((c) => /Clients/.test(c.querySelector('button[data-join]').textContent)) || cards[0]).querySelector('.complete-card-reason').textContent,
+          joins: GristBI.store.getState().joins.length,
+          blend: GristBI.store.getState().blend,
+          joined: 'Clients.Ville' in (GristBI.store.getState().rows[0] || {}),
+          rows: GristBI.store.getState().rows.length,
+        };
+      });
+      if (first.cards !== 2) problems.push('« Analyser par nom » : ' + first.cards + ' cartes au lieu de deux (Clients et Personnes) : ' + first.buttons.join(' / '));
+      if (first.index < 0 || !/Ville/.test(first.reason) || !/Client/.test(first.reason)) problems.push('« Analyser par nom » : la carte ne nomme pas la table, la colonne et les axes : « ' + first.buttons.join(' / ') + ' » / « ' + first.reason + ' »');
+      if (first.blend || first.joins || first.joined) problems.push('« Analyser par nom » : une jointure existe avant le clic');
+      await frame.click('#tile-join-list button[data-join="' + Math.max(0, first.index) + '"]');
+      const linked = await frame.waitForFunction(() => GristBI.store.getState().joins.length === 1 && 'Clients.Ville' in (GristBI.store.getState().rows[0] || {}), null, { timeout: 8000 }).then(() => true, () => false);
       if (!linked) problems.push('« Analyser par nom » : un clic sur « Relier » n\'a pas posé la jointure (un clic perdu ?)');
       await frame.waitForTimeout(700);
       const second = await frame.evaluate(() => {
         const active = document.activeElement;
         const done = document.getElementById('tile-join-done');
+        const state = GristBI.store.getState();
         return {
-          blend: GristBI.store.getState().blend,
-          rows: GristBI.store.getState().rows.length,
-          keys: Object.keys(GristBI.store.getState().rows[0] || {}).filter((k) => k.indexOf('Clients.') === 0),
-          cards: document.querySelectorAll('#tile-join-list .complete-card').length,
+          blend: state.blend,
+          joins: state.joins,
+          rows: state.rows.length,
+          keys: Object.keys(state.rows[0] || {}).filter((k) => k.indexOf('Clients.') === 0),
+          cards: Array.from(document.querySelectorAll('#tile-join-list .complete-card button[data-join]')).map((b) => b.textContent),
           sectionHidden: document.getElementById('tile-join').hidden,
           done: done.textContent,
           doneHidden: done.hidden,
-          menu: [document.getElementById('blend-secondary-table').value, document.getElementById('blend-primary-column').value, document.getElementById('blend-secondary-column').value],
+          listed: Array.from(document.querySelectorAll('#joins-list .joins-item')).map((li) => li.textContent.replace(/\s+/g, ' ').trim()),
+          barHidden: document.getElementById('joins-bar').hidden,
           focusInPanel: !!(active && active.closest && active.closest('#tile-panel')),
           focusTag: active ? active.tagName : '',
         };
       });
-      const wanted = JSON.stringify({ secondaryTableId: 'Clients', primaryColumn: 'Client', secondaryColumn: 'id' });
-      if (JSON.stringify(second.blend) !== wanted) problems.push('« Analyser par nom » : jointure posée ' + JSON.stringify(second.blend) + ' au lieu de ' + wanted);
+      const wanted = JSON.stringify([{ alias: 'Clients', table: 'Clients', primaryColumn: 'Client', secondaryColumn: 'id' }]);
+      if (JSON.stringify(second.joins) !== wanted) problems.push('« Analyser par nom » : jointures posées ' + JSON.stringify(second.joins) + ' au lieu de ' + wanted);
+      if (second.blend) problems.push('« Analyser par nom » : le réglage manuel « Joindre une autre table » a été écrasé/rempli (' + JSON.stringify(second.blend) + ')');
       if (second.rows !== first.rows) problems.push('« Analyser par nom » : ' + first.rows + ' lignes avant, ' + second.rows + ' après (une jointure ne multiplie rien)');
       if (['Clients.Nom', 'Clients.Ville', 'Clients.Segment'].some((k) => second.keys.indexOf(k) === -1)) problems.push('« Analyser par nom » : colonnes jointes manquantes : ' + second.keys.join(', '));
-      if (second.cards || second.sectionHidden || second.doneHidden || !/Clients/.test(second.done)) problems.push('« Analyser par nom » : la confirmation ne remplace pas les cartes : ' + JSON.stringify({ cards: second.cards, sectionHidden: second.sectionHidden, done: second.done }));
-      if (second.menu.join('|') !== 'Clients|Client|id') problems.push('« Analyser par nom » : les champs de « Joindre une autre table » valent ' + second.menu.join('|') + ' au lieu de Clients|Client|id');
+      if (second.cards.length !== 1 || !/Personnes/.test(second.cards[0]) || second.sectionHidden || second.doneHidden || !/Clients/.test(second.done)) problems.push('« Analyser par nom » : la confirmation (Clients) et la carte restante (Personnes) ne sont pas là : ' + JSON.stringify({ cards: second.cards, sectionHidden: second.sectionHidden, done: second.done }));
+      if (second.barHidden || second.listed.length !== 1 || !/Clients/.test(second.listed[0]) || !/Client/.test(second.listed[0])) problems.push('« Analyser par nom » : « Tables liées » du menu Données ne liste pas la jointure : ' + JSON.stringify(second.listed));
       if (!second.focusInPanel || second.focusTag === 'BODY') problems.push('« Analyser par nom » : le focus a quitté le panneau (' + second.focusTag + ')');
       // Enregistrée avec le rapport (écriture différée de 600 ms) : on relit la table de configuration jusqu'à y trouver la jointure.
       let saved = false;
       for (let i = 0; i < 20 && !saved; i++) {
         saved = await frame.evaluate(async () => {
           const t = await grist.docApi.fetchTable('BI_Dashboard_Config');
-          return (t.ConfigJSON || []).some((j) => /"blend":\{[^}]*"secondaryTableId":"Clients"/.test(j));
+          return (t.ConfigJSON || []).some((j) => /"joins":\[\{"alias":"Clients","table":"Clients","primaryColumn":"Client","secondaryColumn":"id"\}\]/.test(j));
         }).catch(() => false);
         if (!saved) await frame.waitForTimeout(300);
       }
-      if (!saved) problems.push('« Analyser par nom » : la jointure n\'est pas enregistrée avec le rapport');
+      if (!saved) problems.push('« Analyser par nom » : la jointure n\'est pas enregistrée avec le rapport (champ joins)');
+      // Une 2e jointure s'AJOUTE : Personnes, sans défaire Clients.
+      await frame.click('#tile-join-list button[data-join="0"]');
+      const both = await frame.waitForFunction(() => GristBI.store.getState().joins.length === 2 && 'Personnes.Equipe' in (GristBI.store.getState().rows[0] || {}) && 'Clients.Ville' in (GristBI.store.getState().rows[0] || {}), null, { timeout: 8000 }).then(() => true, () => false);
+      if (!both) problems.push('« Analyser par nom » : la 2e jointure (Personnes) n\'a pas été ajoutée à la 1re');
+      await frame.waitForTimeout(700);
+      const third = await frame.evaluate(() => ({
+        rows: GristBI.store.getState().rows.length,
+        cards: document.querySelectorAll('#tile-join-list .complete-card').length,
+        done: document.getElementById('tile-join-done').textContent,
+        listed: document.querySelectorAll('#joins-list .joins-item').length,
+        focusInPanel: !!(document.activeElement && document.activeElement.closest && document.activeElement.closest('#tile-panel')),
+      }));
+      if (third.rows !== first.rows) problems.push('« Analyser par nom » : ' + third.rows + ' lignes après la 2e jointure au lieu de ' + first.rows);
+      if (third.cards || !/Personnes/.test(third.done) || third.listed !== 2) problems.push('« Analyser par nom » : après la 2e jointure : ' + JSON.stringify(third));
+      if (!third.focusInPanel) problems.push('« Analyser par nom » : le focus a quitté le panneau après la 2e jointure');
       await frame.evaluate(() => GristBI.closeTilePanel(false));
       const closed = await frame.evaluate(() => ({ hidden: document.getElementById('tile-join').hidden, done: document.getElementById('tile-join-done').textContent, cards: document.querySelectorAll('#tile-join-list .complete-card').length }));
       if (!closed.hidden || closed.done || closed.cards) problems.push('panneau fermé : les cartes de jointure ou leur confirmation restent (' + JSON.stringify(closed) + ')');
       await frame.evaluate(() => GristBI.openTilePanel({ step: 'choose' }));
       await frame.waitForTimeout(500);
       const reopened = await frame.evaluate(() => ({ hidden: document.getElementById('tile-join').hidden, cards: document.querySelectorAll('#tile-join-list .complete-card').length }));
-      if (!reopened.hidden || reopened.cards) problems.push('panneau rouvert : une jointure est déjà posée, rien ne doit être reproposé (' + JSON.stringify(reopened) + ')');
+      if (!reopened.hidden || reopened.cards) problems.push('panneau rouvert : les deux tables sont déjà jointes, rien ne doit être reproposé (' + JSON.stringify(reopened) + ')');
       await frame.evaluate(() => GristBI.closeTilePanel(false));
-      if (!problems.some((p) => /Analyser par nom|panneau rouvert|jointure/.test(p))) verified.push('« Analyser par nom » : proposition, un clic réel = jointure (lignes ' + first.rows + ', colonnes Clients.*), champs du menu, focus, enregistrée, rien de reproposé');
+      // Retirer une jointure : refusé tant qu'une tuile la lit, accepté sinon. Un VRAI clic sur la croix, dans le menu Données.
+      await frame.evaluate(() => {
+        GristBI.store.addTile({ id: 'seed-join', type: 'bar', title: 'Par ville', dimension: 'Clients.Ville', measure: 'Montant', aggFn: 'sum' });
+        document.getElementById('data-pill').click();
+      });
+      await frame.waitForSelector('#joins-list .views-item-delete[data-alias="Clients"]', { state: 'visible', timeout: 5000 }).catch(() => {});
+      await frame.click('#joins-list .views-item-delete[data-alias="Clients"]');
+      await frame.waitForTimeout(500);
+      const refused = await frame.evaluate(() => ({ joins: GristBI.store.getState().joins.map((j) => j.alias), note: document.getElementById('joins-note').textContent, joined: 'Clients.Ville' in (GristBI.store.getState().rows[0] || {}) }));
+      if (refused.joins.join() !== 'Clients,Personnes' || !refused.joined) problems.push('« Tables liées » : retirer Clients, que la tuile « Par ville » lit, n\'a pas été refusé (' + JSON.stringify(refused) + ')');
+      if (!/Clients/.test(refused.note) || !/1 tuile/.test(refused.note)) problems.push('« Tables liées » : le refus ne dit pas ce qui lit la jointure : « ' + refused.note + ' »');
+      await frame.click('#joins-list .views-item-delete[data-alias="Personnes"]');
+      const removed = await frame.waitForFunction(() => GristBI.store.getState().joins.length === 1 && !('Personnes.Equipe' in (GristBI.store.getState().rows[0] || {})), null, { timeout: 8000 }).then(() => true, () => false);
+      if (!removed) problems.push('« Tables liées » : retirer Personnes (lue par personne) n\'a pas retiré la jointure et ses colonnes');
+      const after = await frame.evaluate(() => ({ joins: GristBI.store.getState().joins.map((j) => j.alias), note: document.getElementById('joins-note').textContent, ville: 'Clients.Ville' in (GristBI.store.getState().rows[0] || {}), listed: document.querySelectorAll('#joins-list .joins-item').length }));
+      if (after.joins.join() !== 'Clients' || !after.ville || after.listed !== 1 || after.note) problems.push('« Tables liées » : après le retrait de Personnes : ' + JSON.stringify(after));
+      await frame.evaluate(() => {
+        GristBI.store.removeTile('seed-join');
+        document.getElementById('data-pill').click();
+      });
+      if (!problems.some((p) => /Analyser par nom|panneau rouvert|jointure|Tables liées/.test(p))) verified.push('« Analyser par nom » + « Tables liées » : deux propositions, un clic réel = une jointure qui s\'ajoute (lignes ' + first.rows + ', colonnes Clients.*), enregistrée, listée, retrait refusé quand une tuile la lit, accepté sinon, focus, rien de reproposé');
     }
 
     // 8. « Ajouter une page entière » (niveau 3d-2) : à partir d'UNE seule tuile posée (un histogramme de `Quantite`, qui ne répond à aucune question

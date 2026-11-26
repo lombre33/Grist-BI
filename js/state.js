@@ -143,6 +143,12 @@
     // multi-tables (voir GristBI.data.blendRows/js/main.js) : propre à la table de travail
     // courante, comme bookmarks/pages, persisté avec elles dans BI_Dashboard_Config.
     let blend = null;
+    // Jointures posées depuis les colonnes Référence (js/table-graph.js, chantier « colonnes de toutes les tables », 26/11/2026) :
+    // `[{ alias, table, primaryColumn, secondaryColumn }]`, dans l'ordre où elles se jouent, APRÈS le `blend` ci-dessus. Persisté avec lui dans
+    // BI_Dashboard_Config (champ `joins`, écrit seulement s'il n'est pas vide). Un tableau NEUF à chaque changement (`render()` compare des
+    // références pour décider d'une sauvegarde), jamais modifié sur place ; il est assaini PAR L'APPELANT (`GristBI.tableGraph.sanitizeJoins` :
+    // ce module ne dépend d'aucun autre, comme `sanitizePages`).
+    let joins = [];
     // Style global des tuiles (js/styles.js, css/dash-styles.css) : l'id d'une direction artistique, `'standard'` sans choix. Un
     // réglage du tableau de bord (persisté avec `pages`/`bookmarks`/`blend` dans BI_Dashboard_Config), jamais d'une vue sauvegardée :
     // changer de vue ne change pas l'apparence. Une valeur qui n'a pas la forme d'un id (configuration éditée à la main) vaut
@@ -177,7 +183,7 @@
       // ou drill-downs actuels ne sont plus ceux de cette vue (voir activeBookmarkId plus haut).
       const active = activeBookmarkId && bookmarks.find((b) => b.id === activeBookmarkId);
       return {
-        rows, pages, currentPageId, tiles: currentPage().tiles, pageLayout: currentPage().layout || DEFAULT_PAGE_LAYOUT, activeFilters, advancedFilters, drillIns, bookmarks, blend, dashStyle, dashStyleOptions, comments,
+        rows, pages, currentPageId, tiles: currentPage().tiles, pageLayout: currentPage().layout || DEFAULT_PAGE_LAYOUT, activeFilters, advancedFilters, drillIns, bookmarks, blend, joins, dashStyle, dashStyleOptions, comments,
         zoomedTileIds: currentPage().tiles.map((t) => t.id).filter((id) => zoomedTileIds.includes(id)),
         activeBookmarkId: active ? active.id : null,
         activeBookmarkModified: active ? !sameSnapshot(active, { activeFilters, advancedFilters, drillIns }) : false
@@ -433,6 +439,8 @@
 
     function setBlend(newBlend) { blend = newBlend || null; notify(); }
 
+    function setJoins(newJoins) { joins = Array.isArray(newJoins) ? newJoins : []; notify(); }
+
     function setDashStyle(id) {
       const next = (typeof id === 'string' && DASH_STYLE_ID.test(id)) ? id : DEFAULT_DASH_STYLE;
       if (next === dashStyle) return;
@@ -510,7 +518,7 @@
       setPages, setCurrentPage, addPage, renamePage, removePage,
       addTile, removeTile, updateTile, moveTile, setPageLayout,
       toggleFilter, toggleRangeFilter, clearFilter, setAdvancedFilter, clearAdvancedFilter, drillInto, drillUp,
-      setBookmarks, saveBookmark, applyBookmark, updateBookmark, leaveBookmark, removeBookmark, setBlend, setDashStyle, setDashStyleOptions,
+      setBookmarks, saveBookmark, applyBookmark, updateBookmark, leaveBookmark, removeBookmark, setBlend, setJoins, setDashStyle, setDashStyleOptions,
       toggleZoom, clearZoom,
       setComments, addCommentLocal
     };

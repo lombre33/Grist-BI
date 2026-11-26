@@ -57,6 +57,20 @@
       en: 'Join with table "{table}" failed — see the console (F12).',
     },
 
+    // --- Tables liées par une colonne Référence (menu Données, js/table-graph.js) ---
+    'joins.title': { fr: 'Tables liées', en: 'Linked tables' },
+    'joins.via': { fr: 'par {column}', en: 'via {column}' },
+    'joins.remove.aria': { fr: 'Délier la table « {alias} »', en: 'Unlink table “{alias}”' },
+    'joins.remove.title': { fr: 'Délier cette table', en: 'Unlink this table' },
+    'joins.full': {
+      fr: 'Trop de tables liées (au plus {max}) : déliez-en une avant d\'en ajouter.',
+      en: 'Too many linked tables ({max} at most): unlink one before adding another.',
+    },
+    'joins.inUse': {
+      fr: '« {alias} » est encore lue par {tiles} {tiles|tuile|tuiles}, {filters} {filters|filtre|filtres} et {views} {views|vue|vues} : retirez-les d\'abord.',
+      en: '“{alias}” is still read by {tiles} {tiles|tile|tiles}, {filters} {filters|filter|filters} and {views} {views|view|views}: remove them first.',
+    },
+
     // --- Pages ---
     'pages.addPage.title': { fr: 'Ajouter une page', en: 'Add a page' },
     'pages.remove.title': { fr: 'Supprimer cette page', en: 'Delete this page' },

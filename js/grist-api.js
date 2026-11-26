@@ -337,9 +337,11 @@
   // `'standard'` tant que la personne n'en a pas choisi un. Un texte d'une autre forme qu'un id est ignoré (Standard).
   // `styleOptions` (options valables pour tous les styles : tuiles sans bordure, tableau de bord uni) : même convention, `{}` tant
   // qu'aucune n'est cochée ; seule une valeur `true` est retenue.
-  function singlePageConfig(tiles, bookmarks, blend, style, styleOptions) {
+  // `joins` (jointures posées depuis les colonnes Référence, js/table-graph.js, 26/11/2026) : même convention, `[]` tant qu'aucune n'est posée ;
+  // c'est le store (`setJoins`, après `GristBI.tableGraph.sanitizeJoins`) qui en vérifie la forme, comme pour `pages`.
+  function singlePageConfig(tiles, bookmarks, blend, style, styleOptions, joins) {
     const pageId = (GristBI.state && GristBI.state.DEFAULT_PAGE_ID) || 'page_default';
-    return { pages: [{ id: pageId, name: 'Page 1', tiles: tiles || [] }], currentPageId: pageId, bookmarks: bookmarks || [], blend: blend || null, style: normalizeStyleValue(style), styleOptions: normalizeStyleOptions(styleOptions) };
+    return { pages: [{ id: pageId, name: 'Page 1', tiles: tiles || [] }], currentPageId: pageId, bookmarks: bookmarks || [], blend: blend || null, joins: Array.isArray(joins) ? joins : [], style: normalizeStyleValue(style), styleOptions: normalizeStyleOptions(styleOptions) };
   }
 
   function normalizeStyleValue(style) {
@@ -358,9 +360,9 @@
     if (raw && typeof raw === 'object') {
       if (Array.isArray(raw.pages) && raw.pages.length) {
         const currentPageId = raw.pages.some((p) => p.id === raw.currentPageId) ? raw.currentPageId : raw.pages[0].id;
-        return { pages: raw.pages, currentPageId, bookmarks: raw.bookmarks || [], blend: raw.blend || null, style: normalizeStyleValue(raw.style), styleOptions: normalizeStyleOptions(raw.styleOptions) };
+        return { pages: raw.pages, currentPageId, bookmarks: raw.bookmarks || [], blend: raw.blend || null, joins: Array.isArray(raw.joins) ? raw.joins : [], style: normalizeStyleValue(raw.style), styleOptions: normalizeStyleOptions(raw.styleOptions) };
       }
-      return singlePageConfig(raw.tiles, raw.bookmarks, raw.blend, raw.style, raw.styleOptions);
+      return singlePageConfig(raw.tiles, raw.bookmarks, raw.blend, raw.style, raw.styleOptions, raw.joins);
     }
     return singlePageConfig([], [], null);
   }
@@ -400,12 +402,15 @@
   // `style` (style global des tuiles, js/styles.js) n'est écrit que s'il n'est pas le Standard : une configuration sans choix de
   // style reste octet pour octet celle d'avant ce réglage. Même règle pour `styleOptions` (options valables pour tous les styles) :
   // le champ n'existe que si au moins une option est cochée, et ne contient que celles-là.
-  async function saveConfig(tableId, pages, currentPageId, bookmarks, blend, reportId, authorLabel, style, styleOptions) {
+  // `joins` (dernier paramètre, 26/11/2026) : n'est écrit que s'il n'est pas vide, comme `style` : une configuration sans jointure automatique
+  // reste octet pour octet celle d'avant.
+  async function saveConfig(tableId, pages, currentPageId, bookmarks, blend, reportId, authorLabel, style, styleOptions, joins) {
     if (!tableId) return;
     await ensureConfigTableExists();
     const styleValue = normalizeStyleValue(style);
     const optionsValue = normalizeStyleOptions(styleOptions);
     const json = JSON.stringify(Object.assign({ pages, currentPageId, bookmarks: bookmarks || [], blend: blend || null },
+      Array.isArray(joins) && joins.length ? { joins } : {},
       styleValue !== 'standard' ? { style: styleValue } : {},
       Object.keys(optionsValue).length ? { styleOptions: optionsValue } : {}));
     // Champs LOGIQUES (`modifiedAt`…) : `CN.fieldsFor` les écrit sous les noms que le document a maintenant (Name ou Nom…), à chaque essai de `writeConfig`.
@@ -659,6 +664,41 @@
         `"${tableId}" — aucune clé de jointure ne sera suggérée pour le data blending`, e
       );
       return [];
+    }
+  }
+
+  // Le SCHÉMA des liens du document (chantier « colonnes de toutes les tables », lot 1, 26/11/2026) : pour chaque table de la personne, ses colonnes et leur
+  // type Grist (`Ref:Clients`, `Numeric`, `Text`…), lus en UNE fois dans `_grist_Tables`/`_grist_Tables_column` (accès `full`, même mécanisme que
+  // `realDateColumnIds`/`refColumnsForTable`). C'est ce qui permet de suivre les colonnes Référence de la table de travail vers les autres tables
+  // (js/table-graph.js). Rend `{ tables: [{ id, columns: [{ id, type }] }] }` : les tables internes de ce widget, les tables système (`_grist_*`
+  // n'y sont pas) et les colonnes d'aide de Grist (`gristHelper_*`) n'y sont jamais. Repli sur `{ tables: [] }` (aucune colonne d'autre table
+  // proposée, le widget marche comme avant) si la lecture échoue : droits restreints, tables système absentes ou renommées.
+  // Les types viennent de la documentation du moteur et du faux Grist du dépôt : le vrai `_grist_Tables_column` d'un document à beaucoup de tables
+  // n'a pas été lu depuis cette session (voir HYPOTHESES.md).
+  async function readLinkSchema() {
+    const empty = { tables: [] };
+    try {
+      const tablesMeta = await grist.docApi.fetchTable('_grist_Tables');
+      const columnsMeta = await grist.docApi.fetchTable('_grist_Tables_column');
+      const internal = new Set([CONFIG_TABLE, USER_PROBE_TABLE, COMMENTS_TABLE]);
+      const byParent = new Map();
+      const n = (columnsMeta.id || []).length;
+      for (let i = 0; i < n; i++) {
+        const colId = columnsMeta.colId[i];
+        if (!colId || /^gristHelper_/.test(colId)) continue;
+        const parent = columnsMeta.parentId[i];
+        if (!byParent.has(parent)) byParent.set(parent, []);
+        byParent.get(parent).push({ id: colId, type: columnsMeta.type[i] || '' });
+      }
+      const tables = [];
+      (tablesMeta.tableId || []).forEach((tableId, i) => {
+        if (!tableId || internal.has(tableId) || /^_grist_/.test(tableId)) return;
+        tables.push({ id: tableId, columns: byParent.get(tablesMeta.id[i]) || [] });
+      });
+      return { tables };
+    } catch (e) {
+      console.warn('[GristBI] schéma du document (_grist_Tables_column) illisible : aucune colonne des tables liées ne sera proposée', e);
+      return empty;
     }
   }
 
@@ -1173,7 +1213,7 @@
 
   GristBI.api = {
     configNamesStatus, mergeConfigNames, refreshConfigNames, isNameError: CN.isNameError, namesPort, afterNamesUpdate, readDocumentSchema, documentOwnerProof,
-    init, loadConfig, saveConfig, loadConfigById, blankConfig, latestReportTableId,
+    init, loadConfig, saveConfig, loadConfigById, blankConfig, latestReportTableId, readLinkSchema,
     listAvailableTables, loadTable, loadOrCreateComments, addComment, refColumnsForTable,
     getCurrentUserEmail, createTableFromRows, readColumnFormats, organizeInternalPages,
     checkAttachmentAccess, getAttachmentBytes, fetchRawTable, addTextColumn, writeColumnValues, safeAttachmentBase

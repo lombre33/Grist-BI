@@ -202,12 +202,12 @@
   let joinToken = 0;
   let joinItems = [];
   let joinShown = null; // { rows, lang } : ce que les cartes affichées ont lu (un `change` ou un recalcul identique ne refait rien)
-  let joinDone = null;  // { table, axes } : la jointure posée depuis ce panneau, redite tant que le panneau reste ouvert
+  let joinDone = null;  // { table, column, axes } : la jointure posée depuis ce panneau, redite tant que le panneau reste ouvert
 
   function paintJoinDone() {
     const state = store.getState();
     // La phrase ne vaut que tant que CETTE jointure est en place (retirée par le menu Données, elle disparaît).
-    const still = !!joinDone && !!state.blend && state.blend.secondaryTableId === joinDone.table;
+    const still = !!joinDone && (state.joins || []).some((j) => j.table === joinDone.table && j.primaryColumn === joinDone.column);
     tileJoinDoneEl.textContent = still ? t('tilePanel.join.done', { table: joinDone.table, axes: joinDone.axes }) : '';
     tileJoinDoneEl.hidden = !still;
     return still;
@@ -246,12 +246,11 @@
     const done = () => { if (afterPaint) afterPaint(); };
     const state = store.getState();
     if (!GristBI.adviceJoin || S.editingTileId || !state.rows.length) { hideJoin(); done(); return; }
-    // Une jointure en place : plus rien à proposer (le store n'en porte qu'une), seule la phrase de confirmation reste, si c'est la nôtre.
-    if (state.blend) { joinItems = []; joinShown = null; tileJoinListEl.textContent = ''; const showDone = paintJoinDone(); tileJoinEl.hidden = !showDone; done(); return; }
     const lang = GristBI.i18n.getLang();
-    const opts = { currentTable: S.currentTableId, blend: state.blend };
+    // Les jointures déjà posées (plusieurs depuis le lot 1) : une colonne déjà jointe vers sa table n'est plus proposée.
+    const opts = { currentTable: S.currentTableId, blend: state.blend, joined: state.joins };
     const cands = GristBI.adviceJoin.candidates(state.rows, opts);
-    if (!cands.length) { joinItems = []; joinShown = null; tileJoinListEl.textContent = ''; tileJoinEl.hidden = true; done(); return; }
+    if (!cands.length) { joinItems = []; joinShown = null; tileJoinListEl.textContent = ''; const showDone = paintJoinDone(); tileJoinEl.hidden = !showDone; done(); return; }
     if (joinShown && joinShown.rows === state.rows && joinShown.lang === lang) { paintJoin(joinItems); done(); return; }
     // Des cartes d'avant (autres lignes, autre langue) se retirent d'abord : elles proposeraient, un instant, ce qui n'est plus vrai.
     tileJoinEl.hidden = true;
@@ -275,7 +274,7 @@
     btn.disabled = true;
     linkTable(item.join).then((joined) => {
       if (!joined) { renderJoin(); return; }
-      joinDone = { table: item.table, axes: item.reasonVars.axes };
+      joinDone = { table: item.table, column: item.column, axes: item.reasonVars.axes };
       // Les lignes ont changé (colonnes de l'autre table) : la phrase de confirmation prend la place des cartes, les suggestions se recalculent.
       renderJoin();
       renderPages();

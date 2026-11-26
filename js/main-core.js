@@ -525,6 +525,13 @@
 
   const blendSecondaryColumnInput = document.getElementById('blend-secondary-column');
 
+  // Tables liées par une colonne Référence (menu Données, js/main-session.js:renderJoinsList)
+  const joinsBarEl = document.getElementById('joins-bar');
+
+  const joinsListEl = document.getElementById('joins-list');
+
+  const joinsNoteEl = document.getElementById('joins-note');
+
   const pageTabsEl = document.getElementById('page-tabs');
 
   const addPageBtn = document.getElementById('add-page');
@@ -666,7 +673,7 @@
     addDrillLevelBtn, addPageBtn, addRadarAxisBtn, addTileForm, addTileOpenBtn, advancedDetailsEl,
     advancedFilterBadgesEl, advancedFilterForm, aggField, aggLabel, aggSelect, aggSizeField, aggSizeSelect, aggYField,
     aggYSelect, areaCheckbox, areaField, binsField, binsInput, blendPrimaryColumnInput, blendSecondaryColumnInput,
-    blendSecondaryTableInput, cancelEditBtn, chipsRowEl, chooseStepEl, clearFilterBtn, columnDimensionField,
+    blendSecondaryTableInput, joinsBarEl, joinsListEl, joinsNoteEl, cancelEditBtn, chipsRowEl, chooseStepEl, clearFilterBtn, columnDimensionField,
     columnDimensionLabel, columnDimensionSelect, comboModeField, comboModeSelect, commentAuthorInput,
     commentAuthorNote, commentForm, commentTextInput, commentsCloseBtn, commentsEmptyEl, commentsListEl,
     commentsModal, commentsModalTileEl, configureStepEl, csvImportColumnsEl, csvImportConfirmEl,

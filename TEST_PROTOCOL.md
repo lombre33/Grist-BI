@@ -1166,6 +1166,20 @@ Jeu d'audit (scratchpad, non committé) : une tuile par type et par cas limite (
 - [ ] Chargement de PptxGenJS depuis jsDelivr et téléchargement depuis un vrai GFS ⬜ **[NON TESTABLE ICI]**
 - **Piège de test** : servir la vraie bibliothèque par `context.route()` AVEC `access-control-allow-origin: *` (sinon l'empreinte SRI refuse la réponse) ; dans un cadre isolé, un serveur d'essai sans CORS fait échouer les tuiles DAX (à l'écran comme dans l'export).
 
+### `js/table-graph.js` + `js/data.js:applyJoins` + `js/main-session.js` + `js/advice-join.js` — tables liées par une colonne Référence, plusieurs jointures (lot 1a de « Colonnes de toutes les tables », 26/11/2026 ; Node ; Playwright contre le vrai `index.html` + `dev-tests/grist-stub.js`, page directe ET `<iframe sandbox="allow-scripts allow-downloads">`)
+
+- [x] Routes : un et deux sauts dans l'ordre des colonnes ; jamais `RefList:`, table absente du document, retour à la table de travail, cycle (`Pays.Capitale` -> `Clients`) ni 3e saut ; plafond de 40 ✅ (Node)
+- [x] Alias : le nom de la table quand une seule route y mène, `Personnes (Livreur)` / `Personnes (Vendeur)` sinon ; une jointure posée garde son nom quand une 2e Référence apparaît ; alias pris = numérotés ✅
+- [x] Colonnes virtuelles : ni `id`, `manualSort`, `gristHelper_*`, ni Référence, liste ou pièce jointe ; celles déjà dans les lignes ne reviennent pas ; choisir une colonne du 2e saut pose les DEUX jointures dans l'ordre ✅
+- [x] Ajout (jamais deux fois la même, le réglage manuel équivalent compte, plafond de 12), retrait en cascade (`Clients` emporte `Pays`, un alias est un nom entier), usage (tuiles de toutes les pages, filtres croisés, filtres avancés, vues) ✅
+- [x] Configuration hostile : `joins` qui n'est pas une liste, entrées `null`/nombres/textes, noms vides, trop longs, à caractères de contrôle, doublons, alias réservé, `__proto__`, champ en plus ✅ ; objets NEUFS rendus
+- [x] `applyJoins` : 5 lignes -> 5 lignes, mêmes totaux, Référence vide ou orpheline = vide ; 2e saut ; table illisible sautée (et celle qui en dépend) sans retirer les autres ; table SANS ligne = ses colonnes, vides ✅
+- [x] Configuration : `joins` absent d'un rapport sans jointure (clés identiques à celles d'avant), écrit puis relu, côte à côte avec `blend`, ancien format sans jointure ✅ ; `readLinkSchema` sans tables internes ni colonnes d'aide, échec = aucun schéma ✅
+- [x] `advice-join` : une jointure vers une AUTRE table ou depuis une AUTRE colonne ne bloque plus ; la même colonne vers la même table n'est plus reproposée ; 12 jointures = `reason: 'full'` ✅
+- [x] **24 versions fautives de `js/table-graph.js` vues sur 24** (liste suivie, cycle, 3 sauts, alias nu à deux routes, jointure existante ignorée, 2e saut sans sa colonne de départ, retrait sans dépendantes, alias en double, objet de la configuration gardé…) ✅
+- [x] **Navigateur** (document où `Ventes.Client` = `Ref:Clients` et `Ventes.Vendeur` = `Ref:Personnes`) : deux cartes ; un VRAI clic sur « Relier Clients » = une jointure (mêmes lignes, `Clients.*`), réglage manuel intact, enregistrée avec le rapport (`"joins":[…]`), listée dans « Tables liées », focus dans le panneau ; un 2e clic ajoute Personnes sans défaire Clients ; rien reproposé à la réouverture ; retirer Clients refusé tant qu'une tuile la lit (la note le dit) ; retirer Personnes retire ses colonnes ✅ 🌐
+- [ ] Un vrai Grist (types `Ref:Table` réels de `_grist_Tables_column`, document à beaucoup de tables) et le vrai GFS (le courtier peut refuser de lire `_grist_*`) ⬜ **[NON TESTABLE ICI]**
+
 ### CSS — classe de bug à systématiquement re-vérifier
 
 - [x] `.field[hidden]` masque réellement l'élément (pas seulement `display:flex` de `.field` qui gagne à spécificité égale) [BUG RÉEL, trouvé 2 fois sur des champs différents] ✅ (règle en place)
