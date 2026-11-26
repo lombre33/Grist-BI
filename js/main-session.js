@@ -17,7 +17,7 @@
   const { escapeHtml } = GristBI.data;
   Object.assign(parts, {
     connectToFirstTable, ensureColumnJoined, joinColumn, flushPendingSave, offerMergeConfigNames, openBlankReport, openModelById, openReportById, refreshBlendPicker,
-    linkTable, refreshTablePicker, reloadWorkingTable, runNamesUpdate, scheduleSave, switchTable, ensureTileTables, ensureAllTileTables, ensureTableRows, loadTileTable
+    linkTable, refreshTablePicker, reloadWorkingTable, runNamesUpdate, scheduleSave, switchTable, ensureTileTables, ensureAllTileTables, ensureTableRows, loadTileTable, suggestionTable
   });
 
   // Rapport actuellement ouvert, au sens de la consigne GFS 007 point 2/3 : une LIGNE précise de
@@ -267,10 +267,15 @@
   async function loadTileTable(table, epoch) {
     let rows = null;
     try {
-      const available = await GristBI.api.listAvailableTables();
-      if (available.indexOf(table) === -1) throw new Error(`"${table}" n'est pas une table du document`);
-      const res = await GristBI.api.loadTable(table);
-      rows = withDateHierarchies(res.rows);
+      // Des lignes déjà lues pour les suggestions (`suggestionTable`) servent telles quelles : une table n'est jamais lue deux fois.
+      const early = suggestionTables.has(table) ? await suggestionTables.get(table) : null;
+      if (early && Array.isArray(early.rows)) rows = early.rows;
+      else {
+        const available = await GristBI.api.listAvailableTables();
+        if (available.indexOf(table) === -1) throw new Error(`"${table}" n'est pas une table du document`);
+        const res = await GristBI.api.loadTable(table);
+        rows = withDateHierarchies(res.rows);
+      }
     } catch (e) {
       console.error(`[GristBI] table "${table}" illisible pour une tuile`, e);
       rows = null;
@@ -278,6 +283,39 @@
     if (store.getState().workingTable !== epoch) return; // une autre table de travail est ouverte entre-temps
     if (rows === null) showError(t('tileTable.failed', { table }));
     store.setTableRows(table, rows);
+  }
+
+  // Les lignes d'une autre table pour les SUGGESTIONS (lot 3, `js/advice-tables.js`) : lues en silence (une table illisible n'ouvre aucune fenêtre,
+  // elle n'est simplement pas proposée) et SANS passer par le store — chaque `setTableRows` ferait redessiner toutes les tuiles pour une lecture que
+  // personne n'a demandée à l'écran. Une table que le store connaît déjà n'est jamais relue, et une tuile qui la demande ensuite réutilise ces lignes
+  // (`loadTileTable`). Rend `{ rows, columnInfo }` : `rows` = `null` si la table est illisible ou n'est pas une table du document, `columnInfo` = les
+  // types Grist de SES colonnes (`{}` si illisibles : le profil juge alors les valeurs) — jamais ceux de la table de travail.
+  const suggestionTables = new Map(); // table -> la promesse de sa lecture
+  function suggestionTable(table) {
+    if (!suggestionTables.has(table)) {
+      const epoch = store.getState().workingTable;
+      suggestionTables.set(table, (async () => {
+        let rows = null;
+        let columnInfo = {};
+        try {
+          const known = store.getState().tableRows[table];
+          if (Array.isArray(known)) rows = known;
+          else {
+            const available = await GristBI.api.listAvailableTables();
+            if (available.indexOf(table) === -1) throw new Error(`"${table}" n'est pas une table du document`);
+            rows = withDateHierarchies((await GristBI.api.loadTable(table)).rows);
+          }
+          const info = GristBI.api.readColumnFormats ? await GristBI.api.readColumnFormats(table) : null;
+          if (info && info.columns && typeof info.columns === 'object') columnInfo = info.columns;
+        } catch (e) {
+          console.warn(`[GristBI] table "${table}" illisible pour les suggestions`, e);
+          if (!Array.isArray(rows)) rows = null;
+        }
+        if (store.getState().workingTable !== epoch) return { rows: null, columnInfo: {} }; // une autre table de travail est ouverte entre-temps
+        return { rows, columnInfo };
+      })());
+    }
+    return suggestionTables.get(table);
   }
 
   // Lit la table `table` si elle ne l'est pas encore (une seule lecture, quel que soit le nombre de demandeurs) ; la promesse rendue se termine quand
@@ -348,6 +386,7 @@
     await applyBlend(currentBlend);
     // Les tuiles qui lisent une autre table la redemandent (les données ont pu changer).
     tileTablesAsked.clear();
+    suggestionTables.clear();
     store.clearTableRows();
     ensureTileTables(store.getState());
   }
@@ -387,7 +426,7 @@
     S.currentTableId = tableId;
     currentPrimaryRows = rows;
     if (isNewTable) joinTableCache.clear();
-    if (isNewTable) { tileTablesAsked.clear(); S.formTable = ''; S.filterTable = ''; store.setWorkingTable(tableId); } // les autres tables lues appartenaient à l'autre rapport
+    if (isNewTable) { tileTablesAsked.clear(); suggestionTables.clear(); S.formTable = ''; S.filterTable = ''; store.setWorkingTable(tableId); } // les autres tables lues appartenaient à l'autre rapport
     await refreshColumnFormats(tableId, isNewTable);
     if (isNewTable) await refreshLinkSchema(tableId);
     if (isNewTable) {

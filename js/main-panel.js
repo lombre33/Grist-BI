@@ -32,6 +32,7 @@
   const setMode = (...args) => parts.setMode(...args);
   const linkTable = (...args) => parts.linkTable(...args);
   const ensureTableRows = (...args) => parts.ensureTableRows(...args);
+  const suggestionTable = (...args) => parts.suggestionTable(...args);
   Object.assign(parts, {
     closeTilePanel, flashTile, hideColumnResults, openTilePanel, refreshTableField, refreshTilePanelTexts, renderColumnHelper, schedulePreview,
     updateAdvancedVisibility, updatePanelTexts
@@ -101,6 +102,14 @@
   // Les tuiles de TOUTES les pages du rapport (« ce tableau de bord » est le rapport, pas la page courante).
   const tilesOfAllPages = (state) => state.pages.reduce((all, page) => all.concat(page.tiles || []), []);
 
+  // Les tuiles du rapport qui lisent la table de TRAVAIL (celles qui n'en nomment aucune autre). Tout ce qui juge les lignes de la table de travail
+  // (« Que faire avec cette colonne ? », « Ajouter une page entière ») ne compte que celles-là : une tuile de `Clients` ne répond jamais à une
+  // question de `Ventes`, même si les deux tables ont une colonne `Nom`.
+  const workingTableOf = (state) => state.workingTable || S.currentTableId || '';
+  const tilesOfWorkingTable = (state) => (GristBI.adviceTables
+    ? GristBI.adviceTables.tilesOf(tilesOfAllPages(state), workingTableOf(state), true)
+    : tilesOfAllPages(state));
+
   const sameRefs = (a, b) => Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((x, i) => x === b[i]);
 
   function hideCompletion() {
@@ -139,7 +148,8 @@
   function paintCompletion(items, rows, lang, showList) {
     tileCompleteListEl.textContent = '';
     tileCompleteEl.hidden = !showList || !items.length;
-    markRecommended(items);
+    // Un badge « Recommandé » dit « ce type convient à CETTE table » : une proposition d'une autre table n'en pose pas.
+    markRecommended(items.filter((item) => !item.table));
     if (!showList) return;
     fillCards(tileCompleteListEl, items, rows, lang, 'data-complete');
   }
@@ -151,13 +161,69 @@
       const title = t(s.titleKey, s.titleVars);
       const li = document.createElement('li');
       li.className = 'complete-card';
-      GristBI.safeHtml.setHtml(li, `<div class="complete-preview">${GristBI.welcome.previewSvg(GristBI.advice.previewFor(s.tileData, rows), { lang })}</div>`
+      // Une proposition d'une AUTRE table (`s.table`, lot 3) dit laquelle sous son titre et dessine son aperçu avec SES lignes (`s.rows`).
+      const other = typeof s.table === 'string' && s.table !== '';
+      const addAria = other ? t('tilePanel.complete.addAriaTable', { title, table: s.table }) : t('welcome.addAria', { title });
+      GristBI.safeHtml.setHtml(li, `<div class="complete-preview">${GristBI.welcome.previewSvg(GristBI.advice.previewFor(s.tileData, Array.isArray(s.rows) ? s.rows : rows), { lang })}</div>`
         + `<div class="complete-body"><h4 class="complete-card-title">${escapeHtml(title)}</h4>`
+        + (other ? `<p class="complete-card-table">${escapeHtml(t('tilePanel.complete.table', { table: s.table }))}</p>` : '')
         + (s.gapKey ? `<p class="complete-card-gap">${escapeHtml(t(s.gapKey, s.gapVars))}</p>` : '')
         + `<p class="complete-card-reason">${escapeHtml(t(s.reasonKey, s.reasonVars))}</p>`
-        + `<button type="button" class="btn-primary" ${attr}="${i}" aria-label="${escapeHtml(t('welcome.addAria', { title }))}">${escapeHtml(t('welcome.add'))}</button></div>`);
+        + `<button type="button" class="btn-primary" ${attr}="${i}" aria-label="${escapeHtml(addAria)}">${escapeHtml(t('welcome.add'))}</button></div>`);
       listEl.appendChild(li);
     });
+  }
+
+  // Lecture d'une autre table pour les suggestions : une table qui ne répond pas en `SUGGESTION_READ_TIMEOUT_MS` n'est simplement pas proposée.
+  const SUGGESTION_READ_TIMEOUT_MS = 8000;
+  const NO_TABLE = { rows: null, columnInfo: {} };
+  const pause = () => new Promise((resolve) => setTimeout(resolve, 0));
+  function readWithin(promise, ms) {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(NO_TABLE), ms);
+      promise.then((value) => { clearTimeout(timer); resolve(value); }, () => { clearTimeout(timer); resolve(NO_TABLE); });
+    });
+  }
+
+  // Les tables que la table de travail vise par une colonne Référence (`Ref:Clients`) : elles passent avant les autres quand il y en a plus que
+  // `MAX_TABLES` (le schéma des liens ne dit rien tant qu'il n'est pas lu : aucune).
+  function referencedTables(working) {
+    const out = [];
+    if (S.linkSchema instanceof Map && S.linkSchema.has(working)) {
+      S.linkSchema.get(working).forEach((col) => {
+        const m = /^Ref:(.+)$/.exec(String(col && col.type || ''));
+        if (m && out.indexOf(m[1]) === -1) out.push(m[1]);
+      });
+    }
+    return out;
+  }
+
+  // Les propositions sur TOUT le document (lot 3, js/advice-tables.js) : la table de travail et — seulement quand le rapport a déjà des tuiles — les
+  // autres tables du document (au plus `MAX_TABLES` en tout). Rend `null` si le calcul est devenu périmé (panneau fermé, autre calcul lancé).
+  async function suggestAcrossDocument(state, tiles, lang, token) {
+    const adviceTables = GristBI.adviceTables;
+    const stale = () => token !== completionToken || tilePanel.hidden;
+    const working = workingTableOf(state);
+    const opts = { t, lang };
+    let names = [];
+    if (tiles.length) {
+      try { names = await GristBI.api.listAvailableTables(); } catch (e) { console.warn('[GristBI] liste des tables illisible (suggestions)', e); }
+      if (stale()) return null;
+    }
+    const others = tiles.length ? adviceTables.pickTables(names, working, tiles, referencedTables(working)) : [];
+    const reads = await Promise.all(others.map((name) => readWithin(suggestionTable(name), SUGGESTION_READ_TIMEOUT_MS)));
+    if (stale()) return null;
+    const parts = [adviceTables.completeTable({ id: working, rows: state.rows, working: true }, tiles, opts)];
+    const rowsOf = {};
+    for (let i = 0; i < others.length; i++) {
+      await pause(); // chaque profilage rend la main : le panneau reste réactif entre deux tables
+      if (stale()) return null;
+      rowsOf[others[i]] = reads[i].rows;
+      parts.push(adviceTables.completeTable({ id: others[i], rows: reads[i].rows, columnInfo: reads[i].columnInfo }, tiles, opts));
+    }
+    const items = adviceTables.merge(parts, { limit: 3 });
+    items.forEach((item) => { if (item.table) item.rows = rowsOf[item.table]; });
+    return items;
   }
 
   // `afterPaint` (facultatif) : appelé une fois la liste dessinée (ou masquée) — le focus d'un clic sur « Ajouter » ne peut aller qu'à une carte qui existe.
@@ -173,11 +239,17 @@
     tileCompleteEl.hidden = true;
     tileCompleteListEl.textContent = '';
     markRecommended([]);
-    setTimeout(() => {
+    setTimeout(async () => {
       if (token !== completionToken || tilePanel.hidden) return; // fermé, rouvert ou déjà recalculé entre-temps
-      const result = GristBI.adviceComplete.complete(state.rows, tiles, { t, lang, limit: 3 });
-      completion = { rows: state.rows, lang, tiles, items: result.items };
-      paintCompletion(result.items, state.rows, lang, tiles.length > 0);
+      let items;
+      if (GristBI.adviceTables) {
+        items = await suggestAcrossDocument(state, tiles, lang, token);
+        if (items === null || token !== completionToken || tilePanel.hidden) return;
+      } else {
+        items = GristBI.adviceComplete.complete(state.rows, tilesOfWorkingTable(state), { t, lang, limit: 3 }).items;
+      }
+      completion = { rows: state.rows, lang, tiles, items };
+      paintCompletion(items, state.rows, lang, tiles.length > 0);
       done();
     }, 0);
   }
@@ -325,7 +397,7 @@
     const token = ++pagesToken;
     const done = () => { if (afterPaint) afterPaint(); };
     const state = store.getState();
-    const tiles = tilesOfAllPages(state);
+    const tiles = tilesOfWorkingTable(state);
     if (!GristBI.advicePages || S.editingTileId || !state.rows.length || !tiles.length) { hidePages(); done(); return; }
     const lang = GristBI.i18n.getLang();
     const names = pageNamesOf(state);
@@ -369,7 +441,7 @@
   function columnResultsAreFresh() {
     const state = store.getState();
     return !!columnShown && columnShown.column === columnPickEl.value && columnShown.rows === state.rows
-      && columnShown.lang === GristBI.i18n.getLang() && sameRefs(columnShown.tiles, tilesOfAllPages(state));
+      && columnShown.lang === GristBI.i18n.getLang() && sameRefs(columnShown.tiles, tilesOfWorkingTable(state));
   }
 
   function hideColumnResults() {
@@ -401,7 +473,7 @@
     setTimeout(() => {
       if (token !== columnToken || tilePanel.hidden) return; // fermé, rouvert, autre colonne ou déjà recalculé entre-temps
       const lang = GristBI.i18n.getLang();
-      const tiles = tilesOfAllPages(state);
+      const tiles = tilesOfWorkingTable(state);
       const result = GristBI.adviceColumn.describe(state.rows, tiles, column, { t, lang, limit: 3 });
       if (!result.ok) { hideColumnResults(); done(); return; }
       S.columnHelperRows = state.rows;

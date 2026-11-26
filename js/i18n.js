@@ -593,6 +593,8 @@
     'tilePanel.complete.title': { fr: 'Pour compléter ce tableau de bord', en: 'To complete this dashboard' },
     'tilePanel.complete.lead': { fr: 'Ce que vos données permettent et que vos tuiles ne montrent pas encore.', en: 'What your data allows and your tiles do not show yet.' },
     'tilePanel.complete.added': { fr: '« {title} » est ajoutée.', en: '“{title}” was added.' },
+    'tilePanel.complete.table': { fr: 'Dans la table « {table} »', en: 'In the “{table}” table' },
+    'tilePanel.complete.addAriaTable': { fr: 'Ajouter la visualisation « {title} » (table « {table} »)', en: 'Add the visualization “{title}” (“{table}” table)' },
     'tilePanel.column.title': { fr: 'Que faire avec cette colonne ?', en: 'What can I do with this column?' },
     'tilePanel.column.label': { fr: 'Colonne', en: 'Column' },
     'tilePanel.column.placeholder': { fr: 'Choisir une colonne', en: 'Pick a column' },
