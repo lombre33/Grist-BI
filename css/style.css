@@ -1539,6 +1539,8 @@ td.pivot-cell:not(.pivot-cell-empty):not(.pivot-total-cell):hover { background: 
 /* Ce que la tuile comble : la phrase qui compte, la raison chiffrée vient dessous. */
 .complete-card-gap { margin: 0; font-size: 11.5px; line-height: 1.4; font-weight: 600; color: var(--accent-ink); }
 .complete-card-reason { margin: 0; font-size: 11.5px; line-height: 1.4; color: var(--text-muted); }
+/* La table d'une proposition qui n'est pas celle de travail (lot 3) : une ligne discrète sous le titre. */
+.complete-card-table { margin: 0; font-size: 11.5px; line-height: 1.4; font-weight: 600; color: var(--text-secondary); overflow-wrap: anywhere; }
 .complete-body .btn-primary { margin-top: 4px; }
 @media (max-width: 480px) { .complete-card { grid-template-columns: minmax(0, 1fr); } .complete-preview { height: 56px; } }
 

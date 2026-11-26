@@ -70,7 +70,7 @@ un essai fait seulement dans une page directe ne voit pas ce défaut (`CLAUDE.md
 ## Non-régression dans un vrai navigateur, à lancer avant toute fusion et tout envoi
 
 ```
-sh dev-tests/run-all.sh          # les vingt-cinq essais Node (dont test-table-graph, test-linked-columns, test-tile-tables, test-advice, test-advice-names, test-advice-insights, test-advice-types, test-advice-types-time-grid, test-advice-complete, test-advice-column, test-advice-join, test-advice-pages, test-advice-quality, test-graphique et test-graphique-dessin), puis les deux essais du navigateur (≈ 2 min) ; sortie 0 = on peut fusionner / envoyer
+sh dev-tests/run-all.sh          # les vingt-six essais Node (dont test-advice-tables, test-table-graph, test-linked-columns, test-tile-tables, test-advice, test-advice-names, test-advice-insights, test-advice-types, test-advice-types-time-grid, test-advice-complete, test-advice-column, test-advice-join, test-advice-pages, test-advice-quality, test-graphique et test-graphique-dessin), puis les deux essais du navigateur (≈ 2 min) ; sortie 0 = on peut fusionner / envoyer
 NODE_PATH=$(npm root -g) node dev-tests/test-browser.js     # le seul essai du navigateur
 TEST_BROWSER_QUICK=1 NODE_PATH=$(npm root -g) node dev-tests/test-browser.js     # seulement page directe + cadre isolé (une étape en travail) ; JAMAIS pour fusionner
 ```
