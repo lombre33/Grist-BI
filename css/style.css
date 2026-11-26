@@ -1042,6 +1042,19 @@ button:focus-visible, select:focus-visible, input:focus-visible {
   white-space: nowrap;
 }
 
+/* Table lue par la tuile, seulement quand ce n'est pas celle du rapport (lot 2 de « colonnes de toutes les tables »). Collée au titre
+   (`margin-right: auto` renvoie les boutons à droite), tronquée avant le titre ; `[hidden]` explicite (piège n°10 : une règle d'auteur
+   `display` bat l'attribut). `⚠` + couleur d'erreur quand la table est illisible : jamais la couleur seule. */
+.tile-table {
+  flex: 0 1 auto; min-width: 0; max-width: 45%; margin-right: auto;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 10.5px; font-weight: 500; line-height: 1.5;
+  color: var(--text-muted); background: var(--surface-sunken); border: 1px solid var(--border);
+  border-radius: 999px; padding: 0 7px;
+}
+.tile-table[hidden] { display: none; }
+.tile-table[data-state="failed"] { color: var(--danger-ink); background: var(--danger-soft); border-color: var(--danger-ink); }
+
 .tile-actions { display: flex; align-items: center; gap: 1px; flex-shrink: 0; }
 /* Les boutons d'une tuile ne s'affichent qu'au survol ou au focus clavier (lecture : un titre propre) ;
    toujours visibles en édition, sur un écran tactile (pas de survol) et quand la tuile a des

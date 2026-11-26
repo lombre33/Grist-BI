@@ -5671,7 +5671,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     const chartsC = readCharts();
     const indexC = fsC.readFileSync(pathC.join(rootC, 'index.html'), 'utf8');
     assert.ok(/const TYPE_CARDS = \[[^\]]*'calendar'/.test(mainC) && /<option value="calendar"/.test(indexC) && /'type-calendar':/.test(mainC), 'carte, option et icône du type');
-    assert.ok(/inferColumnKind\(dimension\) !== 'date'\) fail\('tile-dimension', 'tileForm\.error\.calendarNotDate'\)/.test(mainC), 'la colonne doit contenir de vraies dates');
+    assert.ok(/inferColumnKind\(dimension, rows\) !== 'date'\) fail\('tile-dimension', 'tileForm\.error\.calendarNotDate'\)/.test(mainC), 'la colonne doit contenir de vraies dates');
     assert.ok(/currentTile\.type === 'calendar'/.test(chartsC) && /toggleFilter\(currentTile\.dimension, day, currentTile\.id\)/.test(chartsC), 'clic = filtre du jour');
     assert.ok(/firstDay: 1/.test(chartsC) && /escapeHtml\(longDate\(/.test(chartsC) && /heatStops\(tile\.palette\)/.test(chartsC), 'lundi en premier, date de l\'infobulle échappée, rampe de la carte de chaleur');
     const emptyCal = chartsC.slice(chartsC.indexOf('function renderCalendar'), chartsC.indexOf('const calendarFormat = fmtFor(tile, tile.measure);', chartsC.indexOf('function renderCalendar')));
@@ -5794,7 +5794,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     assert.ok(/const TYPE_CARDS = \[[^\]]*'gantt'/.test(mainG) && /<option value="gantt"/.test(indexG) && /'type-gantt':/.test(mainG), 'carte, option et icône du type');
     assert.ok(/type !== 'calendar' && type !== 'gantt'(?: && type !== 'sunburst')?; \}/.test(mainG), 'pas de drill-down');
     assert.ok(/id="tile-start-column"/.test(indexG) && /id="tile-end-column"/.test(indexG) && /startColumnSelect, endColumnSelect,/.test(mainG), 'deux champs de colonne branchés comme comboboxes');
-    assert.ok(/inferColumnKind\(startColumnSelect\.value\) !== 'date'\) fail\('tile-start-column', 'tileForm\.error\.calendarNotDate'\)/.test(mainG) && /inferColumnKind\(endColumnSelect\.value\) !== 'date'\) fail\('tile-end-column', 'tileForm\.error\.calendarNotDate'\)/.test(mainG), 'début et fin doivent être de vraies dates');
+    assert.ok(/inferColumnKind\(startColumnSelect\.value, rows\) !== 'date'\) fail\('tile-start-column', 'tileForm\.error\.calendarNotDate'\)/.test(mainG) && /inferColumnKind\(endColumnSelect\.value, rows\) !== 'date'\) fail\('tile-end-column', 'tileForm\.error\.calendarNotDate'\)/.test(mainG), 'début et fin doivent être de vraies dates');
     assert.ok(/!isText && !isTable && !isGantt && !measure\) fail\('tile-measure'/.test(mainG) && /tileData\.measure = undefined; tileData\.aggFn = undefined; \}\s*\n\s*tileData\.startColumn/.test(mainG), 'aucune mesure exigée ni écrite');
     assert.ok(/tile\.type === 'gantt'\) \{\s*(?:return )?renderGantt\(tile, rows, state, container\);/.test(chartsG), 'dispatch de renderTile');
     const rg = chartsG.slice(chartsG.indexOf('function renderGantt'), chartsG.indexOf('async function renderGauge'));
@@ -6031,7 +6031,7 @@ Résultats. Le risque cardiovasculaire augmente de façon continue avec le temps
     assert.ok(/nodeClick: false/.test(rs) && /focus: 'none'/.test(rs), 'un clic ne zoome pas, le survol n\'estompe rien (on le prendrait pour un filtre)');
     assert.ok(/escapeHtml\(v\)/.test(rs) && !/innerHTML/.test(rs), 'les noms de parts sont échappés dans l\'infobulle, jamais d\'innerHTML');
     assert.ok(/selected \? 1 : 0\.3/.test(rs) && /sunburstNodeSelected\(filters, tree\.levels, n\.path\)/.test(rs) && /heatTextColor\(selected \? fill : mix\(fill, 0\.7\)\)/.test(rs), 'parts non retenues estompées par les filtres de leurs anneaux');
-    assert.ok(/inst && inst\.__sunburstLevels/.test(chartsU) && /sunburstFilterToggles\(liveState\.activeFilters, columns, path, currentTile\.id\)\.forEach\(\(c\) => GristBI\.store\.toggleFilter\(c\.column, c\.value, currentTile\.id\)\)/.test(chartsU), 'un clic lit l\'état vivant et pose les filtres de chaque anneau, un par un');
+    assert.ok(/inst && inst\.__sunburstLevels/.test(chartsU) && /sunburstFilterToggles\(GristBI\.data\.stateForTile\(currentTile, liveState\)\.activeFilters, columns, path, currentTile\.id\)\.forEach\(\(c\) => GristBI\.store\.toggleFilter\(c\.column, c\.value, currentTile\.id\)\)/.test(chartsU), 'un clic lit l\'état vivant et pose les filtres de chaque anneau, un par un');
     assert.ok(/chartTheme\(\)\.muted/.test(rs) && !/Intl\.NumberFormat|toFixed/.test(chartsU), 'message vide thémé, aucun format de nombre en dur dans charts.js');
     console.log('OK soleil — arbre, plafonds, tri, filtres de chaque anneau, store, export, défauts, conseils, i18n, câblage');
   }

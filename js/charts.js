@@ -33,6 +33,10 @@
     // FILTRE LÀ (pour rester cliquable sur tous ses segments) ; elle reçoit quand même les filtres
     // posés par d'AUTRES tuiles ainsi que les filtres avancés (qui s'appliquent à toutes les tuiles
     // sans exception, `sourceTileId` n'a jamais de sens pour eux) et son propre drill-down.
+    // Une tuile voit SA table et les filtres de cette table seulement (lot 2 de « colonnes de toutes les tables » : `tile.table`, voir
+    // js/data.js:stateForTile) ; sans `table`, rien ne change : c'est l'état lui-même. Tout ce que les rendus lisent ensuite dans `state`
+    // (`rows`, `activeFilters` pour estomper les segments non retenus, `advancedFilters`) est donc celui de la table de la tuile.
+    state = GristBI.data.stateForTile(tile, state);
     const drillPath = (state.drillIns && state.drillIns[tile.id]) || [];
     const rows = rowsForTile(tile, state);
 
@@ -114,7 +118,7 @@
       const columns = inst && inst.__sunburstLevels;
       const path = params && params.data && Array.isArray(params.data.path) ? params.data.path : null;
       if (!columns || !path) return;
-      sunburstFilterToggles(liveState.activeFilters, columns, path, currentTile.id).forEach((c) => GristBI.store.toggleFilter(c.column, c.value, currentTile.id));
+      sunburstFilterToggles(GristBI.data.stateForTile(currentTile, liveState).activeFilters, columns, path, currentTile.id).forEach((c) => GristBI.store.toggleFilter(c.column, c.value, currentTile.id));
       return;
     }
     // Calendrier : une case = UN jour ; le clic pose un filtre d'égalité sur la colonne de dates (le jour au format ISO, celui des

@@ -17,7 +17,7 @@
   const { escapeHtml } = GristBI.data;
   Object.assign(parts, {
     connectToFirstTable, ensureColumnJoined, joinColumn, flushPendingSave, offerMergeConfigNames, openBlankReport, openModelById, openReportById, refreshBlendPicker,
-    linkTable, refreshTablePicker, reloadWorkingTable, runNamesUpdate, scheduleSave, switchTable
+    linkTable, refreshTablePicker, reloadWorkingTable, runNamesUpdate, scheduleSave, switchTable, ensureTileTables, ensureAllTileTables, ensureTableRows, loadTileTable
   });
 
   // Rapport actuellement ouvert, au sens de la consigne GFS 007 point 2/3 : une LIGNE précise de
@@ -257,6 +257,60 @@
     return joinTableCache.get(tableId);
   }
 
+  // Les autres tables que lisent des tuiles (`tile.table`, lot 2 de « colonnes de toutes les tables », 26/11/2026). Chaque table est lue UNE fois
+  // par rapport ouvert, à la demande : dès qu'une tuile de la page affichée la nomme (`ensureTileTables`, appelée par `render()`). Les lignes
+  // vont dans le store (`setTableRows`) : un tableau, ou `null` quand la table est illisible — la tuile le dit par son badge, et il n'y a pas
+  // de nouvel essai avant un rechargement (sinon `render()` relirait sans fin une table qu'une règle d'accès interdit). Une réponse qui arrive
+  // après un changement de table de travail n'écrit rien (`epoch`). Seules les tables que `listAvailableTables` rend sont lues : ni une
+  // table système (`_grist_*`), ni une table interne de ce widget, ni un nom forgé dans une configuration.
+  const tileTablesAsked = new Map(); // table -> la promesse de sa lecture (la même pour tous ceux qui l'attendent : le formulaire de tuile aussi)
+  async function loadTileTable(table, epoch) {
+    let rows = null;
+    try {
+      const available = await GristBI.api.listAvailableTables();
+      if (available.indexOf(table) === -1) throw new Error(`"${table}" n'est pas une table du document`);
+      const res = await GristBI.api.loadTable(table);
+      rows = withDateHierarchies(res.rows);
+    } catch (e) {
+      console.error(`[GristBI] table "${table}" illisible pour une tuile`, e);
+      rows = null;
+    }
+    if (store.getState().workingTable !== epoch) return; // une autre table de travail est ouverte entre-temps
+    if (rows === null) showError(t('tileTable.failed', { table }));
+    store.setTableRows(table, rows);
+  }
+
+  // Lit la table `table` si elle ne l'est pas encore (une seule lecture, quel que soit le nombre de demandeurs) ; la promesse rendue se termine quand
+  // les lignes — ou l'échec — sont dans le store.
+  function ensureTableRows(table) {
+    const state = store.getState();
+    if (GristBI.data.tableRowsStatus(state, table) !== 'loading') return Promise.resolve();
+    if (!tileTablesAsked.has(table)) tileTablesAsked.set(table, loadTileTable(table, state.workingTable));
+    return tileTablesAsked.get(table);
+  }
+
+  // Toutes les tables que lisent les tuiles du rapport, toutes pages comprises (un export les veut toutes) : se termine quand chacune est lue ou
+  // en échec.
+  function ensureAllTileTables() {
+    const state = store.getState();
+    const tables = new Set();
+    state.pages.forEach((page) => (page.tiles || []).forEach((tile) => {
+      const table = GristBI.data.tileTable(tile, state);
+      if (table) tables.add(table);
+    }));
+    return Promise.all(Array.from(tables).map(ensureTableRows));
+  }
+
+  // Demande les tables des tuiles de la page affichée qui n'ont pas encore été lues. Sans effet pendant le chargement d'un rapport (les tuiles
+  // de l'ancien rapport ne doivent rien faire lire) : `switchTable` la rappelle une fois le rapport prêt.
+  function ensureTileTables(state) {
+    if (!S.dashboardReady || !state.workingTable) return;
+    state.tiles.forEach((tile) => {
+      const table = GristBI.data.tileTable(tile, state);
+      if (table) ensureTableRows(table);
+    });
+  }
+
   // Les colonnes de chaque table jointe d'après le schéma des liens, pour qu'une table SANS ligne apporte quand même les siennes (les lignes seules
   // ne les disent pas) ; rien tant que le schéma n'est pas lu.
   function columnsOfTables(tables) {
@@ -292,6 +346,10 @@
     joinTableCache.clear();
     await refreshColumnFormats(tableId, false);
     await applyBlend(currentBlend);
+    // Les tuiles qui lisent une autre table la redemandent (les données ont pu changer).
+    tileTablesAsked.clear();
+    store.clearTableRows();
+    ensureTileTables(store.getState());
   }
 
   // Bascule l'affichage sur `tableId`/`rows`. Met TOUJOURS à jour `currentPrimaryRows` (même hors
@@ -329,6 +387,7 @@
     S.currentTableId = tableId;
     currentPrimaryRows = rows;
     if (isNewTable) joinTableCache.clear();
+    if (isNewTable) { tileTablesAsked.clear(); S.formTable = ''; store.setWorkingTable(tableId); } // les autres tables lues appartenaient à l'autre rapport
     await refreshColumnFormats(tableId, isNewTable);
     if (isNewTable) await refreshLinkSchema(tableId);
     if (isNewTable) {
@@ -369,6 +428,7 @@
         S.suppressNextSave = false;
       }
       S.dashboardReady = true;
+      ensureTileTables(store.getState()); // les tuiles du rapport qui lisent une autre table
       autoMode();
       refreshBlendPicker();
       saveLastTable(tableId); // la prochaine ouverture du widget reprend cette table (chooseStartTable)

@@ -470,6 +470,14 @@ Mis à jour le 2026-11-26 (la dernière table ouverte est mémorisée, `gristbi_
   `_grist_Tables_column` (comme il le fait déjà pour les types de colonnes) pour connaître les colonnes Référence ; s'il
   ne peut pas les lire (droits, courtier), il retombe sans colonne d'une autre table, comme avant. Aucune nouvelle table,
   aucune nouvelle bibliothèque, aucune nouvelle adresse, aucune nouvelle clé de `localStorage`.
+- 2026-11-26 · une visualisation qui lit une autre table du document (lot 2 du même chantier) : la configuration d'un rapport
+  peut porter, sur une tuile, un champ `table` (nom d'une table du document) et, sur un filtre, un champ `table` ; écrits
+  SEULEMENT quand la tuile ou le filtre vient d'une autre table que la table de travail du rapport — un rapport qui n'en
+  utilise pas reste identique octet pour octet. **Une version plus ancienne du widget qui rouvre un tel rapport ne connaît pas
+  ces champs et les perd à sa prochaine sauvegarde** (la tuile lirait alors la table de travail). Le widget lit les lignes de
+  ces autres tables par `fetchTable` (jamais `_grist_*` ni les tables internes de ce widget, seulement celles que
+  `listTables()` rend) ; si le courtier refuse la lecture d'une table autre que celle du widget, la tuile reste vide avec un
+  avertissement, rien d'autre ne change. Aucune nouvelle table, bibliothèque, adresse ni clé de `localStorage`.
 
 ## Questions pour GFS
 - **Le rôle du propriétaire dans le contexte (consigne 030, point 4b, contrats 5.2 point 8).** Mon `port.isOwner` lit `contexte.role.proprietaire` dans GFS, comme tu me le demandes. Or `kit/js/gfs-link.js` (`d061fbf`) ne garde du contexte que les champs de `FIXED` (`contrat`, `hote`, `instance`, `document`, `page`, `section`, `adresseWidget`, `culture`, `fuseau`, `devise`, `lectureSeule`, `acces`) : **`role` n'y est pas**, donc `GfsLink.context().role` est `undefined` et mon widget répond `null` (« non ») : **la fenêtre ne s'ouvrirait jamais dans GFS**. Soit le lien du kit garde `role` (je le lirai tel quel : `GfsLink.context().role.proprietaire`, un booléen), soit tu me dis une autre lecture (un autre appel, un autre champ). Je n'ai PAS utilisé la preuve du moteur de partage (`GET /webhooks` avec un jeton d'écriture) dans GFS : ma fiche ne déclare que `jeton` en lecture seule, et je ne veux pas en demander plus pour une fenêtre qui s'ouvre une fois.

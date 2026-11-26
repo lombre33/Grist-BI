@@ -13,7 +13,7 @@
 
   // Clic sur une case de la carte de chaleur : filtre de la ligne ET de la colonne (js/data.js:cellFilterToggles décide lesquels).
   function toggleCellFilters(tile, rowValue, colValue) {
-    cellFilterToggles(GristBI.store.getState().activeFilters, tile.dimension, rowValue, tile.columnDimension, colValue)
+    cellFilterToggles(GristBI.data.stateForTile(tile, GristBI.store.getState()).activeFilters, tile.dimension, rowValue, tile.columnDimension, colValue)
       .forEach((c) => GristBI.store.toggleFilter(c.column, c.value, tile.id));
   }
 
@@ -238,7 +238,7 @@
   // la colonne, les comptes (axe Y, infobulle) celui d'un comptage — jamais la devise de la colonne sur « 12 lignes ». Le clic
   // (handleTileClick) pose un filtre par plage ; la classe filtrée garde sa couleur, les autres sont atténuées, comme une barre.
   function renderHistogram(tile, rows, state, instance) {
-    const hist = histogramBins(state.rows, rows, tile.measure, tile.bins);
+    const hist = histogramBins(GristBI.data.stateForTile(tile, state).rows, rows, tile.measure, tile.bins);
     instance.__bins = hist.bins;
     if (!hist.bins.length) {
       // Aucune valeur numérique : un message au centre plutôt qu'un cadre vide sans explication.

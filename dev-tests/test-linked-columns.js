@@ -318,7 +318,7 @@ async function asyncChecks(combobox) {
   ok(/const ensureColumnJoined = \(\.\.\.args\) => parts\.ensureColumnJoined\(\.\.\.args\);/.test(fields), '`ensureColumnJoined` vient de main-session.js par liaison tardive');
   ok(/Object\.assign\(parts, \{\s*connectToFirstTable, ensureColumnJoined,/.test(session), '...et y est déposée');
   // Les listes sont remplies par `columnOptions`, jamais par la liste brute des colonnes des lignes.
-  ok(/const choices = columnOptions\(rows\);/.test(fields) && /const numChoices = columnOptions\(rows, 'number'\);/.test(fields), 'refreshColumnSelects remplit toutes les listes par columnOptions');
+  ok(/const choices = columnOptions\(rows(?:, undefined, plainOnly)?\);/.test(fields) && /const numChoices = columnOptions\(rows, 'number'(?:, plainOnly)?\);/.test(fields), 'refreshColumnSelects remplit toutes les listes par columnOptions (celles du formulaire par refreshFormColumns)');
   ['dimensionSelect', 'columnDimensionSelect', 'startColumnSelect', 'endColumnSelect', 'measureSelect', 'measureYSelect', 'dateColumnSelect'].forEach((name) => {
     ok(new RegExp(`fillCombobox\\(${name}, choices\\)`).test(fields), `${name} reçoit les colonnes des tables liées`);
   });
@@ -327,12 +327,12 @@ async function asyncChecks(combobox) {
   });
   ok(/fillCombobox\(targetColumnSelect, numChoices, \{ blankLabel/.test(fields) && /S\.radarAxisSelects\.forEach\(\(select\) => fillCombobox\(select, numChoices\)\)/.test(fields), 'les listes de NOMBRES (objectif, axes du radar) ne reçoivent que des colonnes liées numériques');
   ok(/S\.drillLevelSelects\.forEach\(\(select\) => fillCombobox\(select, choices,/.test(fields), 'les niveaux de drill-down existants aussi');
-  ok(/fillCombobox\(select, columnOptions\(store\.getState\(\)\.rows\), \{ blankLabel: t\('tileForm\.none\.m'\) \}\)/.test(fields) && /fillCombobox\(select, columnOptions\(store\.getState\(\)\.rows, 'number'\)\)/.test(fields), '« + Niveau » et « + Axe » créent leurs listes avec les mêmes options');
-  ok(/const cols = columnOptions\(store\.getState\(\)\.rows\);/.test(form) && /const cols = columnOptions\(store\.getState\(\)\.rows, 'number'\);/.test(form), 'les niveaux et axes créés à l\'édition d\'une tuile aussi');
+  ok(/fillCombobox\(select, formColumnOptions\(\), \{ blankLabel: t\('tileForm\.none\.m'\) \}\)/.test(fields) && /fillCombobox\(select, formColumnOptions\('number'\)\)/.test(fields), '« + Niveau » et « + Axe » créent leurs listes avec les mêmes options');
+  ok(/const cols = formColumnOptions\(\);/.test(form) && /const cols = formColumnOptions\('number'\);/.test(form), 'les niveaux et axes créés à l\'édition d\'une tuile aussi');
   ok(!/fillCombobox\(\w+, (availableColumns|numericColumns)\(/.test(main), 'plus aucune liste de choix de colonne remplie sans les colonnes des tables liées');
   // Les colonnes d'une table liée : schéma lu, jointures de l'état (réglage manuel compris), genre d'après le type pour les listes de nombres.
   ok(/graph\.allJoins\(state\.blend, state\.joins\)/.test(fields) && /graph\.virtualColumns\(S\.linkSchema, S\.currentTableId, joins, Object\.keys\(rows\[0\]\)\)/.test(fields), 'columnOptions lit les jointures posées (réglage manuel compris) et les colonnes des lignes');
-  ok(/if \(!graph \|\| !rows\.length\) return plain;/.test(fields), 'sans ligne, aucune colonne liée n\'est proposée (comme les colonnes de la table de travail)');
+  ok(/if \(plainOnly \|\| !graph \|\| !rows\.length\) return plain;/.test(fields), 'sans ligne, aucune colonne liée n\'est proposée (comme les colonnes de la table de travail)');
   ok(/if \(kind\) virtual = virtual\.filter\(\(v\) => graph\.kindOfType\(v\.type\) === kind\);/.test(fields), 'une liste de nombres ne reçoit que des colonnes numériques d\'après leur type Grist');
   ok(/graph\.groupColumns\(plain, virtual, joins, S\.currentTableId \|\| ''\)/.test(fields) && /t\('joins\.pick\.hint', \{ table: o\.table \}\)/.test(fields), 'rangées par table, avec l\'infobulle « relie la table… »');
   // Choisir une colonne liée : jointures posées, lignes refaites, retrait si la colonne n'y est pas, phrase.

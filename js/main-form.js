@@ -27,6 +27,7 @@
     setNumberFormatForm, showPctCheckbox, showPctField, smallMultiplesCheckbox, smallMultiplesField, sortField,
     sortSelect, sparklineCheckbox, sparklineField, stackField, stackPercentCheckbox, stackPercentField,
     stackedCheckbox, startColumnField, startColumnSelect, store, suggestDateHierarchyBtn, supportsLevels,
+    formColumnOptions, formRows, refreshFormColumns, tableField,
     targetColumnField, targetColumnSelect, targetField, targetInput, thresholdsField, tileColumnsField,
     tileColumnsList, tileLinkNoteEl, tileTextField, tileTextInput, tileTitleInput, tileTypeSelect, trendDimensionSelect, trendField,
     updateDrillLevelsUI, updateNumberFormatUI, updatePaletteSwatch, updateRadarAxesUI, updateRadarEntityValueOptions,
@@ -35,6 +36,7 @@
   } = parts;
   // Définies dans un fichier chargé plus tard : liaison tardive, résolue à l'appel.
   const closeTilePanel = (...args) => parts.closeTilePanel(...args);
+  const ensureTableRows = (...args) => parts.ensureTableRows(...args);
   const flashTile = (...args) => parts.flashTile(...args);
   const joinColumn = (...args) => parts.joinColumn(...args);
   const openTilePanel = (...args) => parts.openTilePanel(...args);
@@ -43,10 +45,11 @@
   const updatePanelTexts = (...args) => parts.updatePanelTexts(...args);
   Object.assign(parts, {
     bindFormSubmit, clearFormErrors, readTileForm, setDrillLevels, setRadarAxes, showFormErrors, startEditTile,
-    stopEditTile, updateFormFieldsForType
+    stopEditTile, updateFormFieldsForType, updateTableFieldVisibility
   });
 
   S.editingTileId = null;
+  S.tableCount = 0; // combien de tables le document compte, lu à l'ouverture du panneau (le champ « Table » ne se montre qu'à partir de deux)
 
   tileColumnsList.addEventListener('click', (e) => {
     const btn = e.target.closest && e.target.closest('.col-move');
@@ -79,6 +82,10 @@
     const still = rowOf(true);
     if (still) { still.querySelector('input').checked = false; still.removeAttribute('aria-busy'); }
   });
+
+  function updateTableFieldVisibility() {
+    tableField.hidden = tileTypeSelect.value === 'text' || (!S.formTable && !(S.tableCount >= 2));
+  }
 
   function updateFormFieldsForType() {
     const type = tileTypeSelect.value;
@@ -204,6 +211,8 @@
     aggLabel.textContent = t(isCombo && !isComboPareto ? 'tileForm.agg.labelBars' : 'tileForm.agg.label');
     measureYLabel.textContent = t(isCombo ? 'tileForm.measureY.labelLine' : 'tileForm.measureY.label');
     measureLabel.textContent = t(isScatter ? 'tileForm.measure.labelX' : (isCombo && !isComboPareto ? 'tileForm.measure.labelBars' : ((isHistogram || isBox) ? 'tileForm.measure.labelHistogram' : 'tileForm.measure.label')));
+    // Le champ « Table » : seulement quand le document en a plusieurs (ou que la tuile en lit déjà une autre), jamais pour une note sans donnée.
+    updateTableFieldVisibility();
     updateDrillLevelsUI();
     updateRadarAxesUI();
     updateSuggestDateHierarchyVisibility();
@@ -219,7 +228,7 @@
   // sans que l'utilisateur ait cliqué "+ Niveau" à la main.
   function setDrillLevels(levels) {
     resetDrillLevels();
-    const cols = columnOptions(store.getState().rows);
+    const cols = formColumnOptions();
     levels.forEach((lvl, i) => {
       if (i >= S.drillLevelSelects.length) {
         const select = createDrillLevelSelect(i);
@@ -237,7 +246,7 @@
   // manquantes au besoin.
   function setRadarAxes(axes) {
     resetRadarAxes();
-    const cols = columnOptions(store.getState().rows, 'number');
+    const cols = formColumnOptions('number');
     (axes || []).forEach((col, i) => {
       if (i >= S.radarAxisSelects.length) {
         const select = createRadarAxisSelect(i);
@@ -250,7 +259,27 @@
     updateRadarAxesUI();
   }
 
+  // Modifier une tuile : si elle lit une AUTRE table que celle de travail, le formulaire prend les colonnes de cette table (jamais celles des lignes
+  // de travail, qui viderait ses champs : une liste de choix stricte efface une valeur qu'elle ne connaît pas) et attend qu'elle soit lue.
   function startEditTile(tile) {
+    const table = GristBI.data.tileTable(tile, store.getState());
+    S.formTable = table;
+    if (table) {
+      refreshFormColumns();
+      if (GristBI.data.tableRowsStatus(store.getState(), table) === 'loading') {
+        ensureTableRows(table).then(() => {
+          if (S.formTable !== table || S.editingTileId) return; // la personne a fait autre chose pendant la lecture
+          refreshFormColumns();
+          fillEditForm(store.getState().tiles.find((tl) => tl.id === tile.id) || tile);
+        });
+        return;
+      }
+      refreshFormColumns();
+    }
+    fillEditForm(tile);
+  }
+
+  function fillEditForm(tile) {
     S.editingTileId = tile.id;
     tileTypeSelect.value = tile.type;
     if (tile.dimension) dimensionSelect.value = tile.dimension;
@@ -366,7 +395,7 @@
   // valider, comme pour tout autre choix de dimension/drill-down.
   suggestDateHierarchyBtn.addEventListener('click', () => {
     const dateColumn = dimensionSelect.value;
-    if (!dateColumn || inferColumnKind(dateColumn) !== 'date') return;
+    if (!dateColumn || inferColumnKind(dateColumn, formRows()) !== 'date') return;
     dimensionSelect.value = `${dateColumn}.Annee`;
     setDrillLevels([`${dateColumn}.Trimestre`, `${dateColumn}.Mois`, dateColumn]);
     updateSuggestDateHierarchyVisibility();
@@ -403,6 +432,7 @@
   function readTileForm() {
     const errors = [];
     const fail = (field, key, vars) => { errors.push({ field, key, vars }); };
+    const rows = formRows();
     const type = tileTypeSelect.value;
     const isKpi = type === 'kpi';
     const isGauge = type === 'gauge';
@@ -446,6 +476,9 @@
     // ci-dessous) ou le simple compte d'occurrences (js/data.js:wordFrequency) en tiennent lieu. La
     // dimension, elle, reste requise dans les deux cas sauf radar "colonnes" (seul mode sans aucune
     // dimension unique, voir formHasNoDimension).
+    // Une autre table que celle de travail : tant qu'elle n'est pas lue (ou si elle est illisible), ses colonnes ne sont pas connues — pas de tuile
+    // qui la nomme sans pouvoir la lire.
+    if (!isText && S.formTable && GristBI.data.tableRowsStatus(store.getState(), S.formTable) !== 'ready') fail('tile-table', 'tileForm.error.tableUnreadable', { table: S.formTable });
     if (isText && !textValue.trim()) fail('tile-text', 'tileForm.error.textRequired');
     if (isTable && !tableColumns.length) fail('tile-columns', 'tileForm.error.columnsRequired');
     if (usesTarget && target !== undefined && !(Number.isFinite(target) && target > 0)) fail('tile-target', 'tileForm.error.targetPositive');
@@ -454,13 +487,13 @@
     if (!isRadarColumns && !isWordCloudSplit && !isText && !isTable && !isGantt && !measure) fail('tile-measure', 'tileForm.error.measureRequired');
     if (hasDimension && !dimension) fail('tile-dimension', 'tileForm.error.dimensionRequired');
     // Calendrier : une case = un jour, la colonne doit contenir de vraies dates (format ISO, comme toutes les colonnes Date).
-    else if (type === 'calendar' && dimension && inferColumnKind(dimension) !== 'date') fail('tile-dimension', 'tileForm.error.calendarNotDate');
+    else if (type === 'calendar' && dimension && inferColumnKind(dimension, rows) !== 'date') fail('tile-dimension', 'tileForm.error.calendarNotDate');
     // Gantt : début et fin sont deux colonnes de vraies dates (format ISO) ; une barre va de l'une à l'autre.
     if (isGantt) {
       if (!startColumnSelect.value) fail('tile-start-column', 'tileForm.error.ganttStartRequired');
-      else if (inferColumnKind(startColumnSelect.value) !== 'date') fail('tile-start-column', 'tileForm.error.calendarNotDate');
+      else if (inferColumnKind(startColumnSelect.value, rows) !== 'date') fail('tile-start-column', 'tileForm.error.calendarNotDate');
       if (!endColumnSelect.value) fail('tile-end-column', 'tileForm.error.ganttEndRequired');
-      else if (inferColumnKind(endColumnSelect.value) !== 'date') fail('tile-end-column', 'tileForm.error.calendarNotDate');
+      else if (inferColumnKind(endColumnSelect.value, rows) !== 'date') fail('tile-end-column', 'tileForm.error.calendarNotDate');
     }
     if (isScatter && !measureYSelect.value) fail('tile-measure-y', 'tileForm.error.measureYRequired'); // 2e mesure obligatoire pour un nuage de points
     if (isHistogram && binsValue !== undefined && !(Number.isInteger(binsValue) && binsValue >= 2 && binsValue <= GristBI.data.HISTOGRAM_MAX_BINS)) fail('tile-bins', 'tileForm.error.binsRange');
@@ -512,6 +545,8 @@
     const titleKey = customTitle ? undefined : auto.titleKey;
     const titleVars = customTitle ? undefined : auto.titleVars;
     const tileData = { type, dimension, measure, aggFn, title, titleKey, titleVars };
+    // `table` : seulement pour une autre table que celle de travail (jamais écrit sinon : une tuile d'avant ce réglage reste identique).
+    tileData.table = (!isText && S.formTable) ? S.formTable : undefined;
     // Tuile Texte : aucune donnée. Les champs de données sont effacés (`undefined`) plutôt que laissés à la
     // valeur fantôme du formulaire, et `text` n'existe que sur ce type.
     if (isText || isTable) { tileData.dimension = undefined; tileData.measure = undefined; tileData.aggFn = undefined; }

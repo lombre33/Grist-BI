@@ -18,13 +18,16 @@
     suggestDateHierarchyBtn, targetColumnSelect, tileColumnsList, tileTypeSelect, trendDimensionSelect,
     wordCloudSplitCheckbox
   } = parts;
+  // La table que lit la tuile du FORMULAIRE quand ce n'est pas la table de travail (champ « Table », lot 2 de « colonnes de toutes les tables »,
+  // 26/11/2026) ; '' = la table de travail. Réglée par `changeFormTable` (js/main-form.js), remise à '' par `resetTileForm`.
+  S.formTable = '';
   // Définies dans un fichier chargé plus tard : liaison tardive, résolue à l'appel.
   const renderFilterColumns = (...args) => parts.renderFilterColumns(...args);
   const updateAdvancedFilterFieldsForColumn = (...args) => parts.updateAdvancedFilterFieldsForColumn(...args);
   const hideColumnResults = (...args) => parts.hideColumnResults(...args);
   const ensureColumnJoined = (...args) => parts.ensureColumnJoined(...args);
   Object.assign(parts, {
-    autoTileTitle, availableColumns, blendJoinColumns, columnOptions, createDrillLevelSelect, createRadarAxisSelect, fillCombobox,
+    autoTileTitle, availableColumns, blendJoinColumns, columnOptions, clearFormColumns, formColumnOptions, formRows, refreshFormColumns, createDrillLevelSelect, createRadarAxisSelect, fillCombobox,
     formHasNoDimension, genTileId, inferColumnKind, isRadarColumnsMode, isWordCloudSplitMode, numberFormatFromForm,
     numericColumns, readColumnsOrder, readColumnsPicker, refreshColumnSelects, renderColumnsPicker, resetDrillLevels,
     resetRadarAxes, setColumnsPicker, setNumberFormatForm, showError, showNotice, supportsLevels, updateDrillLevelsUI,
@@ -82,11 +85,13 @@
   // l'une d'elles pose la jointure avant de valider le choix (`prepare` du combobox). `kind` = `'number'` pour les listes qui n'acceptent que des
   // nombres (axes d'un radar, objectif) : une colonne liée y entre d'après son TYPE Grist. Sans table liée (ou schéma illisible) : la liste d'avant,
   // chaînes seules. Sans ligne, aucune colonne n'est proposée (comme avant) : le schéma seul ne dit pas quoi montrer.
-  function columnOptions(rows, kind) {
+  // `plainOnly` : les colonnes de la table seules, jamais celles d'une table liée — une tuile qui lit une AUTRE table que celle de travail n'a pas de
+  // jointure (`formColumnOptions`).
+  function columnOptions(rows, kind, plainOnly) {
     rows = rows || store.getState().rows;
     const plain = kind === 'number' ? numericColumns(rows) : availableColumns(rows);
     const graph = GristBI.tableGraph;
-    if (!graph || !rows.length) return plain;
+    if (plainOnly || !graph || !rows.length) return plain;
     const state = store.getState();
     const joins = graph.allJoins(state.blend, state.joins);
     let virtual = [];
@@ -123,10 +128,14 @@
     input.setOptions(options, { blankLabel: blankLabel || null });
   }
 
-  function refreshColumnSelects(rows) {
+  // Les listes de choix du FORMULAIRE de tuile, remplies d'après les lignes de la table qu'il lit (`formRows`, ou `rows` quand on les donne : un
+  // changement de table de travail n'a pas encore mis le store à jour). Les colonnes des tables LIÉES (columnOptions) n'y sont proposées que pour
+  // la table de travail ; une tuile qui lit une autre table n'a que ses propres colonnes (`S.formTable`).
+  function refreshFormColumns(rows) {
+    rows = rows || formRows();
+    const plainOnly = !!S.formTable;
     const cols = availableColumns(rows);
-    // Les listes de choix de colonne portent aussi celles des tables liées (columnOptions) ; `cols` ne sert plus qu'aux listes qui n'en proposent pas.
-    const choices = columnOptions(rows);
+    const choices = columnOptions(rows, undefined, plainOnly);
     fillCombobox(dimensionSelect, choices);
     fillCombobox(columnDimensionSelect, choices);
     fillCombobox(startColumnSelect, choices);
@@ -136,13 +145,24 @@
     fillCombobox(measureYSelect, choices);
     fillCombobox(measureSizeSelect, choices, { blankLabel: t('tileForm.none.f') });
     S.drillLevelSelects.forEach((select) => fillCombobox(select, choices, { blankLabel: t('tileForm.none.m') }));
-    const numChoices = columnOptions(rows, 'number');
+    const numChoices = columnOptions(rows, 'number', plainOnly);
     S.radarAxisSelects.forEach((select) => fillCombobox(select, numChoices));
     fillCombobox(trendDimensionSelect, choices, { blankLabel: t('tileForm.none.f') });
     fillCombobox(targetColumnSelect, numChoices, { blankLabel: t('tileForm.none.f') });
     fillCombobox(radarEntityColumnSelect, choices, { blankLabel: t('tileForm.none.f') });
     updateRadarEntityValueOptions(rows);
     fillCombobox(dateColumnSelect, choices);
+    // Table plate : les colonnes des tables liées qu'on n'a pas encore jointes se proposent à la suite (les cocher pose la jointure).
+    S.columnsPickerPending = choices.filter((o) => typeof o === 'object' && o.pending);
+    refreshColumnsPicker(cols);
+    updateSuggestDateHierarchyVisibility(rows);
+  }
+
+  function refreshColumnSelects(rows) {
+    const cols = availableColumns(rows);
+    // Les listes de choix de colonne portent aussi celles des tables liées (columnOptions) ; `cols` ne sert plus qu'aux listes qui n'en proposent pas.
+    const choices = columnOptions(rows);
+    refreshFormColumns(S.formTable ? formRows() : rows);
     // « Que faire avec cette colonne ? » : les colonnes de la table (sans les dérivées d'une date) ; une colonne choisie sur la table
     // d'AVANT (autres lignes, même du même nom), ou qui a disparu, n'est plus une réponse : champ et résultats sont vidés.
     // Les colonnes d'une table liée (pas encore jointe) y sont aussi : la choisir pose la jointure d'abord (`prepare`), puis la question est posée sur les lignes jointes.
@@ -151,12 +171,31 @@
     fillCombobox(columnPickEl, pickable);
     const pickableValues = pickable.map((o) => (typeof o === 'string' ? o : o.value));
     if (columnPickEl.value && (pickableValues.indexOf(columnPickEl.value) === -1 || (S.columnHelperRows && S.columnHelperRows !== rows))) { columnPickEl.value = ''; hideColumnResults(); }
-    // Table plate : les colonnes des tables liées qu'on n'a pas encore jointes se proposent à la suite (les cocher pose la jointure).
-    S.columnsPickerPending = choices.filter((o) => typeof o === 'object' && o.pending);
-    refreshColumnsPicker(cols);
     renderFilterColumns(rows);
     updateAdvancedFilterFieldsForColumn(rows);
-    updateSuggestDateHierarchyVisibility(rows);
+  }
+
+  // Vide tous les champs de COLONNE du formulaire : changer la table que lit la tuile rend celles d'avant sans objet (une colonne du même nom dans une
+  // autre table n'est pas la même colonne).
+  function clearFormColumns() {
+    [dimensionSelect, columnDimensionSelect, startColumnSelect, endColumnSelect, seriesSelect, measureSelect, measureYSelect, measureSizeSelect,
+      trendDimensionSelect, targetColumnSelect, radarEntityColumnSelect, radarEntityValueSelect, dateColumnSelect].forEach((input) => { input.value = ''; });
+    resetDrillLevels();
+    resetRadarAxes();
+    setColumnsPicker([], availableColumns(formRows()));
+  }
+
+  // Les lignes que lit le FORMULAIRE de tuile : celles de la table de travail (jointures comprises), ou — quand le champ « Table » en désigne une autre —
+  // celles de cette table, `[]` tant qu'elle n'est pas lue (ou si elle est illisible : aucune colonne n'est alors proposée).
+  function formRows() {
+    const state = store.getState();
+    if (!S.formTable) return state.rows;
+    const rows = state.tableRows[S.formTable];
+    return Array.isArray(rows) ? rows : [];
+  }
+
+  function formColumnOptions(kind) {
+    return columnOptions(formRows(), kind, !!S.formTable);
   }
 
   // Valeurs proposées pour "Valeur à comparer" (comparaison élève/moyenne du radar, voir
@@ -169,7 +208,7 @@
   // `refreshColumnSelects` pendant un changement de table, où `store.getState().rows` n'est pas
   // encore à jour.
   function updateRadarEntityValueOptions(rows) {
-    rows = rows || store.getState().rows;
+    rows = rows || formRows();
     const column = radarEntityColumnSelect.value;
     fillCombobox(radarEntityValueSelect, column ? GristBI.data.distinctColumnValues(rows, column) : [], { blankLabel: t('tileForm.none.f') });
   }
@@ -222,6 +261,7 @@
   // updateAdvancedFilterFieldsForColumn (store.getState().rows n'est pas encore à jour à cet
   // instant lors d'un changement de table).
   function updateSuggestDateHierarchyVisibility(rows) {
+    rows = rows || formRows();
     const noDrill = formHasNoDimension() || tileTypeSelect.value === 'pivot' || tileTypeSelect.value === 'heatmap';
     const column = dimensionSelect.value;
     suggestDateHierarchyBtn.hidden = noDrill || !column || inferColumnKind(column, rows) !== 'date';
@@ -367,7 +407,7 @@
   addDrillLevelBtn.addEventListener('click', () => {
     if (S.drillLevelSelects.length >= MAX_DRILL_LEVELS) return;
     const select = createDrillLevelSelect(S.drillLevelSelects.length);
-    fillCombobox(select, columnOptions(store.getState().rows), { blankLabel: t('tileForm.none.m') });
+    fillCombobox(select, formColumnOptions(), { blankLabel: t('tileForm.none.m') });
     drillLevelsContainer.appendChild(select.parentElement);
     S.drillLevelSelects.push(select);
     updateDrillLevelsUI();
@@ -429,7 +469,7 @@
   addRadarAxisBtn.addEventListener('click', () => {
     if (S.radarAxisSelects.length >= MAX_RADAR_AXES) return;
     const select = createRadarAxisSelect(S.radarAxisSelects.length);
-    fillCombobox(select, columnOptions(store.getState().rows, 'number'));
+    fillCombobox(select, formColumnOptions('number'));
     radarAxesContainer.appendChild(select.parentElement);
     S.radarAxisSelects.push(select);
     updateRadarAxesUI();
@@ -568,7 +608,7 @@
 
   // `selected` : colonnes à cocher (dans l'ordre voulu) ; les autres colonnes de `cols` suivent, décochées.
   function setColumnsPicker(selected, cols) {
-    cols = cols || availableColumns(store.getState().rows);
+    cols = cols || availableColumns(formRows());
     const sel = (selected || []).filter((c) => cols.includes(c));
     renderColumnsPicker(sel.concat(cols.filter((c) => !sel.includes(c))), new Set(sel));
   }

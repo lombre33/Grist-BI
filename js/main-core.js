@@ -452,6 +452,9 @@
   const tileAdviceEl = document.getElementById('tile-advice');
   const tileLinkNoteEl = document.getElementById('tile-link-note');
   const filterLinkNoteEl = document.getElementById('filter-link-note');
+  const tableField = document.getElementById('tile-table-field');
+  const tableInput = document.getElementById('tile-table');
+  const tableNoteEl = document.getElementById('tile-table-note');
 
   const tilePreviewEl = document.getElementById('tile-preview');
 
@@ -675,7 +678,7 @@
     addDrillLevelBtn, addPageBtn, addRadarAxisBtn, addTileForm, addTileOpenBtn, advancedDetailsEl,
     advancedFilterBadgesEl, advancedFilterForm, aggField, aggLabel, aggSelect, aggSizeField, aggSizeSelect, aggYField,
     aggYSelect, areaCheckbox, areaField, binsField, binsInput, blendPrimaryColumnInput, blendSecondaryColumnInput,
-    blendSecondaryTableInput, joinsBarEl, joinsListEl, joinsNoteEl, tileLinkNoteEl, filterLinkNoteEl, cancelEditBtn, chipsRowEl, chooseStepEl, clearFilterBtn, columnDimensionField,
+    blendSecondaryTableInput, joinsBarEl, joinsListEl, joinsNoteEl, tileLinkNoteEl, filterLinkNoteEl, tableField, tableInput, tableNoteEl, cancelEditBtn, chipsRowEl, chooseStepEl, clearFilterBtn, columnDimensionField,
     columnDimensionLabel, columnDimensionSelect, comboModeField, comboModeSelect, commentAuthorInput,
     commentAuthorNote, commentForm, commentTextInput, commentsCloseBtn, commentsEmptyEl, commentsListEl,
     commentsModal, commentsModalTileEl, configureStepEl, csvImportColumnsEl, csvImportConfirmEl,

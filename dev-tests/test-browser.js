@@ -849,6 +849,200 @@ async function scenario(browser, origin, { name, url, framed }) {
     }
     if (!problems.some((p) => /table plate/.test(p))) verified.push('table plate : colonnes liées à la suite de la liste, table illisible = case décochée sans jointure, table lisible = jointure posée et colonne cochée à sa place (focus, phrase), tuile qui affiche les villes');
     }
+
+    // 11. Lot 2 « colonnes de toutes les tables » : une visualisation garde sa table. Le champ « Table » du formulaire, les colonnes de l'autre table (et
+    // elles seules), la tuile qui lit `Clients` (badge, graphique), un filtre qui ne sort pas de sa table, une table illisible.
+    {
+    const restartFresh = async () => {
+      await page.reload({ waitUntil: 'load' });
+      frame = page.mainFrame();
+      if (framed) { await page.waitForSelector('#app'); frame = await (await page.$('#app')).contentFrame(); }
+      await frame.waitForFunction(
+        () => typeof window.grist === 'object' && window.GristBI && GristBI.store && GristBI.store.getState().rows.length > 0 && GristBI.mainParts && GristBI.mainParts.S.linkSchema instanceof Map,
+        null, { timeout: 25000 }
+      );
+      await frame.evaluate(() => { if (document.body.dataset.mode !== 'edit') document.getElementById('mode-toggle').click(); });
+    };
+    const closeDialogLater = async () => {
+      await frame.waitForSelector('#pp-dialog-modal', { state: 'visible', timeout: 8000 }).catch(() => {});
+      await frame.click('#pp-dialog-modal button:has-text("Fermer")', { timeout: 3000 }).catch(() => frame.press('body', 'Escape').catch(() => {}));
+      await frame.waitForFunction(() => { const d = document.getElementById('pp-dialog-modal'); return !d || d.hidden; }, null, { timeout: 4000 }).catch(() => {});
+    };
+    await restartFresh();
+    await frame.evaluate(() => {
+      GristBI.store.addTile({ id: 'v1', type: 'bar', dimension: 'Region', measure: 'Montant', aggFn: 'sum' });
+      GristBI.closeTilePanel(false);
+      GristBI.openTilePanel({ type: 'bar' });
+    });
+    const fieldShown = await frame.waitForFunction(() => !document.getElementById('tile-table-field').hidden, null, { timeout: 8000 }).then(() => true, () => false);
+    if (!fieldShown) problems.push('une tuile, sa table : le champ « Table » ne se montre pas alors que le document compte trois tables');
+    const tf0 = await frame.evaluate(() => ({
+      value: document.getElementById('tile-table').value,
+      note: document.getElementById('tile-table-note').hidden,
+      formTable: GristBI.mainParts.S.formTable
+    }));
+    if (tf0.value !== 'Ventes' || !tf0.note || tf0.formTable !== '') problems.push('une tuile, sa table : au départ le champ vaut « ' + tf0.value + ' » (attendu Ventes), note ' + (tf0.note ? 'masquée' : 'visible') + ', table du formulaire « ' + tf0.formTable + ' »');
+    await frame.click('#tile-table');
+    const tableList = await frame.evaluate(() => Array.from(document.getElementById('tile-table').nextElementSibling.querySelectorAll('.combobox-option')).map((li) => li.dataset.value).sort());
+    if (tableList.join() !== 'Clients,Personnes,Ventes') problems.push('une tuile, sa table : les tables proposées sont « ' + tableList.join() + ' » au lieu de « Clients,Personnes,Ventes » (jamais une table interne ni système)');
+    await frame.press('#tile-table', 'Control+A');
+    await frame.type('#tile-table', 'clients');
+    await frame.press('#tile-table', 'Enter');
+    const switched = await frame.waitForFunction(() => GristBI.mainParts.S.formTable === 'Clients' && Array.isArray(GristBI.store.getState().tableRows.Clients), null, { timeout: 8000 }).then(() => true, () => false);
+    if (!switched) problems.push('une tuile, sa table : choisir « Clients » n\'a pas lu cette table ni changé celle du formulaire');
+    await frame.waitForTimeout(300);
+    await frame.click('#tile-dimension');
+    const dimOptions = await frame.evaluate(() => {
+      const ul = document.getElementById('tile-dimension').nextElementSibling;
+      return { values: Array.from(ul.querySelectorAll('.combobox-option')).map((li) => li.dataset.value), groups: ul.querySelectorAll('.combobox-group').length, note: document.getElementById('tile-table-note').hidden ? '' : document.getElementById('tile-table-note').textContent };
+    });
+    if (dimOptions.values.join() !== 'Nom,Ville,Segment') problems.push('une tuile, sa table : les colonnes proposées sont « ' + dimOptions.values.join() + ' » au lieu de celles de Clients (Nom,Ville,Segment)');
+    if (dimOptions.groups) problems.push('une tuile, sa table : une autre table n\'a pas de jointures, aucun intitulé de table n\'est attendu dans la liste');
+    if (!/Clients/.test(dimOptions.note)) problems.push('une tuile, sa table : la phrase sous le champ ne nomme pas la table : « ' + dimOptions.note + ' »');
+    await frame.press('#tile-dimension', 'Control+A');
+    await frame.type('#tile-dimension', 'ville');
+    await frame.press('#tile-dimension', 'Enter');
+    await frame.click('#tile-measure');
+    await frame.press('#tile-measure', 'Control+A');
+    await frame.type('#tile-measure', 'nom');
+    await frame.press('#tile-measure', 'Enter');
+    await frame.selectOption('#tile-agg', 'count');
+    await frame.click('#submit-tile');
+    const added = await frame.waitForFunction(() => GristBI.store.getState().tiles.some((tl) => tl.table === 'Clients' && tl.dimension === 'Ville'), null, { timeout: 8000 }).then(() => true, () => false);
+    if (!added) problems.push('une tuile, sa table : la tuile par « Ville » n\'a pas été ajoutée avec `table: "Clients"`');
+    else {
+      await frame.waitForTimeout(900);
+      const clientsTile = await frame.evaluate(async () => {
+        await GristBI.charts.whenSettled();
+        const tile = GristBI.store.getState().tiles.find((tl) => tl.table === 'Clients');
+        const el = document.querySelector('.tile[data-tile-id="' + tile.id + '"]');
+        const badge = el.querySelector('.tile-table');
+        const chartEl = el.querySelector('.tile-chart');
+        const inst = chartEl && window.echarts ? echarts.getInstanceByDom(chartEl) : null;
+        const opt = inst ? inst.getOption() : null;
+        const names = opt ? [].concat((opt.xAxis && opt.xAxis[0] && opt.xAxis[0].data) || []).map(String).sort() : null;
+        const values = opt && opt.series && opt.series[0] ? opt.series[0].data.map((d) => (d && typeof d === 'object' ? d.value : d)) : null;
+        const other = document.querySelector('.tile[data-tile-id="v1"] .tile-table');
+        return { id: tile.id, badge: badge && !badge.hidden ? badge.textContent : '', otherBadge: other ? !other.hidden : null, names, values, formTable: GristBI.mainParts.S.formTable, panel: document.getElementById('tile-panel').hidden };
+      });
+      if (clientsTile.badge !== 'Clients') problems.push('une tuile, sa table : le badge de la tuile vaut « ' + clientsTile.badge + ' » au lieu de « Clients »');
+      if (clientsTile.otherBadge) problems.push('une tuile, sa table : la tuile de la table de travail porte un badge de table');
+      if (!clientsTile.names || clientsTile.names.join() !== 'Lille,Lyon,Nantes') problems.push('une tuile, sa table : le graphique montre « ' + JSON.stringify(clientsTile.names) + ' » au lieu des villes de Clients');
+      if (!clientsTile.values || clientsTile.values.join() !== '2,2,2') problems.push('une tuile, sa table : les valeurs sont « ' + JSON.stringify(clientsTile.values) + ' » (attendu 2 clients par ville)');
+      if (!clientsTile.panel || clientsTile.formTable !== '') problems.push('une tuile, sa table : après l\'ajout le panneau est ' + (clientsTile.panel ? 'fermé' : 'ouvert') + ' et la table du formulaire « ' + clientsTile.formTable + ' »');
+
+      await frame.evaluate(() => GristBI.store.addTile({ id: 'c2', type: 'bar', dimension: 'Segment', measure: 'Nom', aggFn: 'count', table: 'Clients' }));
+      // Un filtre croisé posé sur Clients ne sort pas de Clients, et celui des ventes ne vide pas Clients (qui n'a pas de colonne « Region »).
+      const barPoint = (tileId, category, value) => frame.evaluate(({ tileId: id, category: cat, value: val }) => {
+        const el = document.querySelector('.tile[data-tile-id="' + id + '"] .tile-chart');
+        const inst = echarts.getInstanceByDom(el);
+        const [x, y] = inst.convertToPixel({ xAxisIndex: 0, yAxisIndex: 0 }, [cat, val]);
+        return { x, y };
+      }, { tileId, category, value });
+      const lyon = await barPoint(clientsTile.id, 'Lyon', 1);
+      await frame.click('.tile[data-tile-id="' + clientsTile.id + '"] .tile-chart', { position: lyon });
+      const f1 = await frame.waitForFunction(() => GristBI.store.getState().activeFilters.length === 1, null, { timeout: 5000 }).then(() => true, () => false);
+      const afterClients = await frame.evaluate(() => {
+        const st = GristBI.store.getState();
+        const v1 = st.tiles.find((tl) => tl.id === 'v1');
+        const clients = st.tiles.find((tl) => tl.id === 'c2');
+        return {
+          filters: st.activeFilters,
+          ventesRows: GristBI.data.rowsForTile(v1, st).length,
+          clientsRows: GristBI.data.rowsForTile(clients, st).length,
+          chip: (document.getElementById('chips-row') || document.body).textContent
+        };
+      });
+      if (!f1 || afterClients.filters[0].column !== 'Ville' || afterClients.filters[0].value !== 'Lyon' || afterClients.filters[0].table !== 'Clients') problems.push('une tuile, sa table : un clic sur « Lyon » pose ' + JSON.stringify(afterClients.filters) + ' (attendu un filtre de la table Clients)');
+      if (afterClients.ventesRows !== 36) problems.push('une tuile, sa table : un filtre posé sur Clients touche les ventes (' + afterClients.ventesRows + ' lignes au lieu de 36)');
+      if (!/Clients ›/.test(afterClients.chip)) problems.push('une tuile, sa table : la pastille du filtre ne nomme pas sa table : « ' + afterClients.chip.replace(/\s+/g, ' ').slice(0, 120) + ' »');
+      const nord = await barPoint('v1', 'Nord', 100);
+      await frame.click('.tile[data-tile-id="v1"] .tile-chart', { position: nord });
+      const f2 = await frame.waitForFunction(() => GristBI.store.getState().activeFilters.length === 2, null, { timeout: 5000 }).then(() => true, () => false);
+      const afterVentes = await frame.evaluate(async () => {
+        await GristBI.charts.whenSettled();
+        const st = GristBI.store.getState();
+        const clients = st.tiles.find((tl) => tl.id === 'c2');
+        return { filters: st.activeFilters.map((f) => f.column + '=' + f.value + (f.table ? '@' + f.table : '')), clientsRows: GristBI.data.rowsForTile(clients, st).length, ventesRows: GristBI.data.rowsForTile(st.tiles.find((tl) => tl.id === 'v1'), st).length };
+      });
+      if (!f2 || afterVentes.filters.join() !== 'Ville=Lyon@Clients,Region=Nord') problems.push('une tuile, sa table : les deux filtres attendus (Clients puis ventes) sont « ' + afterVentes.filters.join() + ' »');
+      if (afterClients.clientsRows !== 2) problems.push('une tuile, sa table : le filtre « Ville = Lyon » ne retient pas 2 clients pour une autre tuile de Clients (' + afterClients.clientsRows + ' lignes)');
+      if (afterVentes.clientsRows !== 2) problems.push('une tuile, sa table : le filtre « Region = Nord » des ventes a changé les lignes de Clients (' + afterVentes.clientsRows + ' au lieu de 2 : Lyon seulement)');
+      // La croix de la pastille retire le filtre de SA table, pas celui du même nom d'une autre.
+      await frame.click('.filter-chip-remove[data-table="Clients"]');
+      const afterRemove = await frame.evaluate(() => GristBI.store.getState().activeFilters.map((f) => f.column + (f.table ? '@' + f.table : '')));
+      if (afterRemove.join() !== 'Region') problems.push('une tuile, sa table : la croix de la pastille « Clients » laisse « ' + afterRemove.join() + ' » (attendu Region seul)');
+      await frame.evaluate(() => GristBI.store.clearFilter());
+
+      // Modifier la tuile : le formulaire reprend sa table et ses colonnes.
+      await frame.evaluate((id) => { document.querySelector('.tile[data-tile-id="' + id + '"] .tile-edit').click(); }, clientsTile.id);
+      await frame.waitForFunction(() => !document.getElementById('tile-panel').hidden && GristBI.mainParts.S.editingTileId, null, { timeout: 8000 }).catch(() => {});
+      await frame.waitForTimeout(400);
+      const edit = await frame.evaluate(() => ({
+        formTable: GristBI.mainParts.S.formTable, tableValue: document.getElementById('tile-table').value, dimension: document.getElementById('tile-dimension').value,
+        measure: document.getElementById('tile-measure').value, agg: document.getElementById('tile-agg').value
+      }));
+      if (edit.formTable !== 'Clients' || edit.tableValue !== 'Clients' || edit.dimension !== 'Ville' || edit.measure !== 'Nom' || edit.agg !== 'count') problems.push('une tuile, sa table : modifier la tuile ouvre ' + JSON.stringify(edit) + ' (attendu Clients / Ville / Nom / count)');
+      // Revenir à la table de travail : la tuile ne porte plus de `table`, ses colonnes sont à refaire.
+      await frame.click('#tile-table');
+      await frame.press('#tile-table', 'Control+A');
+      await frame.type('#tile-table', 'ventes');
+      await frame.press('#tile-table', 'Enter');
+      await frame.waitForFunction(() => GristBI.mainParts.S.formTable === '', null, { timeout: 5000 }).catch(() => {});
+      await frame.waitForTimeout(300);
+      const back = await frame.evaluate(() => ({ editing: GristBI.mainParts.S.editingTileId, formTable: GristBI.mainParts.S.formTable, dimension: document.getElementById('tile-dimension').value, note: document.getElementById('tile-table-note').hidden }));
+      if (back.formTable !== '' || back.dimension !== 'Region' || !back.note) problems.push('une tuile, sa table : revenir à la table de travail laisse ' + JSON.stringify(back));
+      await frame.evaluate(() => GristBI.closeTilePanel(false));
+    }
+
+    // 11b. Une table illisible : la tuile dit « illisible » (badge ⚠, message, zéro ligne) sans toucher aux autres ni relire en boucle.
+    tolerated.push(/illisible pour une tuile/, /Table illisible|n'est pas lue/);
+    await restartFresh();
+    await frame.evaluate(() => { window.__gristStubFailTables = ['Clients']; });
+    await frame.evaluate(() => {
+      GristBI.store.addTile({ id: 'v1', type: 'bar', dimension: 'Region', measure: 'Montant', aggFn: 'sum' });
+      GristBI.store.addTile({ id: 'c1', type: 'bar', dimension: 'Ville', measure: 'Nom', aggFn: 'count', table: 'Clients' });
+    });
+    await frame.waitForFunction(() => GristBI.store.getState().tableRows.Clients === null, null, { timeout: 8000 }).catch(() => {});
+    await frame.waitForTimeout(500);
+    const bad = await frame.evaluate(async () => {
+      await GristBI.charts.whenSettled();
+      const st = GristBI.store.getState();
+      const badge = document.querySelector('.tile[data-tile-id="c1"] .tile-table');
+      const dialog = document.getElementById('pp-dialog-modal');
+      return {
+        status: GristBI.data.tableRowsStatus(st, 'Clients'),
+        badge: badge && !badge.hidden ? badge.textContent : '',
+        state: badge ? badge.dataset.state : '',
+        rows: GristBI.data.rowsForTile(st.tiles.find((tl) => tl.id === 'c1'), st).length,
+        ventesRows: GristBI.data.rowsForTile(st.tiles.find((tl) => tl.id === 'v1'), st).length
+      };
+    });
+    if (bad.status !== 'failed' || !/Clients/.test(bad.badge) || !/⚠/.test(bad.badge) || bad.state !== 'failed') problems.push('table illisible : état « ' + bad.status + ' », badge « ' + bad.badge + ' » (' + bad.state + ')');
+    if (bad.rows !== 0 || bad.ventesRows !== 36) problems.push('table illisible : ' + bad.rows + ' ligne(s) pour la tuile (attendu 0), ' + bad.ventesRows + ' pour les ventes (attendu 36)');
+    await closeDialogLater();
+    // Aucun nouvel essai tant qu'on ne recharge pas : un rendu de plus ne relit pas la table.
+    await frame.evaluate(() => GristBI.store.updateTile('v1', { title: 'autre' }));
+    await frame.waitForTimeout(400);
+    const stillFailed = await frame.evaluate(() => GristBI.store.getState().tableRows.Clients === null);
+    if (!stillFailed) problems.push('table illisible : un rendu de plus a relu la table');
+    // Le formulaire refuse d'écrire une tuile sur une table qu'il ne peut pas lire.
+    await frame.evaluate(() => { GristBI.closeTilePanel(false); GristBI.openTilePanel({ type: 'bar' }); });
+    await frame.waitForFunction(() => !document.getElementById('tile-table-field').hidden, null, { timeout: 8000 }).catch(() => {});
+    await frame.click('#tile-table');
+    await frame.press('#tile-table', 'Control+A');
+    await frame.type('#tile-table', 'clients');
+    await frame.press('#tile-table', 'Enter');
+    await frame.waitForTimeout(500);
+    await frame.click('#submit-tile');
+    await frame.waitForTimeout(300);
+    const refused = await frame.evaluate(() => ({ tiles: GristBI.store.getState().tiles.length, error: Array.from(document.querySelectorAll('#add-tile-form .field-error')).map((n) => n.textContent).join('|'), note: document.getElementById('tile-table-note').textContent }));
+    if (refused.tiles !== 2) problems.push('table illisible : le formulaire a ajouté une tuile sur une table qu\'il ne lit pas (' + refused.tiles + ' tuiles)');
+    if (!/Clients/.test(refused.error)) problems.push('table illisible : aucun message sous le champ « Table » : ' + JSON.stringify(refused));
+    if (!/Clients/.test(refused.note)) problems.push('table illisible : la phrase sous le champ ne dit pas que la table est illisible : ' + JSON.stringify(refused));
+    await frame.evaluate(() => { window.__gristStubFailTables = []; GristBI.closeTilePanel(false); });
+    if (!problems.some((p) => /une tuile, sa table|table illisible/.test(p))) verified.push('une tuile, sa table : champ « Table » (trois tables, aucune interne), colonnes de Clients seules, badge, graphique des villes, filtres qui ne sortent pas de leur table (pastille, croix), modification, retour à la table de travail ; table illisible = badge ⚠, zéro ligne, aucun nouvel essai, formulaire refusé');
+    }
   } catch (e) {
     problems.push('essai interrompu : ' + String((e && e.message) || e).slice(0, 240));
   } finally {
