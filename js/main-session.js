@@ -387,7 +387,7 @@
     S.currentTableId = tableId;
     currentPrimaryRows = rows;
     if (isNewTable) joinTableCache.clear();
-    if (isNewTable) { tileTablesAsked.clear(); S.formTable = ''; store.setWorkingTable(tableId); } // les autres tables lues appartenaient à l'autre rapport
+    if (isNewTable) { tileTablesAsked.clear(); S.formTable = ''; S.filterTable = ''; store.setWorkingTable(tableId); } // les autres tables lues appartenaient à l'autre rapport
     await refreshColumnFormats(tableId, isNewTable);
     if (isNewTable) await refreshLinkSchema(tableId);
     if (isNewTable) {
