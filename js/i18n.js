@@ -597,6 +597,11 @@
     'tilePanel.complete.addAriaTable': { fr: 'Ajouter la visualisation « {title} » (table « {table} »)', en: 'Add the visualization “{title}” (“{table}” table)' },
     'tilePanel.column.title': { fr: 'Que faire avec cette colonne ?', en: 'What can I do with this column?' },
     'tilePanel.column.label': { fr: 'Colonne', en: 'Column' },
+    'tilePanel.column.table': { fr: 'Table', en: 'Table' },
+    'tilePanel.column.tableLoading': { fr: 'Lecture de la table « {table} »…', en: 'Reading table “{table}”…' },
+    'tilePanel.column.tableScope': { fr: 'Les propositions portent sur la table « {table} » : seules les visualisations posées sur cette table comptent.', en: 'Suggestions are about table “{table}”: only visualizations placed on that table count.' },
+    'tilePanel.column.tableFailed': { fr: 'La table « {table} » n\'a pas pu être lue : aucune colonne à proposer.', en: 'Table “{table}” could not be read: no column to suggest.' },
+    'tilePanel.column.tableEmpty': { fr: 'La table « {table} » est vide : aucune colonne à proposer.', en: 'Table “{table}” is empty: no column to suggest.' },
     'tilePanel.column.placeholder': { fr: 'Choisir une colonne', en: 'Pick a column' },
     'tilePanel.column.working': { fr: 'Analyse de la colonne…', en: 'Looking at the column…' },
     // « Analyser par nom plutôt que par numéro » (js/advice-join.js) : relier la table d'une colonne Référence.

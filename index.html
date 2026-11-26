@@ -614,6 +614,12 @@
       <details id="tile-column" class="tile-column">
         <summary class="tile-column-summary" data-i18n="tilePanel.column.title">Que faire avec cette colonne ?</summary>
         <div class="tile-column-body">
+          <!-- La table de la colonne (au moins deux tables dans le document) : des boutons, comme dans le menu Filtre. Rempli par js/main-panel.js. -->
+          <div id="tile-column-table-field" class="filter-table-field" hidden>
+            <span id="tile-column-table-label" class="filter-table-label" data-i18n="tilePanel.column.table">Table</span>
+            <div id="tile-column-tables" class="filter-tables" role="group" aria-labelledby="tile-column-table-label"></div>
+            <p id="tile-column-table-note" class="tile-advice tile-link-note" role="status" aria-live="polite" hidden></p>
+          </div>
           <div class="field">
             <label for="tile-column-pick" data-i18n="tilePanel.column.label">Colonne</label>
             <div class="combobox">

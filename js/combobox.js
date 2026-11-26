@@ -301,7 +301,11 @@
       grouped = options.some((o) => o.group);
       if (cfg && 'blankLabel' in cfg) blankLabel = cfg.blankLabel || null;
       if (blankLabel) inputEl.placeholder = blankLabel;
-      if (strict && !isValid(inputEl.value)) inputEl.value = blankLabel ? '' : (options[0] ? options[0].value : '');
+      // `keepEmpty` : un champ vide le reste (« Que faire avec cette colonne ? » n'a pas de choix par défaut : la 1re colonne n'y est pas une réponse).
+      if (strict && !isValid(inputEl.value)) {
+        const stayEmpty = !!blankLabel || (!!(cfg && cfg.keepEmpty) && inputEl.value === '');
+        inputEl.value = stayEmpty ? '' : (options[0] ? options[0].value : '');
+      }
       lastValidValue = inputEl.value;
     };
 

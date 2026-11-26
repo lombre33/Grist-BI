@@ -323,9 +323,9 @@ const clean = (s) => typeof s === 'string' && s.length > 0 && !/[{}]|NaN|undefin
   assert.ok(/GristBI\.adviceColumn\.describe\(/.test(main), 'le panneau appelle le module');
   assert.ok(/function renderColumnHelper\(/.test(main) && /function hideColumnResults\(/.test(main), 'fonctions du panneau');
   assert.ok(/columnPickEl\.addEventListener\('change', \(\) => \{ if \(!columnResultsAreFresh\(\)\) renderColumnHelper\(\); \}\)/.test(main), 'un événement change sans changement ne refait rien (le clic sur « Ajouter » ne se perd pas)');
-  assert.ok(/columnShown = \{ column, rows: state\.rows, lang, tiles \}/.test(main) && /columnShown\.rows === state\.rows/.test(main) && /sameRefs\(columnShown\.tiles/.test(main), 'ce que les résultats ont lu : colonne, lignes, langue, tuiles');
+  assert.ok(/columnShown = \{ column, table: ctx\.table, rows: ctx\.rows, lang, tiles: ctx\.tiles \}/.test(main) && /columnShown\.rows === ctx\.rows/.test(main) && /columnShown\.table === ctx\.table/.test(main) && /sameRefs\(columnShown\.tiles, ctx\.tiles\)/.test(main), 'ce que les résultats ont lu : colonne, table, lignes, langue, tuiles');
   assert.ok(/token !== columnToken \|\| tilePanel\.hidden/.test(main), 'un calcul périmé ou un panneau refermé n\'écrit rien');
-  assert.ok(/function renderColumnHelper\([\s\S]{0,1800}const tiles = tilesOfWorkingTable\(state\)/.test(main), 'les tuiles de la table de travail comptent, pas celles de la page courante');
+  assert.ok(/function renderColumnHelper\([\s\S]{0,1800}describe\(ctx\.rows, ctx\.tiles, column/.test(main) && /function columnContext\([\s\S]{0,400}tiles: tilesOfWorkingTable\(state\)/.test(main), 'les tuiles de la table de travail comptent, pas celles de la page courante');
   assert.ok(/const tilesOfWorkingTable = \(state\) => \(GristBI\.adviceTables\s*\?\s*GristBI\.adviceTables\.tilesOf\(tilesOfAllPages\(state\)/.test(main), 'toutes les pages du rapport comptent (tilesOfAllPages), limitées à la table de travail : une tuile d\'une autre table ne répond pas à la question d\'une colonne de même nom');
   assert.ok(/fillCards\(tileCompleteListEl[^)]*\)/.test(main) && /fillCards\(columnListEl[^)]*\)/.test(main), 'les mêmes cartes que « Pour compléter »');
   assert.ok(/data-column-add/.test(main) && /flashTile\(id\)/.test(main), 'ajout, clignotement de la tuile posée');
